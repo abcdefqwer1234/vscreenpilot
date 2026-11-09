@@ -70,7 +70,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const ref = found.payload?.ref;
     check('found Document ref', Boolean(ref), ref);
 
-    // 新版记事本编辑区�?Document；先探明是否支持 ValuePattern�?
+    // 新版记事本编辑区是 Document；先探明是否支持 ValuePattern。
     // Notepad 可能恢复上次内容；用 allow_destructive 明确把初始内容重置为 AAA。
     const first = await call('set_element_value', {
       ref, value: 'AAA', mode: 'insert', allow_destructive: true,

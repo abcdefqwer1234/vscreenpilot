@@ -87,6 +87,6 @@ async function call(name, args = {}) {
   child.stdin.end();
 })().catch((error) => {
   console.error(error);
-  try { child.kill(); } catch { /* 已退�?*/ }
+  try { child.kill(); } catch { /* 已退出 */ }
   process.exit(1);
 });

@@ -108,7 +108,7 @@ async function shot(name) {
     await call('type_text', { text: 'CHANGE_TOKEN' });
     await sleep(300);
 
-    // 故意插入一次全屏截图，验证不会覆盖同区域基线�?
+    // 故意插入一次全屏截图，验证不会覆盖同区域基线。
     await shot('interference');
     const changed = await call('assert_region', {
       region,

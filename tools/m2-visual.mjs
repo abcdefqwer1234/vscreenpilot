@@ -217,10 +217,10 @@ function show(label, value) {
 
   child.stdin.end();
   setTimeout(() => {
-    try { child.kill(); } catch { /* 已退�?*/ }
+    try { child.kill(); } catch { /* 已退出 */ }
   }, 3000);
 })().catch((error) => {
   console.error(error);
-  try { child.kill(); } catch { /* 已退�?*/ }
+  try { child.kill(); } catch { /* 已退出 */ }
   process.exit(1);
 });

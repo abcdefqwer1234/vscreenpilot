@@ -53,7 +53,7 @@ function waitFor(id, timeoutMs) {
   await waitFor(initId, 30000);
   notify('notifications/initialized');
 
-  // 1) 启动一�?30 秒的 wait_for（没有目标窗口，会一直轮询）�?
+  // 1) 启动一个 30 秒的 wait_for（没有目标窗口，会一直轮询）。
   const waitId = send('tools/call', {
     name: 'wait_for',
     arguments: {
@@ -64,16 +64,16 @@ function waitFor(id, timeoutMs) {
 
   await new Promise((resolve) => setTimeout(resolve, 500));
 
-  // 2) 工具执行期间，ping 必须立即得到响应�?
+  // 2) 工具执行期间，ping 必须立即得到响应。
   const pingId = send('ping', {});
   const ping = await waitFor(pingId, 3000);
   console.log('ping-during-tool:', JSON.stringify(ping));
 
-  // 3) 取消长请求�?
+  // 3) 取消长请求。
   notify('notifications/cancelled', { requestId: waitId, reason: 'test' });
   await new Promise((resolve) => setTimeout(resolve, 500));
 
-  // 4) 服务器仍可正常工作，且被取消的请求不应返回结果�?
+  // 4) 服务器仍可正常工作，且被取消的请求不应返回结果。
   const envId = send('tools/call', { name: 'get_environment', arguments: {} });
   const env = await waitFor(envId, 15000);
   console.log('after-cancel-ok:', !!env.result && !env.result.isError);
@@ -88,6 +88,6 @@ function waitFor(id, timeoutMs) {
   child.stdin.end();
 })().catch((error) => {
   console.error(error);
-  try { child.kill(); } catch { /* 已退�?*/ }
+  try { child.kill(); } catch { /* 已退出 */ }
   process.exit(1);
 });

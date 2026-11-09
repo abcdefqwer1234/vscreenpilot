@@ -200,11 +200,11 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     save_path: 'C:\\Windows\\vsp-should-not-exist.png',
   }));
 
-  // 关掉最后接管的应用，验证会回退到前一个存活应用�?
+  // 关掉最后接管的应用，验证会回退到前一个存活应用。
   try {
     process.kill(ed?.pid);
   } catch {
-    // 已退出�?
+    // 已退出。
   }
 
   await sleep(2000);
@@ -220,10 +220,10 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   child.stdin.end();
   setTimeout(() => {
-    try { child.kill(); } catch { /* 已退�?*/ }
+    try { child.kill(); } catch { /* 已退出 */ }
   }, 3000);
 })().catch((error) => {
   console.error(error);
-  try { child.kill(); } catch { /* 已退�?*/ }
+  try { child.kill(); } catch { /* 已退出 */ }
   process.exit(1);
 });

@@ -162,7 +162,7 @@ const exe = path.join(temp, 'node_modules', 'vscreenpilot', 'dist', 'win32-x64',
 
     const doctor = callOnce(process.execPath, [launcher, '--doctor']);
     let doctorJson = null;
-    try { doctorJson = JSON.parse(doctor.stdout); } catch { /* ��¼ԭ�� */ }
+    try { doctorJson = JSON.parse(doctor.stdout); } catch { /* 记录原因 */ }
     record('doctor', doctorJson ?? doctor);
     check('--doctor returns json', doctorJson !== null && doctorJson.version === '0.1.0', doctor.stdout.slice(0, 120));
     check('driver ready', doctorJson?.driver?.status === 'Ok', doctorJson?.driver?.status);
@@ -220,7 +220,7 @@ const exe = path.join(temp, 'node_modules', 'vscreenpilot', 'dist', 'win32-x64',
     log.push('[FATAL] ' + (error?.stack ?? error));
     results.push({ name: 'fatal', ok: false, detail: String(error?.message ?? error) });
   } finally {
-    try { rmSync(temp, { recursive: true, force: true }); } catch { /* ���� */ }
+    try { rmSync(temp, { recursive: true, force: true }); } catch { /* 忽略 */ }
     const pass = results.filter((item) => item.ok).length;
     log.push(`\nSUMMARY pass=${pass}/${results.length}`);
     mkdirSync(path.join(root, 'docs'), { recursive: true });

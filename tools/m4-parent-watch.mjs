@@ -123,7 +123,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     log.push('[FATAL] ' + (error?.stack ?? error));
     results.push({ name: 'fatal', ok: false, detail: String(error?.message ?? error) });
   } finally {
-    try { wrapper.kill('SIGKILL'); } catch { /* ���� */ }
+    try { wrapper.kill('SIGKILL'); } catch { /* 忽略 */ }
     const pass = results.filter((item) => item.ok).length;
     log.push(`\nSUMMARY pass=${pass}/${results.length}`);
     mkdirSync('docs', { recursive: true });

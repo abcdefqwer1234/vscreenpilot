@@ -57,7 +57,7 @@ function connect() {
   }
 
   async function close(timeoutMs = 10000) {
-    try { child.stdin.end(); } catch { /* ���� */ }
+    try { child.stdin.end(); } catch { /* 忽略 */ }
     if (child.exitCode !== null) return child.exitCode;
     return new Promise((resolve) => {
       const timer = setTimeout(() => resolve('timeout'), timeoutMs);

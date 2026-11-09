@@ -47,7 +47,7 @@ function listPids(name) {
   return new Set(text.split(',').map((v) => Number.parseInt(v, 10)).filter(Number.isFinite));
 }
 
-/** ����ѹ���������� server����������²�Ӧ���У��� */
+/** 清理本脚本启动后残留的服务端进程。 */
 function killOwnOrphanServers() {
   powershell(
     `Get-CimInstance Win32_Process -Filter "Name='VScreenPilot.exe'" | ` +
@@ -118,7 +118,7 @@ function connect() {
   }
 
   async function close(timeoutMs = 10000) {
-    try { child.stdin.end(); } catch { /* �ѹر� */ }
+    try { child.stdin.end(); } catch { /* 已关闭 */ }
     if (child.exitCode !== null) return child.exitCode;
     return new Promise((resolve) => {
       const timer = setTimeout(() => resolve('timeout'), timeoutMs);
@@ -295,10 +295,10 @@ async function runRound(index, baselineMonitors, baselineNotepad) {
     row.error = String(error?.message ?? error);
 
     if (client) {
-      try { client.child.stdin.end(); } catch { /* ���� */ }
+      try { client.child.stdin.end(); } catch { /* 忽略 */ }
       await sleep(500);
       if (client.child.exitCode === null) {
-        try { client.child.kill('SIGKILL'); } catch { /* ���� */ }
+        try { client.child.kill('SIGKILL'); } catch { /* 忽略 */ }
       }
     }
 
@@ -315,10 +315,10 @@ async function runRound(index, baselineMonitors, baselineNotepad) {
 
     const status = probeStatus();
     if (status.parsec) {
-      record(`round-${index}-cleanup`, '��⵽���� Parsec �������� VddProbe removeall');
+      record(`round-${index}-cleanup`, '检测到残留 Parsec 虚拟屏，调用 VddProbe removeall');
       try {
         execFileSync(probe, ['removeall'], { encoding: 'utf8', windowsHide: true, timeout: 30000 });
-      } catch { /* ���� */ }
+      } catch { /* 忽略 */ }
       await sleep(1000);
     }
 
@@ -349,12 +349,12 @@ async function runRound(index, baselineMonitors, baselineNotepad) {
   });
 
   if (!Number.isFinite(baseline.monitors) || baseline.monitors < 1) {
-    console.error('�޷���ȡ��ʾ����������ֹ');
+    console.error('无法获取显示器数量，终止');
     process.exit(1);
   }
 
   if (baseline.parsec) {
-    console.error('ѹ��ǰ�Ѵ��� Parsec ���������������������');
+    console.error('压测前已存在 Parsec 虚拟屏，请先手动清理');
     process.exit(1);
   }
 
@@ -377,7 +377,7 @@ async function runRound(index, baselineMonitors, baselineNotepad) {
     );
 
     if (!row.ok && consecutiveFailures >= 3) {
-      log.push('[ABORT] ���� 3 ��ʧ��');
+      log.push('[ABORT] 连续 3 次失败');
       break;
     }
   }

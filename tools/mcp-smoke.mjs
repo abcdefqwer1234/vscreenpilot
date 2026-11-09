@@ -147,7 +147,7 @@ function show(label, value) {
       foreground: envClick.content?.[0]?.foreground,
     }, null, 2));
 
-    show('type', await call('type_text', { text: 'Hello 虚拟�?123' }));
+    show('type', await call('type_text', { text: 'Hello 虚拟屏 123' }));
     const envType = await call('get_environment');
     console.log('--- type-foreground ---');
     console.log(JSON.stringify(envType.content?.[0]?.foreground));
@@ -195,7 +195,7 @@ function show(label, value) {
     try {
       child.kill();
     } catch {
-      // 已退出�?
+      // 已退出。
     }
   }, 3000);
 })().catch((error) => {
@@ -203,7 +203,7 @@ function show(label, value) {
   try {
     child.kill();
   } catch {
-    // 已退出�?
+    // 已退出。
   }
   process.exit(1);
 });
