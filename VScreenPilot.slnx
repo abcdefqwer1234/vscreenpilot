@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/VScreenPilot.Core/VScreenPilot.Core.csproj" />
+    <Project Path="src/VScreenPilot.Server/VScreenPilot.Server.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/AotSmokeTest/AotSmokeTest.csproj" />
+    <Project Path="tools/VddProbe/VddProbe.csproj" />
+  </Folder>
+</Solution>

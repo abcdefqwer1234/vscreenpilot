@@ -1,0 +1,1026 @@
+using System.Runtime.InteropServices;
+using System.Text.Json.Nodes;
+using VScreenPilot.Apps;
+using VScreenPilot.Core.Displays;
+using VScreenPilot.Input;
+using VScreenPilot.Interop;
+using VScreenPilot.Mcp;
+using VScreenPilot.Uia;
+
+namespace VScreenPilot.Session;
+
+internal sealed class ElementRefEntry
+{
+    public required string Ref { get; init; }
+    public required string Key { get; init; }
+    public string RuntimeId { get; set; } = string.Empty;
+    public int Pid { get; init; }
+    public IntPtr Hwnd { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string AutomationId { get; set; } = string.Empty;
+    public string ControlTypeName { get; set; } = string.Empty;
+    public int Left { get; set; }
+    public int Top { get; set; }
+    public int Right { get; set; }
+    public int Bottom { get; set; }
+    public long LastUsedTicks { get; set; }
+
+    public void Update(UiaElementInfo info, IntPtr hwnd)
+    {
+        RuntimeId = info.RuntimeId;
+        Hwnd = hwnd;
+        Name = info.Name;
+        AutomationId = info.AutomationId;
+        ControlTypeName = info.ControlTypeName;
+        Left = info.Left;
+        Top = info.Top;
+        Right = info.Right;
+        Bottom = info.Bottom;
+        LastUsedTicks = Environment.TickCount64;
+    }
+}
+
+internal sealed partial class SessionManager
+{
+    private const int ElementRefCapacity = 512;
+    private const long ElementRefTtlMs = 5 * 60 * 1000;
+
+    private readonly Dictionary<string, ElementRefEntry> _elements = new();
+    private readonly Dictionary<string, string> _elementKeys = new();
+    private long _elementSeq;
+
+    /// <summary>登记元素并返回稳定的会话内引用（只对外暴露 ref）。</summary>
+    public string RegisterElement(UiaElementInfo info, IntPtr hwnd)
+    {
+        lock (_gate)
+        {
+            PruneExpiredElements();
+
+            string key = ElementKey(info);
+            if (_elementKeys.TryGetValue(key, out string? existingRef) &&
+                _elements.TryGetValue(existingRef, out ElementRefEntry? existing))
+            {
+                existing.Update(info, hwnd);
+                return existing.Ref;
+            }
+
+            if (_elements.Count >= ElementRefCapacity)
+            {
+                EvictOldestElement();
+            }
+
+            string reference = "e" + (++_elementSeq);
+            var entry = new ElementRefEntry
+            {
+                Ref = reference,
+                Key = key,
+                Pid = info.ProcessId,
+                Hwnd = hwnd,
+                LastUsedTicks = Environment.TickCount64,
+            };
+            entry.Update(info, hwnd);
+
+            _elements[reference] = entry;
+            _elementKeys[key] = reference;
+            return reference;
+        }
+    }
+
+    private static string ElementKey(UiaElementInfo info) =>
+        !string.IsNullOrEmpty(info.RuntimeId)
+            ? $"{info.ProcessId}:{info.RuntimeId}"
+            : $"{info.ProcessId}:{info.ControlType}:{info.AutomationId}:{info.Name}:{info.Left},{info.Top}";
+
+    private void PruneExpiredElements()
+    {
+        long now = Environment.TickCount64;
+        List<string>? expired = null;
+
+        foreach (var pair in _elements)
+        {
+            if (now - pair.Value.LastUsedTicks > ElementRefTtlMs)
+            {
+                (expired ??= new List<string>()).Add(pair.Key);
+            }
+        }
+
+        if (expired is null)
+        {
+            return;
+        }
+
+        foreach (string reference in expired)
+        {
+            RemoveElement(reference);
+        }
+    }
+
+    private void EvictOldestElement()
+    {
+        string? oldestRef = null;
+        long oldestTicks = long.MaxValue;
+
+        foreach (var pair in _elements)
+        {
+            if (pair.Value.LastUsedTicks < oldestTicks)
+            {
+                oldestTicks = pair.Value.LastUsedTicks;
+                oldestRef = pair.Key;
+            }
+        }
+
+        if (oldestRef is not null)
+        {
+            RemoveElement(oldestRef);
+        }
+    }
+
+    private void RemoveElement(string reference)
+    {
+        if (!_elements.Remove(reference, out ElementRefEntry? entry))
+        {
+            return;
+        }
+
+        if (_elementKeys.TryGetValue(entry.Key, out string? mapped) && mapped == reference)
+        {
+            _elementKeys.Remove(entry.Key);
+        }
+        else
+        {
+            foreach (var pair in _elementKeys)
+            {
+                if (pair.Value == reference)
+                {
+                    _elementKeys.Remove(pair.Key);
+                    break;
+                }
+            }
+        }
+    }
+
+    private ElementRefEntry RequireElementEntry(string reference)
+    {
+        string key = (reference ?? string.Empty).Trim();
+        if (key.Length == 0)
+        {
+            throw new ToolException("E_INVALID_ARG", "element_ref 不能为空");
+        }
+
+        ElementRefEntry? entry;
+
+        lock (_gate)
+        {
+            if (!_elements.TryGetValue(key, out entry))
+            {
+                entry = null;
+            }
+            else if (Environment.TickCount64 - entry.LastUsedTicks > ElementRefTtlMs)
+            {
+                // 过期条目直接移除，避免后续按旧 runtime_id 误命中。
+                RemoveElement(key);
+                entry = null;
+            }
+            else
+            {
+                entry.LastUsedTicks = Environment.TickCount64;
+            }
+        }
+
+        if (entry is null)
+        {
+            throw new ToolException(
+                "E_ELEMENT_STALE",
+                $"未知或已失效的 element_ref: {key}，请重新 get_ui_tree / find_element",
+                new JsonObject { ["ref"] = key });
+        }
+
+        return entry;
+    }
+
+    /// <summary>
+    /// 把 element_ref 解析为可执行模式的 UIA 句柄：先按 runtime_id 定位，
+    /// 失败再按指纹唯一重定位；仍失败则 E_ELEMENT_STALE（不猜）。
+    /// </summary>
+    private UiaElementHandle ResolveElementHandle(
+        string reference, DisplayInfo display, out ElementRefEntry entry, out bool refreshed)
+    {
+        entry = RequireElementEntry(reference);
+        refreshed = false;
+
+        if (entry.Hwnd == IntPtr.Zero || !NativeMethods.IsWindow(entry.Hwnd))
+        {
+            throw new ToolException(
+                "E_ELEMENT_STALE",
+                "element_ref 所属窗口已关闭",
+                new JsonObject { ["ref"] = entry.Ref, ["hwnd"] = entry.Hwnd.ToInt64() });
+        }
+
+        bool tracked;
+        int entryPid = entry.Pid;
+
+        // 句柄可能被系统复用：必须确认该 HWND 仍属于登记时的进程。
+        NativeMethods.GetWindowThreadProcessId(entry.Hwnd, out uint entryHwndPid);
+
+        if (entryHwndPid != (uint)entryPid)
+        {
+            throw new ToolException(
+                "E_ELEMENT_STALE",
+                "element_ref 所属窗口已不属于登记时的进程（可能发生了 PID/句柄复用）",
+                new JsonObject
+                {
+                    ["ref"] = entry.Ref,
+                    ["pid"] = entry.Pid,
+                    ["actual_pid"] = (int)entryHwndPid,
+                });
+        }
+
+        lock (_gate)
+        {
+            tracked = _apps.Any(app => app.Pid == entryPid && IsLiveTrackedApp(app));
+        }
+
+        if (!tracked)
+        {
+            throw new ToolException(
+                "E_NO_TARGET",
+                "element_ref 所属应用已不在本会话中，请重新 launch_or_place_app",
+                new JsonObject { ["ref"] = entry.Ref, ["pid"] = entry.Pid });
+        }
+
+        RequireWindowOnDisplay(display, entry.Hwnd, "element_ref");
+
+        UiaElementHandle? handle = null;
+
+        if (!string.IsNullOrEmpty(entry.RuntimeId))
+        {
+            handle = Uia.FindByRuntimeId(entry.Hwnd, entry.RuntimeId);
+        }
+
+        if (handle is not null)
+        {
+            entry.Update(handle.Info, entry.Hwnd);
+            return handle;
+        }
+
+        handle = Uia.FindByFingerprint(
+            entry.Hwnd, entry.Name, entry.AutomationId, entry.ControlTypeName,
+            entry.Left, entry.Top, entry.Right, entry.Bottom);
+
+        if (handle is null)
+        {
+            throw new ToolException(
+                "E_ELEMENT_STALE",
+                "控件已销毁或无法唯一重定位，请重新 get_ui_tree / find_element",
+                new JsonObject
+                {
+                    ["ref"] = entry.Ref,
+                    ["name"] = entry.Name,
+                    ["automation_id"] = entry.AutomationId,
+                    ["control_type"] = entry.ControlTypeName,
+                });
+        }
+
+        refreshed = true;
+        entry.Update(handle.Info, entry.Hwnd);
+        _log.Info($"element_ref {entry.Ref} 已按指纹重定位");
+        return handle;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 工具：get_ui_tree                                                   */
+    /* ------------------------------------------------------------------ */
+
+    public JsonObject GetUiTree(
+        int? maxDepth, bool? interactiveOnly, int? maxNodes, string? root, int? pid)
+    {
+        DisplayInfo display = EnsureEnvironment();
+
+        int depth = Math.Clamp(maxDepth ?? 3, 1, 10);
+        int nodes = Math.Clamp(maxNodes ?? 300, 1, 2000);
+        bool interactive = interactiveOnly ?? true;
+
+        IntPtr hwnd;
+        string rootRuntimeId;
+
+        if (!string.IsNullOrWhiteSpace(root))
+        {
+            // 走完整的 ref 校验：pid 仍在会话、窗口在虚拟屏、runtime_id 失效时按指纹重定位。
+            using (UiaElementHandle handle = ResolveElementHandle(
+                       root, display, out ElementRefEntry entry, out bool refreshed))
+            {
+                hwnd = entry.Hwnd;
+                rootRuntimeId = handle.Info.RuntimeId;
+
+                if (refreshed)
+                {
+                    _log.Info($"get_ui_tree 树根 {entry.Ref} 已按指纹重定位");
+                }
+            }
+
+            if (string.IsNullOrEmpty(rootRuntimeId))
+            {
+                throw new ToolException(
+                    "E_ELEMENT_STALE",
+                    "该 element_ref 缺少 runtime_id，无法作为树根，请重新 find_element",
+                    new JsonObject { ["ref"] = root });
+            }
+        }
+        else
+        {
+            TrackedApp? app = FindLiveTrackedApp(pid);
+
+            if (app is null)
+            {
+                throw new ToolException(
+                    "E_NO_TARGET",
+                    pid is null
+                        ? "没有已接管的应用窗口，请先 launch_or_place_app"
+                        : $"pid={pid} 不是本会话中存活的应用",
+                    new JsonObject { ["pid"] = pid });
+            }
+
+            hwnd = app.Hwnd;
+            RequireWindowOnDisplay(display, hwnd, "get_ui_tree");
+            rootRuntimeId = string.Empty;
+        }
+
+        UiaTreeResult result = Uia.BuildTree(
+            hwnd,
+            rootRuntimeId,
+            depth,
+            interactive,
+            nodes,
+            timeBudgetMs: 3000,
+            isCancelled: () => Cancellation.IsCancellationRequested);
+
+        if (result.Root is null)
+        {
+            throw new ToolException(
+                "E_ELEMENT_NOT_FOUND",
+                result.Reason == "root_not_found"
+                    ? "树根控件已不存在"
+                    : "无法读取语义树",
+                new JsonObject { ["reason"] = result.Reason });
+        }
+
+        string rootRef = string.Empty;
+        JsonObject tree = ConvertTreeNode(result.Root, hwnd, ref rootRef);
+
+        WindowInfo? window = WindowManager.FromHandle(hwnd);
+        var json = new JsonObject
+        {
+            ["root_ref"] = rootRef,
+            ["tree"] = tree,
+            ["nodes"] = result.Nodes,
+            ["visited"] = result.Visited,
+            ["pruned"] = result.Pruned,
+            ["truncated"] = result.Truncated,
+            ["interactive_only"] = interactive,
+            ["max_depth"] = depth,
+            ["max_depth_reached"] = result.MaxDepthReached,
+            ["elapsed_ms"] = result.ElapsedMs,
+        };
+
+        if (result.Reason is not null)
+        {
+            json["truncated_reason"] = result.Reason;
+        }
+
+        if (window is not null)
+        {
+            json["window"] = new JsonObject
+            {
+                ["hwnd"] = window.Hwnd.ToInt64(),
+                ["pid"] = window.Pid,
+                ["title"] = window.Title,
+            };
+        }
+
+        return json;
+    }
+
+    private JsonObject ConvertTreeNode(UiaTreeNode node, IntPtr hwnd, ref string rootRef)
+    {
+        UiaElementInfo info = node.Info;
+        string reference = RegisterElement(info, hwnd);
+
+        if (string.IsNullOrEmpty(rootRef))
+        {
+            rootRef = reference;
+        }
+
+        var json = new JsonObject
+        {
+            ["ref"] = reference,
+            ["control_type"] = info.ControlTypeName,
+        };
+
+        if (!string.IsNullOrEmpty(info.Name))
+        {
+            json["name"] = info.Name.Length > 200 ? info.Name[..200] : info.Name;
+        }
+
+        if (!string.IsNullOrEmpty(info.AutomationId))
+        {
+            json["automation_id"] = info.AutomationId;
+        }
+
+        if (!info.Password && !string.IsNullOrEmpty(info.Value))
+        {
+            json["value"] = info.Value.Length > 200 ? info.Value[..200] : info.Value;
+        }
+
+        json["bounds"] = new JsonObject
+        {
+            ["x"] = info.Left,
+            ["y"] = info.Top,
+            ["width"] = info.Width,
+            ["height"] = info.Height,
+        };
+
+        if (!info.Enabled)
+        {
+            json["enabled"] = false;
+        }
+
+        if (info.Offscreen)
+        {
+            json["offscreen"] = true;
+        }
+
+        if (info.Focused)
+        {
+            json["focused"] = true;
+        }
+
+        if (node.Children.Count > 0)
+        {
+            var children = new JsonArray();
+            foreach (UiaTreeNode child in node.Children)
+            {
+                string unused = string.Empty;
+                children.Add(ConvertTreeNode(child, hwnd, ref unused));
+            }
+
+            json["children"] = children;
+        }
+
+        return json;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 工具：invoke_element / set_element_value                            */
+    /* ------------------------------------------------------------------ */
+
+    public JsonObject InvokeElement(string reference, bool allowClick, string? pattern = null)
+    {
+        DisplayInfo display = EnsureEnvironment();
+        using UiaElementHandle handle = ResolveElementHandle(reference, display, out ElementRefEntry entry, out bool refreshed);
+        UiaElementInfo info = handle.Info;
+
+        UiaInvokePattern mode = ParseInvokePattern(pattern);
+
+        if (!info.Enabled)
+        {
+            throw new ToolException(
+                "E_ELEMENT_DISABLED",
+                "控件已禁用，拒绝触发",
+                new JsonObject { ["ref"] = entry.Ref, ["element"] = info.ToJson() });
+        }
+
+        if (mode == UiaInvokePattern.Default)
+        {
+            return InvokeDefaultAction(display, handle, entry, refreshed);
+        }
+
+        (bool ok, string? strategy) = Uia.TryInvoke(handle.Element, mode);
+
+        if (ok)
+        {
+            Thread.Sleep(50);
+            return new JsonObject
+            {
+                ["ref"] = entry.Ref,
+                ["method"] = strategy,
+                ["refreshed"] = refreshed,
+                ["element"] = info.ToJson(),
+            };
+        }
+
+        if (!allowClick)
+        {
+            throw new ToolException(
+                "E_PATTERN_UNSUPPORTED",
+                "该控件没有可用的 UIA 触发模式（Invoke/Toggle/SelectionItem/ExpandCollapse/Legacy）；" +
+                "可先用 pattern 指定期望模式；如需按坐标触发，请改用 click 或显式传 allow_click=true",
+                new JsonObject { ["ref"] = entry.Ref, ["element"] = info.ToJson() });
+        }
+
+        int centerX = info.Left + info.Width / 2;
+        int centerY = info.Top + info.Height / 2;
+
+        if (info.Width <= 0 || info.Height <= 0)
+        {
+            throw new ToolException(
+                "E_ELEMENT_OFFSCREEN",
+                "控件没有可见尺寸，无法按坐标触发",
+                new JsonObject { ["ref"] = entry.Ref });
+        }
+
+        RequirePointInTrackedApp(display, centerX, centerY, "invoke_element");
+
+        if (!MessageInput.Click(centerX, centerY, "left", 1, out string? detail))
+        {
+            throw new ToolException(
+                "E_INPUT_UNSUPPORTED",
+                "控件不支持语义触发，按坐标点击也失败",
+                new JsonObject { ["ref"] = entry.Ref, ["detail"] = detail });
+        }
+
+        Thread.Sleep(50);
+        return new JsonObject
+        {
+            ["ref"] = entry.Ref,
+            ["method"] = "message_click",
+            ["refreshed"] = refreshed,
+            ["detail"] = detail,
+            ["element"] = info.ToJson(),
+        };
+    }
+
+    private static UiaInvokePattern ParseInvokePattern(string? pattern) =>
+        (pattern ?? "auto").Trim().ToLowerInvariant() switch
+        {
+            "" or "auto" => UiaInvokePattern.Auto,
+            "invoke" => UiaInvokePattern.Invoke,
+            "toggle" => UiaInvokePattern.Toggle,
+            "select" or "selectionitem" => UiaInvokePattern.Select,
+            "expand" or "expandcollapse" => UiaInvokePattern.Expand,
+            "legacy" or "legacyiaccessible" => UiaInvokePattern.Legacy,
+            "default" or "open" or "defaultaction" => UiaInvokePattern.Default,
+            _ => throw new ToolException(
+                "E_INVALID_ARG",
+                $"未知 pattern: {pattern}（可选 auto/invoke/toggle/select/expand/legacy/default）"),
+        };
+
+    /// <summary>
+    /// 显式“打开/默认动作”：聚焦控件后发送 Space+Enter（树节点）或 Enter。
+    /// 用于 WinForms 树节点等没有 InvokePattern、只能靠键盘默认动作打开的场景。
+    /// </summary>
+    private JsonObject InvokeDefaultAction(
+        DisplayInfo display,
+        UiaElementHandle handle,
+        ElementRefEntry entry,
+        bool refreshed)
+    {
+        TrackedApp? app;
+
+        lock (_gate)
+        {
+            app = _apps.FirstOrDefault(
+                item => item.Pid == entry.Pid && IsLiveTrackedApp(item));
+        }
+
+        if (app is null)
+        {
+            throw new ToolException(
+                "E_NO_TARGET",
+                "element_ref 所属应用不在本会话中，无法执行默认动作",
+                new JsonObject { ["ref"] = entry.Ref });
+        }
+
+        RequireWindowOnDisplay(display, app.Hwnd, "invoke_element");
+
+        IntPtr previous = WindowManager.GetForegroundWindow();
+        PauseFocusGuard();
+
+        try
+        {
+            if (!EnsureForeground(app))
+            {
+                throw new ToolException(
+                    "E_FOCUS",
+                    "无法把目标窗口切换到前台，已取消默认动作",
+                    new JsonObject { ["ref"] = entry.Ref });
+            }
+
+            try
+            {
+                handle.Element.SetFocus();
+            }
+            catch (Exception exception) when (
+                exception is COMException or InvalidOperationException)
+            {
+                // 部分 WinForms/WPF 控件不支持 SetFocus；继续用 Enter 尝试。
+            }
+
+            Thread.Sleep(80);
+
+            bool treeItem = string.Equals(
+                handle.Info.ControlTypeName, "TreeItem", StringComparison.OrdinalIgnoreCase);
+
+            if (treeItem)
+            {
+                InputInjector.PressKeys("Space");
+                Thread.Sleep(80);
+            }
+
+            InputInjector.PressKeys("Enter");
+            Thread.Sleep(250);
+
+            return new JsonObject
+            {
+                ["ref"] = entry.Ref,
+                ["method"] = "default_action",
+                ["control_type"] = handle.Info.ControlTypeName,
+                ["refreshed"] = refreshed,
+                ["element"] = handle.Info.ToJson(),
+            };
+        }
+        finally
+        {
+            RestoreForeground(previous);
+            ResumeFocusGuard();
+        }
+    }
+
+    public JsonObject SetElementValue(
+        string reference, string value, bool allowKeyboard, string? mode = null, bool allowDestructive = false)
+    {
+        DisplayInfo display = EnsureEnvironment();
+        using UiaElementHandle handle = ResolveElementHandle(reference, display, out ElementRefEntry entry, out bool refreshed);
+        UiaElementInfo info = handle.Info;
+
+        if (!info.Enabled)
+        {
+            throw new ToolException(
+                "E_ELEMENT_DISABLED",
+                "控件已禁用，拒绝写值",
+                new JsonObject { ["ref"] = entry.Ref, ["element"] = info.ToJson() });
+        }
+
+        string effectiveMode = ResolveWriteMode(mode, info);
+
+        if (effectiveMode == "replace" && !allowDestructive)
+        {
+            throw new ToolException(
+                "E_DESTRUCTIVE_REQUIRED",
+                "replace 会先全选目标内容再覆盖；请显式传 allow_destructive=true，或改用 mode=append/insert",
+                new JsonObject
+                {
+                    ["ref"] = entry.Ref,
+                    ["mode"] = effectiveMode,
+                    ["control_type"] = info.ControlTypeName,
+                    ["automation_id"] = info.AutomationId,
+                });
+        }
+
+        // ValuePattern 只能整值替换，无法追加；append/replace 必须走键盘路径，
+        // 否则会在支持 ValuePattern 的控件上静默覆盖已有内容。
+        if (effectiveMode is "append" or "replace")
+        {
+            if (!allowKeyboard)
+            {
+                throw new ToolException(
+                    "E_PATTERN_UNSUPPORTED",
+                    effectiveMode == "append"
+                        ? "append 无法通过 ValuePattern 实现（只能整值替换）；请显式传 allow_keyboard=true"
+                        : "replace 需要键盘写入（Ctrl+A 覆盖）；请显式传 allow_keyboard=true，或改用 mode=insert",
+                    new JsonObject
+                    {
+                        ["ref"] = entry.Ref,
+                        ["mode"] = effectiveMode,
+                        ["element"] = info.ToJson(),
+                    });
+            }
+
+            return SetElementValueByKeyboard(
+                display, handle, entry, value, refreshed, effectiveMode, allowDestructive);
+        }
+
+        // ValuePattern 的 SetValue 是整值覆盖。mode=insert 在普通控件上走这条路径，
+        // 因此必须先看现有内容：非空且不同就要求显式 allow_destructive，
+        // 避免把“插入”误当成安全操作而静默清空用户已有输入。
+        string? existingValue = Uia.GetValue(handle.Element);
+        bool destructiveInsert = effectiveMode == "insert" &&
+                                 !string.IsNullOrEmpty(existingValue) &&
+                                 !string.Equals(existingValue, value, StringComparison.Ordinal);
+
+        if (destructiveInsert && !allowDestructive)
+        {
+            throw new ToolException(
+                "E_DESTRUCTIVE_REQUIRED",
+                "insert 在 ValuePattern 控件上是整值写入，会覆盖现有内容；" +
+                "请显式传 allow_destructive=true，或改用 mode=append / allow_keyboard=true",
+                new JsonObject
+                {
+                    ["ref"] = entry.Ref,
+                    ["mode"] = effectiveMode,
+                    ["existing_length"] = existingValue?.Length ?? 0,
+                    ["control_type"] = info.ControlTypeName,
+                    ["automation_id"] = info.AutomationId,
+                });
+        }
+
+        UiaSetValueResult result = Uia.TrySetValue(handle.Element, value);
+
+        if (result.Failure is not null)
+        {
+            throw new ToolException(
+                "E_UIA",
+                $"ValuePattern 写值失败: {result.Failure}",
+                new JsonObject { ["ref"] = entry.Ref, ["element"] = info.ToJson() });
+        }
+
+        if (result.Supported && result.ReadOnly)
+        {
+            throw new ToolException(
+                "E_ELEMENT_READONLY",
+                "控件为只读，无法通过 ValuePattern 写值",
+                new JsonObject { ["ref"] = entry.Ref, ["value"] = result.Value });
+        }
+
+        if (result.Supported)
+        {
+            bool verified = string.Equals(result.Value ?? string.Empty, value, StringComparison.Ordinal);
+            return new JsonObject
+            {
+                ["ref"] = entry.Ref,
+                ["method"] = "value_pattern",
+                ["mode"] = effectiveMode,
+                ["destructive"] = destructiveInsert,
+                ["verified"] = verified,
+                ["written"] = value,
+                ["value"] = result.Value,
+                ["refreshed"] = refreshed,
+            };
+        }
+
+        if (!allowKeyboard)
+        {
+            throw new ToolException(
+                "E_PATTERN_UNSUPPORTED",
+                "该控件不支持 ValuePattern；如接受切换前台后键入，请显式传 allow_keyboard=true",
+                new JsonObject { ["ref"] = entry.Ref, ["element"] = info.ToJson() });
+        }
+
+        return SetElementValueByKeyboard(
+            display, handle, entry, value, refreshed, mode, allowDestructive);
+    }
+
+    public JsonObject GetElementText(string reference, int maxChars)
+    {
+        DisplayInfo display = EnsureEnvironment();
+        using UiaElementHandle handle = ResolveElementHandle(
+            reference, display, out ElementRefEntry entry, out bool refreshed);
+
+        maxChars = Math.Clamp(maxChars, 1, 65536);
+        string? text = Uia.GetText(handle.Element, maxChars);
+
+        if (text is null)
+        {
+            throw new ToolException(
+                "E_PATTERN_UNSUPPORTED",
+                "该控件不支持 TextPattern/ValuePattern，无法读取文本",
+                new JsonObject { ["ref"] = entry.Ref, ["element"] = handle.Info.ToJson() });
+        }
+
+        return new JsonObject
+        {
+            ["ref"] = entry.Ref,
+            ["control_type"] = handle.Info.ControlTypeName,
+            ["automation_id"] = handle.Info.AutomationId,
+            ["text"] = text,
+            ["length"] = text.Length,
+            ["truncated"] = text.Length >= maxChars,
+            ["refreshed"] = refreshed,
+        };
+    }
+
+    private JsonObject SetElementValueByKeyboard(
+        DisplayInfo display,
+        UiaElementHandle handle,
+        ElementRefEntry entry,
+        string value,
+        bool refreshed,
+        string? mode,
+        bool allowDestructive)
+    {
+        TrackedApp? app;
+
+        lock (_gate)
+        {
+            app = _apps.FirstOrDefault(
+                item => item.Pid == entry.Pid && IsLiveTrackedApp(item));
+        }
+
+        if (app is null)
+        {
+            throw new ToolException(
+                "E_NO_TARGET",
+                "element_ref 所属应用不在本会话中，无法键入",
+                new JsonObject { ["ref"] = entry.Ref });
+        }
+
+        RequireWindowOnDisplay(display, entry.Hwnd, "set_element_value");
+
+        string effectiveMode = ResolveWriteMode(mode, handle.Info);
+        bool replace = effectiveMode == "replace";
+
+        if (replace && !allowDestructive)
+        {
+            throw new ToolException(
+                "E_DESTRUCTIVE_REQUIRED",
+                "replace 会先全选目标内容再覆盖；请显式传 allow_destructive=true，或改用 mode=append/insert",
+                new JsonObject
+                {
+                    ["ref"] = entry.Ref,
+                    ["mode"] = effectiveMode,
+                    ["control_type"] = handle.Info.ControlTypeName,
+                    ["automation_id"] = handle.Info.AutomationId,
+                });
+        }
+
+        IntPtr previous = WindowManager.GetForegroundWindow();
+        PauseFocusGuard();
+
+        try
+        {
+            if (!EnsureForeground(app))
+            {
+                throw new ToolException(
+                    "E_FOCUS",
+                    "无法把目标窗口切到前台，已取消键入以避免输入到用户窗口",
+                    new JsonObject { ["ref"] = entry.Ref });
+            }
+
+            bool focused = TryFocusElement(handle, display);
+
+            if (!focused)
+            {
+                throw new ToolException(
+                    "E_FOCUS",
+                    "无法把焦点设置到控件，已取消键入",
+                    new JsonObject { ["ref"] = entry.Ref });
+            }
+
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            if (replace)
+            {
+                InputInjector.PressKeys("Ctrl+A");
+                Thread.Sleep(60);
+
+                if (value.Length == 0)
+                {
+                    // 新版记事本的 Document 控件对 Ctrl+A→Delete 的处理是异步的；
+                    // 连续发送可能丢掉 Delete，导致“清空”实际未生效。
+                    for (int attempt = 0; attempt < 3; attempt++)
+                    {
+                        InputInjector.PressKeys(attempt == 0 ? "Delete" : "Backspace");
+                        Thread.Sleep(80);
+
+                        string? probe = Uia.GetText(handle.Element, 32);
+                        if (string.IsNullOrEmpty(probe))
+                        {
+                            break;
+                        }
+
+                        if (attempt + 1 < 3)
+                        {
+                            InputInjector.PressKeys("Ctrl+A");
+                            Thread.Sleep(50);
+                        }
+                    }
+                }
+            }
+            else if (effectiveMode == "append")
+            {
+                InputInjector.PressKeys("Ctrl+End");
+            }
+
+            Thread.Sleep(30);
+            TextWriteResult write = WriteTextVerified(
+                app, handle, value, replace, timeoutMs: 12000);
+
+            string? after = Uia.GetText(handle.Element, 65536);
+            bool verified = write.Verified;
+
+            var result = new JsonObject
+            {
+                ["ref"] = entry.Ref,
+                ["method"] = "keyboard",
+                ["mode"] = effectiveMode,
+                ["destructive"] = replace,
+                ["verified"] = verified,
+                ["written"] = value,
+                ["refreshed"] = refreshed,
+                ["chunks"] = write.Chunks,
+                ["duration_ms"] = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
+            };
+
+            if (after is not null)
+            {
+                result["value"] = after;
+                result["observed_length"] = after.Length;
+            }
+
+            if (!verified)
+            {
+                result["warning"] =
+                    "键盘写入未能通过 TextPattern/ValuePattern 回读确认；请用 get_element_text 或截图复核";
+            }
+
+            return result;
+        }
+        finally
+        {
+            RestoreForeground(previous);
+            ResumeFocusGuard();
+        }
+    }
+
+    /// <summary>
+    /// auto：文档类控件默认追加（避免覆盖），普通控件默认插入；
+    /// replace 必须显式 allow_destructive=true。
+    /// </summary>
+    private static string ResolveWriteMode(string? mode, UiaElementInfo info)
+    {
+        string requested = (mode ?? "auto").Trim().ToLowerInvariant();
+
+        if (requested is "replace" or "append" or "insert")
+        {
+            return requested;
+        }
+
+        if (requested is not ("auto" or ""))
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"未知 set_element_value mode: {mode}（可选 auto/append/insert/replace）");
+        }
+
+        bool documentLike = info.ControlTypeName == "Document" ||
+                            string.Equals(info.AutomationId, "Body", StringComparison.OrdinalIgnoreCase);
+
+        return documentLike ? "append" : "insert";
+    }
+
+    private bool TryFocusElement(UiaElementHandle handle, DisplayInfo display)
+    {
+        try
+        {
+            handle.Element.SetFocus();
+            Thread.Sleep(40);
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is System.Runtime.InteropServices.COMException or InvalidOperationException)
+        {
+            // Word 正文的 Edit/Body 不支持 UIA SetFocus；退化到消息点击元素中心。
+        }
+
+        UiaElementInfo info = handle.Info;
+        int centerX = info.Left + info.Width / 2;
+        int centerY = info.Top + info.Height / 2;
+
+        if (centerX < display.X || centerX >= display.X + display.Width ||
+            centerY < display.Y || centerY >= display.Y + display.Height)
+        {
+            return false;
+        }
+
+        if (!MessageInput.Click(centerX, centerY, "left", 1, out _))
+        {
+            return false;
+        }
+
+        Thread.Sleep(80);
+        return true;
+    }
+
+    /// <summary>写值后回读：runtime_id 可能已变化，失败时按指纹重定位再读。</summary>
+    private string? ReadElementValue(ElementRefEntry entry)
+    {
+        UiaElementHandle? handle = null;
+
+        try
+        {
+            if (!string.IsNullOrEmpty(entry.RuntimeId))
+            {
+                handle = Uia.FindByRuntimeId(entry.Hwnd, entry.RuntimeId);
+            }
+
+            handle ??= Uia.FindByFingerprint(
+                entry.Hwnd, entry.Name, entry.AutomationId, entry.ControlTypeName,
+                entry.Left, entry.Top, entry.Right, entry.Bottom);
+
+            return handle is null ? null : Uia.GetValue(handle.Element);
+        }
+        finally
+        {
+            handle?.Dispose();
+        }
+    }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "vscreenpilot",
+  "version": "0.1.0",
+  "description": "Windows 虚拟屏 MCP Server：在按需启停的虚拟显示器上做桌面应用自动化调试",
+  "license": "MIT",
+  "author": "VScreenPilot contributors",
+  "bin": {
+    "vscreenpilot": "bin/vscreenpilot.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "scripts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "install-driver": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-driver.ps1",
+    "doctor": "node bin/vscreenpilot.js --doctor"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "mcp",
+    "windows",
+    "virtual-display",
+    "automation",
+    "uia"
+  ]
+}
