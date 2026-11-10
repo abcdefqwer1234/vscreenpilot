@@ -18,6 +18,11 @@ npm/LICENSE
 *.tgz
 m0-stress-*.csv
 
+# TestTool runtime output（脚本保留，产物不入库）
+tools/TestTool/results/
+tools/TestTool/fixtures/
+tools/TestTool/.tmp/
+
 # user/editor files
 *.user
 *.suo
