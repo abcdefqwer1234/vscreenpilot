@@ -51,7 +51,20 @@ internal sealed partial class SessionManager
                     Directory.CreateDirectory(directory);
                 }
 
-                File.WriteAllBytes(fullPath, png);
+                // 不覆盖已有文件：避免 agent 无意中改写用户文档/上一次的证据。
+                using var stream = new FileStream(
+                    fullPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+                stream.Write(png);
+            }
+            catch (IOException exception)
+            {
+                throw new ToolException(
+                    "E_IO",
+                    $"写入截图失败（目标文件可能已存在）: {exception.Message}",
+                    new JsonObject { ["path"] = fullPath },
+                    retryable: true,
+                    hint: "换一个文件名，或先删除旧文件",
+                    stage: "capture");
             }
             catch (Exception exception)
             {
@@ -99,31 +112,54 @@ internal sealed partial class SessionManager
     internal string StoreFrame(byte[] bgra, int width, int height, int x, int y)
     {
         string id = $"f{Interlocked.Increment(ref _nextFrameId)}";
-        _frames.Add(new FrameSnapshot
-        {
-            Id = id,
-            Bgra = bgra,
-            Width = width,
-            Height = height,
-            X = x,
-            Y = y,
-        });
 
-        while (_frames.Count > MaxFrames)
+        lock (_frameLock)
         {
-            _frames.RemoveAt(0);
+            _frames.Add(new FrameSnapshot
+            {
+                Id = id,
+                Bgra = bgra,
+                Width = width,
+                Height = height,
+                X = x,
+                Y = y,
+            });
+
+            const long maxBytes = 64L * 1024 * 1024;
+
+            while (_frames.Count > MaxFrames ||
+                   _frames.Sum(frame => (long)frame.Bgra.Length) > maxBytes)
+            {
+                if (_frames.Count == 1)
+                {
+                    break;
+                }
+
+                _frames.RemoveAt(0);
+            }
         }
 
         return id;
     }
 
-    internal FrameSnapshot? FindFrame(string frameId) =>
-        _frames.LastOrDefault(frame => string.Equals(frame.Id, frameId, StringComparison.OrdinalIgnoreCase));
+    internal FrameSnapshot? FindFrame(string frameId)
+    {
+        lock (_frameLock)
+        {
+            return _frames.LastOrDefault(
+                frame => string.Equals(frame.Id, frameId, StringComparison.OrdinalIgnoreCase));
+        }
+    }
 
-    internal FrameSnapshot? FindLatestFrame(int x, int y, int width, int height) =>
-        _frames.LastOrDefault(frame =>
-            frame.X == x && frame.Y == y &&
-            frame.Width == width && frame.Height == height);
+    internal FrameSnapshot? FindLatestFrame(int x, int y, int width, int height)
+    {
+        lock (_frameLock)
+        {
+            return _frames.LastOrDefault(frame =>
+                frame.X == x && frame.Y == y &&
+                frame.Width == width && frame.Height == height);
+        }
+    }
 
     /// <summary>
     /// 截图/模板落盘只允许当前工作目录或系统临时目录下的 .png，

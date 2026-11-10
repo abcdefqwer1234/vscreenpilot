@@ -1,3 +1,4 @@
+using System.Text;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
 
@@ -32,6 +33,12 @@ internal static class MessageInput
         if (target == IntPtr.Zero)
         {
             detail = "WindowFromPoint 找不到目标窗口";
+            return false;
+        }
+
+        if (IsInputHostile(target))
+        {
+            detail = "目标属于 Chromium/Electron/WinUI，窗口消息点击会被忽略；请使用 click mode=input 或 CDP";
             return false;
         }
 
@@ -73,6 +80,12 @@ internal static class MessageInput
             return false;
         }
 
+        if (IsInputHostile(target))
+        {
+            detail = "目标属于 Chromium/Electron/WinUI，窗口消息拖拽会被忽略；请使用 gesture mode=input";
+            return false;
+        }
+
         (uint down, uint up, int keyState) = ButtonMessages(button);
 
         var start = new NativeMethods.POINT { X = fromX, Y = fromY };
@@ -111,6 +124,12 @@ internal static class MessageInput
             return false;
         }
 
+        if (IsInputHostile(target))
+        {
+            detail = "目标属于 Chromium/Electron/WinUI，窗口消息滚轮会被忽略；请使用 gesture mode=input";
+            return false;
+        }
+
         IntPtr lParam = MakeLParam(x, y);
         bool ok = true;
 
@@ -143,10 +162,48 @@ internal static class MessageInput
             return false;
         }
 
+        if (IsInputHostile(target))
+        {
+            detail = "目标属于 Chromium/Electron/WinUI，后台移动不会产生鼠标事件；请使用 gesture mode=input";
+            return false;
+        }
+
         var client = new NativeMethods.POINT { X = x, Y = y };
         NativeMethods.ScreenToClient(target, ref client);
         detail = $"hwnd=0x{target.ToInt64():X}";
         return NativeMethods.PostMessageW(target, WmMouseMove, IntPtr.Zero, MakeLParam(client.X, client.Y));
+    }
+
+    /// <summary>
+    /// Chromium/Electron/WinUI 的输入管线不消费 PostMessage；对这类窗口直接拒绝消息注入，
+    /// 让调用方显式选择 SendInput 或 CDP，而不是返回一个“成功但没效果”的结果。
+    /// </summary>
+    internal static bool IsInputHostile(IntPtr hwnd)
+    {
+        IntPtr current = hwnd;
+
+        for (int depth = 0; depth < 6 && current != IntPtr.Zero; depth++)
+        {
+            var builder = new StringBuilder(256);
+            if (NativeMethods.GetClassNameW(current, builder, builder.Capacity) > 0)
+            {
+                string name = builder.ToString();
+
+                if (name.Contains("Chrome_WidgetWin", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("Chrome_RenderWidgetHost", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("ApplicationFrameWindow", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("Windows.UI.Core.CoreWindow", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("CefSharp", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("Electron", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            current = NativeMethods.GetAncestor(current, 1); // GA_PARENT
+        }
+
+        return false;
     }
 
     private static (uint Down, uint Up, int KeyState) ButtonMessages(string button) =>

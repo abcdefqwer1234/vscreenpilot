@@ -63,8 +63,28 @@ internal static class WindowManager
     public static WindowInfo? FindByTitle(
         string titleSubstring, bool exact = false, Func<WindowInfo, bool>? filter = null)
     {
-        WindowInfo? exactMatch = null;
-        WindowInfo? containsMatch = null;
+        var candidates = FindByTitleCandidates(titleSubstring, filter);
+
+        if (exact)
+        {
+            return candidates.FirstOrDefault(
+                item => item.Title.Equals(titleSubstring, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return candidates
+            .OrderByDescending(item => item.Title.Equals(titleSubstring, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(item => item.Area)
+            .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// 返回所有标题匹配的顶层窗口，按“完全相等优先、面积降序”排序。
+    /// 调用方在多候选时应报歧义，而不是随手接管第一个。
+    /// </summary>
+    public static IReadOnlyList<WindowInfo> FindByTitleCandidates(
+        string titleSubstring, Func<WindowInfo, bool>? filter = null)
+    {
+        var result = new List<WindowInfo>();
 
         NativeMethods.EnumWindows((hwnd, _) =>
         {
@@ -83,27 +103,23 @@ internal static class WindowManager
                 }
 
                 WindowInfo info = Describe(hwnd, title);
-                if (filter is not null && !filter(info))
+                if (filter is null || filter(info))
                 {
-                    return true;
+                    result.Add(info);
                 }
-
-                if (exact && title.Equals(titleSubstring, StringComparison.OrdinalIgnoreCase))
-                {
-                    exactMatch = info;
-                    return false;
-                }
-
-                containsMatch ??= info;
-                return true;
             }
             catch
             {
-                return true;
+                // 单个窗口枚举失败不影响其他候选。
             }
+
+            return true;
         }, IntPtr.Zero);
 
-        return exactMatch ?? containsMatch;
+        return result
+            .OrderByDescending(item => item.Title.Equals(titleSubstring, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(item => item.Area)
+            .ToList();
     }
 
     public static WindowInfo? FindMainWindow(int pid)

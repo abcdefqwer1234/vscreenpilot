@@ -41,9 +41,12 @@ internal sealed partial class SessionManager
         _log.Info("焦点护栏启动");
     }
 
-    public void PauseFocusGuard()
+    public void PauseFocusGuard(int leaseMs = 0)
     {
         _focusGuardPaused = true;
+        Interlocked.Exchange(
+            ref _focusGuardResumeAtTicks,
+            leaseMs > 0 ? Environment.TickCount64 + leaseMs : 0);
 
         // 等待可能已经在进行的归还动作结束，否则它可能在键盘注入开始后才抢前台。
         lock (_focusActionGate)
@@ -51,7 +54,11 @@ internal sealed partial class SessionManager
         }
     }
 
-    public void ResumeFocusGuard() => _focusGuardPaused = false;
+    public void ResumeFocusGuard()
+    {
+        _focusGuardPaused = false;
+        Interlocked.Exchange(ref _focusGuardResumeAtTicks, 0);
+    }
 
     private bool IsTrackedWindow(IntPtr hwnd)
     {
@@ -91,7 +98,17 @@ internal sealed partial class SessionManager
 
                 if (_focusGuardPaused)
                 {
-                    continue;
+                    long resumeAt = Interlocked.Read(ref _focusGuardResumeAtTicks);
+                    if (resumeAt > 0 && Environment.TickCount64 >= resumeAt)
+                    {
+                        _focusGuardPaused = false;
+                        Interlocked.Exchange(ref _focusGuardResumeAtTicks, 0);
+                        _log.Info("前台租约到期，焦点护栏自动恢复");
+                    }
+                    else
+                    {
+                        continue;
+                    }
                 }
 
                 IntPtr target = _lastUserForeground;

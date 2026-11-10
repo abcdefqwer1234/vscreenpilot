@@ -7,6 +7,7 @@
 ```text
 tools/TestTool/
   run-all.mjs          # 入口：A/B 臂、稳定性、报告
+  smoke-v2.mjs         # 无桌面协议/契约冒烟（不挂屏、不注入输入）
   lib/
     client.mjs         # MCP stdio 客户端，记录耗时/错误码/字节
     util.mjs           # 路径、清理、fixture、采样、COM oracle
@@ -27,6 +28,7 @@ tools/TestTool/
 
 ```powershell
 dotnet build VScreenPilot.slnx -c Release
+node tools/TestTool/smoke-v2.mjs
 node tools/TestTool/run-all.mjs --arm A --task all --runs 3
 node tools/TestTool/run-all.mjs --arm B --task t1,t4 --runs 3
 node tools/TestTool/run-all.mjs --stability --sessions 50

@@ -103,3 +103,89 @@ internal static class KeyMap
         virtualKey is 0x21 or 0x22 or 0x23 or 0x24 or 0x25 or 0x26 or 0x27 or 0x28
             or 0x2C or 0x2D or 0x2E or 0x5B or 0x5C or 0x5D;
 }
+
+/// <summary>
+/// 系统级快捷键黑名单。这些组合会作用到用户桌面/工作站，而不是目标窗口，
+/// 在虚拟屏自动化里属于“逃逸”路径，默认拒绝。
+/// </summary>
+internal static class SystemKeyGuard
+{
+    private static readonly HashSet<string> Blocked = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "alt+tab",
+        "alt+esc",
+        "alt+space",
+        "ctrl+esc",
+        "ctrl+shift+esc",
+        "ctrl+alt+del",
+        "ctrl+alt+delete",
+        "ctrl+shift+delete",
+        "win",
+        "win+l",
+        "win+r",
+        "win+e",
+        "win+d",
+        "win+tab",
+        "win+space",
+        "win+x",
+        "win+i",
+        "win+s",
+        "win+a",
+        "win+p",
+        "win+arrowleft",
+        "win+arrowright",
+        "win+arrowup",
+        "win+arrowdown",
+    };
+
+    public static void ThrowIfBlocked(string keys, bool allowSystemKeys)
+    {
+        if (allowSystemKeys)
+        {
+            return;
+        }
+
+        string normalized = Normalize(keys);
+
+        if (Blocked.Contains(normalized) ||
+            normalized.Split('+').Contains("win", StringComparer.OrdinalIgnoreCase))
+        {
+            throw new VScreenPilot.Mcp.ToolException(
+                "E_SYSTEM_KEY_BLOCKED",
+                $"按键组合会作用于用户桌面/系统，已拒绝: {keys}",
+                new System.Text.Json.Nodes.JsonObject { ["keys"] = keys },
+                retryable: false,
+                hint: "如确需发送系统级组合，请显式传 allow_system_keys=true",
+                stage: "input");
+        }
+    }
+
+    private static string Normalize(string keys)
+    {
+        var tokens = keys
+            .Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(Canonical)
+            .ToList();
+
+        return string.Join('+', tokens);
+    }
+
+    private static string Canonical(string token)
+    {
+        string value = token.Trim().ToLowerInvariant();
+
+        return value switch
+        {
+            "control" => "ctrl",
+            "windows" or "cmd" or "meta" => "win",
+            "escape" => "esc",
+            "delete" => "del",
+            "left" => "arrowleft",
+            "right" => "arrowright",
+            "up" => "arrowup",
+            "down" => "arrowdown",
+            "return" => "enter",
+            _ => value,
+        };
+    }
+}

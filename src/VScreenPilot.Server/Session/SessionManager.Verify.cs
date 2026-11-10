@@ -132,7 +132,7 @@ internal sealed partial class SessionManager
 
             foreach (UiaElementInfo item in matches.Take(maxResults))
             {
-                JsonObject element = item.ToJson();
+                JsonObject element = item.ToCompactJson();
                 element["ref"] = RegisterElement(item, HwndFor(item));
                 elements.Add(element);
             }
@@ -156,7 +156,7 @@ internal sealed partial class SessionManager
         }
 
         UiaElementInfo info = matches[index];
-        JsonObject result = info.ToJson();
+        JsonObject result = info.ToCompactJson();
         result["ref"] = RegisterElement(info, HwndFor(info));
         result["name_match"] = nameMatch;
         result["role"] = role;
@@ -290,6 +290,10 @@ internal sealed partial class SessionManager
             int sleep = (int)Math.Min(interval, timeoutMs - stopwatch.ElapsedMilliseconds);
             if (sleep > 0)
             {
+                ToolProgress.Report(
+                    (int)Math.Min(stopwatch.ElapsedMilliseconds, int.MaxValue),
+                    Math.Max(1, timeoutMs),
+                    "wait_for 轮询中");
                 Thread.Sleep(sleep);
             }
 
@@ -476,6 +480,8 @@ internal sealed partial class SessionManager
                     _ => throw new ToolException("E_INVALID_ARG", $"未知 window state: {state}"),
                 };
 
+                bool trackedWindow = window is not null && pids.Contains(window.Pid);
+
                 return new JsonObject
                 {
                     ["satisfied"] = satisfied,
@@ -485,8 +491,11 @@ internal sealed partial class SessionManager
                         : new JsonObject
                         {
                             ["hwnd"] = window.Hwnd.ToInt64(),
-                            ["title"] = window.Title,
-                            ["pid"] = window.Pid,
+                            ["tracked"] = trackedWindow,
+                            // scope=any 只用于判断存在性；非本会话窗口不回传标题/PID，
+                            // 避免把用户主屏的邮件主题、文档名泄露给模型。
+                            ["title"] = trackedWindow ? window.Title : "<redacted>",
+                            ["pid"] = trackedWindow ? window.Pid : null,
                         },
                 };
             }

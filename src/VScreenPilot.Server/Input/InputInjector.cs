@@ -164,8 +164,10 @@ internal static class InputInjector
         return typed;
     }
 
-    public static void PressKeys(string keys)
+    public static void PressKeys(string keys, bool allowSystemKeys = false)
     {
+        SystemKeyGuard.ThrowIfBlocked(keys, allowSystemKeys);
+
         string[] rawTokens = SplitKeys(keys);
         if (rawTokens.Length == 0)
         {
@@ -334,12 +336,25 @@ internal static class InputInjector
 
         if (sent != array.Length)
         {
+            int error = Marshal.GetLastWin32Error();
+
+            if (error == 5)
+            {
+                throw new ToolException(
+                    "E_UIPI",
+                    "SendInput 被 UIPI 拦截：目标进程可能以更高完整性级别运行",
+                    new System.Text.Json.Nodes.JsonObject { ["win32_error"] = error },
+                    retryable: false,
+                    hint: "以相同权限运行服务端和目标应用，或改用 UIA 语义操作",
+                    stage: "input");
+            }
+
             throw new ToolException(
                 "E_INPUT",
                 $"SendInput 只注入了 {sent}/{array.Length} 个事件",
                 new System.Text.Json.Nodes.JsonObject
                 {
-                    ["win32_error"] = Marshal.GetLastWin32Error(),
+                    ["win32_error"] = error,
                 });
         }
     }

@@ -18,6 +18,8 @@ internal sealed class TrackedApp
     public string Title { get; set; } = string.Empty;
     public bool StartedProcess { get; init; }
     public DateTime StartedAt { get; init; } = DateTime.UtcNow;
+    /// <summary>本会话真正拥有该窗口/进程时才允许在释放时关闭；接管用户窗口必须为 false。</summary>
+    public bool Owned { get; set; }
     public bool CloseWindowOnRelease { get; set; }
     public bool DedicatedProcess { get; set; }
     public string? TempProfile { get; init; }
@@ -66,8 +68,10 @@ internal sealed partial class SessionManager : IDisposable
     private int _disposed;
 
     private readonly List<FrameSnapshot> _frames = new();
+    private readonly object _frameLock = new();
     private long _nextFrameId;
-    private const int MaxFrames = 2;
+    // 按区域保留更多基线，避免只截另一区域就把当前区域基线挤掉。
+    private const int MaxFrames = 16;
     private readonly HashSet<int> _uiaBlockedPids = new();
 
     private UiaService? _uia;
@@ -91,8 +95,22 @@ internal sealed partial class SessionManager : IDisposable
     private Thread? _focusGuardThread;
     private IntPtr _lastUserForeground;
     private long _nextFocusRestoreTicks;
+    private long _focusGuardResumeAtTicks;
 
     private UiaService Uia => _uia ??= new UiaService();
+
+    /// <summary>
+    /// 放弃当前 UIA 服务并换新实例。只在 UIA 调用超时/疑似卡死时调用：
+    /// 旧实例可能仍有线程卡在 COM 调用里，不能 Dispose，只能让新调用走新实例。
+    /// </summary>
+    public void ResetUia()
+    {
+        UiaService? old = Interlocked.Exchange(ref _uia, null);
+        if (old is not null)
+        {
+            _log.Warn("UIA 服务疑似卡死，已切换到新实例（旧实例留给后台线程自行结束）");
+        }
+    }
 
     /// <summary>当前工具调用的取消令牌（由 MCP 层设置，供 wait_for 等长操作观察）。</summary>
     public CancellationToken Cancellation
@@ -613,6 +631,9 @@ internal sealed partial class SessionManager : IDisposable
             EnsureEnvironment();
         }
 
+        int? focusedPid = null;
+        JsonObject result;
+
         lock (_gate)
         {
             var driver = new JsonObject
@@ -629,12 +650,25 @@ internal sealed partial class SessionManager : IDisposable
                 }
             }
 
+            int sessionId;
+
+            using (var currentProcess = System.Diagnostics.Process.GetCurrentProcess())
+            {
+                sessionId = currentProcess.SessionId;
+            }
+
             var session = new JsonObject
             {
                 ["pid"] = Environment.ProcessId,
                 ["initialized"] = _initialized,
                 ["mutexHost"] = "VScreenPilot_Session_0",
                 ["startedAt"] = ProcessStartTime(),
+                ["session_id"] = sessionId,
+                ["interactive"] = Environment.UserInteractive,
+                ["remote_session"] = NativeMethods.GetSystemMetrics(0x1000) != 0,
+                ["input_desktop"] = IsInputDesktopAvailable(),
+                ["elevated"] = IsElevatedSession(),
+                ["isolation"] = "shared_desktop",
             };
 
             try
@@ -748,27 +782,15 @@ internal sealed partial class SessionManager : IDisposable
                     ["exe"] = app.ExePath,
                     ["alive"] = IsLiveTrackedApp(app),
                     ["launched_by_us"] = app.StartedProcess,
+                    ["owned"] = app.Owned,
                     ["close_on_release"] = app.CloseWindowOnRelease,
                     ["dedicated"] = app.DedicatedProcess,
                 });
             }
 
-            JsonNode? focusedElement = null;
+            focusedPid = foregroundApp?.Pid;
 
-            // 只读取本会话应用的焦点元素，避免探测用户主屏窗口造成额外 COM 开销与信息泄露。
-            if (foregroundApp is not null)
-            {
-                try
-                {
-                    focusedElement = Uia.GetFocusedElement()?.ToJson();
-                }
-                catch (Exception exception)
-                {
-                    focusedElement = new JsonObject { ["error"] = exception.Message };
-                }
-            }
-
-            return new JsonObject
+            result = new JsonObject
             {
                 ["driver"] = driver,
                 ["session"] = session,
@@ -777,10 +799,27 @@ internal sealed partial class SessionManager : IDisposable
                 ["primary"] = primaryJson,
                 ["foreground"] = foregroundJson,
                 ["cursor"] = cursorJson,
-                ["focused_element"] = focusedElement,
                 ["apps"] = apps,
             };
         }
+
+        // UIA 读取放到 _gate 外：即使 provider 卡住，release_environment 仍能拿 _gate 清理。
+        JsonNode? focusedElement = null;
+
+        if (focusedPid is not null)
+        {
+            try
+            {
+                focusedElement = Uia.GetFocusedElement()?.ToJson();
+            }
+            catch (Exception exception)
+            {
+                focusedElement = new JsonObject { ["error"] = exception.Message };
+            }
+        }
+
+        result["focused_element"] = focusedElement;
+        return result;
     }
 
     public JsonObject ReleaseEnvironment(bool keepDisplay, string onDirty = "force")
@@ -823,7 +862,7 @@ internal sealed partial class SessionManager : IDisposable
                     {
                         if (app.Hwnd != IntPtr.Zero && NativeMethods.IsWindow(app.Hwnd))
                         {
-                            if (app.CloseWindowOnRelease)
+                            if (app.Owned && app.CloseWindowOnRelease)
                             {
                                 string outcome = CloseTrackedApp(app, onDirty, out string? warning);
 
@@ -864,7 +903,7 @@ internal sealed partial class SessionManager : IDisposable
 
                             if (app.StartedProcess && app.TempProfile is not null)
                             {
-                                KillProcessTree(app.Pid);
+                                KillProcessTreeIfMatches(app.Pid, app.ExePath);
                                 forced.Add(app.Pid);
                             }
                         }
@@ -913,7 +952,10 @@ internal sealed partial class SessionManager : IDisposable
                 _elementKeys.Clear();
 
                 // 基线帧是整屏 BGRA（约 3.7MB）；释放后不应继续常驻。
-                _frames.Clear();
+                lock (_frameLock)
+                {
+                    _frames.Clear();
+                }
                 _uiaBlockedPids.Clear();
                 _nextFrameId = 0;
                 _selfHealed = false;
@@ -993,8 +1035,24 @@ internal sealed partial class SessionManager : IDisposable
             if (NativeMethods.IsWindow(app.Hwnd))
             {
                 bool save = policy == "save";
+                bool dialogHandled;
 
-                if (TryHandleSaveDialog(app.Pid, app.Hwnd, save, 1500))
+                // 保存框也走 UIA；如果 provider 卡死，不能让 release 永久挂住。
+                Task<bool> dialogTask = Task.Run(
+                    () => TryHandleSaveDialog(app.Pid, app.Hwnd, save, 1500));
+
+                if (dialogTask.Wait(3000))
+                {
+                    dialogHandled = dialogTask.Result;
+                }
+                else
+                {
+                    ResetUia();
+                    dialogHandled = false;
+                    warning = "保存对话框处理超时，已放弃 UIA 并继续清理";
+                }
+
+                if (dialogHandled)
                 {
                     WaitForWindowClosed(app.Hwnd, 3000);
 
@@ -1022,7 +1080,7 @@ internal sealed partial class SessionManager : IDisposable
             if (app.DedicatedProcess ||
                 (app.StartedProcess && !HasOtherWindows(app.Pid, app.Hwnd)))
             {
-                KillProcessTree(app.Pid);
+                KillProcessTreeIfMatches(app.Pid, app.ExePath);
                 WaitForProcessExit(app.Pid, 2000);
                 return "forced";
             }
@@ -1120,7 +1178,7 @@ internal sealed partial class SessionManager : IDisposable
 
                 if (handle is not null)
                 {
-                    (bool ok, _) = Uia.TryInvoke(handle.Element);
+                    (bool ok, _) = handle.Invoke();
                     if (ok)
                     {
                         return true;
@@ -1532,6 +1590,32 @@ internal sealed partial class SessionManager : IDisposable
         {
             using var process = System.Diagnostics.Process.GetProcessById(pid);
             return string.Equals(process.ProcessName, "VScreenPilot", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsInputDesktopAvailable()
+    {
+        IntPtr desktop = NativeMethods.OpenInputDesktop(0, false, 0x0100);
+        if (desktop == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        NativeMethods.CloseDesktop(desktop);
+        return true;
+    }
+
+    private static bool IsElevatedSession()
+    {
+        try
+        {
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            var principal = new System.Security.Principal.WindowsPrincipal(identity);
+            return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
         }
         catch
         {

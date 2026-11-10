@@ -42,7 +42,7 @@ internal sealed class ElementRefEntry
 
 internal sealed partial class SessionManager
 {
-    private const int ElementRefCapacity = 512;
+    private const int ElementRefCapacity = 1024;
     private const long ElementRefTtlMs = 5 * 60 * 1000;
 
     private readonly Dictionary<string, ElementRefEntry> _elements = new();
@@ -267,6 +267,28 @@ internal sealed partial class SessionManager
             entry.Hwnd, entry.Name, entry.AutomationId, entry.ControlTypeName,
             entry.Left, entry.Top, entry.Right, entry.Bottom);
 
+        // 控件可能被移动到同进程的另一个顶层窗口（保存框、浮动面板等）。
+        if (handle is null)
+        {
+            foreach (WindowInfo candidate in WindowManager.ListForProcess(entry.Pid))
+            {
+                if (candidate.Hwnd == entry.Hwnd)
+                {
+                    continue;
+                }
+
+                handle = Uia.FindByFingerprint(
+                    candidate.Hwnd, entry.Name, entry.AutomationId, entry.ControlTypeName,
+                    entry.Left, entry.Top, entry.Right, entry.Bottom);
+
+                if (handle is not null)
+                {
+                    entry.Hwnd = candidate.Hwnd;
+                    break;
+                }
+            }
+        }
+
         if (handle is null)
         {
             throw new ToolException(
@@ -476,7 +498,11 @@ internal sealed partial class SessionManager
     public JsonObject InvokeElement(string reference, bool allowClick, string? pattern = null)
     {
         DisplayInfo display = EnsureEnvironment();
-        using UiaElementHandle handle = ResolveElementHandle(reference, display, out ElementRefEntry entry, out bool refreshed);
+        UiaElementHandle handle = ResolveElementHandle(reference, display, out ElementRefEntry entry, out bool refreshed);
+        bool handleTransferred = false;
+
+        try
+        {
         UiaElementInfo info = handle.Info;
 
         UiaInvokePattern mode = ParseInvokePattern(pattern);
@@ -494,7 +520,35 @@ internal sealed partial class SessionManager
             return InvokeDefaultAction(display, handle, entry, refreshed);
         }
 
-        (bool ok, string? strategy) = Uia.TryInvoke(handle.Element, mode);
+        // Invoke 是同步 COM 调用：按钮弹出模态对话框时会一直等到对话框关闭。
+        // 在独立任务里执行，超时后放弃旧 UIA 实例，避免整个会话永久卡死。
+        Task<(bool Ok, string? Strategy)> invokeTask = Task.Run(() =>
+        {
+            try
+            {
+                return handle.Invoke(mode);
+            }
+            finally
+            {
+                handle.Dispose();
+            }
+        });
+
+        handleTransferred = true;
+
+        if (!invokeTask.Wait(5000))
+        {
+            ResetUia();
+            throw new ToolException(
+                "E_TIMEOUT",
+                "UIA 触发 5s 未返回，常见于会打开模态对话框的按钮",
+                new JsonObject { ["ref"] = entry.Ref },
+                retryable: true,
+                hint: "先用 get_ui_tree 或截图确认是否已弹出对话框；也可改用 click 的消息点击",
+                stage: "invoke");
+        }
+
+        (bool ok, string? strategy) = invokeTask.Result;
 
         if (ok)
         {
@@ -504,7 +558,7 @@ internal sealed partial class SessionManager
                 ["ref"] = entry.Ref,
                 ["method"] = strategy,
                 ["refreshed"] = refreshed,
-                ["element"] = info.ToJson(),
+                ["element"] = info.ToCompactJson(),
             };
         }
 
@@ -545,8 +599,16 @@ internal sealed partial class SessionManager
             ["method"] = "message_click",
             ["refreshed"] = refreshed,
             ["detail"] = detail,
-            ["element"] = info.ToJson(),
+            ["element"] = info.ToCompactJson(),
         };
+        }
+        finally
+        {
+            if (!handleTransferred)
+            {
+                handle.Dispose();
+            }
+        }
     }
 
     private static UiaInvokePattern ParseInvokePattern(string? pattern) =>
@@ -610,7 +672,7 @@ internal sealed partial class SessionManager
 
             try
             {
-                handle.Element.SetFocus();
+                handle.Focus();
             }
             catch (Exception exception) when (
                 exception is COMException or InvalidOperationException)
@@ -705,7 +767,7 @@ internal sealed partial class SessionManager
         // ValuePattern 的 SetValue 是整值覆盖。mode=insert 在普通控件上走这条路径，
         // 因此必须先看现有内容：非空且不同就要求显式 allow_destructive，
         // 避免把“插入”误当成安全操作而静默清空用户已有输入。
-        string? existingValue = Uia.GetValue(handle.Element);
+        string? existingValue = handle.GetValue();
         bool destructiveInsert = effectiveMode == "insert" &&
                                  !string.IsNullOrEmpty(existingValue) &&
                                  !string.Equals(existingValue, value, StringComparison.Ordinal);
@@ -726,7 +788,7 @@ internal sealed partial class SessionManager
                 });
         }
 
-        UiaSetValueResult result = Uia.TrySetValue(handle.Element, value);
+        UiaSetValueResult result = handle.SetValue(value);
 
         if (result.Failure is not null)
         {
@@ -779,7 +841,7 @@ internal sealed partial class SessionManager
             reference, display, out ElementRefEntry entry, out bool refreshed);
 
         maxChars = Math.Clamp(maxChars, 1, 65536);
-        string? text = Uia.GetText(handle.Element, maxChars);
+        string? text = handle.GetText(maxChars);
 
         if (text is null)
         {
@@ -889,7 +951,7 @@ internal sealed partial class SessionManager
                         InputInjector.PressKeys(attempt == 0 ? "Delete" : "Backspace");
                         Thread.Sleep(80);
 
-                        string? probe = Uia.GetText(handle.Element, 32);
+                        string? probe = handle.GetText(32);
                         if (string.IsNullOrEmpty(probe))
                         {
                             break;
@@ -912,7 +974,7 @@ internal sealed partial class SessionManager
             TextWriteResult write = WriteTextVerified(
                 app, handle, value, replace, timeoutMs: 12000);
 
-            string? after = Uia.GetText(handle.Element, 65536);
+            string? after = handle.GetText(65536);
             bool verified = write.Verified;
 
             var result = new JsonObject
@@ -979,9 +1041,9 @@ internal sealed partial class SessionManager
     {
         try
         {
-            handle.Element.SetFocus();
+            handle.Focus();
             Thread.Sleep(40);
-            return true;
+            return VerifyFocus(handle);
         }
         catch (Exception exception) when (
             exception is System.Runtime.InteropServices.COMException or InvalidOperationException)
@@ -1005,7 +1067,27 @@ internal sealed partial class SessionManager
         }
 
         Thread.Sleep(80);
-        return true;
+        return VerifyFocus(handle);
+    }
+
+    /// <summary>SetFocus/消息点击后确认焦点确实落在目标控件上，避免键入到相邻控件。</summary>
+    private bool VerifyFocus(UiaElementHandle expected)
+    {
+        using UiaElementHandle? focused = Uia.GetFocusedElementHandle(expected.Info.ProcessId);
+        if (focused is null)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(expected.Info.RuntimeId) &&
+            string.Equals(focused.Info.RuntimeId, expected.Info.RuntimeId, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return string.Equals(focused.Info.AutomationId, expected.Info.AutomationId, StringComparison.Ordinal) &&
+               string.Equals(focused.Info.ControlTypeName, expected.Info.ControlTypeName, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(focused.Info.Name, expected.Info.Name, StringComparison.Ordinal);
     }
 
     /// <summary>写值后回读：runtime_id 可能已变化，失败时按指纹重定位再读。</summary>
@@ -1024,7 +1106,7 @@ internal sealed partial class SessionManager
                 entry.Hwnd, entry.Name, entry.AutomationId, entry.ControlTypeName,
                 entry.Left, entry.Top, entry.Right, entry.Bottom);
 
-            return handle is null ? null : Uia.GetValue(handle.Element);
+            return handle is null ? null : handle.GetValue();
         }
         finally
         {

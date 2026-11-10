@@ -42,11 +42,12 @@ export class McpClient {
       }
     });
     this.exit = new Promise((resolve) => this.child.on('exit', (code) => resolve(code)));
-    await this.request('initialize', {
-      protocolVersion: '2025-06-18',
+    this.lastInitialize = await this.request('initialize', {
+      protocolVersion: this.options.protocolVersion ?? '2025-06-18',
       capabilities: {},
       clientInfo: { name: 'vsp-bench', version: '1.0' },
     }, 30000);
+    this.negotiatedVersion = this.lastInitialize?.result?.protocolVersion ?? null;
     this.notify('notifications/initialized');
     return this;
   }

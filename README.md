@@ -244,7 +244,7 @@ VScreenPilot.exe --doctor
 { "sequence": ["Down", "Down", "Enter"], "keep_foreground": true }
 ```
 
-`keep_foreground=true` 会暂停焦点护栏且不归还前台，适合连续菜单操作；操作完成后调用 `type_text`/`press_keys` 或 `release_environment` 即可恢复焦点护栏。
+`keep_foreground=true` 会暂停焦点护栏 30 秒且不立即归还前台，适合连续菜单操作；到期会自动恢复，也可调用 `type_text`/`press_keys` 或 `release_environment` 提前恢复。
 
 ### 例子：语义定位 Word 正文
 
@@ -309,14 +309,17 @@ VScreenPilot.exe --doctor
 - **不静默覆盖内容**：`replace` 或覆盖非空 `insert` 需要显式 `allow_destructive=true`。
 - **不默认执行脚本**：`run_script` 需要显式开启；开启后以当前用户权限运行，**没有沙箱**。
 - **不误杀共享进程**：优先只关窗口；专用实例，或本会话启动且没有其他窗口的进程，才强杀；窗口已关闭且需要清理的后台进程（如 Edge 临时配置）按 exe 路径核对，避免 PID 复用误杀。
-- **不覆盖用户文件**：截图/模板落盘只允许工作目录或系统临时目录下的 `.png`。
+- **不覆盖用户文件**：截图/模板落盘只允许工作目录或系统临时目录下的 `.png`，且 `capture_screen` 不覆盖已有文件。
+- **不发送系统级快捷键**：`Win+*`、`Alt+Tab`、`Ctrl+Esc`、`Ctrl+Shift+Esc` 等默认拒绝；确需使用显式传 `allow_system_keys=true`。
+- **不假装消息输入成功**：Chromium/Electron/WinUI 会忽略窗口消息点击/拖拽/滚轮，服务端直接返回 `E_INPUT_UNSUPPORTED`，请显式用 `mode=input` 或 UIA 语义操作。
+- **不是安全沙箱**：虚拟屏与用户共享同一 Windows 会话。`session.isolation=shared_desktop` 是明确提示；处理不可信网页/文档/脚本时，请使用 VM、Windows Sandbox 或独立 Windows 账户。
 
 ---
 
 ## 运行期行为
 
 - 启动时后台预热挂屏，第一次黑屏发生在 OpenCode 启动阶段。
-- 虚拟屏固定 1280×720@60、DPI 96、主屏右侧。
+- 虚拟屏默认 1280×720@60、DPI 96、主屏右侧；可用 `VSP_DISPLAY_WIDTH/HEIGHT/REFRESH` 覆盖。
 - 鼠标默认不动；鼠标只有 `mode=input` 才用 `SendInput`，键盘输入（`type_text`/`press_keys`）也使用 `SendInput`，但不移动光标。
 - 焦点护栏每 200ms 检查：本会话应用意外占前台时归还用户窗口；菜单操作可暂停。
 - 光标护栏每 150ms 检查：光标误入虚拟屏时弹回最近物理屏。

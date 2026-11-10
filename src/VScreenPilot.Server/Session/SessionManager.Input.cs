@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Interop.UIAutomationClient;
@@ -29,6 +30,16 @@ internal sealed partial class SessionManager
             throw new ToolException("E_INVALID_ARG", $"未知 click mode: {mode}");
         }
 
+        if (mode == "input" && !IsInputDesktopAvailable())
+        {
+            throw new ToolException(
+                "E_NO_INTERACTIVE_DESKTOP",
+                "当前没有可交互桌面（锁屏/安全桌面/Session 0），SendInput 无法注入",
+                retryable: true,
+                hint: "解锁桌面或改用 UIA 语义操作",
+                stage: "input");
+        }
+
         TrackedApp app = RequirePointInTrackedApp(display, x, y, "click");
 
         string method;
@@ -38,8 +49,9 @@ internal sealed partial class SessionManager
 
         if (keepForeground)
         {
-            // 菜单/弹出层需要连续操作时，暂时冻结焦点护栏，避免点击后前台被抢回。
-            PauseFocusGuard();
+            // 菜单/弹出层需要连续操作时，暂时冻结焦点护栏；租约到期后自动恢复，
+            // 避免异常路径或 agent 不再调用工具时永久关闭护栏。
+            PauseFocusGuard(30000);
         }
 
         bool canUseUia = button.Equals("left", StringComparison.OrdinalIgnoreCase) && clicks == 1;
@@ -155,20 +167,40 @@ internal sealed partial class SessionManager
 
         if (method == "message")
         {
-            result["hint"] = "消息注入可能被 Electron/Chromium 忽略，请用 wait_for/assert_region 验证";
+            result["hint"] = "消息点击可能被部分应用忽略，请用 wait_for/assert_region 验证";
         }
 
         return result;
     }
 
-    public JsonObject TypeText(string text, int? pid = null, bool verify = true, int chunkChars = 16)
+    public JsonObject TypeText(string text, int? pid = null, bool verify = true, int chunkChars = 32)
     {
+        if (text.Length > 100_000)
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"type_text 文本过长（{text.Length} 字符，上限 100000）；请分段输入",
+                retryable: false,
+                stage: "input");
+        }
+
+        if (!IsInputDesktopAvailable())
+        {
+            throw new ToolException(
+                "E_NO_INTERACTIVE_DESKTOP",
+                "当前没有可交互桌面（锁屏/安全桌面/Session 0），SendInput 无法注入",
+                retryable: true,
+                hint: "解锁桌面或改用 UIA 语义操作",
+                stage: "input");
+        }
+
         DisplayInfo display = EnsureEnvironment();
         TrackedApp app = RequireTrackedApp(pid);
         RequireWindowOnDisplay(display, app.Hwnd, "type_text");
         IntPtr previous = WindowManager.GetForegroundWindow();
         PauseFocusGuard();
         int effectiveChunk = Math.Clamp(chunkChars, 1, 256);
+        int verifyEvery = text.Length > 20000 ? 16 : text.Length > 2048 ? 4 : 1;
 
         try
         {
@@ -187,8 +219,29 @@ internal sealed partial class SessionManager
                 // 前台切换后再取焦点元素：此时才是目标应用内部的焦点控件。
                 // 传入 pid 可避免焦点短暂落在宿主/其他进程时把输入验证对象搞错。
                 using UiaElementHandle? focused = Uia.GetFocusedElementHandle(app.Pid);
+
+                // 同进程可能有多个文档窗口/对话框：焦点元素必须落在当前前台窗口内，
+                // 否则宁可中止，也不要把文本打进另一个文档。
+                if (focused is not null &&
+                    !ElementBelongsToWindow(focused.Info, WindowManager.GetForegroundWindow()))
+                {
+                    throw new ToolException(
+                        "E_FOCUS",
+                        "焦点元素不属于当前前台窗口，已取消输入以避免写错文档",
+                        new JsonObject
+                        {
+                            ["target_pid"] = app.Pid,
+                            ["element"] = focused.Info.ToJson(),
+                        },
+                        retryable: true,
+                        hint: "先 click 目标控件或把目标窗口切到前台",
+                        stage: "focus");
+                }
+
                 TextWriteResult write = verify
-                    ? WriteTextVerified(app, focused, text, replace: false, timeoutMs: 10000, chunkChars: effectiveChunk)
+                    ? WriteTextVerified(
+                        app, focused, text, replace: false, timeoutMs: 10000,
+                        chunkChars: effectiveChunk, verifyEveryChunks: verifyEvery)
                     : WriteTextUnverified(app, focused, text);
 
                 return new JsonObject
@@ -220,26 +273,45 @@ internal sealed partial class SessionManager
         }
     }
 
-    public JsonObject PressKeys(string keys, bool keepForeground = false, int? pid = null) =>
-        PressKeySequence(new[] { keys }, keepForeground, pid);
+    public JsonObject PressKeys(
+        string keys, bool keepForeground = false, int? pid = null, bool allowSystemKeys = false) =>
+        PressKeySequence(new[] { keys }, keepForeground, pid, allowSystemKeys);
 
     /// <summary>
     /// 在一次前台租约内发送多个按键序列，供菜单导航（Alt+D → Down → Enter 等）使用。
     /// keepForeground=true 时不归还用户前台，避免菜单在后续调用前被关闭。
     /// </summary>
     public JsonObject PressKeySequence(
-        IReadOnlyList<string> keys, bool keepForeground = false, int? pid = null)
+        IReadOnlyList<string> keys,
+        bool keepForeground = false,
+        int? pid = null,
+        bool allowSystemKeys = false)
     {
         if (keys.Count == 0)
         {
             throw new ToolException("E_INVALID_ARG", "按键序列不能为空");
         }
 
+        foreach (string key in keys)
+        {
+            SystemKeyGuard.ThrowIfBlocked(key, allowSystemKeys);
+        }
+
+        if (!IsInputDesktopAvailable())
+        {
+            throw new ToolException(
+                "E_NO_INTERACTIVE_DESKTOP",
+                "当前没有可交互桌面（锁屏/安全桌面/Session 0），SendInput 无法注入",
+                retryable: true,
+                hint: "解锁桌面或改用 UIA 语义操作",
+                stage: "input");
+        }
+
         DisplayInfo display = EnsureEnvironment();
         TrackedApp app = RequireTrackedApp(pid);
         RequireWindowOnDisplay(display, app.Hwnd, "press_keys");
         IntPtr previous = WindowManager.GetForegroundWindow();
-        PauseFocusGuard();
+        PauseFocusGuard(keepForeground ? 30000 : 0);
 
         try
         {
@@ -261,7 +333,7 @@ internal sealed partial class SessionManager
                 foreach (string key in keys)
                 {
                     var watch = Stopwatch.StartNew();
-                    InputInjector.PressKeys(key);
+                    InputInjector.PressKeys(key, allowSystemKeys);
                     injectMs += watch.Elapsed.TotalMilliseconds;
                     Thread.Sleep(120);
                 }
@@ -316,6 +388,16 @@ internal sealed partial class SessionManager
 
         bool useInput = mode == "input";
 
+        if (useInput && !IsInputDesktopAvailable())
+        {
+            throw new ToolException(
+                "E_NO_INTERACTIVE_DESKTOP",
+                "当前没有可交互桌面（锁屏/安全桌面/Session 0），SendInput 无法注入",
+                retryable: true,
+                hint: "解锁桌面或改用 UIA 语义操作",
+                stage: "input");
+        }
+
         switch (type.ToLowerInvariant())
         {
             case "drag":
@@ -360,7 +442,7 @@ internal sealed partial class SessionManager
                     RestoreFocusAfterClick(previousForeground);
                 }
 
-                return new JsonObject
+                var dragResult = new JsonObject
                 {
                     ["type"] = "drag",
                     ["from"] = new JsonObject { ["x"] = fromX, ["y"] = fromY },
@@ -372,6 +454,14 @@ internal sealed partial class SessionManager
                     ["inject_ms"] = Math.Round(injectMs, 2),
                     ["duration_ms"] = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
                 };
+
+                if (!useInput)
+                {
+                    dragResult["hint"] =
+                        "窗口消息拖拽可能被应用忽略；如无效请改用 mode=input，并用截图/断言验证";
+                }
+
+                return dragResult;
             }
 
             case "scroll":
@@ -526,11 +616,30 @@ internal sealed partial class SessionManager
 
         try
         {
-            bool ok = Uia.TryInvokeAtPoint(x, y, pid, out _);
+            // ElementFromPoint/Invoke 可能被 provider 卡住；最多等 3s，超时换新 UIA 实例。
+            Task<bool> invokeTask = Task.Run(() =>
+            {
+                bool ok = Uia.TryInvokeAtPoint(x, y, pid, out _);
+                return ok;
+            });
+
+            if (!invokeTask.Wait(3000))
+            {
+                ResetUia();
+                lock (_gate)
+                {
+                    _uiaBlockedPids.Add(pid);
+                }
+
+                _log.Warn($"UIA 坐标触发超时，已熔断 pid={pid}");
+                return false;
+            }
+
+            bool result = invokeTask.Result;
 
             // 没有 InvokePattern 会快速返回 false；超过阈值说明 provider 明显卡顿，
             // 本会话内对该 pid 熔断，后续 auto 直接走 message，避免反复挂起。
-            if (!ok && stopwatch.ElapsedMilliseconds >= 800)
+            if (!result && stopwatch.ElapsedMilliseconds >= 800)
             {
                 lock (_gate)
                 {
@@ -538,7 +647,7 @@ internal sealed partial class SessionManager
                 }
             }
 
-            return ok;
+            return result;
         }
         catch
         {
@@ -570,7 +679,8 @@ internal sealed partial class SessionManager
         string text,
         bool replace,
         int timeoutMs,
-        int chunkChars = 16)
+        int chunkChars = 32,
+        int verifyEveryChunks = 1)
     {
         string? before = target is null ? null : Uia.GetText(target.Element, 65536);
         bool textSupported = before is not null;
@@ -578,7 +688,7 @@ internal sealed partial class SessionManager
         double injectMs = 0;
         int typed = 0;
         int chunks = 0;
-        string sent = string.Empty;
+        var sentBuilder = new StringBuilder(text.Length);
 
         foreach (string chunk in SplitTextChunks(text, chunkChars))
         {
@@ -598,26 +708,35 @@ internal sealed partial class SessionManager
             var chunkWatch = Stopwatch.StartNew();
             typed += InputInjector.TypeText(chunk);
             injectMs += chunkWatch.Elapsed.TotalMilliseconds;
-            sent += chunk;
+            sentBuilder.Append(chunk);
             chunks++;
+            ToolProgress.Report(
+                Math.Min(sentBuilder.Length, text.Length),
+                Math.Max(1, text.Length),
+                $"type_text 已输入 {sentBuilder.Length}/{text.Length}");
 
+            // 长文本逐块读全文是 O(n²)；每 N 块确认一次，最后再整体确认。
             if (textSupported && target is not null)
             {
-                int remaining = Math.Max(0, timeoutMs - (int)stopwatch.ElapsedMilliseconds);
-                int chunkTimeout = Math.Clamp(500 + sent.Length * 8, 500, Math.Max(500, remaining));
-
-                if (!WaitForText(target.Element, before!, sent, replace, chunkTimeout))
+                if (chunks % Math.Max(1, verifyEveryChunks) == 0)
                 {
-                    string? observed = Uia.GetText(target.Element, 65536);
+                    int remaining = Math.Max(0, timeoutMs - (int)stopwatch.ElapsedMilliseconds);
+                    int chunkTimeout = Math.Clamp(
+                        500 + sentBuilder.Length * 8, 500, Math.Max(500, remaining));
 
-                    return new TextWriteResult(
-                        typed,
-                        chunks,
-                        TextSupported: true,
-                        Verified: false,
-                        ObservedLength: observed?.Length,
-                        InjectMs: injectMs,
-                        DurationMs: stopwatch.Elapsed.TotalMilliseconds);
+                    if (!WaitForText(target, before!, sentBuilder.ToString(), replace, chunkTimeout))
+                    {
+                        string? observed = target.GetText(65536);
+
+                        return new TextWriteResult(
+                            typed,
+                            chunks,
+                            TextSupported: true,
+                            Verified: false,
+                            ObservedLength: observed?.Length,
+                            InjectMs: injectMs,
+                            DurationMs: stopwatch.Elapsed.TotalMilliseconds);
+                    }
                 }
             }
             else
@@ -647,10 +766,10 @@ internal sealed partial class SessionManager
             }
         }
 
-        string? after = target is null ? null : Uia.GetText(target.Element, 65536);
+        string? after = target is null ? null : target.GetText(65536);
         bool verified = textSupported &&
                         after is not null &&
-                        TextMatches(before!, after, sent, replace);
+                        TextMatches(before!, after, sentBuilder.ToString(), replace);
 
         return new TextWriteResult(
             typed,
@@ -663,7 +782,7 @@ internal sealed partial class SessionManager
     }
 
     private bool WaitForText(
-        IUIAutomationElement element,
+        UiaElementHandle target,
         string before,
         string sent,
         bool replace,
@@ -673,7 +792,7 @@ internal sealed partial class SessionManager
 
         while (DateTime.UtcNow < deadline)
         {
-            string? after = Uia.GetText(element, 65536);
+            string? after = target.GetText(65536);
 
             if (after is not null && TextMatches(before, after, sent, replace))
             {
@@ -736,7 +855,7 @@ internal sealed partial class SessionManager
         double injectMs = injectWatch.Elapsed.TotalMilliseconds;
         Thread.Sleep(Math.Clamp(120 + text.Length * 2, 200, 1500));
 
-        string? after = target is null ? null : Uia.GetText(target.Element, 65536);
+        string? after = target is null ? null : target.GetText(65536);
         return new TextWriteResult(
             typed,
             Chunks: text.Length == 0 ? 0 : 1,
@@ -801,6 +920,33 @@ internal sealed partial class SessionManager
         app.Pid > 0 &&
         WindowManager.GetProcessId(WindowManager.GetForegroundWindow()) == app.Pid;
 
+    /// <summary>焦点元素必须与前台窗口的客户区相交，防止同 pid 多窗口时写错文档。</summary>
+    private static bool ElementBelongsToWindow(UiaElementInfo info, IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        WindowInfo? window = WindowManager.FromHandle(hwnd);
+        if (window is null)
+        {
+            return false;
+        }
+
+        // 部分控件（如 Word 正文）上报 0 尺寸或离屏边界；此时只按 pid 放行。
+        if (info.Width <= 0 || info.Height <= 0)
+        {
+            return true;
+        }
+
+        const int slack = 8;
+        return info.Left < window.Rect.Right + slack &&
+               info.Right > window.Rect.Left - slack &&
+               info.Top < window.Rect.Bottom + slack &&
+               info.Bottom > window.Rect.Top - slack;
+    }
+
     private void RestoreFocusAfterClick(IntPtr previous)
     {
         if (previous == IntPtr.Zero)
@@ -835,6 +981,13 @@ internal sealed partial class SessionManager
 
         IntPtr currentForeground = NativeMethods.GetForegroundWindow();
         if (currentForeground == previous)
+        {
+            return;
+        }
+
+        // 用户在工具执行期间主动切到了别的窗口：不要为了“归还前台”再把用户抢走。
+        // 只有当前前台仍是本会话应用（说明是应用自己抢了前台）时才恢复。
+        if (!IsTrackedWindow(currentForeground))
         {
             return;
         }

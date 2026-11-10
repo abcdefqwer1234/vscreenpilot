@@ -35,11 +35,17 @@ public sealed class ToolResponse
 {
     public JsonArray Content { get; } = new();
 
+    /// <summary>与 text 内容等价的机器可读结果，供支持 structuredContent 的客户端使用。</summary>
+    public JsonNode? StructuredContent { get; private set; }
+
     public bool IsError { get; set; }
 
     public static ToolResponse Text(JsonNode payload)
     {
-        var response = new ToolResponse();
+        var response = new ToolResponse
+        {
+            StructuredContent = payload.DeepClone(),
+        };
         response.Content.Add((JsonNode)new JsonObject
         {
             ["type"] = "text",

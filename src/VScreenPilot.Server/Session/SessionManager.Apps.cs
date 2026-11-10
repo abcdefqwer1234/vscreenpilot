@@ -31,8 +31,47 @@ internal sealed partial class SessionManager
 
         if (!string.IsNullOrWhiteSpace(windowTitle))
         {
-            window = WindowManager.FindByTitle(windowTitle)
-                ?? throw new ToolException("E_WINDOW_NOT_FOUND", $"找不到标题匹配的窗口: {windowTitle}");
+            IReadOnlyList<WindowInfo> candidates = WindowManager.FindByTitleCandidates(windowTitle);
+
+            if (candidates.Count == 0)
+            {
+                throw new ToolException("E_WINDOW_NOT_FOUND", $"找不到标题匹配的窗口: {windowTitle}");
+            }
+
+            if (candidates.Count > 1)
+            {
+                // 只有唯一完全相等时才继续；否则把候选返回给模型，避免误接管用户窗口。
+                List<WindowInfo> exact = candidates
+                    .Where(item => item.Title.Equals(windowTitle, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                if (exact.Count != 1)
+                {
+                    var list = new JsonArray();
+
+                    foreach (WindowInfo candidate in candidates.Take(10))
+                    {
+                        list.Add((JsonNode)new JsonObject
+                        {
+                            ["hwnd"] = candidate.Hwnd.ToInt64(),
+                            ["pid"] = candidate.Pid,
+                            ["title"] = candidate.Title,
+                        });
+                    }
+
+                    throw new ToolException(
+                        "E_WINDOW_AMBIGUOUS",
+                        $"标题匹配到 {candidates.Count} 个窗口，拒绝猜一个接管",
+                        new JsonObject { ["title"] = windowTitle, ["candidates"] = list },
+                        retryable: true,
+                        hint: "传更完整的标题，或改用 hwnd/pid 精确指定",
+                        stage: "window");
+                }
+
+                candidates = exact;
+            }
+
+            window = candidates[0];
 
             // 显式指定窗口时按接管处理，不创建新实例。
             newInstance = false;
@@ -223,6 +262,7 @@ internal sealed partial class SessionManager
                     Hwnd = window.Hwnd,
                     Title = window.Title,
                     StartedProcess = started,
+                    Owned = started && closeOnRelease,
                     CloseWindowOnRelease = closeOnRelease,
                     DedicatedProcess = dedicated,
                     TempProfile = tempProfile,
@@ -237,6 +277,7 @@ internal sealed partial class SessionManager
             {
                 tracked.Hwnd = window.Hwnd;
                 tracked.Title = window.Title;
+                tracked.Owned |= started && closeOnRelease;
                 tracked.CloseWindowOnRelease |= closeOnRelease;
             }
         }

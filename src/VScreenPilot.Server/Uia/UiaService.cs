@@ -29,6 +29,46 @@ internal sealed record UiaElementInfo(
 
     public int Height => Math.Max(0, Bottom - Top);
 
+    /// <summary>面向模型的精简表示：只保留定位/判断所需字段，省略 runtime_id/class_name 等诊断信息。</summary>
+    public JsonObject ToCompactJson()
+    {
+        var json = new JsonObject
+        {
+            ["name"] = Name,
+            ["automation_id"] = AutomationId,
+            ["control_type"] = ControlTypeName,
+            ["bounds"] = new JsonObject
+            {
+                ["x"] = Left,
+                ["y"] = Top,
+                ["width"] = Width,
+                ["height"] = Height,
+            },
+        };
+
+        if (!Enabled)
+        {
+            json["enabled"] = false;
+        }
+
+        if (Offscreen)
+        {
+            json["offscreen"] = true;
+        }
+
+        if (Focused)
+        {
+            json["focused"] = true;
+        }
+
+        if (!Password && !string.IsNullOrEmpty(Value))
+        {
+            json["value"] = Value.Length > 200 ? Value[..200] : Value;
+        }
+
+        return json;
+    }
+
     public JsonObject ToJson()
     {
         var json = new JsonObject
@@ -78,15 +118,30 @@ internal sealed record UiaElementInfo(
 /// <summary>UI Automation 元素句柄；释放前可安全执行模式方法。</summary>
 internal sealed class UiaElementHandle : IDisposable
 {
-    internal UiaElementHandle(IUIAutomationElement element, UiaElementInfo info)
+    private readonly UiaService _owner;
+
+    internal UiaElementHandle(UiaService owner, IUIAutomationElement element, UiaElementInfo info)
     {
+        _owner = owner;
         Element = element;
         Info = info;
     }
 
-    public IUIAutomationElement Element { get; }
+    internal IUIAutomationElement Element { get; }
 
     public UiaElementInfo Info { get; }
+
+    /// <summary>所有对 COM 元素的访问都回到 UiaService 的同步域，避免跨线程并发。</summary>
+    public void Focus() => _owner.FocusElement(Element);
+
+    public (bool Ok, string? Strategy) Invoke(UiaInvokePattern pattern = UiaInvokePattern.Auto) =>
+        _owner.TryInvoke(Element, pattern);
+
+    public string? GetText(int maxChars = 65536) => _owner.GetText(Element, maxChars);
+
+    public string? GetValue() => _owner.GetValue(Element);
+
+    public UiaSetValueResult SetValue(string value) => _owner.TrySetValue(Element, value);
 
     public void Dispose() => UiaService.ReleaseElement(Element);
 }
@@ -190,6 +245,7 @@ internal sealed class UiaService
     private static extern int CoCreateInstance(
         ref Guid rclsid, IntPtr pUnkOuter, uint dwClsContext, ref Guid riid, out IntPtr ppv);
 
+    private readonly object _sync = new();
     private readonly IUIAutomation _automation;
     private readonly IUIAutomationCacheRequest _elementCache;
     private IUIAutomationCondition? _trueCondition;
@@ -307,6 +363,8 @@ internal sealed class UiaService
     public UiaElementInfo? FindFirstElement(
         IntPtr hwnd, string? name, string? controlType, string? automationId)
     {
+        lock (_sync)
+        {
         IUIAutomationCondition? condition = null;
         IUIAutomationElement? root = null;
         IUIAutomationElement? element = null;
@@ -342,6 +400,7 @@ internal sealed class UiaService
                 ReleaseElement(condition);
             }
         }
+        }
     }
 
     /// <summary>按属性查询控件；name 支持 exact/contains/regex 过滤。</summary>
@@ -353,6 +412,8 @@ internal sealed class UiaService
         string? automationId,
         int maxResults)
     {
+        lock (_sync)
+        {
         var results = new List<UiaElementInfo>();
         // prefer=largest/focused 需要完整候选集；其余调用仍按较小的上限快速返回。
         maxResults = Math.Clamp(maxResults, 1, 2000);
@@ -450,11 +511,14 @@ internal sealed class UiaService
                 ReleaseElement(condition);
             }
         }
+        }
     }
 
     /// <summary>按 runtime_id 在窗口内精确定位。</summary>
     public UiaElementHandle? FindByRuntimeId(IntPtr hwnd, string runtimeId)
     {
+        lock (_sync)
+        {
         if (string.IsNullOrWhiteSpace(runtimeId) ||
             !TryParseRuntimeId(runtimeId, out int[] ids))
         {
@@ -491,7 +555,7 @@ internal sealed class UiaService
                 return null;
             }
 
-            var handle = new UiaElementHandle(element, info);
+            var handle = new UiaElementHandle(this, element, info);
             element = null;
             return handle;
         }
@@ -500,6 +564,7 @@ internal sealed class UiaService
             ReleaseElement(element);
             ReleaseElement(root);
             ReleaseElement(condition);
+        }
         }
     }
 
@@ -517,6 +582,8 @@ internal sealed class UiaService
         int right,
         int bottom)
     {
+        lock (_sync)
+        {
         if (string.IsNullOrEmpty(name) &&
             string.IsNullOrEmpty(automationId) &&
             string.IsNullOrEmpty(controlTypeName))
@@ -609,14 +676,14 @@ internal sealed class UiaService
                 return null;
             }
 
-            // 多个同名候选且没有落在旧边界附近：宁可报 stale，也不猜。
-            if (exact > 1 && near != 1 && !IsNear(bestInfo, left, top, right, bottom))
+            // 多个同名候选且边界附近不是唯一一个：宁可报 stale，也不猜。
+            if (exact > 1 && near != 1)
             {
                 ReleaseElement(best);
                 return null;
             }
 
-            var handle = new UiaElementHandle(best, bestInfo);
+            var handle = new UiaElementHandle(this, best, bestInfo);
             best = null;
             return handle;
         }
@@ -631,6 +698,7 @@ internal sealed class UiaService
                 ReleaseElement(condition);
             }
         }
+        }
     }
 
     private static bool IsNear(UiaElementInfo info, int left, int top, int right, int bottom)
@@ -644,33 +712,36 @@ internal sealed class UiaService
 
     public UiaElementInfo? GetFocusedElement()
     {
-        try
+        lock (_sync)
         {
-            IUIAutomationElement? element = _automation.GetFocusedElementBuildCache(_elementCache);
-            if (element is null)
+            try
+            {
+                IUIAutomationElement? element = _automation.GetFocusedElementBuildCache(_elementCache);
+                if (element is null)
+                {
+                    return null;
+                }
+
+                try
+                {
+                    UiaElementInfo? info = Describe(element, cached: true);
+                    if (info is null ||
+                        (info.Width == 0 && info.Height == 0 && info.Name.Length == 0))
+                    {
+                        info = DescribeCurrent(element) ?? info;
+                    }
+
+                    return info;
+                }
+                finally
+                {
+                    ReleaseElement(element);
+                }
+            }
+            catch (COMException)
             {
                 return null;
             }
-
-            try
-            {
-                UiaElementInfo? info = Describe(element, cached: true);
-                if (info is null ||
-                    (info.Width == 0 && info.Height == 0 && info.Name.Length == 0))
-                {
-                    info = DescribeCurrent(element) ?? info;
-                }
-
-                return info;
-            }
-            finally
-            {
-                ReleaseElement(element);
-            }
-        }
-        catch (COMException)
-        {
-            return null;
         }
     }
 
@@ -730,10 +801,20 @@ internal sealed class UiaService
     /* 语义动作                                                            */
     /* ------------------------------------------------------------------ */
 
+    public void FocusElement(IUIAutomationElement element)
+    {
+        lock (_sync)
+        {
+            element.SetFocus();
+        }
+    }
+
     /// <summary>按指定模式触发；Auto 依次尝试 Invoke → Toggle → SelectionItem → ExpandCollapse → Legacy。</summary>
     public (bool Ok, string? Strategy) TryInvoke(
         IUIAutomationElement element, UiaInvokePattern pattern = UiaInvokePattern.Auto)
     {
+        lock (_sync)
+        {
         switch (pattern)
         {
             case UiaInvokePattern.Invoke:
@@ -784,6 +865,7 @@ internal sealed class UiaService
                     element, ExpandCollapsePatternId, item => item.Expand(), "ExpandCollapse");
 
                 return result.Ok ? result : TryLegacyInvoke(element);
+        }
         }
     }
 
@@ -995,7 +1077,7 @@ internal sealed class UiaService
                 return null;
             }
 
-            var handle = new UiaElementHandle(element, info);
+            var handle = new UiaElementHandle(this, element, info);
             element = null;
             return handle;
         }
