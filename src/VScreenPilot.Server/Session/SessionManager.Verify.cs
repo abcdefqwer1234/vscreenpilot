@@ -82,11 +82,11 @@ internal sealed partial class SessionManager
             _ => Math.Min(200, Math.Max(requested, 20)),
         };
 
-        var matches = new List<UiaElementInfo>();
+        List<(UiaElementInfo Info, IntPtr Hwnd)> candidates;
 
         try
         {
-            matches = Uia.FindElements(hwnd, name, mode, controlType, automationId, limit);
+            candidates = FindAcrossAppWindows(hwnd, name, mode, controlType, automationId, limit);
         }
         catch (RegexMatchTimeoutException)
         {
@@ -96,6 +96,8 @@ internal sealed partial class SessionManager
         {
             throw new ToolException("E_UIA", $"UI Automation 调用失败: {exception.Message}");
         }
+
+        List<UiaElementInfo> matches = candidates.Select(item => item.Info).ToList();
 
         if (!includeOffscreen)
         {
@@ -119,6 +121,11 @@ internal sealed partial class SessionManager
 
         matches = SortMatches(matches, preferMode);
 
+        IntPtr HwndFor(UiaElementInfo info) =>
+            candidates.FirstOrDefault(item => ReferenceEquals(item.Info, info)).Hwnd is var found && found != IntPtr.Zero
+                ? found
+                : hwnd;
+
         if (all)
         {
             var elements = new JsonArray();
@@ -126,7 +133,7 @@ internal sealed partial class SessionManager
             foreach (UiaElementInfo item in matches.Take(maxResults))
             {
                 JsonObject element = item.ToJson();
-                element["ref"] = RegisterElement(item, hwnd);
+                element["ref"] = RegisterElement(item, HwndFor(item));
                 elements.Add(element);
             }
 
@@ -150,12 +157,65 @@ internal sealed partial class SessionManager
 
         UiaElementInfo info = matches[index];
         JsonObject result = info.ToJson();
-        result["ref"] = RegisterElement(info, hwnd);
+        result["ref"] = RegisterElement(info, HwndFor(info));
         result["name_match"] = nameMatch;
         result["role"] = role;
         result["prefer"] = preferMode;
         result["index"] = index;
         result["count"] = matches.Count;
+        return result;
+    }
+
+    /// <summary>
+    /// 在同一进程的主窗口与所有顶层弹窗（含模态对话框）里查找控件。
+    /// 只查主窗口会把 MessageBox / 保存框等真实场景漏掉。
+    /// </summary>
+    private List<(UiaElementInfo Info, IntPtr Hwnd)> FindAcrossAppWindows(
+        IntPtr mainHwnd,
+        string? name,
+        UiaNameMatch mode,
+        string? controlType,
+        string? automationId,
+        int limit)
+    {
+        var result = new List<(UiaElementInfo Info, IntPtr Hwnd)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var windows = new List<IntPtr> { mainHwnd };
+
+        foreach (WindowInfo window in WindowManager.ListForProcess(WindowManager.GetProcessId(mainHwnd)))
+        {
+            if (window.Hwnd != mainHwnd)
+            {
+                windows.Add(window.Hwnd);
+            }
+        }
+
+        foreach (IntPtr window in windows)
+        {
+            List<UiaElementInfo> found;
+
+            try
+            {
+                found = Uia.FindElements(window, name, mode, controlType, automationId, limit);
+            }
+            catch (COMException)
+            {
+                continue;
+            }
+
+            foreach (UiaElementInfo info in found)
+            {
+                string key = !string.IsNullOrEmpty(info.RuntimeId)
+                    ? info.RuntimeId
+                    : $"{info.ProcessId}|{info.Name}|{info.ControlType}|{info.Left},{info.Top},{info.Width},{info.Height}";
+
+                if (seen.Add(key))
+                {
+                    result.Add((info, window));
+                }
+            }
+        }
+
         return result;
     }
 

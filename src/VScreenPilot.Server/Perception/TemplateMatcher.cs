@@ -66,7 +66,7 @@ internal static class TemplateMatcher
                 return new List<VisualMatch>();
             }
 
-            candidates = Refine(screen[level], templates[level], candidates);
+            candidates = Refine(screen[level], templates[level], candidates, isCancelled);
         }
 
         return Suppress(candidates, template.Width, template.Height, threshold, maxResults);
@@ -127,7 +127,7 @@ internal static class TemplateMatcher
     }
 
     private static List<Candidate> Refine(
-        GrayLevel screen, TemplateLevel template, List<Candidate> candidates)
+        GrayLevel screen, TemplateLevel template, List<Candidate> candidates, Func<bool>? isCancelled)
     {
         var refined = new List<Candidate>(candidates.Count * 3);
         int maxX = screen.Width - template.Width;
@@ -140,6 +140,11 @@ internal static class TemplateMatcher
 
         foreach (Candidate candidate in candidates)
         {
+            if (isCancelled?.Invoke() == true)
+            {
+                return refined;
+            }
+
             int baseX = candidate.X * 2;
             int baseY = candidate.Y * 2;
             double bestScore = -1;

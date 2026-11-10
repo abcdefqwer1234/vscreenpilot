@@ -93,17 +93,44 @@ internal sealed partial class SessionManager
 
                     if (hadRunningInstance)
                     {
-                        throw new ToolException(
-                            "E_NEW_INSTANCE_UNSUPPORTED",
-                            "无法为已运行的应用创建独立窗口；请设置 new_instance=false 以接管现有窗口",
-                            new JsonObject
-                            {
-                                ["app"] = exeName,
-                                ["suggest_reuse"] = true,
-                            });
-                    }
+                        // 单实例应用（如 Win11 记事本）无法创建新窗口：自动降级为接管现有窗口。
+                        WindowInfo? reuse = null;
 
-                    throw new ToolException("E_WINDOW_TIMEOUT", "等待新窗口超时");
+                        using (Process? running = FindRunningProcess(path))
+                        {
+                            if (running is not null)
+                            {
+                                reuse = WaitForMainWindow(running, 3000);
+                            }
+                        }
+
+                        if (reuse is not null)
+                        {
+                            _log.Warn($"无法创建独立实例，已接管现有窗口 pid={reuse.Pid} \"{reuse.Title}\"");
+                            window = reuse;
+                            newInstance = false;
+                            closeOnRelease = false;
+                            dedicated = false;
+                        }
+                        else
+                        {
+                            throw new ToolException(
+                                "E_NEW_INSTANCE_UNSUPPORTED",
+                                "无法为已运行的应用创建独立窗口；请设置 new_instance=false 以接管现有窗口",
+                                new JsonObject
+                                {
+                                    ["app"] = exeName,
+                                    ["suggest_reuse"] = true,
+                                },
+                                retryable: true,
+                                hint: "改用 window 参数按标题接管，或设置 new_instance=false",
+                                stage: "launch");
+                        }
+                    }
+                    else
+                    {
+                        throw new ToolException("E_WINDOW_TIMEOUT", "等待新窗口超时");
+                    }
                 }
 
                 closeOnRelease = true;
@@ -176,6 +203,9 @@ internal sealed partial class SessionManager
         {
             throw new ToolException("E_WINDOW_TIMEOUT", "等待应用主窗口超时");
         }
+
+        // 启动壳进程可能已把窗口交接给新进程；以 hwnd 的真实属主为准。
+        window = WindowManager.FromHandle(window.Hwnd) ?? window;
 
         window = WaitForStableWindow(window, waitMs, display.Width * display.Height) ?? window;
 

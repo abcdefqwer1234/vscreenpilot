@@ -99,6 +99,12 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern IntPtr GetForegroundWindow();
 
+    [DllImport("user32.dll")]
+    internal static extern IntPtr GetLastActivePopup(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    internal static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);
+
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
 

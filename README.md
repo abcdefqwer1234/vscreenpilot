@@ -199,6 +199,7 @@ VScreenPilot.exe --doctor
 - `codemode: false`：让 `capture_screen` 返回的图片直接进入模型上下文。
 - `--allow-script` 或 `VSP_ALLOW_SCRIPT=1`：启用 `run_script`。默认关闭，避免任意 PowerShell。
 - `VSP_APP_ALLOWLIST`：可选，用分号分隔目录，限制 `launch_or_place_app` 通过 `path` 能启动哪些 exe；按 `window` 标题接管不受此限制。
+- `VSP_DISPLAY_WIDTH` / `VSP_DISPLAY_HEIGHT` / `VSP_DISPLAY_REFRESH`：可选，修改虚拟屏分辨率与刷新率，默认 1280×720@60。
 - 完整示例见 [docs/mcp-config.example.jsonc](docs/mcp-config.example.jsonc)。
 
 ---

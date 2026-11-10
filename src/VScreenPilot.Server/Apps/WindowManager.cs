@@ -210,6 +210,28 @@ internal static class WindowManager
 
     public static IntPtr GetForegroundWindow() => NativeMethods.GetForegroundWindow();
 
+    public static int GetProcessId(IntPtr hwnd)
+    {
+        NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
+        return (int)pid;
+    }
+
+    public static bool IsForegroundOfProcess(int pid) =>
+        GetProcessId(NativeMethods.GetForegroundWindow()) == pid;
+
+    public static IReadOnlyList<WindowInfo> ListForProcess(int pid) =>
+        ListTopLevel().Where(window => window.Pid == pid).ToList();
+
+    public static IntPtr GetActivePopup(IntPtr hwnd)
+    {
+        IntPtr popup = NativeMethods.GetLastActivePopup(hwnd);
+        return popup != IntPtr.Zero && popup != hwnd && NativeMethods.IsWindowVisible(popup)
+            ? popup
+            : hwnd;
+    }
+
+    public static void SwitchTo(IntPtr hwnd) => NativeMethods.SwitchToThisWindow(hwnd, false);
+
     public static bool ForceForeground(IntPtr hwnd)
     {
         if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))

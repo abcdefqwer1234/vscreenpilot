@@ -9,10 +9,25 @@ public sealed class ToolException : Exception
 
     public JsonNode? Details { get; }
 
-    public ToolException(string code, string message, JsonNode? details = null) : base(message)
+    public bool? Retryable { get; }
+
+    public string? Hint { get; }
+
+    public string? Stage { get; }
+
+    public ToolException(
+        string code,
+        string message,
+        JsonNode? details = null,
+        bool? retryable = null,
+        string? hint = null,
+        string? stage = null) : base(message)
     {
         Code = code;
         Details = details;
+        Retryable = retryable;
+        Hint = hint;
+        Stage = stage;
     }
 }
 
@@ -33,7 +48,13 @@ public sealed class ToolResponse
         return response;
     }
 
-    public static ToolResponse Error(string code, string message, JsonNode? details = null)
+    public static ToolResponse Error(
+        string code,
+        string message,
+        JsonNode? details = null,
+        bool? retryable = null,
+        string? hint = null,
+        string? stage = null)
     {
         var payload = new JsonObject
         {
@@ -46,13 +67,34 @@ public sealed class ToolResponse
             payload["details"] = details;
         }
 
+        if (retryable is not null)
+        {
+            payload["retryable"] = retryable.Value;
+        }
+
+        if (!string.IsNullOrWhiteSpace(hint))
+        {
+            payload["hint"] = hint;
+        }
+
+        if (!string.IsNullOrWhiteSpace(stage))
+        {
+            payload["stage"] = stage;
+        }
+
         var response = Text(payload);
         response.IsError = true;
         return response;
     }
 
     public static ToolResponse FromException(ToolException exception) =>
-        Error(exception.Code, exception.Message, exception.Details);
+        Error(
+            exception.Code,
+            exception.Message,
+            exception.Details,
+            exception.Retryable,
+            exception.Hint,
+            exception.Stage);
 
     public ToolResponse AddImage(byte[] png, string mimeType = "image/png")
     {

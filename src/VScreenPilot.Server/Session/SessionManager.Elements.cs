@@ -340,7 +340,7 @@ internal sealed partial class SessionManager
                     new JsonObject { ["pid"] = pid });
             }
 
-            hwnd = app.Hwnd;
+            hwnd = WindowManager.GetActivePopup(app.Hwnd);
             RequireWindowOnDisplay(display, hwnd, "get_ui_tree");
             rootRuntimeId = string.Empty;
         }
@@ -602,7 +602,10 @@ internal sealed partial class SessionManager
                 throw new ToolException(
                     "E_FOCUS",
                     "无法把目标窗口切换到前台，已取消默认动作",
-                    new JsonObject { ["ref"] = entry.Ref });
+                    new JsonObject { ["ref"] = entry.Ref },
+                    retryable: true,
+                    hint: "如果当前有模态框，先处理弹窗再重试",
+                    stage: "focus");
             }
 
             try
@@ -852,7 +855,10 @@ internal sealed partial class SessionManager
                 throw new ToolException(
                     "E_FOCUS",
                     "无法把目标窗口切到前台，已取消键入以避免输入到用户窗口",
-                    new JsonObject { ["ref"] = entry.Ref });
+                    new JsonObject { ["ref"] = entry.Ref },
+                    retryable: true,
+                    hint: "确认没有模态框禁用主窗口；可改用消息点击或先关闭弹窗",
+                    stage: "focus");
             }
 
             bool focused = TryFocusElement(handle, display);
@@ -862,7 +868,9 @@ internal sealed partial class SessionManager
                 throw new ToolException(
                     "E_FOCUS",
                     "无法把焦点设置到控件，已取消键入",
-                    new JsonObject { ["ref"] = entry.Ref });
+                    new JsonObject { ["ref"] = entry.Ref },
+                    retryable: true,
+                    stage: "focus");
             }
 
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();

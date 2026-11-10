@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using VScreenPilot.Apps;
@@ -11,11 +12,12 @@ namespace VScreenPilot.Session;
 
 internal sealed class TrackedApp
 {
-    public int Pid { get; init; }
+    public int Pid { get; set; }
     public string ExePath { get; init; } = string.Empty;
     public IntPtr Hwnd { get; set; }
     public string Title { get; set; } = string.Empty;
     public bool StartedProcess { get; init; }
+    public DateTime StartedAt { get; init; } = DateTime.UtcNow;
     public bool CloseWindowOnRelease { get; set; }
     public bool DedicatedProcess { get; set; }
     public string? TempProfile { get; init; }
@@ -38,9 +40,16 @@ internal sealed class FrameSnapshot
 /// </summary>
 internal sealed partial class SessionManager : IDisposable
 {
-    public const int VirtualWidth = 1280;
-    public const int VirtualHeight = 720;
-    public const int VirtualRefresh = 60;
+    public static readonly int VirtualWidth = ReadDisplaySetting("VSP_DISPLAY_WIDTH", 1280, 800, 3840);
+    public static readonly int VirtualHeight = ReadDisplaySetting("VSP_DISPLAY_HEIGHT", 720, 600, 2160);
+    public static readonly int VirtualRefresh = ReadDisplaySetting("VSP_DISPLAY_REFRESH", 60, 30, 240);
+
+    private static int ReadDisplaySetting(string name, int fallback, int min, int max)
+    {
+        string? raw = Environment.GetEnvironmentVariable(name);
+
+        return int.TryParse(raw, out int value) ? Math.Clamp(value, min, max) : fallback;
+    }
 
     private readonly object _gate = new();
     private readonly LogRing _log;
@@ -150,7 +159,7 @@ internal sealed partial class SessionManager : IDisposable
     {
         lock (_gate)
         {
-            return _apps.LastOrDefault(IsLiveTrackedApp);
+            return _apps.LastOrDefault(IsLiveTrackedApp) ?? TryRelocateLastApp();
         }
     }
 
@@ -163,7 +172,74 @@ internal sealed partial class SessionManager : IDisposable
 
         lock (_gate)
         {
-            return _apps.LastOrDefault(app => app.Pid == pid.Value && IsLiveTrackedApp(app));
+            TrackedApp? live = _apps.LastOrDefault(app => app.Pid == pid.Value && IsLiveTrackedApp(app));
+            if (live is not null)
+            {
+                return live;
+            }
+
+            TrackedApp? dead = _apps.LastOrDefault(app => app.Pid == pid.Value);
+            return dead is not null && TryRelocateApp(dead) ? dead : null;
+        }
+    }
+
+    /// <summary>
+    /// Office 等应用会由启动壳进程交接给新进程，原 pid/hwnd 随即失效。
+    /// 按 exe 路径 + 启动时间把死条目重定位到新的顶层窗口，避免成功启动后立即 E_NO_TARGET。
+    /// </summary>
+    private TrackedApp? TryRelocateLastApp()
+    {
+        foreach (TrackedApp app in _apps.AsEnumerable().Reverse())
+        {
+            if (TryRelocateApp(app))
+            {
+                return app;
+            }
+        }
+
+        return null;
+    }
+
+    private bool TryRelocateApp(TrackedApp app)
+    {
+        if (string.IsNullOrWhiteSpace(app.ExePath))
+        {
+            return false;
+        }
+
+        WindowInfo? candidate = WindowManager.ListTopLevel()
+            .Where(window => !_apps.Any(other => other.Hwnd == window.Hwnd))
+            .Where(window => string.Equals(
+                WindowManager.GetProcessPath(window.Pid), app.ExePath, StringComparison.OrdinalIgnoreCase))
+            .Where(window => ProcessStartedAfter(window.Pid, app.StartedAt))
+            .OrderByDescending(window => window.Area)
+            .FirstOrDefault();
+
+        if (candidate is null)
+        {
+            return false;
+        }
+
+        _log.Warn(
+            $"应用 pid={app.Pid} 已退出，按 exe 重定位到 pid={candidate.Pid} \"{candidate.Title}\"");
+        app.Pid = candidate.Pid;
+        app.Hwnd = candidate.Hwnd;
+        app.Title = candidate.Title;
+        app.Placement = WindowManager.GetPlacement(candidate.Hwnd);
+        app.PlacementSaved = true;
+        return true;
+    }
+
+    private static bool ProcessStartedAfter(int pid, DateTime startedAt)
+    {
+        try
+        {
+            using Process process = Process.GetProcessById(pid);
+            return process.StartTime.ToUniversalTime() >= startedAt.ToUniversalTime().AddSeconds(-2);
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -288,10 +364,40 @@ internal sealed partial class SessionManager : IDisposable
 
             if (!configured && _displayIndex < 0)
             {
-                _displayIndex = _vdd.AddDisplay();
-                if (_displayIndex < 0)
+                // Parsec 驱动在 REMOVE 后约 3-5 秒内会拒绝 ADD；重试并检查是否已被其他路径创建。
+                int[] delays = { 0, 500, 1000, 1500, 2000 };
+
+                foreach (int delay in delays)
                 {
-                    throw new ToolException("E_DISPLAY_ADD", "驱动拒绝创建虚拟显示器");
+                    if (delay > 0)
+                    {
+                        Thread.Sleep(delay);
+                    }
+
+                    _displayIndex = _vdd.AddDisplay();
+
+                    if (_displayIndex >= 0)
+                    {
+                        break;
+                    }
+
+                    if (DisplayTopology.FindParsecDisplay() is not null)
+                    {
+                        _log.Warn("驱动拒绝 ADD，但检测到已挂载的 Parsec 屏，按已创建处理");
+                        break;
+                    }
+
+                    _log.Warn("驱动拒绝创建虚拟显示器，准备重试");
+                }
+
+                if (_displayIndex < 0 && DisplayTopology.FindParsecDisplay() is null)
+                {
+                    throw new ToolException(
+                        "E_DISPLAY_ADD",
+                        "驱动拒绝创建虚拟显示器",
+                        retryable: true,
+                        hint: "驱动 REMOVE 后需要 3-5 秒冷却；稍后重试或重启驱动",
+                        stage: "display");
                 }
             }
 
@@ -500,8 +606,13 @@ internal sealed partial class SessionManager : IDisposable
         return settled;
     }
 
-    public JsonObject GetEnvironment()
+    public JsonObject GetEnvironment(bool ensure = false)
     {
+        if (ensure)
+        {
+            EnsureEnvironment();
+        }
+
         lock (_gate)
         {
             var driver = new JsonObject

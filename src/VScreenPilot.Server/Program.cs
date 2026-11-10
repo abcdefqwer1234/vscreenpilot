@@ -95,19 +95,23 @@ internal static class Program
 
         // 启动时后台预热虚拟屏：把不可避免的第一次黑屏挪到 OpenCode 启动阶段，
         // 而不是用户第一次调试时。失败则延迟到首次工具调用重试。
-        _ = Task.Run(() =>
+        // VSP_NO_WARMUP=1 用于无显示器的协议冒烟测试。
+        if (Environment.GetEnvironmentVariable("VSP_NO_WARMUP") != "1")
         {
-            try
+            _ = Task.Run(() =>
             {
-                _session.EnsureEnvironment();
-                _session.TrimIdleMemory("startup_warm");
-                log.Info("虚拟屏预热完成");
-            }
-            catch (Exception exception)
-            {
-                log.Warn($"虚拟屏预热失败，将在首次使用时重试: {exception.Message}");
-            }
-        });
+                try
+                {
+                    _session.EnsureEnvironment();
+                    _session.TrimIdleMemory("startup_warm");
+                    log.Info("虚拟屏预热完成");
+                }
+                catch (Exception exception)
+                {
+                    log.Warn($"虚拟屏预热失败，将在首次使用时重试: {exception.Message}");
+                }
+            });
+        }
 
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {

@@ -161,13 +161,14 @@ internal sealed partial class SessionManager
         return result;
     }
 
-    public JsonObject TypeText(string text, int? pid = null)
+    public JsonObject TypeText(string text, int? pid = null, bool verify = true, int chunkChars = 16)
     {
         DisplayInfo display = EnsureEnvironment();
         TrackedApp app = RequireTrackedApp(pid);
         RequireWindowOnDisplay(display, app.Hwnd, "type_text");
         IntPtr previous = WindowManager.GetForegroundWindow();
         PauseFocusGuard();
+        int effectiveChunk = Math.Clamp(chunkChars, 1, 256);
 
         try
         {
@@ -175,7 +176,10 @@ internal sealed partial class SessionManager
             {
                 throw new ToolException(
                     "E_FOCUS",
-                    "无法把目标窗口切换到前台，已取消输入以避免打字到用户当前窗口");
+                    "无法把目标窗口切换到前台，已取消输入以避免打字到用户当前窗口",
+                    retryable: true,
+                    hint: "确认没有模态框禁用主窗口；可改用 click 的消息点击或先关闭弹窗",
+                    stage: "focus");
             }
 
             try
@@ -183,7 +187,9 @@ internal sealed partial class SessionManager
                 // 前台切换后再取焦点元素：此时才是目标应用内部的焦点控件。
                 // 传入 pid 可避免焦点短暂落在宿主/其他进程时把输入验证对象搞错。
                 using UiaElementHandle? focused = Uia.GetFocusedElementHandle(app.Pid);
-                TextWriteResult write = WriteTextVerified(app, focused, text, replace: false, timeoutMs: 10000);
+                TextWriteResult write = verify
+                    ? WriteTextVerified(app, focused, text, replace: false, timeoutMs: 10000, chunkChars: effectiveChunk)
+                    : WriteTextUnverified(app, focused, text);
 
                 return new JsonObject
                 {
@@ -191,9 +197,10 @@ internal sealed partial class SessionManager
                     ["length"] = text.Length,
                     ["target_pid"] = app.Pid,
                     ["chunks"] = write.Chunks,
+                    ["chunk_chars"] = effectiveChunk,
                     ["text_supported"] = write.TextSupported,
                     ["verified"] = write.Verified,
-                    ["method"] = "sendinput",
+                    ["method"] = verify ? "sendinput+verify" : "sendinput",
                     ["inject_ms"] = Math.Round(write.InjectMs, 2),
                     ["duration_ms"] = Math.Round(write.DurationMs, 2),
                     ["observed_length"] = write.ObservedLength,
@@ -240,7 +247,10 @@ internal sealed partial class SessionManager
             {
                 throw new ToolException(
                     "E_FOCUS",
-                    "无法把目标窗口切换到前台，已取消按键以避免输入到用户当前窗口");
+                    "无法把目标窗口切换到前台，已取消按键以避免输入到用户当前窗口",
+                    retryable: true,
+                    hint: "确认没有模态框禁用主窗口；可改用消息点击或先关闭弹窗",
+                    stage: "focus");
             }
 
             try
@@ -559,7 +569,8 @@ internal sealed partial class SessionManager
         UiaElementHandle? target,
         string text,
         bool replace,
-        int timeoutMs)
+        int timeoutMs,
+        int chunkChars = 16)
     {
         string? before = target is null ? null : Uia.GetText(target.Element, 65536);
         bool textSupported = before is not null;
@@ -569,9 +580,9 @@ internal sealed partial class SessionManager
         int chunks = 0;
         string sent = string.Empty;
 
-        foreach (string chunk in SplitTextChunks(text, 16))
+        foreach (string chunk in SplitTextChunks(text, chunkChars))
         {
-            if (WindowManager.GetForegroundWindow() != app.Hwnd)
+            if (!IsAppForeground(app))
             {
                 throw new ToolException(
                     "E_FOCUS_LOST",
@@ -624,7 +635,7 @@ internal sealed partial class SessionManager
 
             while (DateTime.UtcNow < deadline)
             {
-                if (WindowManager.GetForegroundWindow() != app.Hwnd)
+                if (!IsAppForeground(app))
                 {
                     throw new ToolException(
                         "E_FOCUS_LOST",
@@ -702,6 +713,40 @@ internal sealed partial class SessionManager
     private static string NormalizeForCompare(string value) =>
         value.Replace("\r\n", "\n").Replace('\r', '\n');
 
+    /// <summary>快速路径：一次 SendInput 写完，不做逐块回读；调用方需自行复核。</summary>
+    private TextWriteResult WriteTextUnverified(
+        TrackedApp app,
+        UiaElementHandle? target,
+        string text)
+    {
+        string? before = target is null ? null : Uia.GetText(target.Element, 65536);
+        var stopwatch = Stopwatch.StartNew();
+
+        if (!IsAppForeground(app))
+        {
+            throw new ToolException(
+                "E_FOCUS_LOST",
+                "输入前目标窗口失去前台，已中止",
+                retryable: true,
+                stage: "focus");
+        }
+
+        var injectWatch = Stopwatch.StartNew();
+        int typed = InputInjector.TypeText(text);
+        double injectMs = injectWatch.Elapsed.TotalMilliseconds;
+        Thread.Sleep(Math.Clamp(120 + text.Length * 2, 200, 1500));
+
+        string? after = target is null ? null : Uia.GetText(target.Element, 65536);
+        return new TextWriteResult(
+            typed,
+            Chunks: text.Length == 0 ? 0 : 1,
+            TextSupported: before is not null,
+            Verified: false,
+            ObservedLength: after?.Length,
+            InjectMs: injectMs,
+            DurationMs: stopwatch.Elapsed.TotalMilliseconds);
+    }
+
     private static IEnumerable<string> SplitTextChunks(string text, int chunkChars)
     {
         int index = 0;
@@ -725,24 +770,36 @@ internal sealed partial class SessionManager
 
     private bool EnsureForeground(TrackedApp app)
     {
-        if (WindowManager.GetForegroundWindow() == app.Hwnd)
+        if (IsAppForeground(app))
         {
             return true;
         }
 
-        for (int attempt = 0; attempt < 3; attempt++)
+        for (int attempt = 0; attempt < 4; attempt++)
         {
-            WindowManager.ForceForeground(app.Hwnd);
-            if (WindowManager.GetForegroundWindow() == app.Hwnd)
+            // 模态框会比主窗口更“活跃”，优先激活当前弹出窗口。
+            IntPtr target = WindowManager.GetActivePopup(app.Hwnd);
+            WindowManager.ForceForeground(target);
+
+            if (!IsAppForeground(app))
+            {
+                WindowManager.SwitchTo(target);
+            }
+
+            if (IsAppForeground(app))
             {
                 return true;
             }
 
-            Thread.Sleep(40);
+            Thread.Sleep(80);
         }
 
-        return WindowManager.GetForegroundWindow() == app.Hwnd;
+        return IsAppForeground(app);
     }
+
+    private static bool IsAppForeground(TrackedApp app) =>
+        app.Pid > 0 &&
+        WindowManager.GetProcessId(WindowManager.GetForegroundWindow()) == app.Pid;
 
     private void RestoreFocusAfterClick(IntPtr previous)
     {

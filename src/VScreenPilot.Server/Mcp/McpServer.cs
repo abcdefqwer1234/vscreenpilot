@@ -22,8 +22,9 @@ internal sealed class McpServer
     private readonly LogRing _log;
     private readonly Dictionary<string, ToolDefinition> _tools;
     private readonly JsonArray _toolList;
-    private readonly SemaphoreSlim _toolGate = new(1, 1);
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeCalls = new();
+    private readonly ReaderWriterLockSlim _stateLock = new(LockRecursionPolicy.NoRecursion);
+    private int _stalledTools;
     private readonly object _writeGate = new();
     private TextWriter _stdout = TextWriter.Null;
     private volatile bool _initialized;
@@ -150,7 +151,13 @@ internal sealed class McpServer
             }
         }
 
-        if (!_toolGate.Wait(3000))
+        var drainDeadline = DateTime.UtcNow.AddSeconds(3);
+        while (!_activeCalls.IsEmpty && DateTime.UtcNow < drainDeadline)
+        {
+            Thread.Sleep(50);
+        }
+
+        if (!_activeCalls.IsEmpty)
         {
             _log.Warn("stdin EOF 时仍有工具在运行，超过 3s 未结束，继续退出");
         }
@@ -368,65 +375,146 @@ internal sealed class McpServer
         JsonElement arguments,
         CancellationTokenSource source)
     {
-        bool acquired = false;
+        bool priority = PriorityTools.Contains(tool.Name);
+        bool readOnly = ReadOnlyTools.Contains(tool.Name);
+        int timeoutMs = TimeoutFor(tool.Name);
 
         try
         {
-            await _toolGate.WaitAsync(source.Token).ConfigureAwait(false);
-            acquired = true;
-
-            if (source.IsCancellationRequested)
+            if (!priority && Volatile.Read(ref _stalledTools) > 0)
             {
+                WriteResult(id, new JsonObject
+                {
+                    ["content"] = new JsonArray
+                    {
+                        (JsonNode)new JsonObject
+                        {
+                            ["type"] = "text",
+                            ["text"] = new JsonObject
+                            {
+                                ["code"] = "E_BUSY",
+                                ["message"] = "上一个工具超时后仍在执行，拒绝新的工具调用",
+                                ["retryable"] = false,
+                                ["hint"] = "先调用 release_environment 或重启服务端",
+                            }.ToJsonString(),
+                        },
+                    },
+                    ["isError"] = true,
+                });
                 return;
             }
 
-            _session.SetCancellation(source);
-
-            var toolStopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-            try
+            Task<ToolResponse> handlerTask = Task.Run(() =>
             {
-                ToolResponse response;
+                bool lockTaken = false;
 
                 try
                 {
-                    response = tool.Handler(arguments);
-                    _log.Info(
-                        $"工具 {tool.Name} 完成: {toolStopwatch.Elapsed.TotalMilliseconds:F1}ms");
-                }
-                catch (ToolException exception)
-                {
-                    _log.Warn(
-                        $"工具 {tool.Name} 失败: {exception.Code} {exception.Message} " +
-                        $"({toolStopwatch.Elapsed.TotalMilliseconds:F1}ms)");
-                    response = ToolResponse.FromException(exception);
-                }
-                catch (Exception exception)
-                {
-                    _log.Error(
-                        $"工具 {tool.Name} 异常 ({toolStopwatch.Elapsed.TotalMilliseconds:F1}ms)",
-                        exception);
-                    response = ToolResponse.Error("E_INTERNAL", exception.Message);
-                }
+                    lockTaken = readOnly
+                        ? _stateLock.TryEnterReadLock(timeoutMs)
+                        : _stateLock.TryEnterWriteLock(timeoutMs);
 
-                if (source.IsCancellationRequested)
-                {
-                    _log.Info(
-                        $"工具 {tool.Name} 已取消，丢弃结果 " +
-                        $"({toolStopwatch.Elapsed.TotalMilliseconds:F1}ms)");
-                    return;
-                }
+                    if (!lockTaken)
+                    {
+                        return ToolResponse.Error(
+                            "E_BUSY",
+                            "等待工具执行锁超时",
+                            retryable: true,
+                            hint: "稍后重试；长任务可先取消或释放环境",
+                            stage: "lock");
+                    }
 
-                WriteResult(id, new JsonObject
+                    if (source.IsCancellationRequested)
+                    {
+                        return ToolResponse.Error("E_CANCELLED", "请求已取消");
+                    }
+
+                    if (!readOnly)
+                    {
+                        _session.SetCancellation(source);
+                    }
+
+                    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+                    try
+                    {
+                        ToolResponse response = tool.Handler(arguments);
+                        _log.Info($"工具 {tool.Name} 完成: {stopwatch.Elapsed.TotalMilliseconds:F1}ms");
+                        return response;
+                    }
+                    catch (ToolException exception)
+                    {
+                        _log.Warn(
+                            $"工具 {tool.Name} 失败: {exception.Code} {exception.Message} " +
+                            $"({stopwatch.Elapsed.TotalMilliseconds:F1}ms)");
+                        return ToolResponse.FromException(exception);
+                    }
+                    catch (Exception exception)
+                    {
+                        _log.Error(
+                            $"工具 {tool.Name} 异常 ({stopwatch.Elapsed.TotalMilliseconds:F1}ms)",
+                            exception);
+                        return ToolResponse.Error("E_INTERNAL", exception.Message);
+                    }
+                    finally
+                    {
+                        if (!readOnly)
+                        {
+                            _session.SetCancellation(null);
+                        }
+                    }
+                }
+                finally
                 {
-                    ["content"] = response.Content.DeepClone(),
-                    ["isError"] = response.IsError,
-                });
-            }
-            finally
+                    if (lockTaken)
+                    {
+                        if (readOnly)
+                        {
+                            _stateLock.ExitReadLock();
+                        }
+                        else
+                        {
+                            _stateLock.ExitWriteLock();
+                        }
+                    }
+                }
+            });
+
+            ToolResponse response;
+
+            try
             {
-                _session.SetCancellation(null);
+                response = await handlerTask
+                    .WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), source.Token)
+                    .ConfigureAwait(false);
             }
+            catch (TimeoutException)
+            {
+                TrackStalled(handlerTask, tool.Name);
+                response = ToolResponse.Error(
+                    "E_TIMEOUT",
+                    $"工具 {tool.Name} 超过 {timeoutMs}ms 未完成",
+                    retryable: false,
+                    hint: "上一次调用可能仍在执行；先调用 release_environment，必要时重启服务端",
+                    stage: "tool");
+            }
+            catch (OperationCanceledException)
+            {
+                TrackStalled(handlerTask, tool.Name);
+                throw;
+            }
+
+            if (source.IsCancellationRequested)
+            {
+                _log.Info($"工具 {tool.Name} 已取消，丢弃结果");
+                return;
+            }
+
+            WriteResult(id, new JsonObject
+            {
+                ["content"] = response.Content.DeepClone(),
+                ["isError"] = response.IsError,
+            });
         }
         catch (OperationCanceledException)
         {
@@ -434,15 +522,70 @@ internal sealed class McpServer
         }
         finally
         {
-            if (acquired)
-            {
-                _toolGate.Release();
-            }
-
             _activeCalls.TryRemove(idKey, out _);
             source.Dispose();
         }
     }
+
+    private void TrackStalled(Task<ToolResponse> task, string toolName)
+    {
+        if (task.IsCompleted)
+        {
+            return;
+        }
+
+        Interlocked.Increment(ref _stalledTools);
+        _ = task.ContinueWith(
+            completed =>
+            {
+                Interlocked.Decrement(ref _stalledTools);
+                if (completed.IsFaulted)
+                {
+                    _log.Error($"超时工具 {toolName} 最终异常", completed.Exception);
+                }
+                else
+                {
+                    _log.Warn($"超时工具 {toolName} 已结束，恢复可调用状态");
+                }
+            },
+            TaskScheduler.Default);
+    }
+
+    private static readonly HashSet<string> PriorityTools = new(StringComparer.Ordinal)
+    {
+        "release_environment", "get_log", "get_environment",
+    };
+
+    private static readonly HashSet<string> ReadOnlyTools = new(StringComparer.Ordinal)
+    {
+        "get_environment", "capture_screen", "get_element_text", "get_log",
+        "match_visual", "assert_region",
+    };
+
+    private static readonly Dictionary<string, int> ToolTimeouts = new(StringComparer.Ordinal)
+    {
+        ["get_environment"] = 20000,
+        ["capture_screen"] = 30000,
+        ["find_element"] = 30000,
+        ["get_ui_tree"] = 30000,
+        ["invoke_element"] = 30000,
+        ["set_element_value"] = 30000,
+        ["get_element_text"] = 20000,
+        ["click"] = 20000,
+        ["gesture"] = 30000,
+        ["type_text"] = 120000,
+        ["press_keys"] = 30000,
+        ["wait_for"] = 130000,
+        ["assert_region"] = 30000,
+        ["match_visual"] = 60000,
+        ["launch_or_place_app"] = 90000,
+        ["release_environment"] = 90000,
+        ["get_log"] = 15000,
+        ["run_script"] = 130000,
+    };
+
+    private static int TimeoutFor(string tool) =>
+        ToolTimeouts.TryGetValue(tool, out int timeout) ? timeout : 120000;
 
     private void WriteResult(JsonNode? id, JsonNode result)
     {
@@ -496,8 +639,8 @@ internal sealed class McpServer
     {
         var tools = new Dictionary<string, ToolDefinition>(StringComparer.Ordinal);
 
-        Add(tools, "get_environment", "查看虚拟屏、显示器、前台窗口与会话状态。foreground 只在本会话窗口位于前台时返回标题/PID，避免泄露用户主屏窗口信息。", """
-            {"type":"object","properties":{}}
+        Add(tools, "get_environment", "查看虚拟屏、显示器、前台窗口与会话状态。foreground 只在本会话窗口位于前台时返回标题/PID，避免泄露用户主屏窗口信息。ensure=true 时先修复/挂载虚拟屏。", """
+            {"type":"object","properties":{"ensure":{"type":"boolean","description":"默认 false；true 时先 EnsureEnvironment"}}}
             """, GetEnvironment);
 
         Add(tools, "launch_or_place_app", "启动应用或接管窗口，移动到虚拟屏并最大化。默认 new_instance=true：优先独立实例/新窗口（Edge 使用独立临时配置）。Word 默认 ensure_document=true：启动后用 Ctrl+N 确保有文档。", """
@@ -536,8 +679,8 @@ internal sealed class McpServer
             {"type":"object","properties":{"type":{"type":"string","enum":["drag","scroll","move"]},"from":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"]},"to":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"]},"dx":{"type":"integer"},"dy":{"type":"integer"},"button":{"type":"string","enum":["left","right","middle"]},"duration_ms":{"type":"integer","minimum":20,"maximum":5000},"mode":{"type":"string","enum":["auto","message","input"],"description":"默认 auto/message：窗口消息，不移动光标；input 显式接受光标跳变"}},"required":["type"]}
             """, Gesture);
 
-        Add(tools, "type_text", "向当前焦点输入文本，支持非 ASCII。输入按块发送并用 TextPattern/ValuePattern 回读确认；返回 verified/chunks。多应用会话可用 pid 指定目标，默认最后一个存活应用。", """
-            {"type":"object","properties":{"text":{"type":"string"},"pid":{"type":"integer","description":"可选：指定本会话内某个应用的进程号"}},"required":["text"]}
+        Add(tools, "type_text", "向当前焦点输入文本，支持非 ASCII。默认 16 字符分块并用 TextPattern/ValuePattern 回读确认；verify=false 改为一次写入的快速路径。多应用会话可用 pid 指定目标，默认最后一个存活应用。", """
+            {"type":"object","properties":{"text":{"type":"string"},"pid":{"type":"integer","description":"可选：指定本会话内某个应用的进程号"},"verify":{"type":"boolean","description":"默认 true：分块回读校验；false 为一次写入的快速路径"},"chunk_chars":{"type":"integer","minimum":1,"maximum":256,"description":"分块字符数，默认 16"}},"required":["text"]}
             """, TypeText);
 
         Add(tools, "press_keys", "发送按键或组合键，例如 Ctrl+Shift+S。sequence 可在一次前台租约内发送多个按键（菜单导航）；keep_foreground=true 时不归还用户前台。多应用会话可用 pid 指定目标。", """
@@ -582,7 +725,7 @@ internal sealed class McpServer
     }
 
     private ToolResponse GetEnvironment(JsonElement arguments) =>
-        ToolResponse.Text(_session.GetEnvironment());
+        ToolResponse.Text(_session.GetEnvironment(OptionalBool(arguments, "ensure", false)));
 
     private ToolResponse LaunchOrPlace(JsonElement arguments)
     {
@@ -709,8 +852,10 @@ internal sealed class McpServer
         string text = OptionalString(arguments, "text")
             ?? throw new ToolException("E_INVALID_ARG", "type_text 需要 text");
         int? pid = OptionalNullableInt(arguments, "pid");
+        bool verify = OptionalBool(arguments, "verify", true);
+        int chunkChars = OptionalInt(arguments, "chunk_chars", 16);
 
-        return ToolResponse.Text(_session.TypeText(text, pid));
+        return ToolResponse.Text(_session.TypeText(text, pid, verify, chunkChars));
     }
 
     private ToolResponse PressKeys(JsonElement arguments)
