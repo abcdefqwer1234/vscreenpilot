@@ -32,12 +32,29 @@ function stats(values) {
 }
 
 async function ensureBuilt() {
-  if (fs.existsSync(EXE) && fs.existsSync(UITARGET)) return;
-  console.log('[build] dotnet build');
-  const result = await run('dotnet', ['build', path.join(ROOT, 'VScreenPilot.slnx'), '-c', 'Release', '--nologo'], { timeout: 300000 });
-  if (!result.ok) throw new Error('solution build failed: ' + result.stderr.slice(0, 500));
-  const target = await run('dotnet', ['build', path.join(TESTTOOL, 'targets', 'UiTarget', 'UiTarget.csproj'), '-c', 'Release', '--nologo'], { timeout: 300000 });
-  if (!target.ok) throw new Error('UiTarget build failed: ' + target.stderr.slice(0, 500));
+  if (!fs.existsSync(EXE)) {
+    console.log('[build] dotnet build + publish');
+    const result = await run('dotnet', ['build', path.join(ROOT, 'VScreenPilot.slnx'), '-c', 'Release', '--nologo'], { timeout: 300000 });
+    if (!result.ok) throw new Error('solution build failed: ' + result.stderr.slice(0, 500));
+    const publish = await run(
+      'dotnet',
+      [
+        'publish',
+        path.join(ROOT, 'src', 'VScreenPilot.Server', 'VScreenPilot.Server.csproj'),
+        '-c',
+        'Release',
+        '-o',
+        path.join(ROOT, 'artifacts', 'server'),
+        '--nologo',
+      ],
+      { timeout: 600000 }
+    );
+    if (!publish.ok) throw new Error('publish failed: ' + publish.stderr.slice(0, 500));
+  }
+  if (!fs.existsSync(UITARGET)) {
+    const target = await run('dotnet', ['build', path.join(TESTTOOL, 'targets', 'UiTarget', 'UiTarget.csproj'), '-c', 'Release', '--nologo'], { timeout: 300000 });
+    if (!target.ok) throw new Error('UiTarget build failed: ' + target.stderr.slice(0, 500));
+  }
 }
 
 function summarizeCalls(calls) {

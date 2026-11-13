@@ -408,7 +408,7 @@ src/VScreenPilot.Core/          VDD IOCTL、显示拓扑、DPI
 src/VScreenPilot.Server/        MCP Server、生命周期、工具、UIA、输入、视觉
 npm/                            npm 单包（启动器 + exe + 驱动脚本 + LICENSE）
 scripts/                        驱动安装、npm 构建
-tools/                          VddProbe、AotSmokeTest、验收脚本
+tools/                          VddProbe、AotSmokeTest、TestTool 回归套件
 artifacts/server/               发布 exe
 artifacts/npm/                  npm tgz
 技术文档.md                     代码级实现说明
@@ -416,30 +416,17 @@ artifacts/npm/                  npm tgz
 docs/mcp-config.example.jsonc  OpenCode 接入示例
 ```
 
-## 验收脚本
+## 测试脚本
 
 ```powershell
-node tools\mcp-smoke.mjs .\artifacts\server\VScreenPilot.exe full
-node tools\m1-errors.mjs .\artifacts\server\VScreenPilot.exe
-node tools\m1-cancel.mjs .\artifacts\server\VScreenPilot.exe
-node tools\m1-keep.mjs .\artifacts\server\VScreenPilot.exe
-node tools\m1-heal.mjs .\artifacts\server\VScreenPilot.exe
-node tools\m1-lifecycle.mjs .\artifacts\server\VScreenPilot.exe eof
-node tools\m1-lifecycle.mjs .\artifacts\server\VScreenPilot.exe kill
-node tools\m1-lifecycle.mjs .\artifacts\server\VScreenPilot.exe mutex
-node tools\m2-semantic.mjs .\artifacts\server\VScreenPilot.exe
-node tools\m2-visual.mjs .\artifacts\server\VScreenPilot.exe
-node tools\m2-1-review.mjs .\artifacts\server\VScreenPilot.exe
-node tools\m3-verify.mjs .\artifacts\server\VScreenPilot.exe
-node tools\m3-fix-verify.mjs .\artifacts\server\VScreenPilot.exe
-node tools\m4-package-verify.mjs
-node tools\m4-stress.mjs .\artifacts\server\VScreenPilot.exe 50
-node tools\m4-selfheal.mjs .\artifacts\server\VScreenPilot.exe 3
-node tools\m4-log-verify.mjs .\artifacts\server\VScreenPilot.exe
-node tools\m4-parent-watch.mjs .\npm\bin\vscreenpilot.js
+dotnet publish src\VScreenPilot.Server\VScreenPilot.Server.csproj -c Release -o artifacts\server
+node tools\TestTool\smoke-v2.mjs
+node tools\TestTool\run-all.mjs --arm A --task all --runs 3
+node tools\TestTool\run-all.mjs --stability --sessions 50
+node tools\TestTool\run-all.mjs --report
 ```
 
-需要 `run_script` 的验收脚本（`mcp-smoke`、`m1-*`、`m2-*`、`m3-*`、`m4-selfheal`）会在启动服务端时附加 `--allow-script`；`m4-package-verify` 故意不加，用于验证产品默认关闭；`m4-stress`、`m4-log-verify`、`m4-parent-watch` 不需要脚本。
+`smoke-v2.mjs` 不挂屏、不注入输入，可在普通桌面运行；`run-all.mjs` 含 GUI 与输入用例，必须在隔离 VM 或独立账户中执行。详见 `tools/TestTool/README.md`。
 
 ---
 

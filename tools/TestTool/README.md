@@ -27,7 +27,7 @@ tools/TestTool/
 ## 使用
 
 ```powershell
-dotnet build VScreenPilot.slnx -c Release
+dotnet publish src/VScreenPilot.Server/VScreenPilot.Server.csproj -c Release -o artifacts/server
 node tools/TestTool/smoke-v2.mjs
 node tools/TestTool/run-all.mjs --arm A --task all --runs 3
 node tools/TestTool/run-all.mjs --arm B --task t1,t4 --runs 3
@@ -35,7 +35,7 @@ node tools/TestTool/run-all.mjs --stability --sessions 50
 node tools/TestTool/run-all.mjs --report
 ```
 
-首次运行会自动编译 `tools/TestTool/targets/UiTarget`。运行前应确保没有用户正在编辑的 Word/Excel/记事本；清理只针对本测试启动的进程（通过 `--parent-pid` 与显式 PID）。
+首次运行会自动 `dotnet publish` 到 `artifacts/server`，并编译 `tools/TestTool/targets/UiTarget`。运行前应确保没有用户正在编辑的 Word/Excel/记事本；清理只针对本测试启动的进程（通过 `--parent-pid` 与显式 PID）。
 
 ## 安全开关
 
