@@ -1,0 +1,50 @@
+{
+  "binary": "C:\\Users\\31746\\Desktop\\VScreenPilot\\artifacts\\server7\\VScreenPilot.exe",
+  "binary_sha256": "",
+  "checks": {
+    "dotnet_build": "0 warnings / 0 errors",
+    "unit_tests": "31/31",
+    "doctor": "ok=true, driver 0.41, primary 1920x1440@168dpi",
+    "smoke_no_display": "10/10 (VSP_PROFILE=smoke, VSP_DISPLAY_OFFSET=0)",
+    "opencode_mcp_process": "pid 8776 runs artifacts/server7/VScreenPilot.exe"
+  },
+  "profile_probe": [
+    {
+      "profile": "envcheck-ok",
+      "VSP_DISPLAY_OFFSET": "0",
+      "ok": true,
+      "code": null,
+      "ms": 464.81,
+      "detail": null,
+      "display": {
+        "enabled": true,
+        "x": 1920,
+        "y": 0,
+        "width": 1280,
+        "height": 720,
+        "dpi": 96
+      },
+      "tool_count": 20,
+      "negotiated_protocol": "2025-11-25",
+      "binary_sha256": "A90D33A19F74B0A61F6E5924EBBF20CD45CA0A9FE865EA41C7CA07267F7F3EB0",
+      "release_ok": true,
+      "display_removed": true
+    },
+    {
+      "profile": "envcheck-fail",
+      "VSP_DISPLAY_OFFSET": null,
+      "ok": false,
+      "code": "E_DISPLAY_MODE",
+      "ms": 5700.47,
+      "detail": {
+        "detail": "set=0 apply=0 current=\\\\.\\DISPLAY9 \"Parsec Virtual Display Adapter\" attached 1280x720@60 at (1920,0) dpi=96"
+      },
+      "display": null,
+      "tool_count": 20,
+      "negotiated_protocol": "2025-11-25",
+      "binary_sha256": "A90D33A19F74B0A61F6E5924EBBF20CD45CA0A9FE865EA41C7CA07267F7F3EB0",
+      "release_ok": true,
+      "display_removed": false
+    }
+  ]
+}
