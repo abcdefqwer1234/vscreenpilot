@@ -1,0 +1,129 @@
+{
+  "suite": "ppt-extra",
+  "cases": [
+    {
+      "id": "SUP-14",
+      "purpose": "关闭后重开 pptx，无修复提示",
+      "ok": true,
+      "title": "VScreenPilot-PPT-测评 - PowerPoint",
+      "dialogs": [],
+      "nodes": 11
+    },
+    {
+      "id": "SUP-01",
+      "purpose": "capture_screen 内联图是合法 base64",
+      "ok": false,
+      "detail": "ValueError: string argument should contain only ASCII characters",
+      "bytes": 1085
+    },
+    {
+      "id": "SUP-02",
+      "purpose": "snapshot 内联图是合法 base64",
+      "ok": false,
+      "detail": "ValueError: string argument should contain only ASCII characters",
+      "bytes": 62733
+    },
+    {
+      "id": "SUP-04a",
+      "purpose": "match_visual pixel",
+      "ok": true,
+      "color": "#E8EDF1"
+    },
+    {
+      "id": "SUP-04b",
+      "purpose": "match_visual color 命中",
+      "ok": true,
+      "count": 1
+    },
+    {
+      "id": "SUP-03",
+      "purpose": "match_visual template 找回自身",
+      "ok": true,
+      "x": null,
+      "y": null,
+      "code": null
+    },
+    {
+      "id": "SUP-05",
+      "purpose": "assert_region 检测到输入变化",
+      "ok": true,
+      "passed": true,
+      "ratio": 0.037,
+      "code": null
+    },
+    {
+      "id": "SUP-06",
+      "purpose": "wait_for text 可用（schema 声明了 text）",
+      "ok": false,
+      "code": "E_INVALID_ARG",
+      "message": "未知 wait_for 条件类型: text"
+    },
+    {
+      "id": "SUP-07",
+      "purpose": "wait_for color 立即满足",
+      "ok": true,
+      "satisfied": true
+    },
+    {
+      "id": "SUP-08",
+      "purpose": "wait_for element 在 PPT 上应超时且不崩",
+      "ok": true,
+      "satisfied": false,
+      "code": null
+    },
+    {
+      "id": "SUP-09",
+      "purpose": "gesture 拖拽图片并检测到位置变化",
+      "ok": true,
+      "drag_code": null,
+      "passed": true,
+      "ratio": 0.1172
+    },
+    {
+      "id": "SUP-10a",
+      "purpose": "对 Pane 调 invoke_element 返回明确结果",
+      "ok": true,
+      "code": "E_PATTERN_UNSUPPORTED",
+      "invoked": null
+    },
+    {
+      "id": "SUP-10b",
+      "purpose": "对 Pane 调 get_element_text 返回明确错误",
+      "ok": true,
+      "code": "E_PATTERN_UNSUPPORTED"
+    },
+    {
+      "id": "SUP-11",
+      "purpose": "get_log 可读",
+      "ok": true,
+      "entries": 8
+    },
+    {
+      "id": "SUP-12",
+      "purpose": "长文本输入后图片剪贴板仍在",
+      "ok": false,
+      "before": true,
+      "after": false
+    },
+    {
+      "id": "SUP-13",
+      "purpose": "双击进入文本编辑并写入成功",
+      "ok": true,
+      "saved": {
+        "ok": true,
+        "bytes": 40336
+      },
+      "found": true
+    },
+    {
+      "id": "SUP-99",
+      "purpose": "释放会话",
+      "ok": true,
+      "display_removed": true,
+      "forced": [
+        10560
+      ]
+    }
+  ],
+  "binary_sha256": "A90D33A19F74B0A61F6E5924EBBF20CD45CA0A9FE865EA41C7CA07267F7F3EB0"
+}

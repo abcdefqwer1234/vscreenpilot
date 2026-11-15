@@ -88,6 +88,12 @@ def main() -> int:
         report["flow_wall_ms"] = flow.get("wall_ms")
         report["flow_saved"] = (find(flow["cases"], "FL-00") or {}).get("ok")
 
+    extra = load("ppt-extra")
+    if extra:
+        failed = [c["id"] for c in extra["cases"] if not c.get("ok")]
+        report["known_defects"] = failed
+        report["extra_passed"] = f"{len(extra['cases']) - len(failed)}/{len(extra['cases'])}"
+
     deck = os.path.join(
         r"C:\Users\31746\Desktop\VScreenPilot\artifacts\ppt", "oracle.json")
     if os.path.exists(deck):

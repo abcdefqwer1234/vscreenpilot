@@ -1,31 +1,38 @@
-# VScreenPilot 实际测试报告（PPT 轮）
+# VScreenPilot 实际测试报告（PPT 轮，v2）
 
 > 测试对象：`artifacts/server7/VScreenPilot.exe`
 > SHA256：`A90D33A19F74B0A61F6E5924EBBF20CD45CA0A9FE865EA41C7CA07267F7F3EB0`
-> 基线提交：`2ef5334`（测试文档提交 `b2a5acc`）
+> 基线提交：`2ef5334`（测试文档提交 `b2a5acc`；补测提交见文末）
 > 测试日期：2026-11-15
-> 方式：OpenCode 内亲手调用（4 页 PPT）+ 8 个 Python 脚本 + 解包校验 + 与 run6 对比
+> 方式：OpenCode 内亲手调用（4 页 PPT）+ 10 个 Python 脚本 + 解包校验 + 补测 + 与 run6 对比
 > 相关：[07-静态审查](07-静态审查报告-PPT轮.md)、[08-测试计划](08-实际测试计划-PPT.md)、[10-改进建议](10-改进建议与路线图.md)
+
+**v2 修订记录（相对 v1）**：
+1. 错误数由“3 次”更正为“3 次工具错误 + 1 次客户端协议校验失败”。
+2. 截图延迟由“P95 45/66ms”更正为“单次 37–66ms”。
+3. 明确 oracle 的三个盲点，并把“11/11”从“质量合格”降级为“结构合格”。
+4. 新增补测：图片通道、视觉兜底、手势、工具正反例、剪贴板、双击、重开、1080p、未保存 release。
+5. 新增工具覆盖矩阵（19/20），新增 N7（`wait_for text` schema 与实现不一致）。
+6. 结论分数维持 60，但构成变化（感知上调、协议/隔离下调）。
 
 ---
 
 ## 0. 结论
 
 **产品结论**：
-- **“成熟 MCP 项目”仍不成立**：实测 60/100（静态 64 → 实测 60）。协议与可靠性扎实，但**图片通道在 OpenCode 中不可用**、感知层对画布型应用几乎为空、分发与 CI 仍是原型级。
-- **“OpenCode 调试 Windows 应用”有条件成立**：Word/Win32/UWP 的中等任务可以；PowerPoint 这类画布型应用**能做出成品，但路径昂贵且脆弱**——本轮 4 页 PPT 通过全部 11 项产物校验，代价是 **118 次工具调用、约 17 分钟、28 次截图（约 25 张人工判读）**。
+- **“成熟 MCP 项目”仍不成立**：实测 **60/100**。协议与生命周期扎实，但**图片通道在 OpenCode 中完全不可用**、画布型应用没有语义、分发与 CI 仍是原型级。
+- **“OpenCode 调试 Windows 应用”有条件成立**：Word/Win32/UWP 的中等任务可以；PowerPoint 这类画布型应用**能做出成品，但路径昂贵**——4 页 PPT 通过 11 项产物校验，代价是 **118 次工具调用、约 17 分钟、28 次截图**。
 
-**最重要的三个实测发现**：
-1. **P0：MCP 图片内容不是合法 base64**。`capture_screen`/`snapshot` 的内联图在 OpenCode 侧报 `Invalid Base64 string`；原始 stdout 里 `data` 字段是**原始二进制**（第 2 个字符即 U+FFFD，PNG 头），不是 base64。所有截图必须走 `save_path` + 读文件，核心的“一次调用完成观察”被破坏。
-2. **P0（场景级）：PowerPoint 的 UIA 树只有外壳**。`snapshot` 只有 15–22 个节点，全是 `MsoDockTop/MsoDockRight/工作区` 容器；功能区无按钮、画布无文本。静态审查的 S4 被 15/15 次实测确认。
-3. **P1：坐标点击在布局变化后失效**。脚本流程 12 步里有 2 步 `E_INPUT_UNSUPPORTED`；手工场景里也出现“表格插到标题上”“布局选成竖排”等需要截图才能发现的误操作。
+**补测后新增的三个硬事实**：
+1. **`snapshot{include_screenshot:true}` 在 OpenCode 里整条结果被丢弃**（不是“少一张图”，是 tree + text 全拿不到）。
+2. **`wait_for{type:"text"}` 是 schema 里的合法条件，但实现直接抛 `E_INVALID_ARG`**——工具契约说谎。
+3. **长文本输入会清空用户的图片剪贴板**（补测：`before=true, after=false`），从“代码推断”升级为“实测确认”。
 
-**亮点**（实测确认）：
-- 虚拟屏隔离稳定：整轮未干扰主屏；`get_environment` 挂载 465ms、release 干净。
-- 截图性能优秀：全屏 37–66ms，区域 45ms，soak 40 轮无错误。
-- 长文本输入快：1530 字 181ms，15000 字 875ms（剪贴板通道），文本剪贴板可还原。
-- 对话框语义可用：字体面板 36 节点、插入图片 43 节点、插入表格 16 节点，全部可 `set_element_value`/`click_ref` 操作。
-- 只读观察确实不排写锁：长输入期间 8 次 snapshot 全部成功（虽然被 UIA 锁拖慢）。
+**补测后确认的正面能力**：
+- 视觉兜底可用：`match_visual` 的 pixel/color/template 全部命中，`assert_region` 能检测输入变化，`wait_for color` 立即满足。
+- `gesture` 拖拽图片成功（区域变化 11.7%）。
+- 双击（窗口消息）确实能进入文本编辑，写入内容能在 pptx XML 里找到。
+- 关闭后重开无修复提示；1080p 下 8/8 点击成功。
 
 ---
 
@@ -35,73 +42,74 @@
 | --- | --- |
 | OS | Windows 10.0.26300 x64 |
 | 主屏 | 1920×1440 @168dpi（175%） |
-| 虚拟屏 | `\\.\DISPLAY9` 1280×720 @96dpi @(1920,0) |
-| PowerPoint | 16.0.20527.20196（中文 UI，已登录校园账号） |
+| 虚拟屏（主测） | `\\.\DISPLAY9` 1280×720 @96dpi @(1920,0) |
+| 虚拟屏（对照） | 1920×1080 @96dpi @(1920,0) |
+| PowerPoint | 16.0.20527.20196（中文 UI，已登录） |
 | 服务端 | 单文件 R2R，100,158,798 字节 |
 | 构建 | 0 警告 / 0 错误 |
 | 单测 | 31/31 |
 | 协议协商 | 请求 2025-11-25 → 2025-11-25 |
 
-> 测试期间发现：PowerPoint 首次运行会弹 **OfficePLUS / AI 助手（Chromium 浮层）** 覆盖幻灯片。它属于第三方加载项，不是 PowerPoint 主窗口，`snapshot.dialogs` 看不到它；只能用 `channel=input` 点掉。这条对“Office 自动化”是常见坑，已记入改进建议。
+> PowerPoint 首次运行会弹 **OfficePLUS / AI 助手（Chromium 浮层）** 覆盖画布。它不是 PowerPoint 主窗口，`snapshot.dialogs` 看不到；`click auto` 会报 `E_INPUT_UNSUPPORTED`，只能用 `channel=input` 点掉。
 
 ---
 
-## 2. 回归结果（P1）
+## 2. 回归结果
 
-| 套件 | 结果 | 说明 |
-| --- | --- | --- |
-| 单元测试 | **31/31** | 与 run6 一致 |
-| 协议/安全 | **30/30** | `--fuzz 100`；含崩溃自愈、EOF 清理 |
-| 契约 | **10/10** | 20 工具 schema、ref 代际、save_path、资源分页 |
-| 并发 | **5/5** | 只读不阻塞、E_BUSY、release 后恢复 |
+| 套件 | 结果 |
+| --- | --- |
+| 单元测试 | **31/31** |
+| 协议/安全 | **30/30**（含 `--fuzz 100`） |
+| 契约 | **10/10** |
+| 并发 | **5/5** |
 
-四个 summary 都写入同一 `binary_sha256`，与 run6 的做法一致。
+四组 summary 均写入同一 `binary_sha256`。
 
 ---
 
 ## 3. OpenCode 内 PPT 场景
 
-### 3.1 硬数据（来自服务端 JSONL trace）
+### 3.1 硬数据（服务端 JSONL trace）
 
 | 指标 | 值 |
 | --- | --- |
 | 工具调用 | **118** 次 |
-| 其中 | `press_keys` 32、`capture_screen` 28、`click` 16、`snapshot` 13、`type_text` 9、`set_element_value` 9、`click_ref` 6 |
-| 错误 | 3 次（`E_INPUT_UNSUPPORTED` / `E_DESTRUCTIVE_REQUIRED` / `E_PATTERN_UNSUPPORTED`） |
+| 分布 | `press_keys` 32、`capture_screen` 28、`click` 16、`snapshot` 13、`type_text` 9、`set_element_value` 9、`click_ref` 6、其余 5 |
+| 工具错误 | 3 次（`E_INPUT_UNSUPPORTED` / `E_DESTRUCTIVE_REQUIRED` / `E_PATTERN_UNSUPPORTED`） |
+| 客户端协议失败 | **1 次**（图片 base64 非法，整条结果被丢弃） |
 | 服务端总耗时 | **31.79s** |
-| 返回文本 | 89.6KB |
-| 返回图片 | 37.4KB（含 1 次被客户端判为非法 base64） |
-| 端到端墙钟 | ≈ **17 分钟**（13:44 → 14:01） |
+| 返回文本 / 图片 | 89.6KB / 37.4KB |
+| 端到端墙钟 | ≈ **17 分钟** |
 
-> 服务端只花了 32 秒；其余时间在模型推理、看截图、纠错。**MCP 的延迟不是瓶颈，迭代次数才是**。
+> 服务端 32 秒完成全部动作；其余时间是模型在截图里找坐标、确认结果。**瓶颈是迭代次数，不是延迟。**
 
 ### 3.2 逐步记录
 
-| 步骤 | 做法 | 结果 | 证据 |
-| --- | --- | --- | --- |
-| S1 启动 | `get_environment` + `launch_or_place_app` | 挂载 465ms；启动 4.4s；`document_ready:true` 但停在开始屏幕（**S3 实证**）；`snapshot` 暴露账号邮箱（隐私） | `probe-start.png` |
-| S1b 新建 | `Ctrl+N`（失败）→ 点“空白演示文稿”磁贴（成功） | 工具没有“新建文档”能力，只能靠坐标 | 同上 |
-| S1c 浮层 | OfficePLUS AI 助手覆盖画布 | `click auto` → `E_INPUT_UNSUPPORTED`（Chromium）；改 `channel=input` 才关掉 | 调用记录 |
-| S2 观察 | `snapshot{max_depth:4}` | **22 节点**，只有 Dock 容器；无功能区按钮、无“单击此处添加标题”（**S4 实证**） | `snapshot s1` |
-| S3 标题页 | 坐标点击 + `type_text` | 文字进入成功；`verified:false`（画布无 TextPattern） | `s1-title.png` |
-| S3b 字号 | 双击 + Ctrl+A + 字体面板 | 两次误操作（标题变 24pt、标题+副标题同时加粗）；最终用字体对话框精确设为 40/20 | `s1-done.png` |
-| S4 要点页 | `Ctrl+M` + `Alt+H,L,...` | 布局画廊按键落点偏，先选成“竖排标题与文本”，后两张截图才纠正 | `s3-layout.png` |
-| S5 图片 | `Alt+N,P,1,D` → 插入图片对话框 | 对话框 43 节点，`set_element_value` 一次成功；**首图 1280×720 插入后超出画布**，重新生成 640×360 才放得下 | `s3-image2.png` |
-| S6 表格 | `Alt+N,T,I` → 插入表格对话框 | 列/行输入成功；表格默认落在标题上，需按 25 次方向键下移；第三行内容漏填，补 Tab 后补齐 | `s4-moved.png` |
-| S7 保存 | F12 → 另存为 | 对话框 34 节点；文件名 `set_element_value` 一次成功；无“保留格式”弹窗 | `slides/04.png` |
-| S8 验收 | oracle | **11/11** | `artifacts/ppt/oracle-deliverable.json` |
-| S9 收尾 | `release_environment{keep_display:false}` | `closed_pids/forced_pids` 含 PPT；屏已摘 | trace |
+| 步骤 | 做法 | 结果 |
+| --- | --- | --- |
+| S1 启动 | `get_environment` + `launch_or_place_app` | 465ms 挂屏；4.4s 启动；`document_ready:true` 但停在开始屏幕（**S3**）；快照文本含账号邮箱 |
+| S1b 新建 | `Ctrl+N` 失败 → 点“空白演示文稿”磁贴 | 工具没有“新建文档”能力，只能坐标点击 |
+| S1c 浮层 | OfficePLUS AI 助手 | `click auto` → `E_INPUT_UNSUPPORTED`；`channel=input` 才关掉 |
+| S2 观察 | `snapshot{max_depth:4}` | **22 节点**，全是 Dock 容器；无功能区按钮、无画布文本（**S4**） |
+| S3 标题页 | 坐标点击 + `type_text` | 文字进入；`verified:false` |
+| S3b 字号 | 双击 + Ctrl+A + 字体面板 | 两次误操作；最终用字体对话框精确设 40/20 |
+| S4 要点页 | `Ctrl+M` + 布局画廊 | 先选成竖排布局，两张截图后才纠正；二级缩进落错行 |
+| S5 图片 | `Alt+N,P,1,D` → 对话框 | 43 节点，`set_element_value` 一次成功；首图 1280×720 超界，改 640×360 |
+| S6 表格 | `Alt+N,T,I` → 对话框 | 3×4 成功；默认压住标题，按 25 次方向键下移；第三行漏填后补 Tab |
+| S7 保存 | F12 → 另存为 | 34 节点，文件名一次成功；无“保留格式”弹窗 |
+| S8 验收 | oracle | 11/11（但见 §4 的局限） |
+| S9 收尾 | release | 干净；`forced_pids` 含 PPT |
 
-### 3.3 使用体验（主观，0–5）
+### 3.3 使用体验（0–5）
 
 | 维度 | 分数 | 说明 |
 | --- | --- | --- |
-| schema 自解释 | 4 | 参数好写；`channel` 语义清楚 |
-| 错误可自纠 | 3 | 三次错误都给了下一步（`allow_keyboard`/`channel=input`），但都要多一次往返 |
-| 返回成本 | 2 | 图片必须落盘再读；每次观察 ≈ 1 次 capture + 1 次文件读 |
-| 动作可验证 | 1 | 点击/按键一律 `verified:false`；只能截图看 |
-| 降级路径 | 3 | `message→input` 明确；但 Chromium 浮层没有 CDP |
-| 文档一致 | 2 | `document_ready` 说谎；`readOnlyHint` 与副作用不符 |
+| schema 自解释 | 4 | 参数好写；`channel` 清晰 |
+| 错误可自纠 | 3 | 三次错误都给了下一步，但每次多一轮 |
+| 返回成本 | 2 | 图片必须落盘再读；`snapshot` 带图直接失败 |
+| 动作可验证 | 1 | 点击/按键一律 `verified:false`，只能截图 |
+| 降级路径 | 3 | `message→input` 明确；Chromium 浮层无 CDP |
+| 文档一致 | 2 | `document_ready` 说谎；`wait_for text` 说谎；`readOnlyHint` 不符 |
 
 ---
 
@@ -111,172 +119,195 @@
 
 | 检查 | 结果 |
 | --- | --- |
-| 页数 = 4 | ✅ |
-| 16:9 画布 | ✅ 12192000×6858000 |
-| 至少 1 张图 | ✅ 1 张（640×360 源） |
-| 表格 3×4 | ✅ |
-| 12 个单元格均有内容 | ✅ |
-| 关键文本齐全 | ✅ |
-| 元素不越界 | ✅ |
-| 无“单击此处”残留 | ✅ |
-| 标题/正文不重叠 | ✅ |
-| 最大字号 ≥ 32 | ✅ 40pt |
+| 页数 4 / 16:9 | ✅ |
+| 至少 1 张图 | ✅ |
+| 表格 3×4、12 格有内容 | ✅ |
+| 关键文本、无占位提示 | ✅ |
+| 元素不越界、标题不重叠 | ✅ |
+| 最大字号 ≥ 32 | ✅（显式 40pt） |
 
-**视觉复核**（`artifacts/ppt/slides/01..04.png`）：
-- P1 标题页：44pt 标题 + 20pt 副标题，居中，留白合理。
-- P2 要点页：4 条要点，其中 1 条二级缩进；加粗在语义层不可确认（截图差异不明显）。
-- P3 图文页：标题 + 居中截图，边距正常；图片偏小（约占画布 50%）。
-- P4 表格页：标题 + 3×4 表格，表头深色底纹；表格宽度只占画布 60%。
+**oracle 的三个盲点（必须说明）**：
+1. **字号只统计显式 `a:rPr@sz`**，继承自版式的字号看不到——所以只报出 40/20 两个值，而视觉上 P2 标题明显更小。
+2. **重叠检查只比较 `p:sp`**，表格/图片（`graphicFrame`）压住标题检测不到（本轮确实发生过，是人工挪开的）。
+3. **没有“关闭后重开”的验证**（补测已单独做，见 §5.8）。
 
-**质量评价**：结构合格、可读、无越界；但排版是“能看”级别，谈不上设计感——这是坐标+键盘路径的必然结果。
+**视觉复核**：P1 标题页 44/20pt、居中；P2 四条要点、一条二级；P3 标题+居中截图（约占画布 50%）；P4 标题+3×4 表格（约占 60% 宽）。
+**结论**：结构合格、可读、无越界；**排版是“能看”级别**；“各种格式”只做到字号/缩进/表格样式，**没有颜色、形状、对齐变化**，这部分要求只能算部分满足。
 
 ---
 
 ## 5. 性能与稳定性（脚本）
 
-### 5.1 快照（`ppt-snapshot`）
+### 5.1 快照
 
-| 用例 | 节点 | 文本 | P50 / P95 | 画布文本命中 |
+| 用例 | 节点 | 文本 | P50/P95 | 画布文本命中 |
 | --- | --- | --- | --- | --- |
-| PPT interactive_only=true d4/n300 | 15 | 2.8KB | 37.2 / 48.0ms | **0/15** |
-| PPT interactive_only=false d4/n300 | 22 | 4.0KB | 37.6 / 44.5ms | **0/15** |
-| PPT d2/n100 | 8 | 1.8KB | 23.8 / 30.5ms | 0/10 |
-| PPT d6/n1024 | 22 | 4.2KB | 44.4 / 50.5ms | 0/10 |
-| 记事本 d4/n300（基线） | 31 | 5.7KB | 67.8 / 87.0ms | — |
+| PPT `interactive_only=true` d4/n300 | 15 | 2.8KB | 37.2/48.0ms | **0/15** |
+| PPT `interactive_only=false` d4/n300 | 22 | 4.0KB | 37.6/44.5ms | **0/15** |
+| PPT d2/n100 | 8 | 1.8KB | 23.8/30.5ms | 0/10 |
+| PPT d6/n1024 | 22 | 4.2KB | 44.4/50.5ms | 0/10 |
+| 记事本 d4/n300 | 31 | 5.7KB | 67.8/87.0ms | — |
 
-结论：**PPT 的树不是“太大”，而是“几乎为空”**；`max_depth/max_nodes` 调大没有帮助。`interactive_only=false` 只多 7 个节点。
-
-### 5.2 点击（`ppt-click`）
+### 5.2 点击
 
 | 通道 | 成功 | 实际落点 | P95 |
 | --- | --- | --- | --- |
-| auto | 8/8 | uia 2 / message 6 | **412ms** |
-| message | 8/8 | message 8 | 143ms |
-| input | 8/8 | input 8 | 205ms |
-| 双击（message） | 5/5 | message | 59–144ms |
+| auto | 8/8 | uia 2 / message 6 | **412ms**（超 300ms 目标） |
+| message | 8/8 | message | 143ms |
+| input | 8/8 | input | 205ms |
+| 双击 | 5/5 | message | 59–144ms |
 
-auto 的 P95 超了 300ms 目标：它在 UIA 探测失败后才退消息，多花 200–300ms。
-
-### 5.3 输入（`ppt-input`）
+### 5.3 输入
 
 | 字数 | auto | clipboard | keys |
 | --- | --- | --- | --- |
 | 17 | 241ms | 108ms | 226ms |
 | 186 | 517ms | **131ms** | 523ms |
-| 1530 | 182ms（自动转剪贴板） | 181ms | 1551ms |
-| 15000 | 876ms | 865ms | 未测（预计 60s+） |
+| 1530 | 182ms | 181ms | 1551ms |
+| 15000 | 876ms | 865ms | 未测 |
 
-文本剪贴板在长输入后**已还原**（`SENTINEL-VSP-CLIP`）。非文本内容未实测（代码路径确认只保存文本，见 10 报告）。
+文本剪贴板可还原；**图片剪贴板会被清空**（见 §5.8）。
 
-### 5.4 并发（`ppt-concurrency`）
+### 5.4 并发
 
-- 18000 字输入期间，8 次 `snapshot` 全部成功，P50 210ms、**P95 2382ms**、最大 2382ms。
-- 其中一次 snapshot 只返回 **1 个节点**（`nodes:1`），没有错误码——调用方无法区分“应用没控件”和“UIA 忙”。
-- 并发 release 正常返回并摘屏；随后 `ensure` 重建成功。
+18000 字输入期间 8 次 `snapshot` 全部成功，P50 210ms、**P95 2382ms**；其中一次只返回 **1 个节点**，无错误码。并发 release 正常摘屏，会话可重建。
 
-### 5.5 Soak（`ppt-soak`，40 轮）
+### 5.5 Soak（40 轮）
 
-| 指标 | 结果 |
-| --- | --- |
-| 错误 | 0 |
-| snapshot P50/P95 | 165 / 182ms |
-| RSS | 74.1 → 94.9MB（+20.7） |
-| 句柄 | 528 → 540（+12） |
+0 错误；snapshot P50/P95 = 165/182ms；RSS 74.1→94.9MB（+20.7）；句柄 528→540（+12）。
 
-### 5.6 恢复（`ppt-recovery`）
+### 5.6 恢复
 
-| 用例 | 结果 |
-| --- | --- |
-| 强杀后 `snapshot` | ✅ `E_NO_TARGET` |
-| 强杀后 `type_text` | ✅ `E_NO_TARGET` |
-| 重新启动并进入演示文稿 | ❌ 启动成功但停在开始屏幕（磁贴点击未生效） |
-| 会话内应用列表 | ❌ 旧 pid 仍以 `alive:false` 留在 `apps[]` |
+强杀后错误码正确（`E_NO_TARGET`），但**重启后停在开始屏幕**（磁贴点击未生效），且 `apps[]` 残留死进程（1 死 1 活）。
 
-### 5.7 可复现流程（`ppt-flow`）
+### 5.7 可复现流程
 
-18.2 秒完成“启动→标题→新建页→版式→要点→另存为”，逐步耗时：
-launch 4.2s、layout 0.9s、type 0.2–0.5s、save-dialog 0.3s、save-filename 0.8s。
-**12 步里 2 步坐标点击 `E_INPUT_UNSUPPORTED`**（版式切换后落点失效）。
+18.2s 完成“启动→标题→新建页→版式→要点→另存为”；**12 步里 2 步坐标点击 `E_INPUT_UNSUPPORTED`**。
+
+### 5.8 补充测试（v2 新增）
+
+| 用例 | 结果 | 关键数据 |
+| --- | --- | --- |
+| SUP-01 `capture_screen` 内联 base64 | ❌ | 1085 字符，`b64decode(validate=True)` → `ValueError` |
+| SUP-02 `snapshot{include_screenshot}` base64 | ❌ | 62,733 字符，同样失败 |
+| SUP-03 模板匹配找回自身 | ✅ | 命中 |
+| SUP-04 像素/颜色匹配 | ✅ | 颜色命中 |
+| SUP-05 `assert_region` 检测输入变化 | ✅ | passed=true |
+| SUP-06 `wait_for{type:"text"}` | ❌ | `E_INVALID_ARG 未知 wait_for 条件类型: text` |
+| SUP-07 `wait_for{type:"color"}` | ✅ | 立即满足 |
+| SUP-08 `wait_for{type:"element"}`（PPT） | ✅ | 超时后 `satisfied:false`，不崩 |
+| SUP-09 `gesture` 拖拽图片 | ✅ | 区域变化 11.7% |
+| SUP-10 `invoke_element`/`get_element_text`（Pane） | ✅ | `E_PATTERN_UNSUPPORTED`，错误清晰 |
+| SUP-11 `get_log` | ✅ | 可读 |
+| SUP-12 图片剪贴板 | ❌ | before=true, after=false（**内容被清空**） |
+| SUP-13 双击→输入→另存→XML | ✅ | “双击验证”命中，40,340 字节 |
+| SUP-14 关闭后重开 | ✅ | 标题正确；`dialogs` 只报“继续阅读”+4 个空窗口 |
+| RES 1920×1080 | ✅ 6/6 | 快照 P50 154/P95 224ms（比 720p 慢约 4 倍）；点击 8/8 |
+| UNS 未保存 release | ✅ | 进程被强杀，无保存对话框 |
+
+> 补充套件 13/17 通过；4 个失败全部是**已确认的产品缺陷**（2 个 base64、1 个 `wait_for text`、1 个剪贴板），不是脚本问题。
+
+### 5.9 工具覆盖矩阵（20 个）
+
+| 工具 | 覆盖 | 结论 |
+| --- | --- | --- |
+| `get_environment` | ✅ | 正常；`ensure` 副作用与 `readOnlyHint` 不符 |
+| `launch_or_place_app` | ✅ | 启动可用；PPT 就绪误报 |
+| `snapshot` | ✅ | 结构可用；带图整条失败；空快照无解释 |
+| `capture_screen` | ✅ | 快、稳；内联图不可用 |
+| `find_element` | ✅ | PPT 上找不到画布/功能区（负例） |
+| `get_ui_tree` | ✅ | 同 snapshot |
+| `invoke_element` | ✅ | Pane 上明确报错（负例） |
+| `set_element_value` | ✅ | 对话框字段可用；覆盖需 `allow_destructive` |
+| `get_element_text` | ✅ | Pane 上明确报错（负例） |
+| `click` | ✅ | 通道可用；坐标脆弱 |
+| `click_ref` | ✅ | 对话框按钮可用 |
+| `gesture` | ✅ | 拖拽成功 |
+| `type_text` | ✅ | 中文/长文本可用 |
+| `press_keys` | ✅ | 主力；无验证 |
+| `wait_for` | ✅ | color/visual/element 可用；**text 不可用** |
+| `assert_region` | ✅ | 可用 |
+| `match_visual` | ✅ | pixel/color/template 可用 |
+| `release_environment` | ✅ | 默认强杀 |
+| `get_log` | ✅ | 可用 |
+| `run_script` | ⛔ | 设计上默认关闭，未测 |
+
+**未覆盖**：HTTP 传输（不存在）、多 profile 并行（被 S1 阻断）、CDP/OCR（不存在）、锁屏/UAC、4K、输入法候选框。
 
 ---
 
-## 6. 实测确认的缺陷
-
-> 编号沿用 07 的 S1–S22；新发现用 N1–N6。
+## 6. 问题清单（实测确认）
 
 ### P0
 
 | ID | 问题 | 证据 | 影响 |
 | --- | --- | --- | --- |
-| **N1** | **内联图片不是合法 base64** | OpenCode 报 `Invalid Base64 string`；原始 stdout 的 `data` 从第 2 字符起就是 U+FFFD + PNG 头 | 所有内联截图不可用；必须 `save_path` 落盘再读，观察成本翻倍 |
-| **N2** | **PowerPoint 语义树为空壳**（S4 确认） | 15–22 节点，全是 Dock 容器；`interactive_only` 开关无效 | 只能坐标/键盘操作；无法验证动作；无法不靠截图定位 |
+| **N1** | 内联图片不是合法 base64 | OpenCode：`Invalid Base64 string`；补测：1085/62733 字符均无法严格解码 | `snapshot{include_screenshot}` **整条结果被丢弃**；截图必须落盘再读 |
+| **N2** | PowerPoint 语义树为空壳 | 15–22 节点，全是 Dock；画布 0/15 | 只能坐标/键盘；无法验证动作 |
 
 ### P1
 
-| ID | 问题 | 实测 |
+| ID | 问题 | 证据 |
 | --- | --- | --- |
-| S1 | 非默认 profile 挂载失败 | 5.70s 后 `E_DISPLAY_MODE`；`VSP_DISPLAY_OFFSET=0` 时 465ms 成功 |
-| S3 | `document_ready` 恒 true | 开始屏幕也返回 true；重启后新建失败 |
-| S5 | 超时不取消 handler | 未触发（本机无卡死 provider），代码路径仍成立 |
-| S6 | release 默认 `force` 杀进程 | `forced_pids:[11108]`；已保存故无损失 |
-| S7 | 剪贴板只还原文本 | 文本还原成功；非文本未实测 |
-| S15 | 动作无后置验证 | 118 次调用里 28 次截图，几乎全部用于“看有没有生效” |
-| **N3** | **坐标点击在布局变化后失效** | flow 12 步 2 次 `E_INPUT_UNSUPPORTED`；手工场景误选竖排布局 |
-| **N4** | **snapshot 在 UIA 忙时静默返回 1 节点** | 并发用例；无 `truncated`/`reason` |
+| **N7** | `wait_for{type:"text"}` schema 声明但实现拒绝 | `E_INVALID_ARG 未知 wait_for 条件类型: text`；`EvaluateCondition` 无 `text` 分支 |
+| S1 | 非默认 profile 挂载失败 | 5.70s → `E_DISPLAY_MODE`；`VSP_DISPLAY_OFFSET=0` 时 465ms |
+| S3 | `document_ready` 恒 true | 开始屏幕也 true；重启后新建失败 |
+| S6 | release 默认强杀 | 未保存内容 + `force`：进程被杀，无保存框 |
+| S7 | 图片剪贴板被清空 | before=true → after=false |
+| S15 | 动作无后置验证 | 118 次调用、28 次截图，多为“看有没有生效” |
+| N3 | 布局变化后坐标点击失效 | flow 12 步 2 次 `E_INPUT_UNSUPPORTED` |
+| N4 | UIA 忙时静默返回 1 节点 | 并发用例；无原因字段 |
 
 ### P2
 
-| ID | 问题 | 实测 |
-| --- | --- | --- |
-| N5 | `apps[]` 不清理已死进程 | 恢复用例返回 2 条（1 死 1 活） |
-| N6 | `snapshot.dialogs` 与 root 不一致 | 字体/另存为对话框作为 root，但 `dialogs` 为空 |
-| S2 | `readOnlyHint` 与副作用不符 | 未造成事故，但客户端自动批准语义错误 |
-| S9 | 5 条死错误码 + 锚点缺失 | 未变 |
-| S12 | 核心无单测 | 本轮新增 9 个脚本，仍未进 CI |
-| S11 | 分发不实 | 未变 |
-| S13 | 脚本黑名单可绕过 | 未变（本轮未启用） |
-| S17 | 文档口径漂移 | 未变 |
-| — | OfficePLUS 浮层不可见/不可点 | 只能 `channel=input`；`snapshot.dialogs` 无记录 |
-| — | 账号邮箱出现在 snapshot | 开始屏幕的 Button 名称含 `8207221809@csu.edu.cn` |
+| ID | 问题 |
+| --- | --- |
+| S2 | `readOnlyHint` 与副作用不符 |
+| S5 | 超时不取消 handler（未触发，代码路径成立） |
+| N5 | `apps[]` 不清理死进程 |
+| N6 | `snapshot.dialogs` 与 root 不一致；“继续阅读”等空窗口误报 |
+| S9 | 5 条死错误码 + 文档锚点缺失 |
+| S12 | 核心类无单测；PPT 套件未进 CI |
+| S11 | 分发声明不实（winget 占位、无 Release/Registry） |
+| S13 | 脚本黑名单可绕过 |
+| S17 | 文档口径漂移 |
+| — | 账号邮箱出现在快照 |
+| — | OfficePLUS 浮层不可见/不可点 |
 
 ---
 
 ## 7. 成熟度复评
 
-| 维度 | 权重 | 静态 | 实测 | 变化原因 |
-| --- | --- | --- | --- | --- |
-| MCP 协议与契约 | 15 | 12.5 | **11.5** | N1 图片不符合 MCP 的 base64 要求 |
-| 语义感知广度 | 15 | 7.0 | **5.5** | S4 确认；无 OCR/标注/画布语义 |
-| 输入保真与兼容 | 15 | 9.0 | **8.5** | 吞吐好，但坐标脆弱、无验证 |
-| 隔离与安全 | 10 | 9.0 | **8.5** | 隔离稳定；release 强杀、邮箱泄露 |
-| 可靠性与生命周期 | 10 | 7.5 | **7.0** | 重启建文档失败、死进程残留 |
-| 可观测性 | 8 | 6.0 | **6.0** | trace/request_id 实测有效 |
-| 测试工程 | 10 | 5.0 | **5.5** | 新增 PPT 套件，但未进 CI |
-| 分发与生态 | 8 | 2.0 | **2.0** | 未变 |
-| 文档与治理 | 5 | 2.5 | **2.5** | 未变 |
-| 性能 | 4 | 3.0 | **3.0** | 截图/输入/快照均达标 |
-| **合计** | 100 | 63.5 | **60.0** | |
+| 维度 | 权重 | 静态 | v1 | v2 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| MCP 协议与契约 | 15 | 12.5 | 11.5 | **11.0** | N1 + N7 |
+| 语义感知广度 | 15 | 7.0 | 5.5 | **6.0** | 视觉兜底实测可用，但画布语义仍缺 |
+| 输入保真与兼容 | 15 | 9.0 | 8.5 | **8.5** | 拖拽可用；坐标仍脆弱 |
+| 隔离与安全 | 10 | 9.0 | 8.5 | **8.0** | 剪贴板数据丢失确认 |
+| 可靠性与生命周期 | 10 | 7.5 | 7.0 | **7.0** | 未变 |
+| 可观测性 | 8 | 6.0 | 6.0 | **6.0** | 未变 |
+| 测试工程 | 10 | 5.0 | 5.5 | **6.0** | 19/20 工具覆盖；仍无 CI 门槛 |
+| 分发与生态 | 8 | 2.0 | 2.0 | **2.0** | 未变 |
+| 文档与治理 | 5 | 2.5 | 2.5 | **2.5** | 未变 |
+| 性能 | 4 | 3.0 | 3.0 | **3.0** | 1080p 慢 4 倍但可接受 |
+| **合计** | 100 | 63.5 | 60.0 | **60.0** | 正负相抵 |
 
 ---
 
-## 8. 与 run6（Word 轮）对比
+## 8. 与 run6（Word）对比
 
-| 指标 | run6（Word） | 本轮（PPT） | 变化 |
+| 指标 | run6 | 本轮 v2 | 变化 |
 | --- | --- | --- | --- |
-| 协议 | 30/30 | 30/30 | 持平 |
-| 契约 | 10/10 | 10/10 | 持平 |
-| 并发 | 5/5 | 5/5 | 持平 |
+| 协议/契约/并发 | 30/10/5 | 30/10/5 | 持平 |
 | 单测 | 31/31 | 31/31 | 持平 |
-| 截图 P95 | 25/58ms | 45/66ms | 持平（PPT 窗口更复杂） |
-| 新场景产物 | Word 文档 | PPT 4 页，11/11 | **新增覆盖** |
-| 动作验证 | 有 `observed`（click_ref） | 仍需截图 | 未改善 |
-| 内联图片 | 未覆盖 | **不可用** | **新暴露 P0** |
-| 画布类应用 | 未覆盖 | **语义为空** | **新暴露 P0** |
-| 多 profile | 未实测 | **挂载失败** | 新暴露 P1 |
-| 重启建文档 | Word 有 `Ctrl+N` 处理 | PPT 无 | 新暴露 P1 |
-
-**进步**：协议/并发/截图/生命周期在更强压力下仍然稳定；`request_id`、错误目录、`E_BUSY` 行为都按设计工作；PPT 产物质量达标。
-**仍缺陷**：感知广度、动作验证、分发、核心单测；本轮又暴露了图片通道和画布语义两个硬缺口。
+| 新场景产物 | Word | PPT 4 页，11/11 | 新增 |
+| 工具覆盖 | 未统计 | **19/20** | 新增证据 |
+| 动作验证 | `click_ref` 有 observed | 仍缺 | 未改善 |
+| 内联图片 | 未覆盖 | **不可用** | 新 P0 |
+| 画布应用 | 未覆盖 | 语义为空 | 新 P0 |
+| 视觉兜底 | 未覆盖 | **可用** | 新正面证据 |
+| 多 profile | 未实测 | 挂载失败 | 新 P1 |
+| 重启建文档 | Word 有处理 | PPT 无 | 新 P1 |
 
 ---
 
@@ -284,7 +315,7 @@ launch 4.2s、layout 0.9s、type 0.2–0.5s、save-dialog 0.3s、save-filename 0
 
 ### 9.1 是否成熟 MCP 项目
 
-**否**。判据（08 §1.2）：加权 ≥ 80，且分发/测试/文档 ≥ 70%。当前 60 分，分发 20%、测试 55%、文档 50%。
+**否**（60/100；分发 20%、测试 60%、文档 50%）。
 
 ### 9.2 是否足以让 OpenCode 调试 Windows 应用
 
@@ -292,13 +323,13 @@ launch 4.2s、layout 0.9s、type 0.2–0.5s、save-dialog 0.3s、save-filename 0
 
 | 场景 | 判定 |
 | --- | --- |
-| Win32/WinForms/WPF/记事本 | ✅ 可用 |
-| Word（含对话框） | ✅ 可用（run6 + 本轮回归） |
-| UWP | ✅ 可用（run6） |
-| PowerPoint / 画布型 | ⚠️ **可做出成品，但不适合无人值守**：118 次调用、28 次截图、3 次错误、2 次布局误操作 |
-| Chromium/Electron/WebView2 | ❌ 仍阻断（无 CDP；浮层只能 input） |
+| Win32/WinForms/WPF/记事本 | ✅ |
+| Word（含对话框） | ✅ |
+| UWP | ✅ |
+| PowerPoint / 画布型 | ⚠️ 能出成品，不适合无人值守；有 `match_visual`/`assert_region`/OCR 潜力 |
+| Chromium/Electron/WebView2 | ❌ 仍阻断 |
 
-**关键瓶颈不是速度，而是“看不见”**：服务端 32 秒完成全部动作，17 分钟里大部分是模型在截图里找坐标、确认结果。要把 PPT 变成“可靠可自动化”，必须先补**画布语义（OCR 或标注截图）**和**动作后置验证**。
+**补测修正了一个判断**：画布型应用并非“完全无路可走”——模板/颜色/区域断言/拖拽都实测可用，缺的是**文本定位**（`wait_for text` 不可用、无 OCR）和**动作后置验证**。
 
 ---
 
@@ -306,15 +337,10 @@ launch 4.2s、layout 0.9s、type 0.2–0.5s、save-dialog 0.3s、save-filename 0
 
 | 文件 | 内容 |
 | --- | --- |
-| `tools/audit/results/ppt-run/{protocol,contract,concurrency}/summary.json` | 回归（30/10/5） |
-| `tools/audit/results/ppt-run/ppt-snapshot/summary.json` | 快照矩阵 + 树文本样本 |
-| `tools/audit/results/ppt-run/ppt-click/summary.json` | 通道矩阵 |
-| `tools/audit/results/ppt-run/ppt-input/summary.json` | 输入表 + 剪贴板还原 |
-| `tools/audit/results/ppt-run/ppt-concurrency/summary.json` | 并发读延迟、1 节点快照 |
-| `tools/audit/results/ppt-run/ppt-soak/summary.json` | 40 轮采样 |
-| `tools/audit/results/ppt-run/ppt-recovery/summary.json` | 4/6 的两条失败证据 |
-| `tools/audit/results/ppt-run/ppt-flow/summary.json` | 逐步耗时、2 次点击失败 |
-| `artifacts/ppt/VScreenPilot-PPT-测评.pptx` | 被测产物 |
-| `artifacts/ppt/oracle-deliverable.json` | 11/11 |
-| `artifacts/ppt/slides/01..04.png` | 逐页截图 |
-| `artifacts/ppt/probe-start.png`、`s1-*.png`、`s3-*.png`、`s4-*.png` | 过程证据 |
+| `tools/audit/results/ppt-run/{protocol,contract,concurrency}/summary.json` | 回归 |
+| `.../ppt-snapshot`、`ppt-click`、`ppt-input`、`ppt-concurrency`、`ppt-soak`、`ppt-recovery`、`ppt-flow` 的 `summary.json` | 主测 |
+| `.../ppt-extra/summary.json` | 补测 17 项（13 通过，4 个缺陷） |
+| `.../ppt-resolution/summary.json` | 1080p 对照 |
+| `.../ppt-unsaved/summary.json` | 未保存 release |
+| `artifacts/ppt/VScreenPilot-PPT-测评.pptx`、`oracle-deliverable.json` | 产物与 11/11 |
+| `artifacts/ppt/slides/01..04.png`、`probe-start.png`、`s1-*.png`、`s3-*.png`、`s4-*.png` | 视觉证据 |

@@ -1,0 +1,43 @@
+{
+  "suite": "ppt-unsaved",
+  "cases": [
+    {
+      "id": "UNS-00",
+      "purpose": "PowerPoint 就绪",
+      "ok": true,
+      "launch": {
+        "ok": true,
+        "code": null,
+        "ms": 4596.58,
+        "pid": 8428,
+        "title": "PowerPoint",
+        "document_ready": true,
+        "maximized": true,
+        "dialogs": [],
+        "warnings": null,
+        "blank_tile_click": true,
+        "dialogs_after": [],
+        "title_after": "演示文稿1 - PowerPoint"
+      }
+    },
+    {
+      "id": "UNS-01",
+      "purpose": "默认 force release 直接结束进程",
+      "ok": true,
+      "forced": [
+        8428
+      ],
+      "closed": [
+        8428
+      ],
+      "warnings": []
+    },
+    {
+      "id": "UNS-02",
+      "purpose": "未出现保存对话框（无人工确认）",
+      "ok": true,
+      "warnings": []
+    }
+  ],
+  "binary_sha256": "A90D33A19F74B0A61F6E5924EBBF20CD45CA0A9FE865EA41C7CA07267F7F3EB0"
+}
