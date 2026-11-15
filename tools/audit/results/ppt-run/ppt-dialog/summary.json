@@ -1,0 +1,71 @@
+{
+  "suite": "ppt-dialog",
+  "cases": [
+    {
+      "id": "DLG-00",
+      "purpose": "PowerPoint 就绪",
+      "ok": true,
+      "launch": {
+        "ok": true,
+        "code": null,
+        "ms": 4358.64,
+        "pid": 10828,
+        "title": "PowerPoint",
+        "document_ready": true,
+        "maximized": true,
+        "dialogs": [],
+        "warnings": null,
+        "blank_tile_click": true,
+        "dialogs_after": [],
+        "title_after": "演示文稿1 - PowerPoint"
+      }
+    },
+    {
+      "id": "DLG-01",
+      "purpose": "find_element 在字体对话框命中",
+      "ok": true,
+      "ref": "e2",
+      "bounds": {
+        "x": 2727,
+        "y": 204,
+        "width": 54,
+        "height": 24
+      },
+      "code": null
+    },
+    {
+      "id": "DLG-02",
+      "purpose": "get_element_text 读到字号",
+      "ok": true,
+      "text": "60",
+      "code": null
+    },
+    {
+      "id": "DLG-03",
+      "purpose": "set_element_value 写入字号",
+      "ok": true,
+      "value": "36",
+      "code": null
+    },
+    {
+      "id": "DLG-04",
+      "purpose": "find_element 找到确定按钮",
+      "ok": true,
+      "code": null
+    },
+    {
+      "id": "DLG-05",
+      "purpose": "click_ref 关闭对话框",
+      "ok": true,
+      "pattern": "Invoke",
+      "code": null
+    },
+    {
+      "id": "DLG-99",
+      "purpose": "释放会话",
+      "ok": true,
+      "display_removed": true
+    }
+  ],
+  "binary_sha256": "A90D33A19F74B0A61F6E5924EBBF20CD45CA0A9FE865EA41C7CA07267F7F3EB0"
+}

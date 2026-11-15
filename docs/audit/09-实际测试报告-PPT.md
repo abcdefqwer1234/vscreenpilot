@@ -32,6 +32,7 @@
 - 视觉兜底可用：`match_visual` 的 pixel/color/template 全部命中，`assert_region` 能检测输入变化，`wait_for color` 立即满足。
 - `gesture` 拖拽图片成功（区域变化 11.7%）。
 - 双击（窗口消息）确实能进入文本编辑，写入内容能在 pptx XML 里找到。
+- 对话框语义完整：`find_element` / `get_element_text` / `set_element_value` / `click_ref` 在字体对话框 7/7 通过。
 - 关闭后重开无修复提示；1080p 下 8/8 点击成功。
 
 ---
@@ -202,6 +203,7 @@
 | SUP-12 图片剪贴板 | ❌ | before=true, after=false（**内容被清空**） |
 | SUP-13 双击→输入→另存→XML | ✅ | “双击验证”命中，40,340 字节 |
 | SUP-14 关闭后重开 | ✅ | 标题正确；`dialogs` 只报“继续阅读”+4 个空窗口 |
+| DLG 字体对话框正例 | ✅ 7/7 | `find_element` 命中“大小”，`get_element_text` 读到值，`set_element_value` 写入 36，`click_ref` 关闭 |
 | RES 1920×1080 | ✅ 6/6 | 快照 P50 154/P95 224ms（比 720p 慢约 4 倍）；点击 8/8 |
 | UNS 未保存 release | ✅ | 进程被强杀，无保存对话框 |
 
@@ -215,11 +217,11 @@
 | `launch_or_place_app` | ✅ | 启动可用；PPT 就绪误报 |
 | `snapshot` | ✅ | 结构可用；带图整条失败；空快照无解释 |
 | `capture_screen` | ✅ | 快、稳；内联图不可用 |
-| `find_element` | ✅ | PPT 上找不到画布/功能区（负例） |
+| `find_element` | ✅ | 字体对话框命中“大小/确定”；PPT 画布/功能区找不到（正负例） |
 | `get_ui_tree` | ✅ | 同 snapshot |
 | `invoke_element` | ✅ | Pane 上明确报错（负例） |
 | `set_element_value` | ✅ | 对话框字段可用；覆盖需 `allow_destructive` |
-| `get_element_text` | ✅ | Pane 上明确报错（负例） |
+| `get_element_text` | ✅ | 对话框读到字号（正例）；Pane 上明确报错（负例） |
 | `click` | ✅ | 通道可用；坐标脆弱 |
 | `click_ref` | ✅ | 对话框按钮可用 |
 | `gesture` | ✅ | 拖拽成功 |
