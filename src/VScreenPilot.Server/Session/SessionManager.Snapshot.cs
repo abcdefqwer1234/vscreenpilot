@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using VScreenPilot.Apps;
 using VScreenPilot.Core.Displays;
+using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
 using VScreenPilot.Perception;
@@ -178,6 +179,8 @@ internal sealed partial class SessionManager
                     ? "root_only"
                     : result.Pruned > 0 ? "pruned_all" : "uia_busy");
         }
+
+        MetricsRegistry.RecordSnapshot(result.Nodes);
 
         if (maxNodes > Math.Min(1024, ElementRefCapacity))
         {

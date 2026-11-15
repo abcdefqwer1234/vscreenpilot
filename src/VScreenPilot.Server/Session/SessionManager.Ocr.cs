@@ -39,7 +39,8 @@ internal sealed partial class SessionManager
         {
             lines = OcrService.Read(
                 bgra, captureWidth, captureHeight,
-                out string engine, out string language, query ?? string.Empty);
+                out string engine, out string language, query ?? string.Empty,
+                Cancellation);
             return BuildTextResult(
                 lines, left, top, captureWidth, captureHeight, query, maxLines, engine, language, stopwatch);
         }
@@ -50,6 +51,15 @@ internal sealed partial class SessionManager
                 exception.Message,
                 retryable: false,
                 hint: "安装系统 OCR 语言包后重试；或改用 snapshot/match_visual",
+                stage: "ocr");
+        }
+        catch (OperationCanceledException)
+        {
+            throw new ToolException(
+                "E_CANCELLED",
+                "OCR 已被取消",
+                retryable: true,
+                hint: "重新调用 read_screen_text；已取消的结果不会返回",
                 stage: "ocr");
         }
         catch (Exception exception) when (exception is not ToolException)
@@ -162,7 +172,7 @@ internal sealed partial class SessionManager
         try
         {
             lines = OcrService.Read(
-                bgra, captureWidth, captureHeight, out _, out _, text);
+                bgra, captureWidth, captureHeight, out _, out _, text, Cancellation);
         }
         catch (NotSupportedException exception)
         {
@@ -171,6 +181,15 @@ internal sealed partial class SessionManager
                 exception.Message,
                 retryable: false,
                 hint: "安装系统 OCR 语言包后重试",
+                stage: "ocr");
+        }
+        catch (OperationCanceledException)
+        {
+            throw new ToolException(
+                "E_CANCELLED",
+                "OCR 已被取消",
+                retryable: true,
+                hint: "重新调用 click_text",
                 stage: "ocr");
         }
 

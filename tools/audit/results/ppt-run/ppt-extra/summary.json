@@ -13,7 +13,7 @@
         "",
         ""
       ],
-      "nodes": 33
+      "nodes": 17
     },
     {
       "id": "SUP-01",
@@ -27,7 +27,7 @@
       "purpose": "snapshot 内联图是合法 base64",
       "ok": true,
       "detail": "89504e47",
-      "bytes": 86532
+      "bytes": 86752
     },
     {
       "id": "SUP-04a",
@@ -83,7 +83,7 @@
       "ok": true,
       "drag_code": null,
       "passed": true,
-      "ratio": 0.1185
+      "ratio": 0.1172
     },
     {
       "id": "SUP-10a",
@@ -102,7 +102,7 @@
       "id": "SUP-11",
       "purpose": "get_log 可读",
       "ok": true,
-      "entries": 8
+      "entries": 9
     },
     {
       "id": "SUP-12",
@@ -118,7 +118,7 @@
       "ok": true,
       "saved": {
         "ok": true,
-        "bytes": 40358
+        "bytes": 40359
       },
       "found": true
     },
@@ -128,9 +128,9 @@
       "ok": true,
       "display_removed": true,
       "forced": [
-        10304
+        10692
       ]
     }
   ],
-  "binary_sha256": "03A9EB867E6BE9D2FE88F508277F1D49E676D0D33FB320BDE2C66CC1927A6EC2"
+  "binary_sha256": "5D8BB2F7570A423688E00C8F9FFFA1B1CF8C20B53D0CBA442D59CADA48961B8D"
 }

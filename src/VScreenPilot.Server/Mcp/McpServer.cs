@@ -693,6 +693,9 @@ internal sealed class McpServer
             }
         }
 
+        MetricsRegistry.RecordTool(
+            tool, milliseconds, code, response.IsError, textBytes, imageBytes);
+
         _trace.ToolCall(tool, requestId, arguments, milliseconds, code, response.IsError,
             textBytes, imageBytes, channel: null, stage: stage);
     }
@@ -936,6 +939,7 @@ internal sealed class McpServer
               "mode":{"type":"string","enum":["auto","uia","message","input"],"description":"Legacy alias of channel."},
               "channel":{"type":"string","enum":["auto","uia","message","input"]},
               "keep_foreground":{"type":"boolean"},
+              "fallback_input":{"type":"boolean","description":"Default false. When UIA/message paths fail, move the real cursor and use SendInput."},
               "observe":{"type":"boolean","description":"Default true: capture a small before/after diff and return observed.changed."}},
               "required":["x","y"]}
             """,
@@ -1545,9 +1549,10 @@ internal sealed class McpServer
             ?? "auto";
         bool keepForeground = OptionalBool(arguments, "keep_foreground", false);
         bool observe = OptionalBool(arguments, "observe", true);
+        bool fallbackInput = OptionalBool(arguments, "fallback_input", false);
 
         return ToolResponse.Text(
-            _session.Click(x, y, button, clicks, mode, keepForeground, observe));
+            _session.Click(x, y, button, clicks, mode, keepForeground, observe, fallbackInput));
     }
 
     private ToolResponse ClickRef(JsonElement arguments)

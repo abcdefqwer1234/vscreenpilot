@@ -1,6 +1,7 @@
 ﻿using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
 using Windows.Security.Cryptography;
+using VScreenPilot.Infrastructure;
 
 namespace VScreenPilot.Perception;
 
@@ -27,7 +28,8 @@ internal static class OcrService
 
     public static List<ScreenTextLine> Read(
         byte[] bgra, int width, int height,
-        out string engine, out string language, string textHint)
+        out string engine, out string language, string textHint,
+        CancellationToken cancellationToken = default)
     {
         if (width <= 0 || height <= 0)
         {
@@ -51,7 +53,11 @@ internal static class OcrService
         using SoftwareBitmap bitmap = SoftwareBitmap.CreateCopyFromBuffer(
             buffer, BitmapPixelFormat.Bgra8, width, height, BitmapAlphaMode.Premultiplied);
 
-        OcrResult result = ocr.RecognizeAsync(bitmap).AsTask().GetAwaiter().GetResult();
+        OcrResult result = ocr.RecognizeAsync(bitmap)
+            .AsTask(cancellationToken)
+            .GetAwaiter()
+            .GetResult();
+        MetricsRegistry.RecordOcr();
         var lines = new List<ScreenTextLine>();
 
         foreach (var line in result.Lines)

@@ -1026,6 +1026,7 @@ internal sealed partial class SessionManager : IDisposable
                 ["foreground"] = foregroundJson,
                 ["cursor"] = cursorJson,
                 ["apps"] = apps,
+                ["metrics"] = MetricsRegistry.ToJson(),
             };
         }
 

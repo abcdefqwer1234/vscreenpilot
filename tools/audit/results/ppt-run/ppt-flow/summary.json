@@ -1,13 +1,13 @@
 {
   "suite": "ppt-flow",
-  "wall_ms": 24794.4,
+  "wall_ms": 31776.7,
   "cases": [
     {
       "id": "FL-00",
       "purpose": "流程完成并落盘",
       "ok": true,
       "deck": "C:\\Users\\31746\\Desktop\\VScreenPilot\\artifacts\\ppt\\script-deck.pptx",
-      "bytes": 35846
+      "bytes": 35829
     },
     {
       "id": "FL-01",
@@ -15,12 +15,12 @@
       "ok": true,
       "latency": {
         "n": 14,
-        "min": 21.46,
-        "p50": 220.5,
-        "p95": 1077.2,
-        "p99": 9850.05,
-        "max": 9850.05,
-        "mean": 986.68
+        "min": 20.95,
+        "p50": 218.83,
+        "p95": 1237.31,
+        "p99": 17073.25,
+        "max": 17073.25,
+        "mean": 1531.66
       }
     },
     {
@@ -35,8 +35,8 @@
       "step": "launch",
       "ok": true,
       "code": null,
-      "ms": 9850.05,
-      "text_bytes": 448,
+      "ms": 17073.25,
+      "text_bytes": 437,
       "image_bytes": 0,
       "title": "PowerPoint",
       "document_ready": false
@@ -45,23 +45,23 @@
       "step": "blank-tile",
       "ok": true,
       "code": null,
-      "ms": 148.04,
-      "text_bytes": 488,
+      "ms": 112.55,
+      "text_bytes": 486,
       "image_bytes": 0
     },
     {
       "step": "snapshot",
       "ok": true,
       "code": null,
-      "ms": 244.52,
-      "text_bytes": 872,
+      "ms": 245.3,
+      "text_bytes": 869,
       "image_bytes": 0
     },
     {
       "step": "click-title",
       "ok": true,
       "code": null,
-      "ms": 95.4,
+      "ms": 87.43,
       "text_bytes": 484,
       "image_bytes": 0
     },
@@ -69,31 +69,31 @@
       "step": "type-title",
       "ok": true,
       "code": null,
-      "ms": 640.22,
-      "text_bytes": 347,
+      "ms": 401.83,
+      "text_bytes": 346,
       "image_bytes": 0
     },
     {
       "step": "new-slide",
       "ok": true,
       "code": null,
-      "ms": 210.82,
-      "text_bytes": 340,
+      "ms": 218.83,
+      "text_bytes": 339,
       "image_bytes": 0
     },
     {
       "step": "layout",
       "ok": true,
       "code": null,
-      "ms": 1077.2,
-      "text_bytes": 369,
+      "ms": 1237.31,
+      "text_bytes": 371,
       "image_bytes": 0
     },
     {
       "step": "click-title2",
       "ok": false,
       "code": "E_INPUT_UNSUPPORTED",
-      "ms": 29.99,
+      "ms": 37.27,
       "text_bytes": 382,
       "image_bytes": 0
     },
@@ -101,15 +101,15 @@
       "step": "type-title2",
       "ok": true,
       "code": null,
-      "ms": 220.5,
-      "text_bytes": 347,
+      "ms": 213.96,
+      "text_bytes": 346,
       "image_bytes": 0
     },
     {
       "step": "click-body",
       "ok": false,
       "code": "E_INPUT_UNSUPPORTED",
-      "ms": 21.46,
+      "ms": 20.95,
       "text_bytes": 382,
       "image_bytes": 0
     },
@@ -117,32 +117,32 @@
       "step": "type-body",
       "ok": true,
       "code": null,
-      "ms": 217.49,
-      "text_bytes": 348,
+      "ms": 221.51,
+      "text_bytes": 347,
       "image_bytes": 0
     },
     {
       "step": "save-key",
       "ok": true,
       "code": null,
-      "ms": 222.99,
-      "text_bytes": 334,
+      "ms": 197.11,
+      "text_bytes": 333,
       "image_bytes": 0
     },
     {
       "step": "save-dialog-snapshot",
       "ok": true,
       "code": null,
-      "ms": 287.23,
-      "text_bytes": 6603,
+      "ms": 274.78,
+      "text_bytes": 6600,
       "image_bytes": 0
     },
     {
       "step": "save-filename",
       "ok": true,
       "code": null,
-      "ms": 547.59,
-      "text_bytes": 354,
+      "ms": 1101.18,
+      "text_bytes": 353,
       "image_bytes": 0
     },
     {
@@ -152,8 +152,8 @@
       "ms": 0,
       "text_bytes": 0,
       "image_bytes": 0,
-      "bytes": 35846
+      "bytes": 35829
     }
   ],
-  "binary_sha256": "03A9EB867E6BE9D2FE88F508277F1D49E676D0D33FB320BDE2C66CC1927A6EC2"
+  "binary_sha256": "5D8BB2F7570A423688E00C8F9FFFA1B1CF8C20B53D0CBA442D59CADA48961B8D"
 }

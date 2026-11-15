@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using Interop.UIAutomationClient;
 using VScreenPilot.Apps;
 using VScreenPilot.Core.Displays;
+using VScreenPilot.Infrastructure;
 using VScreenPilot.Input;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
@@ -161,20 +162,20 @@ internal sealed partial class SessionManager
 
     public JsonObject Click(
         int x, int y, string button, int clicks, string mode,
-        bool keepForeground = false, bool observe = true)
+        bool keepForeground = false, bool observe = true, bool fallbackInput = false)
     {
         DisplayInfo display = EnsureEnvironmentFast();
 
         if (clicks is < 1 or > 10)
         {
             throw new ToolException("E_INVALID_ARG", "clicks 必须在 1..10 之间");
-        }
-
-        mode = (mode ?? "auto").ToLowerInvariant();
+        }        mode = (mode ?? "auto").ToLowerInvariant();
         if (mode is not ("auto" or "uia" or "message" or "input"))
         {
             throw new ToolException("E_INVALID_ARG", $"未知 click mode: {mode}");
         }
+
+        using var inputLease = InputLease.TryAcquire(3000, "click");
 
         if (mode == "input" && !IsInputDesktopAvailable())
         {
@@ -277,11 +278,32 @@ internal sealed partial class SessionManager
                 {
                     method = "message";
                 }
+                else if (fallbackInput)
+                {
+                    _cursorGuard?.Pause();
+                    PauseFocusGuard();
+
+                    try
+                    {
+                        InputInjector.Click(x, y, button, clicks);
+                    }
+                    finally
+                    {
+                        _cursorGuard?.Resume();
+
+                        if (!keepForeground)
+                        {
+                            ResumeFocusGuard();
+                        }
+                    }
+
+                    method = "input-fallback";
+                }
                 else
                 {
                     throw new ToolException(
                         "E_INPUT_UNSUPPORTED",
-                        "无法在不移动光标的前提下点击；如接受光标跳变，请显式使用 mode=\"input\"",
+                        "无法在不移动光标的前提下点击；如接受光标跳变，请显式使用 mode=\"input\" 或 fallback_input=true",
                         new JsonObject { ["detail"] = detail });
                 }
 
@@ -363,6 +385,7 @@ internal sealed partial class SessionManager
         DisplayInfo display = EnsureEnvironment();
         TrackedApp app = RequireTrackedApp(pid);
         RequireWindowOnDisplay(display, app.Hwnd, "type_text");
+        using var inputLease = InputLease.TryAcquire(3000, "type_text");
         IntPtr previous = WindowManager.GetForegroundWindow();
         PauseFocusGuard();
         int effectiveChunk = Math.Clamp(chunkChars, 1, 256);
@@ -567,6 +590,8 @@ internal sealed partial class SessionManager
             SystemKeyGuard.ThrowIfBlocked(key, allowSystemKeys);
         }
 
+        using var inputLease = InputLease.TryAcquire(3000, "press_keys");
+
         if (!IsInputDesktopAvailable())
         {
             throw new ToolException(
@@ -688,6 +713,8 @@ internal sealed partial class SessionManager
         {
             throw new ToolException("E_INVALID_ARG", $"未知 gesture mode: {mode}");
         }
+
+        using var inputLease = InputLease.TryAcquire(3000, "gesture");
 
         bool useInput = mode == "input";
 

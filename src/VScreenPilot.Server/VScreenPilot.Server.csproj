@@ -25,7 +25,7 @@
     <PublishSingleFile>true</PublishSingleFile>
     <PublishReadyToRun>true</PublishReadyToRun>
     <PublishTrimmed>false</PublishTrimmed>
-    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <!-- 分发：winget/npm 走原生 exe。dotnet tool(PackAsTool) 不支持 net10.0-windows，
          所以 dnx 入口需要单独的原生包，见 docs/audit/06。 -->
     <PackageId>VScreenPilot.Cli</PackageId>

@@ -1626,9 +1626,11 @@ internal sealed class UiaService : IDisposable
         node.Info.Focused ||
         InteractiveControlTypes.Contains(node.Info.ControlType) ||
         // 画布/自绘应用常把内容暴露成无子节点、不可聚焦的 Text/Image/Custom。
-        // 只要它带名字，就保留，否则 interactive_only 会把内容整片剪掉（S4）。
+        // 名字为空时再看 Value/Text：很多文本控件只有 TextPattern 内容。
         (node.Info.ControlType is 50020 or 50006 or 50025 &&
-         !string.IsNullOrWhiteSpace(node.Info.Name));
+         (!string.IsNullOrWhiteSpace(node.Info.Name) ||
+          !string.IsNullOrWhiteSpace(node.Info.Value) ||
+          !string.IsNullOrWhiteSpace(node.Info.Text)));
 
     private static bool IsNoiseControl(int controlType) =>
         controlType is 50012 or 50014 or 50027 or 50038; // ProgressBar/ScrollBar/Thumb/Separator

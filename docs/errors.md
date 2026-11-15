@@ -26,6 +26,7 @@
 | `E_PATTERN_UNSUPPORTED` | 控件不支持所选 UIA pattern | 试 `pattern=default`，或改用 `click`/键盘 |
 | `E_DESTRUCTIVE_REQUIRED` | 写入会覆盖非空内容 | 确需覆盖时传 `allow_destructive=true` |
 | `E_FOCUS` | 无法把目标切到前台 | 先 `click(keep_foreground=true)`；检查模态框 |
+| `E_FOCUS_OWNED` | 另一个 profile 持有输入租约（`VSP_FOCUS_LEASE=1`） | 稍后重试，或串行执行两个 profile |
 | `E_FOCUS_LOST` | 输入中前台被抢走 | 重试；确认用户没有在操作桌面 |
 | `E_INPUT_UNSUPPORTED` | 该窗口/区域忽略所选输入通道 | 非客户区或 Chromium 改用 `channel=input`；菜单用 UIA |
 | `E_UIPI` | 被 UIPI 拦截 | 以相同权限运行，或改用 UIA 语义操作 |
@@ -392,4 +393,10 @@ UIA 调用失败（stage: `uia`）
 ### E_DATA_LOSS_REQUIRED
 
 需要数据丢失确认（stage: `release`）
+
+<a id="e_focus_owned"></a>
+
+### E_FOCUS_OWNED
+
+输入租约被占用（stage: `focus`）
 

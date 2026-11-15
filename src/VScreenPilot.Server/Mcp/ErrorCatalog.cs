@@ -47,6 +47,8 @@ internal static class ErrorCatalog
                 "release 会丢弃未保存内容；先保存，确认后传 allow_data_loss=true", "需要数据丢失确认"),
             ["E_FOCUS"] = new("E_FOCUS", true, "focus",
                 "目标未在前台；先用 click(keep_foreground=true) 激活，或检查是否有模态框", "无法获得前台"),
+            ["E_FOCUS_OWNED"] = new("E_FOCUS_OWNED", true, "focus",
+                "另一个 profile 持有输入租约；稍后重试或开启串行执行", "输入租约被占用"),
             ["E_FOCUS_LOST"] = new("E_FOCUS_LOST", true, "focus",
                 "输入过程中前台被抢走；重试，或检查用户是否正在操作桌面", "输入中丢失前台"),
             ["E_NO_INTERACTIVE_DESKTOP"] = new("E_NO_INTERACTIVE_DESKTOP", true, "desktop",

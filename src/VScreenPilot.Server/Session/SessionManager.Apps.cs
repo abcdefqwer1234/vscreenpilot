@@ -421,6 +421,18 @@ internal sealed partial class SessionManager
                                 documentReady = WaitForDocumentTitle(window.Hwnd, "PowerPoint", 8000);
                                 documentReason = documentReady == true ? "blank_tile" : "blank_tile_failed";
                             }
+                            else
+                            {
+                                // 部分 Office 版本的开始屏幕不把磁贴暴露给 UIA。
+                                // 按 1280×720 的实测比例估算“空白演示文稿”磁贴中心。
+                                int estimateX = display.X + (int)Math.Round(display.Width * 0.15625);
+                                int estimateY = display.Y + (int)Math.Round(display.Height * 0.3125);
+                                InputInjector.Click(estimateX, estimateY, "left", clicks: 1);
+                                documentReady = WaitForDocumentTitle(window.Hwnd, "PowerPoint", 8000);
+                                documentReason = documentReady == true
+                                    ? "blank_tile_estimated"
+                                    : "blank_tile_failed";
+                            }
                         }
                         else
                         {

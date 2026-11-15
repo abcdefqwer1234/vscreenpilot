@@ -16,6 +16,13 @@
 - **超时**：`E_TIMEOUT` hint 改为显式 `force + allow_data_loss` 重置；客户端取消也会把写锁交给仍在运行的 handler。
 - **`run_script`**：纳入会话读锁，避免脚本执行期间被 release 摘屏。
 - **outputSchema**：`click` / `press_keys` / `gesture` / `release_environment` 与实际返回对齐。
+- **画布/观察**：`interactive_only` 保留 Name/Value/Text 非空的 Text/Image/Custom；OCR 支持取消。
+- **指标**：`MetricsRegistry`，随 `get_environment.metrics` 返回调用数、错误率、平均/最大耗时、节点数、OCR 次数。
+- **多 profile 输入**：`VSP_FOCUS_LEASE=1` 时用命名互斥体串行化输入，冲突返回 `E_FOCUS_OWNED`。
+- **坐标降级**：`click{fallback_input:true}` 在 UIA/消息失败后使用 SendInput。
+- **PPT 建文档**：开始屏幕磁贴不在 UIA 树时按比例估算点击，并校验标题。
+- **体积**：启用单文件压缩，167MB → 64.8MB；启动约 330ms。
+- **发布准备**：新增 `scripts/release.ps1`（生成 zip/哈希，不自动上传）。
 - **剪贴板**：检测图片/文件格式；`auto` 回退 SendInput，显式 `channel=clipboard` 返回 `E_CLIPBOARD_UNSAFE`；`Restore(null)` 改为清空。
 - **空快照**：`nodes<=1` 时重试一次并返回 `empty_reason`。
 - **死进程**：`apps[]` 清理死亡超过 3s 的条目。
