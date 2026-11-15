@@ -1,0 +1,384 @@
+{
+  "suite": "ppt-click",
+  "cases": [
+    {
+      "id": "CK-00",
+      "purpose": "PowerPoint 就绪",
+      "ok": true,
+      "launch": {
+        "ok": true,
+        "code": null,
+        "ms": 4408.01,
+        "pid": 7040,
+        "title": "PowerPoint",
+        "document_ready": true,
+        "maximized": true,
+        "dialogs": [],
+        "warnings": null,
+        "blank_tile_click": true,
+        "dialogs_after": [],
+        "title_after": "演示文稿1 - PowerPoint"
+      },
+      "display": {
+        "x": 1920,
+        "y": 0,
+        "width": 1280,
+        "height": 720
+      }
+    },
+    {
+      "id": "CK-ribbon-home",
+      "purpose": "ribbon-home auto 点击",
+      "ok": true,
+      "code": null,
+      "ms": 170.63,
+      "via": "uia"
+    },
+    {
+      "id": "CK-ribbon-insert",
+      "purpose": "ribbon-insert auto 点击",
+      "ok": true,
+      "code": null,
+      "ms": 412.21,
+      "via": "message"
+    },
+    {
+      "id": "CK-ribbon-design",
+      "purpose": "ribbon-design auto 点击",
+      "ok": true,
+      "code": null,
+      "ms": 134.03,
+      "via": "message"
+    },
+    {
+      "id": "CK-ribbon-tab-slide",
+      "purpose": "ribbon-tab-slide auto 点击",
+      "ok": true,
+      "code": null,
+      "ms": 171.89,
+      "via": "message"
+    },
+    {
+      "id": "CK-slide-title",
+      "purpose": "slide-title auto 点击",
+      "ok": true,
+      "code": null,
+      "ms": 166.77,
+      "via": "message"
+    },
+    {
+      "id": "CK-slide-body",
+      "purpose": "slide-body auto 点击",
+      "ok": true,
+      "code": null,
+      "ms": 272.58,
+      "via": "message"
+    },
+    {
+      "id": "CK-status-bar",
+      "purpose": "status-bar auto 点击",
+      "ok": true,
+      "code": null,
+      "ms": 92.65,
+      "via": "uia"
+    },
+    {
+      "id": "CK-thumb-pane",
+      "purpose": "thumb-pane auto 点击",
+      "ok": true,
+      "code": null,
+      "ms": 73.13,
+      "via": "message"
+    },
+    {
+      "id": "CK-SUM-auto",
+      "purpose": "auto 通道成功率",
+      "ok": true,
+      "passed": 8,
+      "total": 8,
+      "latency": {
+        "n": 8,
+        "min": 73.13,
+        "p50": 170.63,
+        "p95": 412.21,
+        "p99": 412.21,
+        "max": 412.21,
+        "mean": 186.74
+      },
+      "failures": []
+    },
+    {
+      "id": "CK-SUM-message",
+      "purpose": "message 通道成功率",
+      "ok": true,
+      "passed": 8,
+      "total": 8,
+      "latency": {
+        "n": 8,
+        "min": 54.25,
+        "p50": 63.67,
+        "p95": 142.74,
+        "p99": 142.74,
+        "max": 142.74,
+        "mean": 76.18
+      },
+      "failures": []
+    },
+    {
+      "id": "CK-SUM-input",
+      "purpose": "input 通道成功率",
+      "ok": true,
+      "passed": 8,
+      "total": 8,
+      "latency": {
+        "n": 8,
+        "min": 66.13,
+        "p50": 85.85,
+        "p95": 205.27,
+        "p99": 205.27,
+        "max": 205.27,
+        "mean": 98.63
+      },
+      "failures": []
+    },
+    {
+      "id": "CK-DBL",
+      "purpose": "双击（进入文本编辑）消息通道 5 次",
+      "ok": true,
+      "runs": [
+        {
+          "ok": true,
+          "code": null,
+          "ms": 58.7
+        },
+        {
+          "ok": true,
+          "code": null,
+          "ms": 63.04
+        },
+        {
+          "ok": true,
+          "code": null,
+          "ms": 64.55
+        },
+        {
+          "ok": true,
+          "code": null,
+          "ms": 144.04
+        },
+        {
+          "ok": true,
+          "code": null,
+          "ms": 103.42
+        }
+      ]
+    },
+    {
+      "id": "CK-99",
+      "purpose": "释放会话",
+      "ok": true,
+      "display_removed": true
+    }
+  ],
+  "matrix": {
+    "auto": [
+      {
+        "point": "ribbon-home",
+        "channel": "auto",
+        "ok": true,
+        "code": null,
+        "ms": 170.63,
+        "resolved": "uia"
+      },
+      {
+        "point": "ribbon-insert",
+        "channel": "auto",
+        "ok": true,
+        "code": null,
+        "ms": 412.21,
+        "resolved": "message"
+      },
+      {
+        "point": "ribbon-design",
+        "channel": "auto",
+        "ok": true,
+        "code": null,
+        "ms": 134.03,
+        "resolved": "message"
+      },
+      {
+        "point": "ribbon-tab-slide",
+        "channel": "auto",
+        "ok": true,
+        "code": null,
+        "ms": 171.89,
+        "resolved": "message"
+      },
+      {
+        "point": "slide-title",
+        "channel": "auto",
+        "ok": true,
+        "code": null,
+        "ms": 166.77,
+        "resolved": "message"
+      },
+      {
+        "point": "slide-body",
+        "channel": "auto",
+        "ok": true,
+        "code": null,
+        "ms": 272.58,
+        "resolved": "message"
+      },
+      {
+        "point": "status-bar",
+        "channel": "auto",
+        "ok": true,
+        "code": null,
+        "ms": 92.65,
+        "resolved": "uia"
+      },
+      {
+        "point": "thumb-pane",
+        "channel": "auto",
+        "ok": true,
+        "code": null,
+        "ms": 73.13,
+        "resolved": "message"
+      }
+    ],
+    "message": [
+      {
+        "point": "ribbon-home",
+        "channel": "message",
+        "ok": true,
+        "code": null,
+        "ms": 142.74,
+        "resolved": "message"
+      },
+      {
+        "point": "ribbon-insert",
+        "channel": "message",
+        "ok": true,
+        "code": null,
+        "ms": 54.7,
+        "resolved": "message"
+      },
+      {
+        "point": "ribbon-design",
+        "channel": "message",
+        "ok": true,
+        "code": null,
+        "ms": 59.68,
+        "resolved": "message"
+      },
+      {
+        "point": "ribbon-tab-slide",
+        "channel": "message",
+        "ok": true,
+        "code": null,
+        "ms": 69.44,
+        "resolved": "message"
+      },
+      {
+        "point": "slide-title",
+        "channel": "message",
+        "ok": true,
+        "code": null,
+        "ms": 59.4,
+        "resolved": "message"
+      },
+      {
+        "point": "slide-body",
+        "channel": "message",
+        "ok": true,
+        "code": null,
+        "ms": 54.25,
+        "resolved": "message"
+      },
+      {
+        "point": "status-bar",
+        "channel": "message",
+        "ok": true,
+        "code": null,
+        "ms": 63.67,
+        "resolved": "message"
+      },
+      {
+        "point": "thumb-pane",
+        "channel": "message",
+        "ok": true,
+        "code": null,
+        "ms": 105.54,
+        "resolved": "message"
+      }
+    ],
+    "input": [
+      {
+        "point": "ribbon-home",
+        "channel": "input",
+        "ok": true,
+        "code": null,
+        "ms": 205.27,
+        "resolved": "input"
+      },
+      {
+        "point": "ribbon-insert",
+        "channel": "input",
+        "ok": true,
+        "code": null,
+        "ms": 85.85,
+        "resolved": "input"
+      },
+      {
+        "point": "ribbon-design",
+        "channel": "input",
+        "ok": true,
+        "code": null,
+        "ms": 79.97,
+        "resolved": "input"
+      },
+      {
+        "point": "ribbon-tab-slide",
+        "channel": "input",
+        "ok": true,
+        "code": null,
+        "ms": 74.97,
+        "resolved": "input"
+      },
+      {
+        "point": "slide-title",
+        "channel": "input",
+        "ok": true,
+        "code": null,
+        "ms": 66.13,
+        "resolved": "input"
+      },
+      {
+        "point": "slide-body",
+        "channel": "input",
+        "ok": true,
+        "code": null,
+        "ms": 77.32,
+        "resolved": "input"
+      },
+      {
+        "point": "status-bar",
+        "channel": "input",
+        "ok": true,
+        "code": null,
+        "ms": 103.42,
+        "resolved": "input"
+      },
+      {
+        "point": "thumb-pane",
+        "channel": "input",
+        "ok": true,
+        "code": null,
+        "ms": 96.09,
+        "resolved": "input"
+      }
+    ]
+  },
+  "binary_sha256": "A90D33A19F74B0A61F6E5924EBBF20CD45CA0A9FE865EA41C7CA07267F7F3EB0"
+}

@@ -1,0 +1,291 @@
+{
+  "suite": "ppt-input",
+  "cases": [
+    {
+      "id": "IN-00",
+      "purpose": "PowerPoint 就绪",
+      "ok": true,
+      "launch": {
+        "ok": true,
+        "code": null,
+        "ms": 4313.03,
+        "pid": 12112,
+        "title": "PowerPoint",
+        "document_ready": true,
+        "maximized": true,
+        "dialogs": [],
+        "warnings": null,
+        "blank_tile_click": true,
+        "dialogs_after": [],
+        "title_after": "演示文稿1 - PowerPoint"
+      }
+    },
+    {
+      "id": "IN-20-auto",
+      "purpose": "17 字 / auto",
+      "ok": true,
+      "ms": 241.07,
+      "typed": 17,
+      "method": "sendinput"
+    },
+    {
+      "id": "IN-20-clipboard",
+      "purpose": "17 字 / clipboard",
+      "ok": true,
+      "ms": 108.13,
+      "typed": 17,
+      "method": "clipboard+ctrl-v"
+    },
+    {
+      "id": "IN-20-keys",
+      "purpose": "17 字 / keys",
+      "ok": true,
+      "ms": 226.31,
+      "typed": 17,
+      "method": "sendinput"
+    },
+    {
+      "id": "IN-200-auto",
+      "purpose": "186 字 / auto",
+      "ok": true,
+      "ms": 517.04,
+      "typed": 186,
+      "method": "sendinput"
+    },
+    {
+      "id": "IN-200-clipboard",
+      "purpose": "186 字 / clipboard",
+      "ok": true,
+      "ms": 130.9,
+      "typed": 186,
+      "method": "clipboard+ctrl-v"
+    },
+    {
+      "id": "IN-200-keys",
+      "purpose": "186 字 / keys",
+      "ok": true,
+      "ms": 522.68,
+      "typed": 186,
+      "method": "sendinput"
+    },
+    {
+      "id": "IN-2000-auto",
+      "purpose": "1530 字 / auto",
+      "ok": true,
+      "ms": 183.82,
+      "typed": 1530,
+      "method": "clipboard+ctrl-v"
+    },
+    {
+      "id": "IN-2000-clipboard",
+      "purpose": "1530 字 / clipboard",
+      "ok": true,
+      "ms": 180.72,
+      "typed": 1530,
+      "method": "clipboard+ctrl-v"
+    },
+    {
+      "id": "IN-2000-keys",
+      "purpose": "1530 字 / keys",
+      "ok": true,
+      "ms": 1551.15,
+      "typed": 1530,
+      "method": "sendinput"
+    },
+    {
+      "id": "IN-20000-auto",
+      "purpose": "15000 字 / auto",
+      "ok": true,
+      "ms": 875.51,
+      "typed": 15000,
+      "method": "clipboard+ctrl-v"
+    },
+    {
+      "id": "IN-20000-clipboard",
+      "purpose": "15000 字 / clipboard",
+      "ok": true,
+      "ms": 865.13,
+      "typed": 15000,
+      "method": "clipboard+ctrl-v"
+    },
+    {
+      "id": "IN-CLIP-RESTORE",
+      "purpose": "长文本输入后文本剪贴板被还原",
+      "ok": true,
+      "before": "SENTINEL-VSP-CLIP",
+      "after": "SENTINEL-VSP-CLIP"
+    },
+    {
+      "id": "IN-SUM-auto",
+      "purpose": "auto 延迟分布（4 次）",
+      "ok": true,
+      "latency": {
+        "n": 4,
+        "min": 183.82,
+        "p50": 517.04,
+        "p95": 875.51,
+        "p99": 875.51,
+        "max": 875.51,
+        "mean": 454.36
+      }
+    },
+    {
+      "id": "IN-SUM-clipboard",
+      "purpose": "clipboard 延迟分布（4 次）",
+      "ok": true,
+      "latency": {
+        "n": 4,
+        "min": 108.13,
+        "p50": 180.72,
+        "p95": 865.13,
+        "p99": 865.13,
+        "max": 865.13,
+        "mean": 321.22
+      }
+    },
+    {
+      "id": "IN-SUM-keys",
+      "purpose": "keys 延迟分布（3 次）",
+      "ok": true,
+      "latency": {
+        "n": 3,
+        "min": 226.31,
+        "p50": 522.68,
+        "p95": 1551.15,
+        "p99": 1551.15,
+        "max": 1551.15,
+        "mean": 766.71
+      }
+    },
+    {
+      "id": "IN-99",
+      "purpose": "释放会话",
+      "ok": true,
+      "display_removed": true
+    }
+  ],
+  "rows": [
+    {
+      "chars": 17,
+      "channel": "auto",
+      "ok": true,
+      "code": null,
+      "ms": 241.07,
+      "typed": 17,
+      "method": "sendinput",
+      "inject_ms": 0.93,
+      "chunks": 1
+    },
+    {
+      "chars": 17,
+      "channel": "clipboard",
+      "ok": true,
+      "code": null,
+      "ms": 108.13,
+      "typed": 17,
+      "method": "clipboard+ctrl-v",
+      "inject_ms": 98.61,
+      "chunks": 1
+    },
+    {
+      "chars": 17,
+      "channel": "keys",
+      "ok": true,
+      "code": null,
+      "ms": 226.31,
+      "typed": 17,
+      "method": "sendinput",
+      "inject_ms": 1.14,
+      "chunks": 1
+    },
+    {
+      "chars": 186,
+      "channel": "auto",
+      "ok": true,
+      "code": null,
+      "ms": 517.04,
+      "typed": 186,
+      "method": "sendinput",
+      "inject_ms": 3.17,
+      "chunks": 1
+    },
+    {
+      "chars": 186,
+      "channel": "clipboard",
+      "ok": true,
+      "code": null,
+      "ms": 130.9,
+      "typed": 186,
+      "method": "clipboard+ctrl-v",
+      "inject_ms": 118.3,
+      "chunks": 1
+    },
+    {
+      "chars": 186,
+      "channel": "keys",
+      "ok": true,
+      "code": null,
+      "ms": 522.68,
+      "typed": 186,
+      "method": "sendinput",
+      "inject_ms": 3.18,
+      "chunks": 1
+    },
+    {
+      "chars": 1530,
+      "channel": "auto",
+      "ok": true,
+      "code": null,
+      "ms": 183.82,
+      "typed": 1530,
+      "method": "clipboard+ctrl-v",
+      "inject_ms": 170.89,
+      "chunks": 1
+    },
+    {
+      "chars": 1530,
+      "channel": "clipboard",
+      "ok": true,
+      "code": null,
+      "ms": 180.72,
+      "typed": 1530,
+      "method": "clipboard+ctrl-v",
+      "inject_ms": 169.55,
+      "chunks": 1
+    },
+    {
+      "chars": 1530,
+      "channel": "keys",
+      "ok": true,
+      "code": null,
+      "ms": 1551.15,
+      "typed": 1530,
+      "method": "sendinput",
+      "inject_ms": 26.8,
+      "chunks": 1
+    },
+    {
+      "chars": 15000,
+      "channel": "auto",
+      "ok": true,
+      "code": null,
+      "ms": 875.51,
+      "typed": 15000,
+      "method": "clipboard+ctrl-v",
+      "inject_ms": 854.12,
+      "chunks": 1
+    },
+    {
+      "chars": 15000,
+      "channel": "clipboard",
+      "ok": true,
+      "code": null,
+      "ms": 865.13,
+      "typed": 15000,
+      "method": "clipboard+ctrl-v",
+      "inject_ms": 847.3,
+      "chunks": 1
+    }
+  ],
+  "binary_sha256": "A90D33A19F74B0A61F6E5924EBBF20CD45CA0A9FE865EA41C7CA07267F7F3EB0"
+}

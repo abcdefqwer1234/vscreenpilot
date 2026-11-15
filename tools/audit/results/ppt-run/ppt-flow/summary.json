@@ -1,0 +1,159 @@
+{
+  "suite": "ppt-flow",
+  "wall_ms": 18157.7,
+  "cases": [
+    {
+      "id": "FL-00",
+      "purpose": "流程完成并落盘",
+      "ok": true,
+      "deck": "C:\\Users\\31746\\Desktop\\VScreenPilot\\artifacts\\ppt\\script-deck.pptx",
+      "bytes": 35833
+    },
+    {
+      "id": "FL-01",
+      "purpose": "逐步延迟",
+      "ok": true,
+      "latency": {
+        "n": 14,
+        "min": 1.47,
+        "p50": 137.04,
+        "p95": 920.31,
+        "p99": 4167.84,
+        "max": 4167.84,
+        "mean": 537.25
+      }
+    },
+    {
+      "id": "FL-99",
+      "purpose": "释放会话",
+      "ok": true,
+      "display_removed": true
+    }
+  ],
+  "steps": [
+    {
+      "step": "launch",
+      "ok": true,
+      "code": null,
+      "ms": 4167.84,
+      "text_bytes": 279,
+      "image_bytes": 0,
+      "title": "PowerPoint",
+      "document_ready": true
+    },
+    {
+      "step": "blank-tile",
+      "ok": true,
+      "code": null,
+      "ms": 65.68,
+      "text_bytes": 299,
+      "image_bytes": 0
+    },
+    {
+      "step": "snapshot",
+      "ok": true,
+      "code": null,
+      "ms": 50.87,
+      "text_bytes": 650,
+      "image_bytes": 0
+    },
+    {
+      "step": "click-title",
+      "ok": true,
+      "code": null,
+      "ms": 59.39,
+      "text_bytes": 299,
+      "image_bytes": 0
+    },
+    {
+      "step": "type-title",
+      "ok": true,
+      "code": null,
+      "ms": 463.11,
+      "text_bytes": 346,
+      "image_bytes": 0
+    },
+    {
+      "step": "new-slide",
+      "ok": true,
+      "code": null,
+      "ms": 137.04,
+      "text_bytes": 133,
+      "image_bytes": 0
+    },
+    {
+      "step": "layout",
+      "ok": true,
+      "code": null,
+      "ms": 920.31,
+      "text_bytes": 163,
+      "image_bytes": 0
+    },
+    {
+      "step": "click-title2",
+      "ok": false,
+      "code": "E_INPUT_UNSUPPORTED",
+      "ms": 1.47,
+      "text_bytes": 382,
+      "image_bytes": 0
+    },
+    {
+      "step": "type-title2",
+      "ok": true,
+      "code": null,
+      "ms": 224.2,
+      "text_bytes": 346,
+      "image_bytes": 0
+    },
+    {
+      "step": "click-body",
+      "ok": false,
+      "code": "E_INPUT_UNSUPPORTED",
+      "ms": 2.8,
+      "text_bytes": 382,
+      "image_bytes": 0
+    },
+    {
+      "step": "type-body",
+      "ok": true,
+      "code": null,
+      "ms": 217.2,
+      "text_bytes": 347,
+      "image_bytes": 0
+    },
+    {
+      "step": "save-key",
+      "ok": true,
+      "code": null,
+      "ms": 135.34,
+      "text_bytes": 131,
+      "image_bytes": 0
+    },
+    {
+      "step": "save-dialog-snapshot",
+      "ok": true,
+      "code": null,
+      "ms": 294.46,
+      "text_bytes": 6052,
+      "image_bytes": 0
+    },
+    {
+      "step": "save-filename",
+      "ok": true,
+      "code": null,
+      "ms": 781.73,
+      "text_bytes": 354,
+      "image_bytes": 0
+    },
+    {
+      "step": "saved",
+      "ok": true,
+      "code": null,
+      "ms": 0,
+      "text_bytes": 0,
+      "image_bytes": 0,
+      "bytes": 35833
+    }
+  ],
+  "binary_sha256": "A90D33A19F74B0A61F6E5924EBBF20CD45CA0A9FE865EA41C7CA07267F7F3EB0"
+}

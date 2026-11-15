@@ -1,0 +1,79 @@
+{
+  "suite": "ppt-recovery",
+  "cases": [
+    {
+      "id": "RC-00",
+      "purpose": "PowerPoint 就绪",
+      "ok": true,
+      "launch": {
+        "ok": true,
+        "code": null,
+        "ms": 4359.13,
+        "pid": 6648,
+        "title": "PowerPoint",
+        "document_ready": true,
+        "maximized": true,
+        "dialogs": [],
+        "warnings": null,
+        "blank_tile_click": true,
+        "dialogs_after": [],
+        "title_after": "演示文稿1 - PowerPoint"
+      }
+    },
+    {
+      "id": "RC-01",
+      "purpose": "强杀后 snapshot 返回可识别错误",
+      "ok": true,
+      "code": "E_NO_TARGET",
+      "message": "没有已接管的应用窗口，请先 launch_or_place_app"
+    },
+    {
+      "id": "RC-02",
+      "purpose": "强杀后 type_text 返回可识别错误",
+      "ok": true,
+      "code": "E_NO_TARGET"
+    },
+    {
+      "id": "RC-03",
+      "purpose": "可重新启动并进入演示文稿",
+      "ok": false,
+      "launch": {
+        "ok": true,
+        "code": null,
+        "ms": 3973.15,
+        "pid": 7036,
+        "title": "PowerPoint",
+        "document_ready": true,
+        "maximized": true,
+        "dialogs": [],
+        "warnings": null,
+        "blank_tile_click": true,
+        "dialogs_after": [],
+        "title_after": "PowerPoint"
+      }
+    },
+    {
+      "id": "RC-04",
+      "purpose": "会话内只有一个存活应用",
+      "ok": false,
+      "apps": [
+        {
+          "pid": 6648,
+          "alive": false
+        },
+        {
+          "pid": 7036,
+          "alive": true
+        }
+      ],
+      "old_pid": 6648
+    },
+    {
+      "id": "RC-99",
+      "purpose": "释放会话",
+      "ok": true,
+      "display_removed": true
+    }
+  ],
+  "binary_sha256": "A90D33A19F74B0A61F6E5924EBBF20CD45CA0A9FE865EA41C7CA07267F7F3EB0"
+}

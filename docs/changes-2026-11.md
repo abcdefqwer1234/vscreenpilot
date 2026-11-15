@@ -48,6 +48,8 @@
 
 ## 已知限制（下一阶段）
 
+- **内联图片**：MCP 图片内容当前不是合法 base64（OpenCode 会拒绝），截图请用 `save_path` 落盘或走 artifact；修复与验证见 [audit/09](audit/09-实际测试报告-PPT.md)。
+- **画布型应用**：PowerPoint 的 UIA 树只有 Dock 容器，画布/功能区不可见；需要 OCR 或带标注截图，见 [audit/10](audit/10-改进建议与路线图.md)。
 - 全屏采集已无悬崖：服务端 P95 ≈53ms；大图落盘 + 0.25× 预览，
   避免 366KB Base64 回传造成 1.2s 客户端延迟。Windows.Graphics.Capture 仍是后续优化。
 - UIA 仍是“锁串行 + 5s 超时 + 退休队列”，还不是专用 MTA worker。

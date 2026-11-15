@@ -7,7 +7,7 @@
 - 运行期不需要管理员权限；首次安装一次 Parsec VDD 即可。
 - 语义后端：UIA 为主，MSAA 兜底（Office 旧对话框）；支持 UWP `ApplicationFrameWindow`。
 - 重构后的行为变化、错误目录与架构见 [`docs/changes-2026-11.md`](docs/changes-2026-11.md)、[`docs/errors.md`](docs/errors.md)、[`docs/architecture.md`](docs/architecture.md)。
-- 测试与复现见 [`docs/audit/03-实际测试报告-Word.md`](docs/audit/03-实际测试报告-Word.md)；当前 run5：GUI 14/14、REG 19/19、DIA 4/4。
+- 测试与复现见 [`docs/audit/03-实际测试报告-Word.md`](docs/audit/03-实际测试报告-Word.md)（Word 轮）与 [`docs/audit/09-实际测试报告-PPT.md`](docs/audit/09-实际测试报告-PPT.md)（PPT 轮）。Word 轮 run6：GUI 14/14、REG 19/19、DIA 4/4；PPT 轮：产物 11/11、协议 30/30、契约 10/10。
 
 > 版本 0.1.0（M4.1）。实现细节见 [技术文档.md](技术文档.md)，需求契约见 [需求文件.md](需求文件.md)。
 
