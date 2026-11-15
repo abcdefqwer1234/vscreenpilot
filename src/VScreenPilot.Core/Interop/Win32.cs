@@ -64,7 +64,7 @@ internal static class Win32
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool CancelIoEx(IntPtr hFile, ref OVERLAPPED lpOverlapped);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     internal static extern IntPtr CreateEventW(
         IntPtr lpEventAttributes,
         [MarshalAs(UnmanagedType.Bool)] bool bManualReset,

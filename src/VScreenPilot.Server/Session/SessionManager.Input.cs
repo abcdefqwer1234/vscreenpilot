@@ -14,10 +14,155 @@ namespace VScreenPilot.Session;
 
 internal sealed partial class SessionManager
 {
+    /// <summary>按 element_ref 点击：优先 UIA pattern，其次消息/输入通道。</summary>
+    public JsonObject ClickElementRef(string reference, string? channel, bool keepForeground)
+    {
+        DisplayInfo display = EnsureEnvironmentFast();
+        ElementRefEntry probe = RequireElementEntry(reference);
+        string mode = (channel ?? "auto").Trim().ToLowerInvariant();
+
+        if (mode is not ("auto" or "uia" or "message" or "input"))
+        {
+            throw new ToolException("E_INVALID_ARG", $"未知 click_ref channel: {mode}");
+        }
+
+        // MSAA 控件没有 UIA 句柄：显式 channel 仍要遵守，不能一律走默认动作。
+        if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaOrdinal))
+        {
+            bool acted = mode is "auto" or "uia" &&
+                         MsaaService.DoDefaultAction(msaaHwnd, msaaOrdinal);
+            var bounds = MsaaService.GetBounds(msaaHwnd, msaaOrdinal);
+            string resultChannel = acted ? "msaa" : string.Empty;
+
+            if (!acted && mode != "uia" && bounds is not null)
+            {
+                Click(
+                    bounds.Value.Left + bounds.Value.Width / 2,
+                    bounds.Value.Top + bounds.Value.Height / 2,
+                    "left", 1, mode == "input" ? "input" : "message", keepForeground);
+                acted = true;
+                resultChannel = mode == "input" ? "input" : "message";
+            }
+
+            if (!acted)
+            {
+                throw new ToolException(
+                    "E_PATTERN_UNSUPPORTED",
+                    "MSAA 控件没有默认动作，且无法按坐标点击",
+                    new JsonObject { ["ref"] = probe.Ref });
+            }
+
+            return new JsonObject
+            {
+                ["clicked"] = true,
+                ["ref"] = probe.Ref,
+                ["channel"] = resultChannel,
+                ["refreshed"] = false,
+                ["observed"] = new JsonObject { ["present"] = true },
+                ["bounds"] = bounds is null
+                    ? new JsonObject()
+                    : new JsonObject
+                    {
+                        ["x"] = bounds.Value.Left,
+                        ["y"] = bounds.Value.Top,
+                        ["width"] = bounds.Value.Width,
+                        ["height"] = bounds.Value.Height,
+                    },
+            };
+        }
+
+        using UiaElementHandle handle = ResolveElementHandle(
+            reference, display, out ElementRefEntry entry, out bool refreshed);
+
+        UiaElementInfo info = handle.Info;
+
+        if (mode is "auto" or "uia")
+        {
+            (bool invoked, string? strategy) = handle.Invoke(UiaInvokePattern.Auto);
+
+            if (invoked)
+            {
+                return new JsonObject
+                {
+                    ["clicked"] = true,
+                    ["ref"] = entry.Ref,
+                    ["channel"] = "uia",
+                    ["pattern"] = strategy,
+                    ["refreshed"] = refreshed,
+                    ["observed"] = ObserveAfterAction(entry),
+                    ["bounds"] = new JsonObject
+                    {
+                        ["x"] = info.Left, ["y"] = info.Top,
+                        ["width"] = info.Width, ["height"] = info.Height,
+                    },
+                };
+            }
+
+            if (mode == "uia")
+            {
+                throw new ToolException(
+                    "E_PATTERN_UNSUPPORTED",
+                    "该控件没有可用的 UIA Invoke/Toggle/Select 模式",
+                    new JsonObject { ["ref"] = entry.Ref },
+                    retryable: false,
+                    hint: "改用 channel=message 或 channel=input",
+                    stage: "uia");
+            }
+        }
+
+        int centerX = info.Left + Math.Max(1, info.Width) / 2;
+        int centerY = info.Top + Math.Max(1, info.Height) / 2;
+        JsonObject result = Click(
+            centerX, centerY, "left", 1,
+            mode == "input" ? "input" : "message",
+            keepForeground);
+
+        result["clicked"] = true;
+        result["ref"] = entry.Ref;
+        result["refreshed"] = refreshed;
+        result["observed"] = ObserveAfterAction(entry);
+        return result;
+    }
+
+    /// <summary>
+    /// 动作后的轻量观察：UIA 返回成功不代表应用真的响应了。
+    /// 这里只报告控件是否还在/是否可用/是否获得焦点，失败不影响动作结果。
+    /// </summary>
+    private JsonObject ObserveAfterAction(ElementRefEntry entry)
+    {
+        try
+        {
+            using UiaElementHandle? handle = string.IsNullOrEmpty(entry.RuntimeId)
+                ? null
+                : Uia.FindByRuntimeId(entry.Hwnd, entry.RuntimeId);
+
+            if (handle is null)
+            {
+                return new JsonObject { ["present"] = false };
+            }
+
+            return new JsonObject
+            {
+                ["present"] = true,
+                ["enabled"] = handle.Info.Enabled,
+                ["focused"] = handle.Info.Focused,
+                ["offscreen"] = handle.Info.Offscreen,
+            };
+        }
+        catch (Exception exception)
+        {
+            return new JsonObject
+            {
+                ["present"] = null,
+                ["error"] = exception.Message,
+            };
+        }
+    }
+
     public JsonObject Click(
         int x, int y, string button, int clicks, string mode, bool keepForeground = false)
     {
-        DisplayInfo display = EnsureEnvironment();
+        DisplayInfo display = EnsureEnvironmentFast();
 
         if (clicks is < 1 or > 10)
         {
@@ -100,6 +245,8 @@ internal sealed partial class SessionManager
 
             case "message":
             {
+                RejectNonClientArea(app, x, y, "message");
+
                 if (!MessageInput.Click(x, y, button, clicks, out detail))
                 {
                     throw new ToolException(
@@ -119,7 +266,8 @@ internal sealed partial class SessionManager
                 {
                     method = "uia";
                 }
-                else if (MessageInput.Click(x, y, button, clicks, out detail))
+                else if (!IsNonClientPoint(app.Hwnd, x, y) &&
+                         MessageInput.Click(x, y, button, clicks, out detail))
                 {
                     method = "message";
                 }
@@ -173,7 +321,8 @@ internal sealed partial class SessionManager
         return result;
     }
 
-    public JsonObject TypeText(string text, int? pid = null, bool verify = true, int chunkChars = 32)
+    public JsonObject TypeText(
+        string text, int? pid = null, bool verify = true, int chunkChars = 32, string? channel = null)
     {
         if (text.Length > 100_000)
         {
@@ -238,11 +387,92 @@ internal sealed partial class SessionManager
                         stage: "focus");
                 }
 
-                TextWriteResult write = verify
-                    ? WriteTextVerified(
-                        app, focused, text, replace: false, timeoutMs: 10000,
-                        chunkChars: effectiveChunk, verifyEveryChunks: verifyEvery)
-                    : WriteTextUnverified(app, focused, text);
+                // 长文本逐字符 SendInput 约 3.8ms/字；剪贴板一次性粘贴通常 <200ms。
+                // 代理对（emoji）即使很短也走剪贴板：逐码元 SendInput 在部分应用会丢字符。
+                string mode = (channel ?? "auto").Trim().ToLowerInvariant();
+                bool hasSurrogate = false;
+
+                foreach (char ch in text)
+                {
+                    if (char.IsSurrogate(ch))
+                    {
+                        hasSurrogate = true;
+                        break;
+                    }
+                }
+
+                bool patternUsed = false;
+                bool useClipboard = false;
+                TextWriteResult write;
+
+                if (mode == "pattern")
+                {
+                    if (focused is null)
+                    {
+                        throw new ToolException(
+                            "E_PATTERN_UNSUPPORTED",
+                            "当前焦点控件不可用，无法用 ValuePattern 写入",
+                            retryable: false,
+                            hint: "改用 channel=auto 或 channel=clipboard",
+                            stage: "input");
+                    }
+
+                    UiaSetValueResult set = focused.SetValue(text);
+
+                    if (!set.Supported || set.ReadOnly || set.Failure is not null)
+                    {
+                        throw new ToolException(
+                            "E_PATTERN_UNSUPPORTED",
+                            "控件不支持可写 ValuePattern",
+                            new JsonObject { ["failure"] = set.Failure },
+                            retryable: false,
+                            hint: "改用 channel=auto 或 channel=clipboard",
+                            stage: "input");
+                    }
+
+                    patternUsed = true;
+                    write = new TextWriteResult(
+                        text.Length, Chunks: 1, TextSupported: true,
+                        Verified: string.Equals(set.Value, text, StringComparison.Ordinal),
+                        ObservedLength: set.Value?.Length,
+                        InjectMs: 0, DurationMs: 0);
+                }
+                else
+                {
+                    useClipboard = mode == "clipboard" ||
+                                   (mode == "auto" && (text.Length >= 200 || hasSurrogate));
+
+                    if (useClipboard)
+                    {
+                        write = WriteTextViaClipboard(focused, text);
+                    }
+                    else
+                    {
+                        write = verify
+                            ? WriteTextVerified(
+                                app, focused, text, replace: false, timeoutMs: 10000,
+                                chunkChars: effectiveChunk, verifyEveryChunks: verifyEvery)
+                            : WriteTextUnverified(app, focused, text);
+                    }
+                }
+
+                // 写入前焦点控件偶发不可用（UWP/新版记事本）；写完后再取一次补校验，
+                // 避免“内容其实写对了，但 verified 永远是 false”。
+                if (!write.Verified && verify && focused is null && !patternUsed && !useClipboard)
+                {
+                    using UiaElementHandle? late = Uia.GetFocusedElementHandle(app.Pid);
+                    string? observed = late?.GetText(65536);
+
+                    if (observed is not null)
+                    {
+                        write = write with
+                        {
+                            TextSupported = true,
+                            Verified = TextMatches(string.Empty, observed, text, replace: false),
+                            ObservedLength = observed.Length,
+                        };
+                    }
+                }
 
                 return new JsonObject
                 {
@@ -253,7 +483,12 @@ internal sealed partial class SessionManager
                     ["chunk_chars"] = effectiveChunk,
                     ["text_supported"] = write.TextSupported,
                     ["verified"] = write.Verified,
-                    ["method"] = verify ? "sendinput+verify" : "sendinput",
+                    ["method"] = patternUsed
+                        ? "uia-value-pattern"
+                        : useClipboard
+                            ? "clipboard+ctrl-v"
+                            : verify ? "sendinput+verify" : "sendinput",
+                    ["channel"] = patternUsed ? "pattern" : useClipboard ? "clipboard" : "keys",
                     ["inject_ms"] = Math.Round(write.InjectMs, 2),
                     ["duration_ms"] = Math.Round(write.DurationMs, 2),
                     ["observed_length"] = write.ObservedLength,
@@ -833,6 +1068,58 @@ internal sealed partial class SessionManager
         value.Replace("\r\n", "\n").Replace('\r', '\n');
 
     /// <summary>快速路径：一次 SendInput 写完，不做逐块回读；调用方需自行复核。</summary>
+    /// <summary>
+    /// 剪贴板粘贴：一次性写入，避免 O(n) 的 SendInput 与 IME 组合问题。
+    /// 会保存/还原原有文本剪贴板；非文本内容无法还原，因此只在长文本或显式要求时使用。
+    /// </summary>
+    private TextWriteResult WriteTextViaClipboard(UiaElementHandle? target, string text)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        string? before = target?.GetText(65536);
+        string? previous = null;
+
+        try
+        {
+            previous = ClipboardText.Capture();
+        }
+        catch
+        {
+            // 读不到就当作空剪贴板。
+        }
+
+        try
+        {
+            ClipboardText.SetText(text);
+            InputInjector.PressKeys("Ctrl+V");
+            Thread.Sleep(Math.Clamp(60 + text.Length / 20, 80, 1200));
+        }
+        finally
+        {
+            try
+            {
+                ClipboardText.Restore(previous);
+            }
+            catch
+            {
+                // 还原失败不影响输入结果。
+            }
+        }
+
+        string? after = target?.GetText(65536);
+        bool verified = before is not null &&
+                        after is not null &&
+                        after.Length >= before.Length + text.Length;
+
+        return new TextWriteResult(
+            text.Length,
+            Chunks: 1,
+            TextSupported: before is not null,
+            Verified: verified,
+            ObservedLength: after?.Length,
+            InjectMs: stopwatch.Elapsed.TotalMilliseconds,
+            DurationMs: stopwatch.Elapsed.TotalMilliseconds);
+    }
+
     private TextWriteResult WriteTextUnverified(
         TrackedApp app,
         UiaElementHandle? target,
@@ -920,6 +1207,61 @@ internal sealed partial class SessionManager
         app.Pid > 0 &&
         WindowManager.GetProcessId(WindowManager.GetForegroundWindow()) == app.Pid;
 
+    /// <summary>
+    /// 判断点是否落在顶层窗口的非客户区（标题栏/边框/系统按钮）。
+    /// 窗口消息通道只能投递 client 区消息，打不到非客户区；必须显式拒绝而不是报“成功”。
+    /// </summary>
+    private static bool IsNonClientPoint(IntPtr topHwnd, int x, int y)
+    {
+        var point = new NativeMethods.POINT { X = x, Y = y };
+        IntPtr target = NativeMethods.WindowFromPoint(point);
+
+        if (target == IntPtr.Zero)
+        {
+            return true;
+        }
+
+        // 弹出菜单/owned 窗口有独立的消息泵，交给消息通道处理。
+        if (NativeMethods.GetAncestor(target, NativeMethods.GaRoot) != topHwnd)
+        {
+            return false;
+        }
+
+        // 子控件收到的是 client 坐标消息。
+        if (target != topHwnd)
+        {
+            return false;
+        }
+
+        IntPtr lParam = unchecked((IntPtr)((y << 16) | (x & 0xFFFF)));
+
+        if (NativeMethods.SendMessageTimeoutW(
+                topHwnd, NativeMethods.WmNcHitTest, IntPtr.Zero, lParam,
+                NativeMethods.SmtoAbortIfHung, 120, out IntPtr result) == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        // HTCLIENT = 1；0/>=2 都是非客户区。
+        return result.ToInt64() != 1;
+    }
+
+    private static void RejectNonClientArea(TrackedApp app, int x, int y, string channel)
+    {
+        if (!IsNonClientPoint(app.Hwnd, x, y))
+        {
+            return;
+        }
+
+        throw new ToolException(
+            "E_INPUT_UNSUPPORTED",
+            $"({x},{y}) 位于窗口非客户区（标题栏/边框/系统按钮），{channel} 通道无法生效",
+            new JsonObject { ["x"] = x, ["y"] = y, ["channel"] = channel },
+            retryable: false,
+            hint: "改用 channel=input（会移动光标），或直接用 UIA 调用最小化/关闭按钮",
+            stage: "input");
+    }
+
     /// <summary>焦点元素必须与前台窗口的客户区相交，防止同 pid 多窗口时写错文档。</summary>
     private static bool ElementBelongsToWindow(UiaElementInfo info, IntPtr hwnd)
     {
@@ -988,6 +1330,14 @@ internal sealed partial class SessionManager
         // 用户在工具执行期间主动切到了别的窗口：不要为了“归还前台”再把用户抢走。
         // 只有当前前台仍是本会话应用（说明是应用自己抢了前台）时才恢复。
         if (!IsTrackedWindow(currentForeground))
+        {
+            return;
+        }
+
+        // 目标线程挂起时 AttachThreadInput 会把服务端拖死；先做 120ms 健康检查。
+        if (NativeMethods.SendMessageTimeoutW(
+                previous, NativeMethods.WmNull, IntPtr.Zero, IntPtr.Zero,
+                NativeMethods.SmtoAbortIfHung, 120, out _) == IntPtr.Zero)
         {
             return;
         }
@@ -1075,8 +1425,8 @@ internal sealed partial class SessionManager
             root = target;
         }
 
-        NativeMethods.GetWindowThreadProcessId(target, out uint targetPid);
-        NativeMethods.GetWindowThreadProcessId(root, out uint rootPid);
+        _ = NativeMethods.GetWindowThreadProcessId(target, out uint targetPid);
+        _ = NativeMethods.GetWindowThreadProcessId(root, out uint rootPid);
 
         TrackedApp? tracked;
         lock (_gate)
@@ -1185,15 +1535,30 @@ internal sealed partial class SessionManager
             ? value.GetString()
             : null;
 
-    private static int GetInt(JsonElement element, string property, int fallback) =>
-        element.TryGetProperty(property, out JsonElement value) && value.TryGetInt32(out int result)
-            ? result
-            : fallback;
+    private static int GetInt(JsonElement element, string property, int fallback)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(property, out JsonElement value) ||
+            value.ValueKind != JsonValueKind.Number)
+        {
+            return fallback;
+        }
 
-    private static double GetDouble(JsonElement element, string property, double fallback) =>
-        element.TryGetProperty(property, out JsonElement value) && value.TryGetDouble(out double result)
-            ? result
-            : fallback;
+        // TryGetInt32 在非 Number 上可能抛 InvalidOperationException；上面已先判定 ValueKind。
+        return value.TryGetInt32(out int result) ? result : fallback;
+    }
+
+    private static double GetDouble(JsonElement element, string property, double fallback)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(property, out JsonElement value) ||
+            value.ValueKind != JsonValueKind.Number)
+        {
+            return fallback;
+        }
+
+        return value.TryGetDouble(out double result) ? result : fallback;
+    }
 
     private static bool GetBool(JsonElement element, string property, bool fallback) =>
         element.TryGetProperty(property, out JsonElement value) &&

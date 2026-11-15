@@ -1,0 +1,71 @@
+{
+  "cases": [
+    {
+      "id": "CONC-01",
+      "purpose": "8 线程 × 20 次（4 工具混合）",
+      "ok": true,
+      "passed": 160,
+      "calls": 160,
+      "codes": {
+        "ok": 160
+      },
+      "wall_ms": 1677.7,
+      "latency": {
+        "n": 160,
+        "min": 2.65,
+        "p50": 63.15,
+        "p95": 183.23,
+        "p99": 262.81,
+        "max": 358.26,
+        "mean": 77.08
+      }
+    },
+    {
+      "id": "CONC-02",
+      "purpose": "16 线程 × 10 次（加压）",
+      "ok": true,
+      "passed": 160,
+      "calls": 160,
+      "codes": {
+        "ok": 160
+      },
+      "wall_ms": 1210.6,
+      "latency": {
+        "n": 160,
+        "min": 2.12,
+        "p50": 62.03,
+        "p95": 300.73,
+        "p99": 453.82,
+        "max": 473.56,
+        "mean": 105.87
+      }
+    },
+    {
+      "id": "CONC-03",
+      "purpose": "取消 A 不破坏会话；并发 GUI 工具在闸门饱和时返回 E_BUSY",
+      "ok": true,
+      "a_cancelled": true,
+      "b_while_busy": "ok",
+      "b_while_busy_ms": 62.19,
+      "b_after": "ok"
+    },
+    {
+      "id": "CONC-04",
+      "purpose": "并发 release 后会话可恢复",
+      "ok": true,
+      "release": "ok",
+      "shot": "ok",
+      "after": "ok"
+    },
+    {
+      "id": "CONC-05",
+      "purpose": "并发后进程资源无异常",
+      "ok": true,
+      "rss_before": 24.89,
+      "rss_after": 13.59,
+      "handles_before": 431,
+      "handles_after": 558
+    }
+  ],
+  "binary_sha256": "84BEA3E1120C8C4DED316F33F6F4BDBB3EDF01E29A7468693C7E2FCAF065BFD8"
+}

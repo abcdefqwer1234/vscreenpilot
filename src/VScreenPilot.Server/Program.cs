@@ -51,18 +51,28 @@ internal static class Program
         bool allowScript = HasFlag(args, "--allow-script") ||
                            IsTruthy(Environment.GetEnvironmentVariable("VSP_ALLOW_SCRIPT"));
 
+        // 多会话 profile：每个 profile 独立互斥体/状态/日志/追踪目录；输入所有权仍由前台决定。
+        // profile 必须先解析，日志文件名才能带上 profile。
+        string? profileFlag = GetOption(args, "--profile");
+
+        if (!string.IsNullOrWhiteSpace(profileFlag))
+        {
+            Environment.SetEnvironmentVariable(Profile.EnvironmentVariable, profileFlag);
+        }
+
+        string profile = Profile.Resolve();
         var log = new LogRing();
 
         if (HasFlag(args, "--doctor"))
         {
-            int doctorExit = Doctor(log, allowScript);
+            int doctorExit = Doctor(log, allowScript, profile);
             log.Dispose();
             return doctorExit;
         }
 
         var mutex = new MutexGuard();
 
-        if (!mutex.TryAcquire("VScreenPilot_Session_0", out string? error))
+        if (!mutex.TryAcquire(Profile.MutexName(profile), out string? error))
         {
             try
             {
@@ -151,7 +161,7 @@ internal static class Program
         try
         {
             var server = new McpServer(_session, log);
-            return server.Run();
+            return server.RunAsync().GetAwaiter().GetResult();
         }
         finally
         {
@@ -169,7 +179,7 @@ internal static class Program
             VScreenPilot {BuildInfo.Version}
 
             用法:
-              VScreenPilot [--allow-script] [--parent-pid <pid>]   MCP stdio 服务器
+              VScreenPilot [--allow-script] [--parent-pid <pid>] [--profile <name>]
               VScreenPilot --doctor                                输出 JSON 诊断
               VScreenPilot --version                               输出版本
               VScreenPilot --help                                  输出本帮助
@@ -177,11 +187,31 @@ internal static class Program
             选项:
               --allow-script            启用 run_script（默认关闭）
               --parent-pid <pid>        父进程退出时自动清理
+              --profile <name>          多会话隔离：独立互斥体、状态文件、追踪与 artifact 目录
 
             环境变量:
               VSP_ALLOW_SCRIPT=1        等价于 --allow-script
               VSP_APP_ALLOWLIST=dir1;dir2  仅允许启动这些目录下的 exe（默认允许全部）
             """);
+    }
+
+    private static string? GetOption(string[] args, string option)
+    {
+        for (int index = 0; index < args.Length; index++)
+        {
+            if (args[index].StartsWith(option + "=", StringComparison.OrdinalIgnoreCase))
+            {
+                return args[index][(option.Length + 1)..];
+            }
+
+            if (string.Equals(args[index], option, StringComparison.OrdinalIgnoreCase) &&
+                index + 1 < args.Length)
+            {
+                return args[index + 1];
+            }
+        }
+
+        return null;
     }
 
     private static bool HasFlag(string[] args, string flag) =>
@@ -259,16 +289,19 @@ internal static class Program
         thread.Start();
     }
 
-    private static int Doctor(LogRing log, bool allowScript)
+    private static int Doctor(LogRing log, bool allowScript, string profile)
     {
+        var checks = new JsonArray();
         var result = new JsonObject
         {
             ["ok"] = true,
             ["version"] = BuildInfo.Version,
+            ["profile"] = profile,
             ["platform"] = Environment.OSVersion.Platform.ToString(),
             ["os"] = RuntimeInformation.OSDescription,
             ["arch"] = RuntimeInformation.ProcessArchitecture.ToString(),
             ["elevated"] = IsElevated(),
+            ["interactive"] = Environment.UserInteractive,
             ["run_script_enabled"] = allowScript,
             ["app_allowlist"] = ReadAppAllowlistForDoctor(),
             ["log_file"] = log.FilePath,
@@ -326,6 +359,28 @@ internal static class Program
 
         result["driver"] = driver;
 
+        bool driverOk = string.Equals(driverStatus, "Ok", StringComparison.Ordinal);
+        bool driverOpen = driver["open"]?.GetValue<bool>() == true;
+
+        checks.Add((JsonNode)new JsonObject
+        {
+            ["id"] = "driver.status",
+            ["ok"] = driverOk,
+            ["detail"] = driverStatus,
+        });
+        checks.Add((JsonNode)new JsonObject
+        {
+            ["id"] = "driver.open",
+            ["ok"] = driverOpen,
+            ["detail"] = driverOpen ? driver["version"]?.GetValue<string>() : driver["open_error"]?.ToString(),
+        });
+        checks.Add((JsonNode)new JsonObject
+        {
+            ["id"] = "session.interactive",
+            ["ok"] = Environment.UserInteractive,
+            ["detail"] = Environment.UserInteractive ? "ok" : "non-interactive session",
+        });
+
         DisplayInfo? parsec = DisplayTopology.FindParsecDisplay();
         result["virtual_display"] = parsec is null
             ? new JsonObject { ["enabled"] = false }
@@ -367,10 +422,24 @@ internal static class Program
         result["state_file"] = stateStore.FilePath;
         result["state"] = stateStore.Describe();
 
-        if (!string.Equals(driverStatus, "Ok", StringComparison.Ordinal))
+        checks.Add((JsonNode)new JsonObject
         {
-            result["ok"] = false;
-            result["hint"] = "驱动未就绪，请运行 scripts/install-driver.ps1";
+            ["id"] = "virtual_display",
+            ["ok"] = parsec is not null,
+            ["detail"] = parsec is null ? "not mounted" : $"{(int)parsec.X},{(int)parsec.Y} {parsec.Width}x{parsec.Height}",
+        });
+
+        result["checks"] = checks;
+
+        // 旧实现只看 driver.status，忽略了 driver.open=false，会误报 OK。
+        bool ok = driverOk && driverOpen && Environment.UserInteractive;
+        result["ok"] = ok;
+
+        if (!ok)
+        {
+            result["hint"] = driverOk
+                ? "驱动状态正常但设备打不开，或有检查项失败；查看 checks[]"
+                : "驱动未就绪，请运行 scripts/install-driver.ps1";
         }
 
         Console.Out.WriteLine(result.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));

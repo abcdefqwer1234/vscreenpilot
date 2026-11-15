@@ -2,7 +2,8 @@ using VScreenPilot.Perception;
 
 namespace VScreenPilot.Perception;
 
-internal sealed record VisualMatch(int X, int Y, int Width, int Height, double Score);
+internal sealed record VisualMatch(
+    int X, int Y, int Width, int Height, double Score, double Scale = 1.0);
 
 /// <summary>
 /// 纯托管模板匹配：灰度金字塔粗到细 SAD + 非极大值抑制。
@@ -70,6 +71,111 @@ internal static class TemplateMatcher
         }
 
         return Suppress(candidates, template.Width, template.Height, threshold, maxResults);
+    }
+
+    /// <summary>
+    /// 多尺度匹配：DPI/缩放变化时模板尺寸不再 1:1。
+    /// 每个尺度独立匹配，最后按 score 合并；命中结果带实际 scale。
+    /// </summary>
+    public static List<VisualMatch> MatchMultiScale(
+        byte[] screenBgra,
+        int screenWidth,
+        int screenHeight,
+        PngImage template,
+        double threshold,
+        int maxResults,
+        IReadOnlyList<double>? scales,
+        Func<bool>? isCancelled)
+    {
+        if (scales is null || scales.Count == 0)
+        {
+            List<VisualMatch> single = Match(
+                screenBgra, screenWidth, screenHeight, template, threshold, maxResults, isCancelled);
+            return single.Select(match => match with { Scale = 1.0 }).ToList();
+        }
+
+        var combined = new List<VisualMatch>();
+
+        foreach (double raw in scales.Distinct())
+        {
+            if (isCancelled?.Invoke() == true)
+            {
+                break;
+            }
+
+            double scale = Math.Clamp(raw, 0.5, 2.0);
+            PngImage scaled = Math.Abs(scale - 1.0) < 0.001
+                ? template
+                : Resize(template, scale);
+
+            if (scaled.Width > screenWidth || scaled.Height > screenHeight)
+            {
+                continue;
+            }
+
+            List<VisualMatch> matches = Match(
+                screenBgra, screenWidth, screenHeight, scaled, threshold, maxResults, isCancelled);
+
+            foreach (VisualMatch match in matches)
+            {
+                combined.Add(match with
+                {
+                    Width = scaled.Width,
+                    Height = scaled.Height,
+                    Scale = scale,
+                });
+            }
+        }
+
+        var results = new List<VisualMatch>();
+
+        foreach (VisualMatch match in combined.OrderByDescending(item => item.Score))
+        {
+            // 不同尺度可能命中同一位置，按半宽/半高去重。
+            bool duplicate = results.Any(existing =>
+                Math.Abs(existing.X - match.X) < Math.Max(2, match.Width / 2) &&
+                Math.Abs(existing.Y - match.Y) < Math.Max(2, match.Height / 2));
+
+            if (duplicate)
+            {
+                continue;
+            }
+
+            results.Add(match);
+
+            if (results.Count >= Math.Clamp(maxResults, 1, 100))
+            {
+                break;
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>最近邻缩放：模板匹配前会转灰度，最近邻足够且可预测。</summary>
+    private static PngImage Resize(PngImage source, double scale)
+    {
+        int width = Math.Max(1, (int)Math.Round(source.Width * scale));
+        int height = Math.Max(1, (int)Math.Round(source.Height * scale));
+        var rgba = new byte[width * height * 4];
+
+        for (int y = 0; y < height; y++)
+        {
+            int sourceY = Math.Min(source.Height - 1, (int)(y / scale));
+
+            for (int x = 0; x < width; x++)
+            {
+                int sourceX = Math.Min(source.Width - 1, (int)(x / scale));
+                int sourceIndex = (sourceY * source.Width + sourceX) * 4;
+                int destination = (y * width + x) * 4;
+                rgba[destination] = source.Rgba[sourceIndex];
+                rgba[destination + 1] = source.Rgba[sourceIndex + 1];
+                rgba[destination + 2] = source.Rgba[sourceIndex + 2];
+                rgba[destination + 3] = source.Rgba[sourceIndex + 3];
+            }
+        }
+
+        return new PngImage(rgba, width, height);
     }
 
     private static List<Candidate> SearchCoarse(

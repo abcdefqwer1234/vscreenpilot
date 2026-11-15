@@ -179,9 +179,19 @@ internal static class InputInjector
 
         for (int i = 0; i < rawTokens.Length - 1; i++)
         {
-            if (!KeyMap.TryResolve(rawTokens[i], out ushort modifier, out _, out _))
+            if (!KeyMap.TryResolve(rawTokens[i], out ushort modifier, out _, out _, out bool modifierAltGr))
             {
                 throw new ToolException("E_INVALID_ARG", $"未知按键: {rawTokens[i]}");
+            }
+
+            if (modifierAltGr)
+            {
+                throw new ToolException(
+                    "E_INVALID_ARG",
+                    $"按键 {rawTokens[i]} 需要 AltGr/Ctrl+Alt，当前组合键模型无法安全表达",
+                    retryable: false,
+                    hint: "改用 type_text（Unicode 注入）输入该字符",
+                    stage: "input");
             }
 
             modifiers.Add(modifier);
@@ -189,9 +199,20 @@ internal static class InputInjector
         }
 
         string mainToken = rawTokens[^1];
-        if (!KeyMap.TryResolve(mainToken, out ushort mainKey, out bool needsShift, out bool extended))
+        if (!KeyMap.TryResolve(
+                mainToken, out ushort mainKey, out bool needsShift, out bool extended, out bool altGr))
         {
             throw new ToolException("E_INVALID_ARG", $"未知按键: {mainToken}");
+        }
+
+        if (altGr)
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"按键 {mainToken} 需要 AltGr/Ctrl+Alt，当前组合键模型无法安全表达",
+                retryable: false,
+                hint: "改用 type_text（Unicode 注入）输入该字符",
+                stage: "input");
         }
 
         if (needsShift)
@@ -261,7 +282,7 @@ internal static class InputInjector
             Math.Clamp(nx, 0, 65535),
             Math.Clamp(ny, 0, 65535),
             0,
-            NativeMethods.MouseMove | NativeMethods.MouseAbsolute);
+            NativeMethods.MouseMove | NativeMethods.MouseAbsolute | NativeMethods.MouseVirtualDesk);
     }
 
     private static void MoveAbsolute(int x, int y)

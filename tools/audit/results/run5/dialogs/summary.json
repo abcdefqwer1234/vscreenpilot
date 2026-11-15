@@ -1,0 +1,88 @@
+{
+  "cases": [
+    {
+      "id": "DIA-01",
+      "purpose": "Word 另存为对话框：可被语义后端发现，文本不落入正文",
+      "ok": true,
+      "dialog": null,
+      "in_uia": false,
+      "controls_inside": 0,
+      "ui_reachable": true,
+      "windows": [
+        "文档1 - Word",
+        "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "设置",
+        "设置",
+        "Windows 输入体验",
+        "Program Manager"
+      ],
+      "typed": "ok",
+      "landed_in_document": false,
+      "before_len": 15,
+      "after_len": 15
+    },
+    {
+      "id": "DIA-02",
+      "purpose": "Word 查找替换：可被语义后端发现，文本不落入正文",
+      "ok": true,
+      "dialog": {
+        "hwnd": 132382,
+        "title": "查找和替换",
+        "class": "bosa_sdm_msword",
+        "owner": 263166,
+        "rect": [
+          2270,
+          -11,
+          2831,
+          267
+        ]
+      },
+      "in_uia": false,
+      "controls_inside": 66,
+      "ui_reachable": false,
+      "windows": [
+        "查找和替换",
+        "文档1 - Word"
+      ],
+      "typed": "ok",
+      "landed_in_document": false,
+      "before_len": 15,
+      "after_len": 15
+    },
+    {
+      "id": "DIA-03",
+      "purpose": "Notepad 另存为：可被语义后端发现",
+      "ok": true,
+      "dialog": {
+        "hwnd": 197790,
+        "title": "另存为",
+        "class": "#32770",
+        "owner": 197880,
+        "rect": [
+          1920,
+          0,
+          2596,
+          453
+        ]
+      },
+      "in_uia": true,
+      "controls_inside": 117,
+      "windows": [
+        "另存为",
+        "*NOTEPAD-SEED - Notepad"
+      ],
+      "typed": "ok"
+    },
+    {
+      "id": "DIA-04",
+      "purpose": "受保护视图/只读：输入应失败或明确提示",
+      "ok": true,
+      "launch": "Word",
+      "typed": "ok",
+      "verified": false,
+      "message": "",
+      "shot": false
+    }
+  ],
+  "binary_sha256": "CDD905C93180D89E941356558F31FC2B02B4DE8CB0FBD11065A2ED2CE3A367CD"
+}

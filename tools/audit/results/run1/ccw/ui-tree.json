@@ -1,0 +1,44 @@
+{
+  "3": {
+    "nodes": 6,
+    "reported": 6,
+    "truncated": false,
+    "ms": 422.94,
+    "bytes": 1015,
+    "types": {
+      "Window": 1,
+      "Button": 2,
+      "Image": 1,
+      "Text": 1,
+      "TitleBar": 1
+    }
+  },
+  "5": {
+    "nodes": 6,
+    "reported": 6,
+    "truncated": false,
+    "ms": 52.13,
+    "bytes": 1014,
+    "types": {
+      "Window": 1,
+      "Button": 2,
+      "Image": 1,
+      "Text": 1,
+      "TitleBar": 1
+    }
+  },
+  "8": {
+    "nodes": 6,
+    "reported": 6,
+    "truncated": false,
+    "ms": 63.4,
+    "bytes": 1014,
+    "types": {
+      "Window": 1,
+      "Button": 2,
+      "Image": 1,
+      "Text": 1,
+      "TitleBar": 1
+    }
+  }
+}

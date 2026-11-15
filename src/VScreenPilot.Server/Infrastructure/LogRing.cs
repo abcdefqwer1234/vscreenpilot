@@ -115,8 +115,13 @@ public sealed class LogRing : IDisposable
         }
     }
 
-    private string BuildPath(DateTime date) =>
-        Path.Combine(_directory!, $"server-{date:yyyyMMdd}.log");
+    private string BuildPath(DateTime date)
+    {
+        // 多 profile 并行时日志必须能按 profile 归因；default 保持旧文件名。
+        string profile = Profile.Resolve();
+        string suffix = profile == "default" ? string.Empty : $".{profile}";
+        return Path.Combine(_directory!, $"server{suffix}-{date:yyyyMMdd}.log");
+    }
 
     private void CleanupOldLogs()
     {
@@ -129,7 +134,7 @@ public sealed class LogRing : IDisposable
 
         try
         {
-            foreach (string file in Directory.EnumerateFiles(_directory, "server-*.log*"))
+            foreach (string file in Directory.EnumerateFiles(_directory, "server*.log*"))
             {
                 string name = Path.GetFileName(file);
                 string stamp = name.Length >= 14 ? name.Substring(7, 8) : string.Empty;
@@ -290,7 +295,7 @@ public sealed class LogRing : IDisposable
 
         try
         {
-            string? newest = Directory.EnumerateFiles(_directory, "server-*.log*")
+            string? newest = Directory.EnumerateFiles(_directory, "server*.log*")
                 .Select(path => new FileInfo(path))
                 .Where(file => file.Length > 0)
                 .OrderByDescending(file => file.LastWriteTimeUtc)

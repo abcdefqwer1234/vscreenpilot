@@ -42,12 +42,7 @@ internal static class MessageInput
             return false;
         }
 
-        var client = new NativeMethods.POINT { X = x, Y = y };
-        if (!NativeMethods.ScreenToClient(target, ref client))
-        {
-            detail = "ScreenToClient 失败";
-            return false;
-        }
+        NativeMethods.POINT client = ToClient(target, x, y);
 
         (uint down, uint up, int keyState) = ButtonMessages(button);
         IntPtr position = MakeLParam(client.X, client.Y);
@@ -80,37 +75,10 @@ internal static class MessageInput
             return false;
         }
 
-        if (IsInputHostile(target))
-        {
-            detail = "目标属于 Chromium/Electron/WinUI，窗口消息拖拽会被忽略；请使用 gesture mode=input";
-            return false;
-        }
-
-        (uint down, uint up, int keyState) = ButtonMessages(button);
-
-        var start = new NativeMethods.POINT { X = fromX, Y = fromY };
-        NativeMethods.ScreenToClient(target, ref start);
-
-        bool ok = NativeMethods.PostMessageW(target, WmMouseMove, IntPtr.Zero, MakeLParam(start.X, start.Y));
-        ok &= NativeMethods.PostMessageW(target, down, (IntPtr)keyState, MakeLParam(start.X, start.Y));
-
-        int steps = Math.Clamp(durationMs / 10, 1, 100);
-        for (int i = 1; i <= steps; i++)
-        {
-            int sx = fromX + (toX - fromX) * i / steps;
-            int sy = fromY + (toY - fromY) * i / steps;
-            var point = new NativeMethods.POINT { X = sx, Y = sy };
-            NativeMethods.ScreenToClient(target, ref point);
-            ok &= NativeMethods.PostMessageW(
-                target, WmMouseMove, (IntPtr)keyState, MakeLParam(point.X, point.Y));
-            Thread.Sleep(Math.Max(1, durationMs / steps));
-        }
-
-        var end = new NativeMethods.POINT { X = toX, Y = toY };
-        NativeMethods.ScreenToClient(target, ref end);
-        ok &= NativeMethods.PostMessageW(target, up, IntPtr.Zero, MakeLParam(end.X, end.Y));
-        detail = $"hwnd=0x{target.ToInt64():X} steps={steps}";
-        return ok;
+        // 窗口消息拖拽无法在目标进程里 SetCapture，跨子窗口/拖放会“成功但没效果”。
+        // 与其返回假成功，不如明确要求调用方选 input。
+        detail = "窗口消息拖拽无法维持鼠标捕获；请使用 gesture mode=input";
+        return false;
     }
 
     public static bool Scroll(int x, int y, int dx, int dy, out string detail)
@@ -130,24 +98,34 @@ internal static class MessageInput
             return false;
         }
 
-        IntPtr lParam = MakeLParam(x, y);
+        // 滚轮通常由顶层窗口/焦点窗口处理；只发给子窗口在部分应用里会被忽略。
+        // 同时按“实际接收消息的窗口”做 DPI 转换，避免高 DPI 下坐标偏移（R19）。
+        IntPtr wheelTarget = NativeMethods.GetAncestor(target, NativeMethods.GaRoot);
+        if (wheelTarget == IntPtr.Zero)
+        {
+            wheelTarget = target;
+        }
+
+        var wheelPoint = new NativeMethods.POINT { X = x, Y = y };
+        NativeMethods.PhysicalToLogicalPointForPerMonitorDPI(wheelTarget, ref wheelPoint);
+        IntPtr lParam = MakeLParam(wheelPoint.X, wheelPoint.Y);
         bool ok = true;
 
         if (dy != 0)
         {
             int delta = -dy * 120;
             ok &= NativeMethods.PostMessageW(
-                target, WmMouseWheel, (IntPtr)((delta << 16) & unchecked((int)0xFFFF0000)), lParam);
+                wheelTarget, WmMouseWheel, (IntPtr)((delta << 16) & unchecked((int)0xFFFF0000)), lParam);
         }
 
         if (dx != 0)
         {
             int delta = dx * 120;
             ok &= NativeMethods.PostMessageW(
-                target, WmMouseHWheel, (IntPtr)((delta << 16) & unchecked((int)0xFFFF0000)), lParam);
+                wheelTarget, WmMouseHWheel, (IntPtr)((delta << 16) & unchecked((int)0xFFFF0000)), lParam);
         }
 
-        detail = $"hwnd=0x{target.ToInt64():X}";
+        detail = $"hwnd=0x{wheelTarget.ToInt64():X} child=0x{target.ToInt64():X}";
         return ok;
     }
 
@@ -168,8 +146,7 @@ internal static class MessageInput
             return false;
         }
 
-        var client = new NativeMethods.POINT { X = x, Y = y };
-        NativeMethods.ScreenToClient(target, ref client);
+        NativeMethods.POINT client = ToClient(target, x, y);
         detail = $"hwnd=0x{target.ToInt64():X}";
         return NativeMethods.PostMessageW(target, WmMouseMove, IntPtr.Zero, MakeLParam(client.X, client.Y));
     }
@@ -214,6 +191,24 @@ internal static class MessageInput
             "middle" => (WmMButtonDown, WmMButtonUp, MkMButton),
             _ => throw new ToolException("E_INVALID_ARG", $"未知鼠标按键: {button}"),
         };
+
+    /// <summary>
+    /// 物理屏幕坐标 → 目标窗口客户区坐标。DPI-unaware 目标需要先做 Per-Monitor DPI 转换，
+    /// 否则在 150% 缩放下 PostMessage 的落点会偏。
+    /// </summary>
+    private static NativeMethods.POINT ToClient(IntPtr hwnd, int x, int y)
+    {
+        var point = new NativeMethods.POINT { X = x, Y = y };
+        NativeMethods.PhysicalToLogicalPointForPerMonitorDPI(hwnd, ref point);
+
+        if (!NativeMethods.ScreenToClient(hwnd, ref point))
+        {
+            point.X = x;
+            point.Y = y;
+        }
+
+        return point;
+    }
 
     private static IntPtr MakeLParam(int x, int y) =>
         (IntPtr)((y << 16) | (x & 0xFFFF));

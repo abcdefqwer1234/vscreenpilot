@@ -1,0 +1,87 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 18 * * *"
+
+jobs:
+  unit:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore VScreenPilot.slnx
+
+      - name: Build
+        run: dotnet build VScreenPilot.slnx -c Release --no-restore
+
+      - name: Unit tests
+        run: dotnet test tests/VScreenPilot.Tests/VScreenPilot.Tests.csproj -c Release --logger "trx;LogFileName=unit.trx"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-results
+          path: "**/*.trx"
+
+  smoke:
+    runs-on: windows-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Publish
+        run: dotnet publish src/VScreenPilot.Server/VScreenPilot.Server.csproj -c Release -r win-x64 -o artifacts/server
+
+      - name: Protocol smoke (no display)
+        # 不挂虚拟屏：只验证 initialize / tools/list / schema / 错误形状 / resources。
+        run: python tools/audit/smoke_no_display.py --exe artifacts/server/VScreenPilot.exe
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-results
+          path: tools/audit/results/smoke/**
+
+  gui-nightly:
+    # 需要真实交互桌面 + Parsec VDD，只能在自托管 runner 上跑。
+    if: github.event_name == 'schedule'
+    runs-on: [self-hosted, windows, x64, vdd]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Publish
+        run: dotnet publish src/VScreenPilot.Server/VScreenPilot.Server.csproj -c Release -r win-x64 -o artifacts/server
+
+      - name: Protocol / contract / concurrency / capture
+        run: |
+          python tools/audit/bench_protocol.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/nightly --fuzz 500
+          python tools/audit/bench_contract.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/nightly
+          python tools/audit/bench_concurrency.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/nightly
+          python tools/audit/bench_capture_soak.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/nightly
+          python tools/audit/bench_gui2.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/nightly
+
+      - name: SLO gate
+        run: python tools/audit/check_slo.py --results tools/audit/results/nightly
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-results
+          path: tools/audit/results/nightly/**

@@ -31,7 +31,7 @@ internal static class Program
         var modal = new Button { Name = "modal", Left = 140, Top = 130, Width = 100, Text = "Modal" };
         var result = new Label { Name = "result", Left = 20, Top = 170, Width = 300, Text = "idle" };
         var canvas = new Panel { Name = "canvas", Left = 20, Top = 210, Width = 200, Height = 160, BackColor = Color.White };
-
+        // 用真实控件而不是自绘矩形：UIA 能稳定报告它的屏幕坐标，避免测试 oracle 与绘制点漂移。
         canvas.Paint += (_, e) =>
         {
             using var brush = new SolidBrush(Color.Red);

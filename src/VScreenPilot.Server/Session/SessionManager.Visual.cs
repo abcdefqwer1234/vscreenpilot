@@ -84,7 +84,7 @@ internal sealed partial class SessionManager
                 });
         }
 
-        (byte[] bgra, _, _) = CaptureRegion(px, py, 1, 1);
+        byte[] bgra = ScreenCapture.CapturePixel(px, py);
 
         return new JsonObject
         {
@@ -340,13 +340,34 @@ internal sealed partial class SessionManager
         (byte[] bgra, int capturedWidth, int capturedHeight) =
             CaptureRegion(regionX, regionY, width, height);
 
-        List<VisualMatch> found = TemplateMatcher.Match(
+        var scales = new List<double>();
+
+        if (arguments.ValueKind == JsonValueKind.Object &&
+            arguments.TryGetProperty("scales", out JsonElement scalesElement) &&
+            scalesElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (JsonElement item in scalesElement.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.Number && item.TryGetDouble(out double value))
+                {
+                    scales.Add(Math.Clamp(value, 0.5, 2.0));
+                }
+            }
+        }
+
+        if (scales.Count == 0)
+        {
+            scales.Add(1.0);
+        }
+
+        List<VisualMatch> found = TemplateMatcher.MatchMultiScale(
             bgra,
             capturedWidth,
             capturedHeight,
             image,
             threshold,
             maxResults,
+            scales,
             () => Cancellation.IsCancellationRequested);
 
         if (found.Count == 0)
@@ -404,6 +425,7 @@ internal sealed partial class SessionManager
                 },
                 ["score"] = match.Score,
                 ["confidence"] = match.Score,
+                ["scale"] = match.Scale,
             });
         }
 

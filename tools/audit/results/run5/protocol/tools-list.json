@@ -1,0 +1,2360 @@
+{
+  "tools": [
+    {
+      "name": "assert_region",
+      "title": "Assert region",
+      "description": "Assert color coverage or change against a baseline. An explicit baseline_frame_id must match x/y/width/height exactly; mismatch returns E_NO_BASELINE instead of comparing different areas.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "region",
+          "expectation"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "region": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "width",
+              "height"
+            ]
+          },
+          "expectation": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "color"
+                ],
+                "properties": {
+                  "color": {
+                    "type": "string"
+                  },
+                  "coverage": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "tolerance": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "changed"
+                ],
+                "properties": {
+                  "changed": {
+                    "type": "boolean"
+                  },
+                  "threshold": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "baseline_frame_id": {
+                    "type": "string"
+                  },
+                  "baseline": {
+                    "type": "string",
+                    "enum": [
+                      "last_same_region",
+                      "last"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "passed": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "changed_ratio": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "coverage": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "baseline_frame_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "capture_screen",
+      "title": "Capture screen",
+      "description": "Capture the virtual display or a region. Returns a PNG plus meta. If save_path is given it is the only output file; otherwise large frames are written to the session artifact directory and returned as a resource link. inline=true (default) embeds small images and a 0.25x preview for large ones. save_path must be an absolute .png under the working directory or temp.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "region": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "width",
+              "height"
+            ]
+          },
+          "scale": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 1,
+            "description": "Default 0.5 for full screen, 1 for regions."
+          },
+          "inline": {
+            "type": "boolean",
+            "description": "Embed the PNG in the MCP result. Default true for small images."
+          },
+          "save_path": {
+            "type": "string",
+            "description": "Absolute .png path under cwd or temp."
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frame_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "x": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "y": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "source_width": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "source_height": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "scale": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "png_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "duration_ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "encode_ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "artifact_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resource_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "artifact_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inline": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "preview": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "preview_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "backend": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "slow_capture": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "click",
+      "title": "Click",
+      "description": "Click at virtual-desktop coordinates. channel=auto picks UIA element, message or SendInput. Non-client areas (title bar, caption buttons) and popup menus are handled explicitly. keep_foreground=true pauses the focus guard for 30s.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          },
+          "button": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "middle"
+            ]
+          },
+          "clicks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "uia",
+              "message",
+              "input"
+            ],
+            "description": "Legacy alias of channel."
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "uia",
+              "message",
+              "input"
+            ]
+          },
+          "keep_foreground": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "channel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hwnd": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "verified": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "click_ref",
+      "title": "Click element by ref",
+      "description": "Click a control by element_ref. auto first tries UIA Invoke/Toggle/Select, then message click at the control center; channel=input moves the real cursor. Prefer this over coordinate clicks.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "uia",
+              "message",
+              "input"
+            ]
+          },
+          "keep_foreground": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ref"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "clicked": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "channel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pattern": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "refreshed": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "bounds": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "observed": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "find_element",
+      "title": "Find element",
+      "description": "Find UI Automation elements and return refs, bounds, state and snapshot_id. Falls back to MSAA when a window exposes no UIA content (Office legacy dialogs). control_type must be a valid UIA control type. role=document_body maps the document text surface.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "name_match": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "contains",
+              "regex"
+            ]
+          },
+          "control_type": {
+            "type": "string",
+            "description": "UIA control type, e.g. Button, Edit, Document."
+          },
+          "automation_id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "document",
+              "document_body"
+            ]
+          },
+          "prefer": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "first",
+              "focused",
+              "largest",
+              "last"
+            ]
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "all": {
+            "type": "boolean"
+          },
+          "max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "include_offscreen": {
+            "type": "boolean"
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "truncated": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "snapshot_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "control_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bounds": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "offscreen": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "matches": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {}
+          },
+          "elements": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {}
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "gesture",
+      "title": "Gesture",
+      "description": "Composite mouse action: drag, scroll or move. Message mode cannot drag across windows; use channel=input for drags.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "drag",
+              "scroll",
+              "move"
+            ]
+          },
+          "from": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          },
+          "to": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          },
+          "dx": {
+            "type": "integer"
+          },
+          "dy": {
+            "type": "integer"
+          },
+          "button": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "middle"
+            ]
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 20,
+            "maximum": 5000
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "message",
+              "input"
+            ]
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "channel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "steps": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "verified": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "get_element_text",
+      "title": "Get text",
+      "description": "Read text through TextPattern then ValuePattern. Use it to verify what you typed.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "max_chars": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65536
+          }
+        },
+        "required": [
+          "ref"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "length": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "truncated": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_environment",
+      "title": "Environment",
+      "description": "Read virtual display, display topology, foreground window and session state. foreground is only reported for tracked windows. ensure=true mounts/heals the virtual display first.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ensure": {
+            "type": "boolean",
+            "description": "Mount or heal the virtual display before reading state."
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "virtual_display": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "session": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "foreground": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "primary": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "virtual_screen": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_log",
+      "title": "Get log",
+      "description": "Read recent in-memory or file log entries, filtered by level/contains. Use it after E_INTERNAL or E_TIMEOUT.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tail": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "memory",
+              "file",
+              "both"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "DEBUG",
+              "INFO",
+              "WARN",
+              "ERROR"
+            ]
+          },
+          "contains": {
+            "type": "string"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entries": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {}
+          },
+          "file_entries": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {}
+          },
+          "last_error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_ui_tree",
+      "title": "UI tree",
+      "description": "Read the pruned semantic tree of the tracked window. Nodes carry refs. By default it reuses the current snapshot generation, so existing refs stay valid; pass new_snapshot=true to invalidate old refs.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "max_depth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "interactive_only": {
+            "type": "boolean"
+          },
+          "max_nodes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1024
+          },
+          "root": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "text"
+            ],
+            "description": "text is the compact line format."
+          },
+          "new_snapshot": {
+            "type": "boolean",
+            "description": "Advance the ref generation. Default false: keep existing refs valid."
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tree": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nodes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "truncated": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "truncated_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max_nodes_effective": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_nodes_clamped": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "ref_capacity": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "snapshot_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "new_snapshot": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "invoke_element",
+      "title": "Invoke element",
+      "description": "Invoke a control by ref. auto tries Invoke/Toggle/SelectionItem/ExpandCollapse/Legacy; pattern=default focuses and presses Space/Enter (useful for tree nodes).",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "invoke",
+              "toggle",
+              "select",
+              "selectionitem",
+              "expand",
+              "expandcollapse",
+              "legacy",
+              "default",
+              "defaultaction",
+              "open"
+            ]
+          },
+          "allow_click": {
+            "type": "boolean",
+            "description": "Allow message click fallback."
+          }
+        },
+        "required": [
+          "ref"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "invoked": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "pattern": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "channel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verified": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "launch_or_place_app",
+      "title": "Launch or attach app",
+      "description": "Start an application or attach to an existing window, move it onto the virtual display and maximize it. Returns pid/hwnd plus any owned dialogs discovered at attach time. Prefer path for a new instance; window only when you intentionally take over a running app.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Executable path."
+          },
+          "window": {
+            "type": "string",
+            "description": "Attach by window title. Ignores new_instance."
+          },
+          "args": {
+            "type": "string"
+          },
+          "wait_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 60000
+          },
+          "new_instance": {
+            "type": "boolean",
+            "description": "Default true: dedicated/new window."
+          },
+          "ensure_document": {
+            "type": "boolean",
+            "description": "Office only: Ctrl+N when no document."
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Attach by process id (most precise)."
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "launched": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "new_instance": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "reused": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "pid": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "hwnd": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "maximized": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "document_ready": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "dialogs": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {}
+          },
+          "warnings": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {}
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "match_visual",
+      "title": "Match visual",
+      "description": "Locate pixels on the virtual display: color connected components, single pixel, or PNG template match. template requires 1:1 scale and the same DPI as the capture.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "template",
+              "color",
+              "pixel"
+            ]
+          },
+          "target": {
+            "description": "color: #RRGGBB; pixel: {x,y}; template: base64 PNG"
+          },
+          "target_path": {
+            "type": "string"
+          },
+          "region": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "width",
+              "height"
+            ]
+          },
+          "tolerance": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "threshold": {
+            "type": "number",
+            "minimum": 0.3,
+            "maximum": 1
+          },
+          "scales": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 2
+            },
+            "maxItems": 5,
+            "description": "Template scales to try, e.g. [0.75,1,1.25]; default [1]."
+          },
+          "max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "min_pixels": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_area_ratio": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 1
+          },
+          "exclude_border": {
+            "type": "boolean"
+          },
+          "require_unique": {
+            "type": "boolean"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "found": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "x": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "y": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "matches": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {}
+          },
+          "threshold": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "template": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "scale": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "press_keys",
+      "title": "Press keys",
+      "description": "Send a key combination or a sequence inside one foreground lease. System shortcuts (Win+*, Alt+Tab, Ctrl+Esc and variants) are rejected unless allow_system_keys=true.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "keys": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "keep_foreground": {
+            "type": "boolean"
+          },
+          "allow_system_keys": {
+            "type": "boolean"
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sent": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "channel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "release_environment",
+      "title": "Release environment",
+      "description": "End the debug session: restore window placement, close only processes this session started, optionally remove the virtual display. on_dirty controls unsaved content. Never auto-discards when the result is unknown.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "keep_display": {
+            "type": "boolean",
+            "description": "Default true."
+          },
+          "on_dirty": {
+            "type": "string",
+            "enum": [
+              "force",
+              "discard",
+              "save",
+              "abort"
+            ],
+            "description": "Default force."
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "released": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "apps": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {}
+          },
+          "display_kept": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "warnings": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {}
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "run_script",
+      "title": "Run script",
+      "description": "Run a temporary PowerShell script with the current user token. Disabled unless the server was started with --allow-script. Output is UTF-8 and truncated to 64KB.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 120000
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stdout": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stderr": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exit_code": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "duration_ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "timed_out": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "truncated": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "set_element_value",
+      "title": "Set value",
+      "description": "Write a value by ref. ValuePattern first; allow_keyboard=true falls back to typing. Overwriting non-empty content requires allow_destructive=true.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "allow_keyboard": {
+            "type": "boolean"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "append",
+              "insert",
+              "replace"
+            ]
+          },
+          "allow_destructive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ref",
+          "value"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "written": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verified": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "observed_length": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "snapshot",
+      "title": "Snapshot",
+      "description": "One-call observation: compact semantic tree with refs, tracked windows, owned dialogs, focus and optional screenshot. Each call advances the ref generation: refs from an older snapshot return E_STALE_SNAPSHOT. (find_element/get_ui_tree reuse the current generation.)",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "pid": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_depth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "Default 4."
+          },
+          "interactive_only": {
+            "type": "boolean",
+            "description": "Default true."
+          },
+          "max_nodes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1024,
+            "description": "Default 300; max 1024 (ref capacity)."
+          },
+          "include_screenshot": {
+            "type": "boolean",
+            "description": "Default false; adds a scaled PNG."
+          },
+          "scale": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 1,
+            "description": "Screenshot scale, default 0.5."
+          },
+          "include_values": {
+            "type": "boolean",
+            "description": "Include text/value of text controls. Default true."
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "snapshot_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tree": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nodes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "truncated": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "max_nodes_effective": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "ref_capacity": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "windows": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {}
+          },
+          "dialogs": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {}
+          },
+          "foreground": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "screenshot": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "screenshot_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "screenshot_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "screenshot_preview": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "type_text",
+      "title": "Type text",
+      "description": "Type text into the focused control. auto uses a pattern write, clipboard paste for long text, or SendInput as fallback; verify=true reads back through TextPattern/ValuePattern.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "verify": {
+            "type": "boolean"
+          },
+          "chunk_chars": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 256
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "pattern",
+              "clipboard",
+              "keys"
+            ]
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "typed": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "verified": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "channel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inject_ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "duration_ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "observed_length": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "chunks": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "wait_for",
+      "title": "Wait for condition",
+      "description": "Poll a condition on the server inside one call. type=element|color|window|pixel_diff|visual|text. Read-only: it never holds the write lock, so other observations keep working.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "condition"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 120000
+          },
+          "interval_ms": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 2000
+          },
+          "condition": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "element"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "control_type": {
+                    "type": "string"
+                  },
+                  "automation_id": {
+                    "type": "string"
+                  },
+                  "pid": {
+                    "type": "integer"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "x",
+                  "y",
+                  "value"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "color"
+                  },
+                  "x": {
+                    "type": "integer"
+                  },
+                  "y": {
+                    "type": "integer"
+                  },
+                  "value": {
+                    "type": "string"
+                  },
+                  "tolerance": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "window"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "tracked",
+                      "any"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "region"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "pixel_diff"
+                  },
+                  "region": {
+                    "type": "object"
+                  },
+                  "baseline_frame_id": {
+                    "type": "string"
+                  },
+                  "min_changed_ratio": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "visual"
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "target": {},
+                  "region": {
+                    "type": "object"
+                  },
+                  "threshold": {
+                    "type": "number"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "text"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "text"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "region": {
+                    "type": "object"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "satisfied": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "elapsed_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "last": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    }
+  ],
+  "binary_sha256": "5995D5DE6F57966384982F62BF96282BEA7F40BF0275F67AAE1CE130B37F6C76"
+}

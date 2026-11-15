@@ -60,6 +60,7 @@ internal static class PngReader
             }
 
             ReadOnlySpan<byte> payload = data.AsSpan(offset + 8, length);
+            VerifyCrc(data, offset, length, type);
 
             switch (type)
             {
@@ -189,6 +190,7 @@ internal static class PngReader
             }
 
             string type = System.Text.Encoding.ASCII.GetString(data, offset + 4, 4);
+            VerifyCrc(data, offset, length, type);
 
             if (type == "IHDR")
             {
@@ -213,6 +215,51 @@ internal static class PngReader
         }
 
         throw new PngFormatException("缺少 IHDR");
+    }
+
+    private static readonly uint[] CrcTable = BuildCrcTable();
+
+    private static uint[] BuildCrcTable()
+    {
+        var table = new uint[256];
+
+        for (uint index = 0; index < table.Length; index++)
+        {
+            uint value = index;
+
+            for (int bit = 0; bit < 8; bit++)
+            {
+                value = (value & 1) != 0 ? 0xEDB88320u ^ (value >> 1) : value >> 1;
+            }
+
+            table[index] = value;
+        }
+
+        return table;
+    }
+
+    private static uint Crc32(ReadOnlySpan<byte> data)
+    {
+        uint crc = 0xFFFFFFFF;
+
+        foreach (byte value in data)
+        {
+            crc = CrcTable[(crc ^ value) & 0xFF] ^ (crc >> 8);
+        }
+
+        return crc ^ 0xFFFFFFFF;
+    }
+
+    /// <summary>CRC 覆盖 chunk type + data；坏模板在解码前就被拒绝（R17）。</summary>
+    private static void VerifyCrc(byte[] data, int offset, int length, string type)
+    {
+        uint stored = BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(offset + 8 + length, 4));
+        uint actual = Crc32(data.AsSpan(offset + 4, 4 + length));
+
+        if (stored != actual)
+        {
+            throw new PngFormatException($"PNG CRC 校验失败: {type}");
+        }
     }
 
     private static byte[] Unfilter(byte[] raw, int width, int height, int channels)

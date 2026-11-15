@@ -1,46 +1,51 @@
-using System.Collections.Concurrent;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Perception;
 using VScreenPilot.Session;
 
 namespace VScreenPilot.Mcp;
 
+/// <summary>
+/// MCP 服务端：协议/分帧/生命周期交给官方 ModelContextProtocol SDK，
+/// 本类只负责工具目录、参数校验、写操作调度、进度与追踪。
+/// </summary>
 internal sealed class McpServer
 {
-    private static readonly JsonDocument EmptyDocument = JsonDocument.Parse("{}");
-
-    private static readonly string[] SupportedProtocolVersions =
+    private static readonly HashSet<string> MutatingTools = new(StringComparer.Ordinal)
     {
-        "2025-06-18",
-        "2025-03-26",
-        "2024-11-05",
+        "click", "click_ref", "gesture", "type_text", "press_keys", "invoke_element",
+        "set_element_value", "launch_or_place_app", "release_environment", "run_script",
     };
 
     private readonly SessionManager _session;
     private readonly LogRing _log;
+    private readonly TraceLog _trace = new();
     private readonly Dictionary<string, ToolDefinition> _tools;
-    private readonly JsonArray _toolList;
-    private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeCalls = new();
+    private readonly WriteScheduler _scheduler = new();
 
-    /// <summary>
-    /// 工具执行采用单闸门。GUI 自动化本质上共享一套前台/UIA/显示资源，
-    /// 并发执行只会制造竞态；真正需要并行的是截图/匹配，但它们也依赖同一虚拟屏，
-    /// 收益远小于一致性成本。
-    /// 超时后闸门仍被卡住的 handler 持有；release_environment 优先旁路执行，
-    /// 完成后 ResetToolGate 换成新闸门，旧 handler 释放旧闸门即可，不再阻塞新调用。
-    /// </summary>
-    private SemaphoreSlim _toolGate = new(1, 1);
-    private int _stalledTools;
-    private readonly object _writeGate = new();
-    private TextWriter _stdout = TextWriter.Null;
-    private volatile bool _initialized;
+    // 令牌桶限流：防止失控客户端把 UIA/截图打满。容量/速率远高于正常 agent 使用。
+    private readonly object _rateGate = new();
+    private double _rateTokens = 300;
+    private long _rateLastTicks = Environment.TickCount64;
+    private const double RateCapacity = 300;
+    private const double RateRefillPerSecond = 100;
 
     private sealed record ToolDefinition(
         string Name,
+        string Title,
         string Description,
         JsonNode InputSchema,
+        JsonNode OutputSchema,
+        bool ReadOnly,
+        bool Destructive,
+        int TimeoutMs,
         Func<JsonElement, ToolResponse> Handler);
 
     public McpServer(SessionManager session, LogRing log)
@@ -48,743 +53,981 @@ internal sealed class McpServer
         _session = session;
         _log = log;
         _tools = BuildTools();
-        _toolList = new JsonArray();
 
-        foreach (ToolDefinition tool in _tools.Values.OrderBy(item => item.Name, StringComparer.Ordinal))
+        _trace.Write("session_start", new JsonObject
         {
-            var entry = new JsonObject
-            {
-                ["name"] = tool.Name,
-                ["description"] = tool.Description,
-                ["inputSchema"] = tool.InputSchema.DeepClone(),
-                // 所有工具都返回 JSON 对象；显式声明后客户端可校验 structuredContent。
-                ["outputSchema"] = new JsonObject { ["type"] = "object" },
-            };
-
-            JsonObject? annotations = AnnotationsFor(tool.Name);
-            if (annotations is not null)
-            {
-                entry["annotations"] = annotations;
-            }
-
-            _toolList.Add((JsonNode)entry);
-        }
-    }
-
-    /// <summary>
-    /// MCP tool annotations：让客户端在权限/审批层区分只读、破坏性和开放世界工具。
-    /// 这只是提示，真正的安全边界仍由服务端校验。
-    /// </summary>
-    private static JsonObject? AnnotationsFor(string name) => name switch
-    {
-        "get_environment" or "find_element" or "get_ui_tree" or "get_element_text"
-            or "match_visual" or "assert_region" or "wait_for" or "get_log" =>
-            new JsonObject
-            {
-                ["readOnlyHint"] = true,
-                ["destructiveHint"] = false,
-                ["openWorldHint"] = false,
-            },
-
-        "capture_screen" => new JsonObject
-        {
-            ["readOnlyHint"] = false,
-            ["destructiveHint"] = false,
-            ["openWorldHint"] = false,
-        },
-
-        "launch_or_place_app" => new JsonObject
-        {
-            ["readOnlyHint"] = false,
-            ["destructiveHint"] = false,
-            ["openWorldHint"] = true,
-        },
-
-        "invoke_element" or "click" or "gesture" or "type_text" or "press_keys"
-            or "set_element_value" or "release_environment" or "run_script" =>
-            new JsonObject
-            {
-                ["readOnlyHint"] = false,
-                ["destructiveHint"] = true,
-                ["openWorldHint"] = true,
-            },
-
-        _ => null,
-    };
-
-    public int Run()
-    {
-        using var stdin = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
-        using var stdout = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false))
-        {
-            AutoFlush = true,
-        };
-
-        _stdout = stdout;
-        _log.Info($"MCP stdio 服务启动 (pid={Environment.ProcessId})");
-
-        string? line;
-        while ((line = stdin.ReadLine()) is not null)
-        {
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                continue;
-            }
-
-            try
-            {
-                HandleLine(line);
-            }
-            catch (JsonException exception)
-            {
-                _log.Warn($"收到非法 JSON: {exception.Message}");
-                WriteError(null, -32700, "JSON 解析失败");
-            }
-            catch (Exception exception)
-            {
-                _log.Error("处理消息失败", exception);
-            }
-        }
-
-        _log.Info("stdin EOF，开始清理");
-
-        // 通知所有在途工具取消，等待最多 3 秒后释放环境。
-        foreach (CancellationTokenSource source in _activeCalls.Values)
-        {
-            try
-            {
-                source.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-                // 已结束。
-            }
-        }
-
-        var drainDeadline = DateTime.UtcNow.AddSeconds(3);
-        while (!_activeCalls.IsEmpty && DateTime.UtcNow < drainDeadline)
-        {
-            Thread.Sleep(50);
-        }
-
-        if (!_activeCalls.IsEmpty)
-        {
-            _log.Warn("stdin EOF 时仍有工具在运行，超过 3s 未结束，继续退出");
-        }
-
-        _session.Dispose();
-        return 0;
-    }
-
-    private void HandleLine(string line)
-    {
-        using var document = JsonDocument.Parse(line);
-        JsonElement root = document.RootElement;
-
-        if (root.ValueKind != JsonValueKind.Object)
-        {
-            WriteError(null, -32600, "JSON-RPC 消息必须是对象");
-            return;
-        }
-
-        bool hasId = root.TryGetProperty("id", out JsonElement idElement);
-        JsonNode? id = hasId ? JsonNode.Parse(idElement.GetRawText()) : null;
-
-        if (!root.TryGetProperty("jsonrpc", out JsonElement jsonrpc) ||
-            jsonrpc.ValueKind != JsonValueKind.String ||
-            !string.Equals(jsonrpc.GetString(), "2.0", StringComparison.Ordinal))
-        {
-            if (hasId)
-            {
-                WriteError(id, -32600, "缺少或无效的 jsonrpc 版本（必须为 \"2.0\"）");
-            }
-
-            return;
-        }
-
-        if (!root.TryGetProperty("method", out JsonElement methodElement) ||
-            methodElement.ValueKind != JsonValueKind.String)
-        {
-            if (hasId)
-            {
-                WriteError(id, -32600, "缺少 method");
-            }
-
-            return;
-        }
-
-        string method = methodElement.GetString()!;
-        JsonElement parameters = root.TryGetProperty("params", out JsonElement p)
-            ? p
-            : EmptyDocument.RootElement;
-
-        if (!hasId)
-        {
-            HandleNotification(method, parameters);
-            return;
-        }
-
-        // MCP 要求先 initialize。ping 是唯一例外，便于客户端探测存活。
-        if (!_initialized && method is not ("initialize" or "ping"))
-        {
-            WriteError(id, -32002, "服务器尚未初始化，请先发送 initialize");
-            return;
-        }
-
-        switch (method)
-        {
-            case "initialize":
-                HandleInitialize(id, parameters);
-                break;
-
-            case "ping":
-                WriteResult(id, new JsonObject());
-                break;
-
-            case "tools/list":
-                WriteResult(id, new JsonObject { ["tools"] = _toolList.DeepClone() });
-                break;
-
-            case "tools/call":
-                HandleToolCall(id, idElement.GetRawText(), parameters);
-                break;
-
-            case "resources/list":
-                WriteResult(id, new JsonObject { ["resources"] = new JsonArray() });
-                break;
-
-            case "resources/templates/list":
-                WriteResult(id, new JsonObject { ["resourceTemplates"] = new JsonArray() });
-                break;
-
-            case "prompts/list":
-                WriteResult(id, new JsonObject { ["prompts"] = new JsonArray() });
-                break;
-
-            case "logging/setLevel":
-                WriteResult(id, new JsonObject());
-                break;
-
-            default:
-                WriteError(id, -32601, $"未实现的方法: {method}");
-                break;
-        }
-    }
-
-    private void HandleNotification(string method, JsonElement parameters)
-    {
-        // notifications/initialized、notifications/cancelled 等无需响应。
-        switch (method)
-        {
-            case "notifications/initialized":
-                _log.Info("客户端初始化完成");
-                break;
-
-            case "notifications/cancelled":
-                if (parameters.ValueKind == JsonValueKind.Object &&
-                    parameters.TryGetProperty("requestId", out JsonElement requestId))
-                {
-                    string key = requestId.GetRawText();
-                    if (_activeCalls.TryGetValue(key, out CancellationTokenSource? source))
-                    {
-                        source.Cancel();
-                        _log.Info($"已取消请求 {key}");
-                    }
-                }
-
-                break;
-        }
-    }
-
-    private void HandleInitialize(JsonNode? id, JsonElement parameters)
-    {
-        // 客户端请求未知版本时，返回自己支持的最新版，而不是最旧版。
-        string protocolVersion = SupportedProtocolVersions[0];
-
-        if (parameters.ValueKind == JsonValueKind.Object &&
-            parameters.TryGetProperty("protocolVersion", out JsonElement version) &&
-            version.ValueKind == JsonValueKind.String)
-        {
-            string requested = version.GetString() ?? string.Empty;
-            protocolVersion = SupportedProtocolVersions.Contains(requested)
-                ? requested
-                : SupportedProtocolVersions[0];
-        }
-
-        string client = "unknown";
-        if (parameters.ValueKind == JsonValueKind.Object &&
-            parameters.TryGetProperty("clientInfo", out JsonElement clientInfo) &&
-            clientInfo.ValueKind == JsonValueKind.Object &&
-            clientInfo.TryGetProperty("name", out JsonElement clientName))
-        {
-            client = clientName.GetString() ?? client;
-        }
-
-        _log.Info($"initialize: client={client}, protocol={protocolVersion}");
-        _initialized = true;
-
-        WriteResult(id, new JsonObject
-        {
-            ["protocolVersion"] = protocolVersion,
-            ["capabilities"] = new JsonObject
-            {
-                ["tools"] = new JsonObject { ["listChanged"] = false },
-            },
-            ["serverInfo"] = new JsonObject
-            {
-                ["name"] = "vscreenpilot",
-                ["version"] = BuildInfo.Version,
-            },
-            ["instructions"] =
-                "虚拟屏自动化调试。MCP Server 启动时会在后台挂载默认 1280x720 虚拟屏" +
-                "（可用 VSP_DISPLAY_WIDTH/HEIGHT/REFRESH 覆盖，OpenCode 会话级常驻）；" +
-                "所有坐标/区域必须落在虚拟屏内，越界会被拒绝。优先用 find_element/get_ui_tree 拿 element_ref，" +
-                "再用 invoke_element/set_element_value 做语义操作；像素定位用 match_visual。Chromium/Electron/WinUI " +
-                "会忽略窗口消息输入，需显式用 click/gesture mode=input，或改用 UIA 语义操作。结束后调用 " +
-                "release_environment 归还窗口，默认保留虚拟屏（keep_display=true），keep_display=false 才立即摘屏。" +
-                "虚拟屏与用户共享同一 Windows 会话，不是安全沙箱；不可信任务请使用 VM/独立账户。run_script 默认关闭，" +
-                "需服务端以 --allow-script 启动。",
+            ["version"] = BuildInfo.Version,
+            ["pid"] = Environment.ProcessId,
+            ["tools"] = _tools.Count,
+            ["profile"] = _session.ProfileName,
         });
     }
 
-    private void HandleToolCall(JsonNode? id, string idKey, JsonElement parameters)
+    public string TracePath => _trace.FilePath;
+
+    public async Task<int> RunAsync(CancellationToken cancellationToken = default)
     {
-        if (parameters.ValueKind != JsonValueKind.Object ||
-            !parameters.TryGetProperty("name", out JsonElement nameElement) ||
-            nameElement.ValueKind != JsonValueKind.String)
-        {
-            WriteError(id, -32602, "tools/call 缺少 name");
-            return;
-        }
+        var builder = Host.CreateApplicationBuilder();
 
-        string name = nameElement.GetString()!;
-        JsonElement arguments = parameters.TryGetProperty("arguments", out JsonElement args) &&
-                                args.ValueKind == JsonValueKind.Object
-            ? args.Clone()
-            : EmptyDocument.RootElement.Clone();
+        // 宿主默认日志会写 stderr；stdio 传输下保持安静，日志仍走 LogRing/文件。
+        builder.Logging.ClearProviders();
 
-        if (!_tools.TryGetValue(name, out ToolDefinition? tool))
-        {
-            WriteError(id, -32602, $"未知工具: {name}");
-            return;
-        }
-
-        if (_activeCalls.ContainsKey(idKey))
-        {
-            WriteError(id, -32600, "重复的请求 id");
-            return;
-        }
-
-        var source = new CancellationTokenSource();
-        _activeCalls[idKey] = source;
-
-        JsonNode? progressToken = null;
-        if (parameters.TryGetProperty("_meta", out JsonElement meta) &&
-            meta.ValueKind == JsonValueKind.Object &&
-            meta.TryGetProperty("progressToken", out JsonElement token))
-        {
-            progressToken = JsonNode.Parse(token.GetRawText());
-        }
-
-        // 工具调用放到后台执行：读循环继续响应 ping/cancelled，长工具不会阻塞协议。
-        _ = Task.Run(
-            () => ExecuteToolAsync(
-                id?.DeepClone(), idKey, tool, arguments, source, progressToken));
-    }
-
-    private async Task ExecuteToolAsync(
-        JsonNode? id,
-        string idKey,
-        ToolDefinition tool,
-        JsonElement arguments,
-        CancellationTokenSource source,
-        JsonNode? progressToken)
-    {
-        bool priority = PriorityTools.Contains(tool.Name);
-        int timeoutMs = TimeoutFor(tool.Name);
-        SemaphoreSlim? gate = null;
-        bool gateHeld = false;
+        builder.Services
+            .AddMcpServer(options =>
+            {
+                options.ServerInfo = new Implementation
+                {
+                    Name = "vscreenpilot",
+                    Version = BuildInfo.Version,
+                };
+                options.ServerInstructions = Instructions;
+                options.Capabilities = new ServerCapabilities
+                {
+                    Tools = new ToolsCapability { ListChanged = false },
+                    Resources = new ResourcesCapability { ListChanged = false, Subscribe = false },
+                };
+            })
+            .WithStdioServerTransport()
+            .WithListToolsHandler(HandleListToolsAsync)
+            .WithListResourcesHandler(HandleListResourcesAsync)
+            .WithReadResourceHandler(HandleReadResourceAsync)
+            .WithCallToolHandler(HandleCallToolAsync);
 
         try
         {
-            // get_log/get_environment 完全无副作用，可旁路；release_environment 先尝试拿闸门，
-            // 拿不到再旁路，尽量不与正常工具并发修改会话状态。
-            bool bypassGate = priority && tool.Name != "release_environment";
+            await builder.Build().RunAsync(cancellationToken).ConfigureAwait(false);
+            return 0;
+        }
+        finally
+        {
+            _trace.Write("session_end");
+            _trace.Dispose();
+            _scheduler.Dispose();
+        }
+    }
 
-            if (!bypassGate)
+    private const string Instructions =
+        "Virtual-display automation for Windows apps. The server mounts a 1280x720 virtual display " +
+        "(override with VSP_DISPLAY_WIDTH/HEIGHT/REFRESH) and only operates windows it has tracked. " +
+        "Start with `snapshot` (semantic tree + dialogs + optional screenshot); it returns a snapshot_id " +
+        "and refs that are valid only for that snapshot. Prefer semantic actions (click_ref/invoke_element/" +
+        "set_element_value) over pixel coordinates. Coordinates must stay inside the virtual display. " +
+        "Chromium/WebView2 apps ignore window messages; the server picks the channel automatically, and " +
+        "`channel=input` is the explicit fallback. Run `release_environment` when finished; the display is " +
+        "kept by default. This is a shared desktop session, not a security sandbox; use a VM for untrusted work. " +
+        "run_script is disabled unless the server was started with --allow-script.";
+
+    private ValueTask<ListToolsResult> HandleListToolsAsync(
+        RequestContext<ListToolsRequestParams> context, CancellationToken cancellationToken)
+    {
+        var list = new List<Tool>(_tools.Count);
+
+        foreach (ToolDefinition definition in _tools.Values.OrderBy(item => item.Name, StringComparer.Ordinal))
+        {
+            list.Add(new Tool
             {
-                if (!priority && Volatile.Read(ref _stalledTools) > 0)
+                Name = definition.Name,
+                Title = definition.Title,
+                Description = definition.Description,
+                InputSchema = JsonSerializer.SerializeToElement(definition.InputSchema),
+                OutputSchema = JsonSerializer.SerializeToElement(definition.OutputSchema),
+                Annotations = new ToolAnnotations
                 {
-                    WriteResult(id, Busy("上一个工具超时后仍在执行，已拒绝新的工具调用。先调用 release_environment 重置会话。"));
-                    return;
-                }
+                    ReadOnlyHint = definition.ReadOnly,
+                    DestructiveHint = definition.Destructive,
+                    OpenWorldHint = !definition.ReadOnly,
+                    IdempotentHint = definition.ReadOnly,
+                },
+            });
+        }
 
-                gate = _toolGate;
-                int gateWaitMs = priority ? 2000 : 5000;
+        return ValueTask.FromResult(new ListToolsResult { Tools = list });
+    }
 
-                if (!await gate.WaitAsync(
-                        TimeSpan.FromMilliseconds(gateWaitMs), source.Token).ConfigureAwait(false))
+    private const string ArtifactPrefix = "vsp://artifacts/";
+
+    private const int ResourcePageSize = 50;
+
+    private ValueTask<ListResourcesResult> HandleListResourcesAsync(
+        RequestContext<ListResourcesRequestParams> context, CancellationToken cancellationToken)
+    {
+        var resources = new List<Resource>();
+        int offset = 0;
+        string? cursor = context.Params?.Cursor;
+
+        if (!string.IsNullOrEmpty(cursor) && !int.TryParse(cursor, out offset))
+        {
+            offset = 0;
+        }
+
+        offset = Math.Max(0, offset);
+        string? nextCursor = null;
+
+        try
+        {
+            List<string> files = Directory
+                .EnumerateFiles(_session.ArtifactDirectory, "*.png")
+                // preview 是资源的附属文件，不单独列出。
+                .Where(file => !file.EndsWith(".preview.png", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .ToList();
+
+            foreach (string file in files.Skip(offset).Take(ResourcePageSize))
+            {
+                string name = Path.GetFileName(file);
+                long size = new FileInfo(file).Length;
+                resources.Add(new Resource
                 {
-                    if (!priority)
-                    {
-                        WriteResult(id, Busy("等待工具执行闸门超时；可先调用 release_environment 重置会话。"));
-                        return;
-                    }
-
-                    _log.Warn("release_environment 未能在 2s 内拿到闸门，旁路执行强制清理");
-                    gate = null;
-                }
-                else
-                {
-                    gateHeld = true;
-                }
-
-                if (!priority)
-                {
-                    _session.SetCancellation(source);
-                }
+                    Uri = ArtifactPrefix + name,
+                    Name = name,
+                    Description = $"Screenshot artifact ({size} bytes); append ?preview=1 for a smaller image",
+                    MimeType = "image/png",
+                    Size = size,
+                });
             }
 
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            if (offset + resources.Count < files.Count)
+            {
+                nextCursor = (offset + resources.Count).ToString();
+            }
+        }
+        catch
+        {
+            // artifact 目录不可用时返回空列表，不影响工具调用。
+        }
+
+        return ValueTask.FromResult(new ListResourcesResult
+        {
+            Resources = resources,
+            NextCursor = nextCursor,
+        });
+    }
+
+    private ValueTask<ReadResourceResult> HandleReadResourceAsync(
+        RequestContext<ReadResourceRequestParams> context, CancellationToken cancellationToken)
+    {
+        string uri = context.Params?.Uri ?? string.Empty;
+
+        if (!uri.StartsWith(ArtifactPrefix, StringComparison.Ordinal))
+        {
+            throw new McpException($"Unknown resource: {uri}");
+        }
+
+        string name = uri[ArtifactPrefix.Length..];
+        bool preview = false;
+        bool forceFull = false;
+        int queryIndex = name.IndexOf('?');
+
+        if (queryIndex >= 0)
+        {
+            string[] query = name[(queryIndex + 1)..]
+                .Split('&', StringSplitOptions.RemoveEmptyEntries);
+            preview = query.Any(part => part.Equals("preview=1", StringComparison.OrdinalIgnoreCase));
+            forceFull = query.Any(part => part.Equals("full=1", StringComparison.OrdinalIgnoreCase));
+            name = name[..queryIndex];
+        }
+
+        if (name.Length == 0 || name.Contains('/') || name.Contains('\\') || name.Contains(".."))
+        {
+            throw new McpException($"Invalid artifact name: {name}");
+        }
+
+        string path = Path.Combine(_session.ArtifactDirectory, name);
+
+        // 大图默认返回 preview：避免资源读取又把 300KB+ 原图塞回客户端。
+        if (!preview && !forceFull && File.Exists(path))
+        {
+            preview = new FileInfo(path).Length > 512 * 1024;
+        }
+
+        if (preview)
+        {
+            string previewPath = Path.ChangeExtension(path, ".preview.png");
+
+            if (!File.Exists(previewPath))
+            {
+                TryCreatePreview(path, previewPath);
+            }
+
+            if (File.Exists(previewPath))
+            {
+                path = previewPath;
+            }
+        }
+
+        if (!File.Exists(path))
+        {
+            throw new McpException($"Resource not found: {uri}");
+        }
+
+        return ValueTask.FromResult(new ReadResourceResult
+        {
+            Contents =
+            [
+                new BlobResourceContents
+                {
+                    Uri = uri,
+                    MimeType = "image/png",
+                    Blob = File.ReadAllBytes(path),
+                },
+            ],
+        });
+    }
+
+    /// <summary>旧 artifact 没有 preview 时按需生成 0.25× 小图，避免 resources/read 回传大 Blob。</summary>
+    private static void TryCreatePreview(string sourcePath, string previewPath)
+    {
+        try
+        {
+            byte[] data = File.ReadAllBytes(sourcePath);
+            PngImage image = PngReader.Decode(data);
+            var bgra = new byte[image.Rgba.Length];
+
+            for (int index = 0; index < image.Rgba.Length; index += 4)
+            {
+                bgra[index] = image.Rgba[index + 2];
+                bgra[index + 1] = image.Rgba[index + 1];
+                bgra[index + 2] = image.Rgba[index];
+                bgra[index + 3] = image.Rgba[index + 3];
+            }
+
+            byte[] preview = PngWriter.Encode(
+                bgra, image.Width, image.Height, 0.25, out _, out _);
+            File.WriteAllBytes(previewPath, preview);
+        }
+        catch
+        {
+            // 生成失败就退回原图；资源读取仍然可用。
+        }
+    }
+
+    private async ValueTask<CallToolResult> HandleCallToolAsync(
+        RequestContext<CallToolRequestParams> context, CancellationToken cancellationToken)
+    {
+        string name = context.Params?.Name ?? string.Empty;
+        string requestId = Guid.NewGuid().ToString("N")[..12];
+
+        if (!_tools.TryGetValue(name, out ToolDefinition? tool))
+        {
+            _trace.Write("tool_call", new JsonObject
+            {
+                ["request_id"] = requestId,
+                ["tool"] = name,
+                ["code"] = "E_UNKNOWN_TOOL",
+                ["is_error"] = true,
+            });
+
+            throw new McpException($"Unknown tool: {name}");
+        }
+
+        if (!TryAcquireRateLimit(out int retryAfterMs))
+        {
+            ToolResponse limited = ToolResponse.Error(
+                "E_RATE_LIMITED",
+                $"请求速率超过限制（{RateCapacity:0} 突发 / {RateRefillPerSecond:0}/s）",
+                new JsonObject { ["retry_after_ms"] = retryAfterMs },
+                retryable: true,
+                hint: "退避后重试；批量截图/查询请合并或降低频率",
+                stage: "rate").SetRequestId(requestId);
+
+            Trace(name, requestId, null, 0, limited);
+            return ToResult(limited);
+        }
+
+        JsonElement arguments = ToArguments(context.Params?.Arguments);
+        string? argumentSummary = SummarizeArguments(arguments);
+
+        try
+        {
+            ArgumentValidator.Validate(tool.InputSchema, arguments);
+        }
+        catch (ToolException exception)
+        {
+            // 参数错误必须作为工具错误返回（isError=true），不能冒泡成 SDK 的内部错误码。
+            ToolResponse invalid = ToolResponse.FromException(exception).SetRequestId(requestId);
+            Trace(name, requestId, argumentSummary, 0, invalid);
+            return ToResult(invalid);
+        }
+
+        return await ExecuteToolAsync(
+            tool, arguments, context, requestId, argumentSummary, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<CallToolResult> ExecuteToolAsync(
+        ToolDefinition tool,
+        JsonElement arguments,
+        RequestContext<CallToolRequestParams> context,
+        string requestId,
+        string? argumentSummary,
+        CancellationToken cancellationToken)
+    {
+        long epoch = _session.Epoch;
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        WriteScheduler.Lease? lease = null;
+        bool mutating = MutatingTools.Contains(tool.Name);
+
+        try
+        {
+            if (mutating)
+            {
+                // release 等 6s：正常写操作应在这之前结束；只有锁定超过 5s 的卡死 handler 才旁路。
+                TimeSpan wait = tool.Name == "release_environment"
+                    ? TimeSpan.FromSeconds(6)
+                    : TimeSpan.FromSeconds(30);
+
+                lease = await _scheduler.AcquireAsync(
+                    tool.Name, wait, cancellationToken,
+                    bypass: tool.Name == "release_environment").ConfigureAwait(false);
+            }
+
+            using var callCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            callCts.CancelAfter(tool.TimeoutMs);
+            _session.SetCancellation(callCts);
+
+            // 长任务至少给一次“已开始/已完成”进度，客户端不会以为调用挂死。
+            ReportProgress(context, 0, 1, "started");
 
             Task<ToolResponse> handlerTask = Task.Run(() =>
             {
-                Action<int, int, string>? reporter = progressToken is null
+                Action<int, int, string>? reporter = context.Params?.Meta?["progressToken"] is null
                     ? null
-                    : (current, total, message) => WriteProgress(progressToken, current, total, message);
+                    : (current, total, message) => ReportProgress(context, current, total, message);
+
+                // release 与只读观察互斥：release 摘屏前先等 snapshot/capture 结束。
+                // wait_for 可能持续 120s，不能持读锁阻塞 release；get_log 不碰显示，也跳过。
+                bool sessionRead = tool.ReadOnly && tool.Name is not ("wait_for" or "get_log");
+                bool sessionWrite = tool.Name == "release_environment";
+                bool writeHeld = false;
+
+                if (sessionRead)
+                {
+                    _session.EnterRead();
+                }
+                else if (sessionWrite)
+                {
+                    writeHeld = _session.TryEnterExclusive(3000);
+
+                    if (!writeHeld)
+                    {
+                        // 不能“等不到锁也继续清理”：只读观察可能正在读 UIA/屏幕，
+                        // 同时摘屏会让它们拿到半清理状态。宁可让调用方重试。
+                        return ToolResponse.Error(
+                            "E_BUSY",
+                            "release_environment 等待只读观察结束超时（3s）",
+                            new JsonObject
+                            {
+                                ["held_by"] = "snapshot/capture/find_element",
+                                ["retry_after_ms"] = 500,
+                            },
+                            retryable: true,
+                            hint: "稍后重试；也可以等当前 snapshot/capture 返回后再 release",
+                            stage: "session");
+                    }
+                }
+
                 using var progress = ToolProgress.Begin(reporter);
 
                 try
                 {
-                    ToolResponse response = tool.Handler(arguments);
-                    _log.Info($"工具 {tool.Name} 完成: {stopwatch.Elapsed.TotalMilliseconds:F1}ms");
-                    return response;
+                    return tool.Handler(arguments);
                 }
                 catch (ToolException exception)
                 {
-                    _log.Warn(
-                        $"工具 {tool.Name} 失败: {exception.Code} {exception.Message} " +
-                        $"({stopwatch.Elapsed.TotalMilliseconds:F1}ms)");
                     return ToolResponse.FromException(exception);
                 }
                 catch (Exception exception)
                 {
-                    _log.Error(
-                        $"工具 {tool.Name} 异常 ({stopwatch.Elapsed.TotalMilliseconds:F1}ms)",
-                        exception);
-                    return ToolResponse.Error("E_INTERNAL", exception.Message);
+                    _log.Error($"工具 {tool.Name} 异常", exception);
+                    return ToolResponse.FromException(exception, $"tool:{tool.Name}");
                 }
-            });
+                finally
+                {
+                    if (sessionRead)
+                    {
+                        _session.ExitRead();
+                    }
+                    else if (writeHeld)
+                    {
+                        _session.ExitExclusive();
+                    }
+                }
+            }, CancellationToken.None);
 
             ToolResponse response;
 
             try
             {
                 response = await handlerTask
-                    .WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), source.Token)
+                    .WaitAsync(TimeSpan.FromMilliseconds(tool.TimeoutMs), cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (TimeoutException)
             {
-                // 闸门交给 handler 的延续任务释放：在它真正结束前，新工具仍应看到 E_BUSY，
-                // 而不是让两个 handler 同时操作同一套 GUI 资源。
-                TrackStalled(handlerTask, tool.Name, gateHeld ? gate : null);
-                gateHeld = false;
+                // 写锁不释放：卡住的 handler 仍在操作 UI，不能让另一个写操作重叠。
+                if (lease is not null)
+                {
+                    WriteScheduler.ReleaseWhen(handlerTask, lease);
+                    lease = null;
+                }
+
+                _log.Warn($"工具 {tool.Name} 超过 {tool.TimeoutMs}ms 未完成");
                 response = ToolResponse.Error(
                     "E_TIMEOUT",
-                    $"工具 {tool.Name} 超过 {timeoutMs}ms 未完成",
-                    retryable: false,
-                    hint: "先调用 release_environment 重置会话；必要时重启服务端",
+                    $"工具 {tool.Name} 超过 {tool.TimeoutMs}ms 未完成",
+                    new JsonObject { ["tool"] = tool.Name, ["timeout_ms"] = tool.TimeoutMs },
+                    retryable: true,
+                    hint: "可重试；若持续超时先调用 release_environment 重置会话",
                     stage: "tool");
             }
-            catch (OperationCanceledException)
+
+            if (_session.Epoch != epoch && tool.Name != "release_environment")
             {
-                TrackStalled(handlerTask, tool.Name, gateHeld ? gate : null);
-                gateHeld = false;
-                throw;
+                response = ToolResponse.Error(
+                    "E_CANCELLED",
+                    "会话已被 release_environment 重置，本次结果已丢弃",
+                    new JsonObject { ["epoch"] = epoch, ["current_epoch"] = _session.Epoch },
+                    retryable: true,
+                    hint: "重新调用 snapshot/launch_or_place_app",
+                    stage: "session");
             }
 
-            if (source.IsCancellationRequested)
-            {
-                _log.Info($"工具 {tool.Name} 已取消，丢弃结果");
-                return;
-            }
-
-            WriteToolResult(id, response);
-
-            if (tool.Name == "release_environment")
-            {
-                // 即使旧 handler 仍卡在 UIA 里，新会话也应该能继续使用。
-                ResetToolGate();
-            }
+            stopwatch.Stop();
+            response.SetRequestId(requestId);
+            ReportProgress(context, 1, 1, "completed");
+            Trace(tool.Name, requestId, argumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
+            return ToResult(response);
         }
         catch (OperationCanceledException)
         {
-            // 已取消：按 MCP 约定不返回响应。
+            throw;
+        }
+        catch (ToolException exception)
+        {
+            var response = ToolResponse.FromException(exception).SetRequestId(requestId);
+            Trace(tool.Name, requestId, argumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
+            return ToResult(response);
+        }
+        catch (Exception exception)
+        {
+            _log.Error($"工具 {tool.Name} 失败", exception);
+            var response = ToolResponse.FromException(exception, $"tool:{tool.Name}")
+                .SetRequestId(requestId);
+            Trace(tool.Name, requestId, argumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
+            return ToResult(response);
         }
         finally
         {
-            if (gateHeld && gate is not null)
-            {
-                gate.Release();
-            }
-
-            if (!priority)
-            {
-                _session.SetCancellation(null);
-            }
-
-            _activeCalls.TryRemove(idKey, out _);
-            source.Dispose();
+            _session.SetCancellation(null);
+            lease?.Dispose();
         }
     }
 
-    private void ResetToolGate()
+    private bool TryAcquireRateLimit(out int retryAfterMs)
     {
-        var replacement = new SemaphoreSlim(1, 1);
-        Interlocked.Exchange(ref _toolGate, replacement);
-        Interlocked.Exchange(ref _stalledTools, 0);
-        _log.Warn("工具执行闸门已重置；旧 handler 结束前不会再阻塞新调用");
+        retryAfterMs = 0;
+
+        lock (_rateGate)
+        {
+            long now = Environment.TickCount64;
+            double elapsed = Math.Max(0, now - _rateLastTicks) / 1000.0;
+            _rateLastTicks = now;
+            _rateTokens = Math.Min(RateCapacity, _rateTokens + elapsed * RateRefillPerSecond);
+
+            if (_rateTokens >= 1)
+            {
+                _rateTokens -= 1;
+                return true;
+            }
+
+            retryAfterMs = (int)Math.Ceiling((1 - _rateTokens) / RateRefillPerSecond * 1000);
+            return false;
+        }
     }
 
-    private static JsonObject Busy(string message) => new()
+    /// <summary>参数摘要用于审计：文本/脚本等敏感字段只记录长度。</summary>
+    private static string? SummarizeArguments(JsonElement arguments)
     {
-        ["content"] = new JsonArray
+        if (arguments.ValueKind != JsonValueKind.Object)
         {
-            (JsonNode)new JsonObject
-            {
-                ["type"] = "text",
-                ["text"] = new JsonObject
-                {
-                    ["code"] = "E_BUSY",
-                    ["message"] = message,
-                    ["retryable"] = true,
-                    ["hint"] = "先调用 release_environment；若仍失败，重启服务端",
-                    ["stage"] = "gate",
-                }.ToJsonString(),
-            },
-        },
-        ["isError"] = true,
-    };
+            return null;
+        }
 
-    private void TrackStalled(Task<ToolResponse> task, string toolName, SemaphoreSlim? gate)
-    {
-        if (task.IsCompleted)
+        var copy = new JsonObject();
+
+        foreach (JsonProperty property in arguments.EnumerateObject())
         {
-            gate?.Release();
+            if (property.Name is "text" or "value" or "code" or "args" or "password"
+                or "window" or "path" or "save_path" or "target_path")
+            {
+                string raw = property.Value.ValueKind == JsonValueKind.String
+                    ? property.Value.GetString() ?? string.Empty
+                    : property.Value.GetRawText();
+                copy[property.Name] = $"<redacted:{raw.Length}>";
+                continue;
+            }
+
+            copy[property.Name] = JsonNode.Parse(property.Value.GetRawText());
+        }
+
+        string json = copy.ToJsonString();
+        return json.Length <= 300 ? json : json[..300] + "…";
+    }
+
+    private void ReportProgress(
+        RequestContext<CallToolRequestParams> context, int current, int total, string message)
+    {
+        JsonNode? token = context.Params?.Meta?["progressToken"];
+
+        if (token is null)
+        {
             return;
         }
 
-        Interlocked.Increment(ref _stalledTools);
-        _ = task.ContinueWith(
-            completed =>
-            {
-                int remaining = Interlocked.Decrement(ref _stalledTools);
-                if (remaining < 0)
-                {
-                    Interlocked.Exchange(ref _stalledTools, 0);
-                }
-
-                // 旧闸门可能已被 release_environment 替换；释放旧实例不会影响新实例。
-                gate?.Release();
-
-                if (completed.IsFaulted)
-                {
-                    _log.Error($"超时工具 {toolName} 最终异常", completed.Exception);
-                }
-                else
-                {
-                    _log.Warn($"超时工具 {toolName} 已结束，恢复可调用状态");
-                }
-            },
-            TaskScheduler.Default);
-    }
-
-    private static readonly HashSet<string> PriorityTools = new(StringComparer.Ordinal)
-    {
-        "release_environment", "get_log", "get_environment",
-    };
-
-    private static readonly Dictionary<string, int> ToolTimeouts = new(StringComparer.Ordinal)
-    {
-        ["get_environment"] = 20000,
-        ["capture_screen"] = 30000,
-        ["find_element"] = 30000,
-        ["get_ui_tree"] = 30000,
-        ["invoke_element"] = 30000,
-        ["set_element_value"] = 30000,
-        ["get_element_text"] = 20000,
-        ["click"] = 20000,
-        ["gesture"] = 30000,
-        ["type_text"] = 120000,
-        ["press_keys"] = 30000,
-        ["wait_for"] = 130000,
-        ["assert_region"] = 30000,
-        ["match_visual"] = 60000,
-        ["launch_or_place_app"] = 90000,
-        ["release_environment"] = 90000,
-        ["get_log"] = 15000,
-        ["run_script"] = 130000,
-    };
-
-    private static int TimeoutFor(string tool) =>
-        ToolTimeouts.TryGetValue(tool, out int timeout) ? timeout : 120000;
-
-    private void WriteProgress(JsonNode progressToken, int current, int total, string message)
-    {
-        WriteMessage(new JsonObject
+        try
         {
-            ["jsonrpc"] = "2.0",
-            ["method"] = "notifications/progress",
-            ["params"] = new JsonObject
-            {
-                ["progressToken"] = progressToken.DeepClone(),
-                ["progress"] = current,
-                ["total"] = total,
-                ["message"] = message,
-            },
-        });
-    }
-
-    private void WriteToolResult(JsonNode? id, ToolResponse response)
-    {
-        var result = new JsonObject
-        {
-            ["content"] = response.Content.DeepClone(),
-            ["isError"] = response.IsError,
-        };
-
-        if (response.StructuredContent is not null)
-        {
-            result["structuredContent"] = response.StructuredContent.DeepClone();
+            _ = context.Server.SendNotificationAsync(
+                "notifications/progress",
+                new JsonObject
+                {
+                    ["progressToken"] = token.DeepClone(),
+                    ["progress"] = current,
+                    ["total"] = total,
+                    ["message"] = message,
+                });
         }
-
-        WriteResult(id, result);
+        catch
+        {
+            // 进度是尽力而为。
+        }
     }
 
-    private void WriteResult(JsonNode? id, JsonNode result)
+    private void Trace(
+        string tool, string requestId, string? arguments, double milliseconds, ToolResponse response)
     {
-        var message = new JsonObject
-        {
-            ["jsonrpc"] = "2.0",
-            ["id"] = id?.DeepClone(),
-            ["result"] = result,
-        };
+        string? code = null;
+        string? stage = null;
+        int textBytes = 0;
+        int imageBytes = 0;
 
-        WriteMessage(message);
-    }
-
-    private void WriteError(JsonNode? id, int code, string message)
-    {
-        var response = new JsonObject
+        foreach (JsonNode? item in response.Content)
         {
-            ["jsonrpc"] = "2.0",
-            ["id"] = id?.DeepClone(),
-            ["error"] = new JsonObject
+            if (item is not JsonObject block)
             {
-                ["code"] = code,
-                ["message"] = message,
-            },
-        };
-
-        WriteMessage(response);
-    }
-
-    private int _writeFailed;
-
-    private void WriteMessage(JsonObject message)
-    {
-        lock (_writeGate)
-        {
-            try
-            {
-                _stdout.WriteLine(message.ToJsonString());
+                continue;
             }
-            catch (Exception exception) when (exception is IOException or ObjectDisposedException)
+
+            string? type = block["type"]?.GetValue<string>();
+
+            if (type == "text")
             {
-                if (Interlocked.Exchange(ref _writeFailed, 1) == 0)
+                string text = block["text"]?.GetValue<string>() ?? string.Empty;
+                textBytes += System.Text.Encoding.UTF8.GetByteCount(text);
+
+                if (code is null)
                 {
-                    _log.Warn($"stdout 已关闭，后续响应被丢弃: {exception.Message}");
+                    try
+                    {
+                        JsonNode? parsed = JsonNode.Parse(text);
+                        code = parsed?["code"]?.GetValue<string>();
+                        stage = parsed?["stage"]?.GetValue<string>();
+                    }
+                    catch
+                    {
+                        // 非 JSON 文本。
+                    }
                 }
             }
+            else if (type == "image")
+            {
+                string data = block["data"]?.GetValue<string>() ?? string.Empty;
+                imageBytes += data.Length * 3 / 4;
+            }
         }
+
+        _trace.ToolCall(tool, requestId, arguments, milliseconds, code, response.IsError,
+            textBytes, imageBytes, channel: null, stage: stage);
+    }
+
+    private static JsonElement ToArguments(IDictionary<string, JsonElement>? arguments)
+    {
+        var obj = new JsonObject();
+
+        if (arguments is not null)
+        {
+            foreach ((string key, JsonElement value) in arguments)
+            {
+                obj[key] = JsonNode.Parse(value.GetRawText());
+            }
+        }
+
+        using JsonDocument document = JsonDocument.Parse(obj.ToJsonString());
+        return document.RootElement.Clone();
+    }
+
+    private static CallToolResult ToResult(ToolResponse response)
+    {
+        var content = new List<ContentBlock>();
+
+        foreach (JsonNode? item in response.Content)
+        {
+            if (item is not JsonObject block)
+            {
+                continue;
+            }
+
+            string? type = block["type"]?.GetValue<string>();
+
+            if (type == "text")
+            {
+                content.Add(new TextContentBlock
+                {
+                    Text = block["text"]?.GetValue<string>() ?? string.Empty,
+                });
+            }
+            else if (type == "image")
+            {
+                string base64 = block["data"]?.GetValue<string>() ?? string.Empty;
+                content.Add(new ImageContentBlock
+                {
+                    Data = Convert.FromBase64String(base64),
+                    MimeType = block["mimeType"]?.GetValue<string>() ?? "image/png",
+                });
+            }
+        }
+
+        return new CallToolResult
+        {
+            Content = content,
+            StructuredContent = response.StructuredContent is null
+                ? null
+                : JsonDocument.Parse(response.StructuredContent.ToJsonString()).RootElement.Clone(),
+            IsError = response.IsError,
+        };
     }
 
     private Dictionary<string, ToolDefinition> BuildTools()
     {
         var tools = new Dictionary<string, ToolDefinition>(StringComparer.Ordinal);
 
-        Add(tools, "get_environment", "查看虚拟屏、显示器、前台窗口与会话状态。foreground 只在本会话窗口位于前台时返回标题/PID，避免泄露用户主屏窗口信息。session.isolation=shared_desktop 表示与用户共享桌面、不是沙箱。ensure=true 时先修复/挂载虚拟屏。", """
-            {"type":"object","properties":{"ensure":{"type":"boolean","description":"默认 false；true 时先 EnsureEnvironment"}}}
-            """, GetEnvironment);
+        Add(tools, "get_environment", "Environment",
+            "Read virtual display, display topology, foreground window and session state. " +
+            "foreground is only reported for tracked windows. ensure=true mounts/heals the virtual display first.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "ensure":{"type":"boolean","description":"Mount or heal the virtual display before reading state."}}}
+            """,
+            Out("virtual_display:object", "session:object", "foreground:object", "primary:object", "virtual_screen:object"),
+            readOnly: true, destructive: false, timeoutMs: 20000, GetEnvironment);
 
-        Add(tools, "launch_or_place_app", "启动应用或接管窗口，移动到虚拟屏并最大化。默认 new_instance=true：优先独立实例/新窗口（Edge 使用独立临时配置）。Word 默认 ensure_document=true：启动后用 Ctrl+N 确保有文档。", """
-            {"type":"object","properties":{"path":{"type":"string","description":"应用可执行文件路径"},"window":{"type":"string","description":"按窗口标题接管（会忽略 new_instance）"},"args":{"type":"string"},"wait_ms":{"type":"integer","minimum":1000,"maximum":60000},"new_instance":{"type":"boolean","description":"默认 true：独立实例/新窗口；false：接管已运行窗口"},"ensure_document":{"type":"boolean","description":"仅 Word：默认 true，无文档时自动 Ctrl+N"}}}
-            """, LaunchOrPlace);
+        Add(tools, "launch_or_place_app", "Launch or attach app",
+            "Start an application or attach to an existing window, move it onto the virtual display and maximize it. " +
+            "Returns pid/hwnd plus any owned dialogs discovered at attach time. Prefer path for a new instance; " +
+            "window only when you intentionally take over a running app.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "path":{"type":"string","description":"Executable path."},
+              "window":{"type":"string","description":"Attach by window title. Ignores new_instance."},
+              "args":{"type":"string"},
+              "wait_ms":{"type":"integer","minimum":1000,"maximum":60000},
+              "new_instance":{"type":"boolean","description":"Default true: dedicated/new window."},
+              "ensure_document":{"type":"boolean","description":"Office only: Ctrl+N when no document."},
+              "pid":{"type":"integer","minimum":1,"description":"Attach by process id (most precise)."}}}
+            """,
+            Out("launched:boolean", "new_instance:boolean", "reused:boolean", "pid:integer", "hwnd:integer",
+                "title:string", "maximized:boolean", "document_ready:boolean", "dialogs:array", "warnings:array"),
+            readOnly: false, destructive: false, timeoutMs: 90000, LaunchOrPlace);
 
-        Add(tools, "capture_screen", "截取虚拟屏（或虚拟屏内的指定区域），返回 Base64 PNG。区域越界会被拒绝。save_path 只允许工作目录/临时目录下的 .png，且不会覆盖已有文件；meta.baseline 使用未缩放的源尺寸。", """
-            {"type":"object","properties":{"region":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"}},"required":["x","y","width","height"]},"scale":{"type":"number","minimum":0.1,"maximum":1},"save_path":{"type":"string","description":"仅工作目录或系统临时目录内的 .png"}}}
-            """, CaptureScreen);
+        Add(tools, "snapshot", "Snapshot",
+            "One-call observation: compact semantic tree with refs, tracked windows, owned dialogs, focus and " +
+            "optional screenshot. Each call advances the ref generation: refs from an older snapshot return " +
+            "E_STALE_SNAPSHOT. (find_element/get_ui_tree reuse the current generation.)",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "pid":{"type":"integer","minimum":1},
+              "max_depth":{"type":"integer","minimum":1,"maximum":10,"description":"Default 4."},
+              "interactive_only":{"type":"boolean","description":"Default true."},
+              "max_nodes":{"type":"integer","minimum":1,"maximum":1024,"description":"Default 300; max 1024 (ref capacity)."},
+              "include_screenshot":{"type":"boolean","description":"Default false; adds a scaled PNG."},
+              "scale":{"type":"number","minimum":0.1,"maximum":1,"description":"Screenshot scale, default 0.5."},
+              "include_values":{"type":"boolean","description":"Include text/value of text controls. Default true."}}}
+            """,
+            Out("snapshot_id:string", "tree:object", "text:string", "nodes:integer",
+                "truncated:boolean", "max_nodes_effective:integer", "ref_capacity:integer",
+                "windows:array", "dialogs:array", "foreground:object", "screenshot:object",
+                "screenshot_path:string", "screenshot_uri:string", "screenshot_preview:object"),
+            readOnly: true, destructive: false, timeoutMs: 45000, Snapshot);
 
-        Add(tools, "find_element", "用 UI Automation 查找控件，返回精简的 element_ref、边界与状态（省略 runtime_id 等诊断字段）。reference 用于 invoke_element / set_element_value / get_ui_tree 的 root。默认只查最后一个存活应用，可用 pid 指定。role=document_body 可映射 Word 正文（automation_id=Body）。", """
-            {"type":"object","properties":{"name":{"type":"string"},"name_match":{"type":"string","enum":["exact","contains","regex"],"description":"默认 exact"},"control_type":{"type":"string"},"automation_id":{"type":"string"},"role":{"type":"string","enum":["document","document_body"],"description":"语义别名：document_body 映射 Edit + Body"},"prefer":{"type":"string","enum":["auto","first","focused","largest","last"],"description":"默认 auto：焦点优先，其次面积最大"},"index":{"type":"integer","minimum":0,"description":"候选序号，默认 0"},"all":{"type":"boolean","description":"返回全部候选"},"max_results":{"type":"integer","minimum":1,"maximum":200},"include_offscreen":{"type":"boolean","description":"默认 false：只返回可见控件"},"pid":{"type":"integer","description":"可选：指定本会话内某个应用的进程号"}}}
-            """, FindElement);
+        Add(tools, "capture_screen", "Capture screen",
+            "Capture the virtual display or a region. Returns a PNG plus meta. If save_path is given it is the only " +
+            "output file; otherwise large frames are written to the session artifact directory and returned as a " +
+            "resource link. inline=true (default) embeds small images and a 0.25x preview for large ones. " +
+            "save_path must be an absolute .png under the working directory or temp.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "region":{"type":"object","additionalProperties":false,"properties":{
+                "x":{"type":"integer"},"y":{"type":"integer"},
+                "width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},
+                "required":["x","y","width","height"]},
+              "scale":{"type":"number","minimum":0.1,"maximum":1,"description":"Default 0.5 for full screen, 1 for regions."},
+              "inline":{"type":"boolean","description":"Embed the PNG in the MCP result. Default true for small images."},
+              "save_path":{"type":"string","description":"Absolute .png path under cwd or temp."}}}
+            """,
+            Out("frame_id:string", "x:integer", "y:integer", "width:integer", "height:integer",
+                "source_width:integer", "source_height:integer", "scale:number", "png_bytes:integer",
+                "duration_ms:number", "encode_ms:number", "path:string",
+                "artifact_path:string", "resource_uri:string", "artifact_uri:string",
+                "inline:boolean", "preview:object", "preview_error:string",
+                "backend:string", "slow_capture:boolean"),
+            readOnly: true, destructive: false, timeoutMs: 30000, CaptureScreen);
 
-        Add(tools, "get_ui_tree", "读取当前会话窗口的裁剪语义树；默认只保留交互控件，超出节点/时间预算时返回 truncated。节点带 element_ref。interactive_only=false 时仍会剪掉滚动条/分隔条等噪声。", """
-            {"type":"object","properties":{"max_depth":{"type":"integer","minimum":1,"maximum":10,"description":"默认 3"},"interactive_only":{"type":"boolean","description":"默认 true"},"max_nodes":{"type":"integer","minimum":1,"maximum":2000,"description":"默认 300"},"root":{"type":"string","description":"可选：以某个 element_ref 为子树根"},"pid":{"type":"integer","description":"可选：指定本会话内某个应用的进程号"}}}
-            """, GetUiTree);
+        Add(tools, "find_element", "Find element",
+            "Find UI Automation elements and return refs, bounds, state and snapshot_id. Falls back to MSAA when a " +
+            "window exposes no UIA content (Office legacy dialogs). control_type must be a valid UIA control type. " +
+            "role=document_body maps the document text surface.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "name":{"type":"string"},
+              "name_match":{"type":"string","enum":["exact","contains","regex"]},
+              "control_type":{"type":"string","description":"UIA control type, e.g. Button, Edit, Document."},
+              "automation_id":{"type":"string"},
+              "role":{"type":"string","enum":["document","document_body"]},
+              "prefer":{"type":"string","enum":["auto","first","focused","largest","last"]},
+              "index":{"type":"integer","minimum":0},
+              "all":{"type":"boolean"},
+              "max_results":{"type":"integer","minimum":1,"maximum":200},
+              "include_offscreen":{"type":"boolean"},
+              "pid":{"type":"integer","minimum":1}}}
+            """,
+            Out("ref:string", "count:integer", "total:integer", "truncated:boolean",
+                "snapshot_id:string", "name:string", "control_type:string", "bounds:object",
+                "enabled:boolean", "offscreen:boolean", "matches:array", "elements:array"),
+            readOnly: true, destructive: false, timeoutMs: 30000, FindElement);
 
-        Add(tools, "invoke_element", "按 element_ref 触发控件。默认 auto 依次尝试 Invoke/Toggle/SelectionItem/ExpandCollapse/Legacy；可用 pattern 显式指定。不移动光标；无可用模式时返回 E_PATTERN_UNSUPPORTED。UIA Invoke 超过 5s 会返回 E_TIMEOUT（常见于会打开模态框的按钮），服务端会切换到新的 UIA 实例。", """
-            {"type":"object","properties":{"ref":{"type":"string"},"pattern":{"type":"string","enum":["auto","invoke","toggle","select","expand","legacy","default"],"description":"默认 auto；default 表示聚焦后发送 Space+Enter/Enter（用于树节点打开）"},"allow_click":{"type":"boolean","description":"默认 false；true 时允许回退为控件中心的消息点击（仍不移动光标）"}},"required":["ref"]}
-            """, InvokeElement);
+        Add(tools, "get_ui_tree", "UI tree",
+            "Read the pruned semantic tree of the tracked window. Nodes carry refs. By default it reuses the current " +
+            "snapshot generation, so existing refs stay valid; pass new_snapshot=true to invalidate old refs.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "max_depth":{"type":"integer","minimum":1,"maximum":10},
+              "interactive_only":{"type":"boolean"},
+              "max_nodes":{"type":"integer","minimum":1,"maximum":1024},
+              "root":{"type":"string"},
+              "pid":{"type":"integer","minimum":1},
+              "format":{"type":"string","enum":["json","text"],"description":"text is the compact line format."},
+              "new_snapshot":{"type":"boolean","description":"Advance the ref generation. Default false: keep existing refs valid."}}}
+            """,
+            Out("tree:object", "text:string", "nodes:integer", "truncated:boolean",
+                "truncated_reason:string", "max_nodes_effective:integer",
+                "max_nodes_clamped:boolean", "ref_capacity:integer", "snapshot_id:string",
+                "new_snapshot:boolean"),
+            readOnly: true, destructive: false, timeoutMs: 30000, GetUiTree);
 
-        Add(tools, "set_element_value", "按 element_ref 写值。默认 ValuePattern；allow_keyboard=true 才切前台并分块键入。mode=auto 时文档类控件默认 append，普通控件 insert（insert 是整值写入，已有内容时必须 allow_destructive=true）；replace 必须显式 allow_destructive=true。", """
-            {"type":"object","properties":{"ref":{"type":"string"},"value":{"type":"string"},"allow_keyboard":{"type":"boolean","description":"默认 false"},"mode":{"type":"string","enum":["auto","append","insert","replace"],"description":"默认 auto：文档 append，普通控件 insert"},"allow_destructive":{"type":"boolean","description":"默认 false；insert 覆盖非空内容或 replace 时必须为 true"}},"required":["ref","value"]}
-            """, SetElementValue);
+        Add(tools, "invoke_element", "Invoke element",
+            "Invoke a control by ref. auto tries Invoke/Toggle/SelectionItem/ExpandCollapse/Legacy; pattern=default " +
+            "focuses and presses Space/Enter (useful for tree nodes).",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "ref":{"type":"string"},
+              "pattern":{"type":"string","enum":["auto","invoke","toggle","select","selectionitem","expand","expandcollapse","legacy","default","defaultaction","open"]},
+              "allow_click":{"type":"boolean","description":"Allow message click fallback."}},
+              "required":["ref"]}
+            """,
+            Out("invoked:boolean", "pattern:string", "channel:string", "verified:boolean"),
+            readOnly: false, destructive: true, timeoutMs: 30000, InvokeElement);
 
-        Add(tools, "get_element_text", "读取文本控件的正文：优先 TextPattern（Word 正文），其次 ValuePattern。用于写值/输入后的可靠校验。", """
-            {"type":"object","properties":{"ref":{"type":"string"},"max_chars":{"type":"integer","minimum":1,"maximum":65536,"description":"默认 4096"}},"required":["ref"]}
-            """, GetElementText);
+        Add(tools, "set_element_value", "Set value",
+            "Write a value by ref. ValuePattern first; allow_keyboard=true falls back to typing. Overwriting non-empty " +
+            "content requires allow_destructive=true.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "ref":{"type":"string"},
+              "value":{"type":"string"},
+              "allow_keyboard":{"type":"boolean"},
+              "mode":{"type":"string","enum":["auto","append","insert","replace"]},
+              "allow_destructive":{"type":"boolean"}},
+              "required":["ref","value"]}
+            """,
+            Out("written:string", "value:string", "mode:string", "verified:boolean", "observed_length:integer"),
+            readOnly: false, destructive: true, timeoutMs: 30000, SetElementValue);
 
-        Add(tools, "click", "在虚拟桌面坐标点击。默认不移动系统光标（UIA/窗口消息）；input 模式才使用 SendInput。坐标必须属于本会话应用，越界/其他窗口会被拒绝。Chromium/Electron/WinUI 会忽略窗口消息点击，此时返回 E_INPUT_UNSUPPORTED，请显式用 mode=input。keep_foreground=true 会暂停焦点护栏 30s，到期自动恢复。", """
-            {"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"button":{"type":"string","enum":["left","right","middle"]},"clicks":{"type":"integer","minimum":1,"maximum":10},"mode":{"type":"string","enum":["auto","uia","message","input"],"description":"默认 auto：UIA → 窗口消息，绝不移动光标；input 显式接受光标跳变"},"keep_foreground":{"type":"boolean","description":"默认 false；true 时不归还用户前台，便于连续操作菜单"}},"required":["x","y"]}
-            """, Click);
+        Add(tools, "get_element_text", "Get text",
+            "Read text through TextPattern then ValuePattern. Use it to verify what you typed.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "ref":{"type":"string"},
+              "max_chars":{"type":"integer","minimum":1,"maximum":65536}},
+              "required":["ref"]}
+            """,
+            Out("text:string", "length:integer", "source:string", "truncated:boolean"),
+            readOnly: true, destructive: false, timeoutMs: 20000, GetElementText);
 
-        Add(tools, "gesture", "复合鼠标动作：drag / scroll / move。默认窗口消息，不移动系统光标；Chromium/Electron/WinUI 会拒绝消息拖拽/滚轮，需显式 mode=input。目标必须属于本会话应用。", """
-            {"type":"object","properties":{"type":{"type":"string","enum":["drag","scroll","move"]},"from":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"]},"to":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"]},"dx":{"type":"integer"},"dy":{"type":"integer"},"button":{"type":"string","enum":["left","right","middle"]},"duration_ms":{"type":"integer","minimum":20,"maximum":5000},"mode":{"type":"string","enum":["auto","message","input"],"description":"默认 auto/message：窗口消息，不移动光标；input 显式接受光标跳变"}},"required":["type"]}
-            """, Gesture);
+        Add(tools, "click", "Click",
+            "Click at virtual-desktop coordinates. channel=auto picks UIA element, message or SendInput. " +
+            "Non-client areas (title bar, caption buttons) and popup menus are handled explicitly. " +
+            "keep_foreground=true pauses the focus guard for 30s.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "x":{"type":"integer"},"y":{"type":"integer"},
+              "button":{"type":"string","enum":["left","right","middle"]},
+              "clicks":{"type":"integer","minimum":1,"maximum":10},
+              "mode":{"type":"string","enum":["auto","uia","message","input"],"description":"Legacy alias of channel."},
+              "channel":{"type":"string","enum":["auto","uia","message","input"]},
+              "keep_foreground":{"type":"boolean"}},
+              "required":["x","y"]}
+            """,
+            Out("channel:string", "hwnd:integer", "verified:boolean"),
+            readOnly: false, destructive: true, timeoutMs: 20000, Click);
 
-        Add(tools, "type_text", "向当前焦点输入文本，支持非 ASCII。默认 32 字符分块并用 TextPattern/ValuePattern 回读确认；verify=false 改为一次写入的快速路径。长文本会降低回读频率。多应用会话可用 pid 指定目标，默认最后一个存活应用。", """
-            {"type":"object","properties":{"text":{"type":"string"},"pid":{"type":"integer","description":"可选：指定本会话内某个应用的进程号"},"verify":{"type":"boolean","description":"默认 true：分块回读校验；false 为一次写入的快速路径"},"chunk_chars":{"type":"integer","minimum":1,"maximum":256,"description":"分块字符数，默认 32"}},"required":["text"]}
-            """, TypeText);
+        Add(tools, "click_ref", "Click element by ref",
+            "Click a control by element_ref. auto first tries UIA Invoke/Toggle/Select, then message click " +
+            "at the control center; channel=input moves the real cursor. Prefer this over coordinate clicks.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "ref":{"type":"string"},
+              "channel":{"type":"string","enum":["auto","uia","message","input"]},
+              "keep_foreground":{"type":"boolean"}},
+              "required":["ref"]}
+            """,
+            Out("clicked:boolean", "ref:string", "channel:string", "pattern:string",
+                "refreshed:boolean", "bounds:object", "observed:object"),
+            readOnly: false, destructive: true, timeoutMs: 20000, ClickRef);
 
-        Add(tools, "press_keys", "发送按键或组合键，例如 Ctrl+Shift+S。sequence 可在一次前台租约内发送多个按键（菜单导航）；keep_foreground=true 时保留目标焦点 30s。Win+*/Alt+Tab/Ctrl+Esc 等系统级组合默认拒绝，需 allow_system_keys=true。多应用会话可用 pid 指定目标。", """
-            {"type":"object","properties":{"keys":{"type":"string"},"sequence":{"type":"array","items":{"type":"string"},"description":"按顺序发送，例如 [\"Alt+D\",\"Down\",\"Enter\"]"},"keep_foreground":{"type":"boolean","description":"默认 false；true 时保留目标焦点"},"allow_system_keys":{"type":"boolean","description":"默认 false；Win+*/Alt+Tab/Ctrl+Esc 等系统级组合会被拒绝"},"pid":{"type":"integer","description":"可选：指定本会话内某个应用的进程号"}}}
-            """, PressKeys);
+        Add(tools, "gesture", "Gesture",
+            "Composite mouse action: drag, scroll or move. Message mode cannot drag across windows; use channel=input for drags.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "type":{"type":"string","enum":["drag","scroll","move"]},
+              "from":{"type":"object","additionalProperties":false,"properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"]},
+              "to":{"type":"object","additionalProperties":false,"properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"]},
+              "dx":{"type":"integer"},"dy":{"type":"integer"},
+              "button":{"type":"string","enum":["left","right","middle"]},
+              "duration_ms":{"type":"integer","minimum":20,"maximum":5000},
+              "mode":{"type":"string","enum":["auto","message","input"]}},
+              "required":["type"]}
+            """,
+            Out("channel:string", "steps:integer", "verified:boolean"),
+            readOnly: false, destructive: true, timeoutMs: 30000, Gesture);
 
-        Add(tools, "wait_for", "服务端等待条件满足，减少客户端轮询。condition.type 支持 element/color/window/pixel_diff/visual；visual 直接复用 match_visual 的 mode/target/region。window 默认只匹配本会话窗口（scope=tracked）。", """
-            {"type":"object","properties":{"condition":{"type":"object","description":"type=element|color|window|pixel_diff|visual；visual 可带 mode/target/target_path/region/threshold/tolerance"},"timeout_ms":{"type":"integer","minimum":0,"maximum":120000}},"required":["condition"]}
-            """, WaitFor);
+        Add(tools, "type_text", "Type text",
+            "Type text into the focused control. auto uses a pattern write, clipboard paste for long text, or " +
+            "SendInput as fallback; verify=true reads back through TextPattern/ValuePattern.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "text":{"type":"string"},
+              "pid":{"type":"integer","minimum":1},
+              "verify":{"type":"boolean"},
+              "chunk_chars":{"type":"integer","minimum":1,"maximum":256},
+              "channel":{"type":"string","enum":["auto","pattern","clipboard","keys"]}},
+              "required":["text"]}
+            """,
+            Out("typed:integer", "verified:boolean", "channel:string", "inject_ms:number", "duration_ms:number",
+                "observed_length:integer", "chunks:integer"),
+            readOnly: false, destructive: true, timeoutMs: 120000, TypeText);
 
-        Add(tools, "assert_region", "区域断言：颜色覆盖率、与上一帧相比是否变化。changed 默认引用同区域最近一次 capture_screen；也可传 expectation.baseline_frame_id。baseline=last_same_region（默认）或 last 时断言未变化。", """
-            {"type":"object","properties":{"region":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"}},"required":["x","y","width","height"]},"expectation":{"type":"object","description":"color/changed/baseline_frame_id/baseline=last_same_region|last"}},"required":["region","expectation"]}
-            """, AssertRegion);
+        Add(tools, "press_keys", "Press keys",
+            "Send a key combination or a sequence inside one foreground lease. System shortcuts (Win+*, Alt+Tab, " +
+            "Ctrl+Esc and variants) are rejected unless allow_system_keys=true.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "keys":{"type":"string"},
+              "sequence":{"type":"array","items":{"type":"string"}},
+              "keep_foreground":{"type":"boolean"},
+              "allow_system_keys":{"type":"boolean"},
+              "pid":{"type":"integer","minimum":1}}}
+            """,
+            Out("sent:integer", "channel:string"),
+            readOnly: false, destructive: true, timeoutMs: 30000, PressKeys);
 
-        Add(tools, "match_visual", "像素定位：color 找颜色连通区域，pixel 取单点颜色，template 用 Base64 PNG 或 target_path 模板匹配。只读取虚拟屏，越界会被拒绝。", """
-            {"type":"object","properties":{"mode":{"type":"string","enum":["template","color","pixel"]},"target":{"description":"color: \"#RRGGBB\"；pixel: {x,y}；template: Base64 PNG"},"target_path":{"type":"string","description":"template 可选：工作目录/临时目录下的 .png 文件"},"region":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"}},"required":["x","y","width","height"]},"tolerance":{"type":"integer","minimum":0,"maximum":255,"description":"color 容差，默认 16"},"threshold":{"type":"number","minimum":0.3,"maximum":1,"description":"template 阈值，默认 0.88"},"max_results":{"type":"integer","minimum":1,"maximum":100},"min_pixels":{"type":"integer","minimum":1,"description":"color 最小连通像素数，默认 4"},"max_area_ratio":{"type":"number","minimum":0.01,"maximum":1,"description":"color 连通域最大面积占比，默认 1.0（不过滤）"},"exclude_border":{"type":"boolean","description":"color 是否丢弃接触区域边缘的连通域，默认 false"},"require_unique":{"type":"boolean","description":"template 命中多个位置时返回 E_MULTIPLE_MATCHES，默认 false"}},"required":["mode"]}
-            """, MatchVisual);
+        Add(tools, "wait_for", "Wait for condition",
+            "Poll a condition on the server inside one call. type=element|color|window|pixel_diff|visual|text. " +
+            "Read-only: it never holds the write lock, so other observations keep working.",
+            """
+            {"type":"object","required":["condition"],"additionalProperties":false,"properties":{
+              "timeout_ms":{"type":"integer","minimum":0,"maximum":120000},
+              "interval_ms":{"type":"integer","minimum":50,"maximum":2000},
+              "condition":{"oneOf":[
+                {"type":"object","required":["type"],"properties":{"type":{"const":"element"},"name":{"type":"string"},"control_type":{"type":"string"},"automation_id":{"type":"string"},"pid":{"type":"integer"}}},
+                {"type":"object","required":["type","x","y","value"],"properties":{"type":{"const":"color"},"x":{"type":"integer"},"y":{"type":"integer"},"value":{"type":"string"},"tolerance":{"type":"integer","minimum":0,"maximum":255}}},
+                {"type":"object","required":["type"],"properties":{"type":{"const":"window"},"title":{"type":"string"},"scope":{"type":"string","enum":["tracked","any"]}}},
+                {"type":"object","required":["type","region"],"properties":{"type":{"const":"pixel_diff"},"region":{"type":"object"},"baseline_frame_id":{"type":"string"},"min_changed_ratio":{"type":"number","minimum":0,"maximum":1}}},
+                {"type":"object","required":["type"],"properties":{"type":{"const":"visual"},"mode":{"type":"string"},"target":{},"region":{"type":"object"},"threshold":{"type":"number"}}},
+                {"type":"object","required":["type","text"],"properties":{"type":{"const":"text"},"text":{"type":"string"},"region":{"type":"object"}}}
+              ]}}}
+            """,
+            Out("satisfied:boolean", "elapsed_ms:integer", "last:object"),
+            readOnly: true, destructive: false, timeoutMs: 130000, WaitFor);
 
-        Add(tools, "release_environment", "结束调试：窗口复原、关闭本会话启动的应用。默认保留虚拟屏（会话级常驻）；on_dirty 控制未保存内容：force/discard/save/abort。", """
-            {"type":"object","properties":{"keep_display":{"type":"boolean","description":"默认 true：保留虚拟屏到宿主退出；false：立即摘屏（会再次黑屏）"},"on_dirty":{"type":"string","enum":["force","discard","save","abort"],"description":"默认 force：超时强杀；discard：点“不保存”；save：点“保存”；abort：保留窗口"}}}
-            """, ReleaseEnvironment);
+        Add(tools, "assert_region", "Assert region",
+            "Assert color coverage or change against a baseline. An explicit baseline_frame_id must match x/y/width/height " +
+            "exactly; mismatch returns E_NO_BASELINE instead of comparing different areas.",
+            """
+            {"type":"object","required":["region","expectation"],"additionalProperties":false,"properties":{
+              "region":{"type":"object","additionalProperties":false,"properties":{"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"]},
+              "expectation":{"oneOf":[
+                {"type":"object","required":["color"],"properties":{"color":{"type":"string"},"coverage":{"type":"number","minimum":0,"maximum":1},"tolerance":{"type":"integer","minimum":0,"maximum":255}}},
+                {"type":"object","required":["changed"],"properties":{"changed":{"type":"boolean"},"threshold":{"type":"number","minimum":0,"maximum":1},"baseline_frame_id":{"type":"string"},"baseline":{"type":"string","enum":["last_same_region","last"]}}}
+              ]}}}
+            """,
+            Out("passed:boolean", "changed_ratio:number", "coverage:number", "baseline_frame_id:string"),
+            readOnly: true, destructive: false, timeoutMs: 30000, AssertRegion);
 
-        Add(tools, "get_log", "读取近期日志与最后错误。source=memory 读当前进程；file 读日志文件（重启后仍可取证）；both 同时返回。可按 level/contains 过滤。", """
-            {"type":"object","properties":{"tail":{"type":"integer","minimum":1,"maximum":500},"source":{"type":"string","enum":["memory","file","both"],"description":"默认 memory"},"level":{"type":"string","description":"可选：INFO/WARN/ERROR"},"contains":{"type":"string","description":"可选：消息子串过滤"}}}
-            """, GetLog);
+        Add(tools, "match_visual", "Match visual",
+            "Locate pixels on the virtual display: color connected components, single pixel, or PNG template match. " +
+            "template requires 1:1 scale and the same DPI as the capture.",
+            """
+            {"type":"object","required":["mode"],"additionalProperties":false,"properties":{
+              "mode":{"type":"string","enum":["template","color","pixel"]},
+              "target":{"description":"color: #RRGGBB; pixel: {x,y}; template: base64 PNG"},
+              "target_path":{"type":"string"},
+              "region":{"type":"object","additionalProperties":false,"properties":{"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"]},
+              "tolerance":{"type":"integer","minimum":0,"maximum":255},
+              "threshold":{"type":"number","minimum":0.3,"maximum":1},
+              "scales":{"type":"array","items":{"type":"number","minimum":0.5,"maximum":2},"maxItems":5,
+                "description":"Template scales to try, e.g. [0.75,1,1.25]; default [1]."},
+              "max_results":{"type":"integer","minimum":1,"maximum":100},
+              "min_pixels":{"type":"integer","minimum":1},
+              "max_area_ratio":{"type":"number","minimum":0.01,"maximum":1},
+              "exclude_border":{"type":"boolean"},
+              "require_unique":{"type":"boolean"}}}
+            """,
+            Out("found:boolean", "count:integer", "x:integer", "y:integer", "width:integer", "height:integer",
+                "color:string", "matches:array", "threshold:number", "template:object", "scale:number"),
+            readOnly: true, destructive: false, timeoutMs: 60000, MatchVisual);
 
-        Add(tools, "run_script", "以当前用户权限执行临时 PowerShell 脚本（超时杀进程树）。默认关闭；需以 --allow-script 或 VSP_ALLOW_SCRIPT=1 启动。", """
-            {"type":"object","properties":{"code":{"type":"string"},"timeout_ms":{"type":"integer","minimum":1000,"maximum":120000}},"required":["code"]}
-            """, RunScript);
+        Add(tools, "release_environment", "Release environment",
+            "End the debug session: restore window placement, close only processes this session started, optionally " +
+            "remove the virtual display. on_dirty controls unsaved content. Never auto-discards when the result is unknown.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "keep_display":{"type":"boolean","description":"Default true."},
+              "on_dirty":{"type":"string","enum":["force","discard","save","abort"],"description":"Default force."}}}
+            """,
+            Out("released:boolean", "apps:array", "display_kept:boolean", "warnings:array"),
+            readOnly: false, destructive: true, timeoutMs: 90000, ReleaseEnvironment);
+
+        Add(tools, "get_log", "Get log",
+            "Read recent in-memory or file log entries, filtered by level/contains. Use it after E_INTERNAL or E_TIMEOUT.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "tail":{"type":"integer","minimum":1,"maximum":500},
+              "source":{"type":"string","enum":["memory","file","both"]},
+              "level":{"type":"string","enum":["DEBUG","INFO","WARN","ERROR"]},
+              "contains":{"type":"string"}}}
+            """,
+            Out("source:string", "entries:array", "file_entries:array", "last_error:object"),
+            readOnly: true, destructive: false, timeoutMs: 15000, GetLog);
+
+        Add(tools, "run_script", "Run script",
+            "Run a temporary PowerShell script with the current user token. Disabled unless the server was started " +
+            "with --allow-script. Output is UTF-8 and truncated to 64KB.",
+            """
+            {"type":"object","required":["code"],"additionalProperties":false,"properties":{
+              "code":{"type":"string"},
+              "timeout_ms":{"type":"integer","minimum":1000,"maximum":120000}}}
+            """,
+            Out("stdout:string", "stderr:string", "exit_code:integer", "duration_ms:number",
+                "timed_out:boolean", "truncated:boolean"),
+            readOnly: false, destructive: true, timeoutMs: 130000, RunScript);
 
         return tools;
     }
@@ -792,12 +1035,65 @@ internal sealed class McpServer
     private static void Add(
         Dictionary<string, ToolDefinition> tools,
         string name,
+        string title,
         string description,
         string schemaJson,
+        JsonNode outputSchema,
+        bool readOnly,
+        bool destructive,
+        int timeoutMs,
         Func<JsonElement, ToolResponse> handler)
     {
-        tools[name] = new ToolDefinition(name, description, JsonNode.Parse(schemaJson)!, handler);
+        tools[name] = new ToolDefinition(
+            name, title, description,
+            JsonNode.Parse(schemaJson)!, outputSchema,
+            readOnly, destructive, timeoutMs, handler);
     }
+
+    /// <summary>生成“成功或错误都能通过”的输出 schema：声明字段但不强制 required。</summary>
+    private static JsonNode Out(params string[] fields)
+    {
+        var properties = new JsonObject
+        {
+            ["code"] = Type("string"),
+            ["message"] = Type("string"),
+        };
+
+        foreach (string field in fields)
+        {
+            int separator = field.IndexOf(':');
+
+            if (separator <= 0)
+            {
+                continue;
+            }
+
+            properties[field[..separator]] = Type(field[(separator + 1)..]);
+        }
+
+        return new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = properties,
+            ["additionalProperties"] = true,
+        };
+    }
+
+    private static JsonObject Type(string type) => type switch
+    {
+        // 输出字段允许 null（例如 last_error、path），schema 仍声明真实类型。
+        "object" => new JsonObject
+        {
+            ["type"] = new JsonArray("object", "null"),
+            ["additionalProperties"] = true,
+        },
+        "array" => new JsonObject
+        {
+            ["type"] = new JsonArray("array", "null"),
+            ["items"] = new JsonObject(),
+        },
+        _ => new JsonObject { ["type"] = new JsonArray(type, "null") },
+    };
 
     private ToolResponse GetEnvironment(JsonElement arguments) =>
         ToolResponse.Text(_session.GetEnvironment(OptionalBool(arguments, "ensure", false)));
@@ -809,11 +1105,86 @@ internal sealed class McpServer
         string? args = OptionalString(arguments, "args");
         int waitMs = OptionalInt(arguments, "wait_ms", 15000);
         bool newInstance = OptionalBool(arguments, "new_instance", true);
+        int? pid = OptionalNullableInt(arguments, "pid");
 
         return ToolResponse.Text(
             _session.LaunchOrPlaceApp(
                 path, window, args, waitMs, newInstance,
-                OptionalBool(arguments, "ensure_document", true)));
+                OptionalBool(arguments, "ensure_document", true), pid));
+    }
+
+    private ToolResponse Snapshot(JsonElement arguments)
+    {
+        double scale = OptionalDouble(arguments, "scale", 0.5);
+
+        if (arguments.TryGetProperty("scale", out _) && (scale < 0.1 || scale > 1.0))
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"scale 必须在 0.1..1.0（收到 {scale}）",
+                new JsonObject { ["field"] = "scale", ["value"] = scale },
+                retryable: false,
+                hint: "快照截图只接受 0.1–1.0",
+                stage: "validate");
+        }
+
+        SnapshotResult result = _session.Snapshot(
+            OptionalNullableInt(arguments, "pid"),
+            OptionalInt(arguments, "max_depth", 4),
+            OptionalBool(arguments, "interactive_only", true),
+            OptionalInt(arguments, "max_nodes", 300),
+            OptionalBool(arguments, "include_values", true),
+            OptionalBool(arguments, "include_screenshot", false),
+            scale);
+
+        if (result.Png is null)
+        {
+            return ToolResponse.Text(result.Data);
+        }
+
+        if (result.Png.Length <= 128 * 1024)
+        {
+            return ToolResponse.Text(result.Data).AddImage(result.Png);
+        }
+
+        // 大图先落盘、把路径写进 data，再序列化；否则 Text() 之后追加的字段不会进入响应。
+        try
+        {
+            (string path, string uri) = WriteArtifact(result.Png, "snapshot", result.PreviewPng);
+            result.Data["screenshot_path"] = path;
+            result.Data["screenshot_uri"] = uri;
+            result.Data["screenshot_resource_uri"] = uri;
+        }
+        catch (Exception exception)
+        {
+            result.Data["screenshot_error"] = exception.Message;
+            return ToolResponse.Text(result.Data);
+        }
+
+        if (result.PreviewPng is null)
+        {
+            return ToolResponse.Text(result.Data);
+        }
+
+        // preview 与主图来自同一帧，不再二次截屏。
+        result.Data["screenshot_preview"] = result.PreviewMeta;
+        return ToolResponse.Text(result.Data).AddImage(result.PreviewPng);
+    }
+
+    private (string Path, string Uri) WriteArtifact(byte[] png, string prefix, byte[]? preview = null)
+    {
+        string fileName =
+            $"{prefix}-{DateTime.Now:HHmmss-fff}-{Guid.NewGuid().ToString("N")[..8]}.png";
+        string path = Path.Combine(_session.ArtifactDirectory, fileName);
+        File.WriteAllBytes(path, png);
+
+        if (preview is not null)
+        {
+            // 资源读取时用 ?preview=1 指向这张小图，避免把 300KB+ 原图塞回 Blob。
+            File.WriteAllBytes(Path.ChangeExtension(path, ".preview.png"), preview);
+        }
+
+        return (path, $"vsp://artifacts/{fileName}");
     }
 
     private ToolResponse CaptureScreen(JsonElement arguments)
@@ -834,12 +1205,70 @@ internal sealed class McpServer
             height = RequiredInt(region, "height");
         }
 
-        double scale = OptionalDouble(arguments, "scale", 1.0);
+        // 全屏默认降到 0.5：UI 截图缩小一半仍然可读，体积/上下文成本降 4 倍。
+        double scale = OptionalDouble(arguments, "scale", x is null ? 0.5 : 1.0);
+
+        if (arguments.TryGetProperty("scale", out _) && (scale < 0.1 || scale > 1.0))
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"scale 必须在 0.1..1.0（收到 {scale}）",
+                new JsonObject { ["field"] = "scale", ["value"] = scale },
+                retryable: false,
+                hint: "0 或 10 这类值不会再被静默钳制；需要小图请用 0.1–1.0",
+                stage: "validate");
+        }
         string? savePath = OptionalString(arguments, "save_path");
+        bool inline = OptionalBool(arguments, "inline", true);
 
-        (byte[] png, JsonObject meta) = _session.CaptureScreen(x, y, width, height, scale, savePath);
+        // 关键发现：全屏“悬崖”主要不是 GDI 采集，而是大 PNG 的 Base64/JSON/stdio 回传。
+        // 366KB PNG 内联 → 客户端约 1.2s；落盘 + 200B 元数据 → 约 35ms。
+        // 因此超过 128KB 的图默认落 artifact，并额外内联一张 0.25× 预览。
+        const int InlineLimit = 128 * 1024;
+        bool hasSavePath = !string.IsNullOrWhiteSpace(savePath);
 
-        return ToolResponse.Text(meta).AddImage(png);
+        // preview 与主图同帧；small 图会多编码一次缩略图，但省掉了第二次截屏。
+        SessionManager.CaptureResult capture = _session.CaptureScreenEx(
+            x, y, width, height, scale, savePath,
+            storeFrame: true,
+            previewScale: inline ? Math.Max(0.1, scale * 0.25) : null);
+
+        byte[] png = capture.Png;
+        JsonObject meta = capture.Meta;
+
+        if (inline && png.Length <= InlineLimit)
+        {
+            meta["inline"] = true;
+            return ToolResponse.Text(meta).AddImage(png);
+        }
+
+        // 显式 save_path 就是唯一正式产物：不再额外写 artifact（R4）。
+        if (!hasSavePath)
+        {
+            try
+            {
+                (string path, string uri) = WriteArtifact(png, "shot", capture.PreviewPng);
+                meta["artifact_path"] = path;
+                meta["artifact_uri"] = uri;
+                meta["resource_uri"] = uri;
+                meta["path"] = path;
+            }
+            catch (Exception exception)
+            {
+                meta["artifact_error"] = exception.Message;
+            }
+        }
+
+        meta["inline"] = false;
+
+        if (inline && capture.PreviewPng is not null)
+        {
+            // 给模型一张可看的缩略图；完整图通过 artifact_uri/path 获取。
+            meta["preview"] = capture.PreviewMeta;
+            return ToolResponse.Text(meta).AddImage(capture.PreviewPng);
+        }
+
+        return ToolResponse.Text(meta);
     }
 
     private ToolResponse FindElement(JsonElement arguments)
@@ -847,6 +1276,24 @@ internal sealed class McpServer
         string? name = OptionalString(arguments, "name");
         string? controlType = OptionalString(arguments, "control_type");
         string? automationId = OptionalString(arguments, "automation_id");
+        if (controlType is not null && !Uia.UiaService.IsKnownControlType(controlType))
+        {
+            var supported = new JsonArray();
+
+            foreach (string item in Uia.UiaService.SupportedControlTypes)
+            {
+                supported.Add(item);
+            }
+
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"control_type 无效: {controlType}",
+                new JsonObject { ["field"] = "control_type", ["supported"] = supported },
+                retryable: false,
+                hint: "使用 UIA 控件类型英文名，例如 Button、Edit、Document",
+                stage: "validate");
+        }
+
         string nameMatch = OptionalString(arguments, "name_match") ?? "exact";
         int index = OptionalInt(arguments, "index", 0);
         bool all = OptionalBool(arguments, "all", false);
@@ -868,8 +1315,11 @@ internal sealed class McpServer
         int? maxNodes = OptionalNullableInt(arguments, "max_nodes");
         string? root = OptionalString(arguments, "root");
         int? pid = OptionalNullableInt(arguments, "pid");
+        string? format = OptionalString(arguments, "format");
+        bool newSnapshot = OptionalBool(arguments, "new_snapshot", false);
 
-        return ToolResponse.Text(_session.GetUiTree(maxDepth, interactiveOnly, maxNodes, root, pid));
+        return ToolResponse.Text(
+            _session.GetUiTree(maxDepth, interactiveOnly, maxNodes, root, pid, format, newSnapshot));
     }
 
     private ToolResponse InvokeElement(JsonElement arguments)
@@ -912,11 +1362,24 @@ internal sealed class McpServer
 
         string button = OptionalString(arguments, "button") ?? "left";
         int clicks = OptionalInt(arguments, "clicks", 1);
-        string mode = OptionalString(arguments, "mode") ?? "auto";
+        string mode = OptionalString(arguments, "channel")
+            ?? OptionalString(arguments, "mode")
+            ?? "auto";
         bool keepForeground = OptionalBool(arguments, "keep_foreground", false);
 
         return ToolResponse.Text(
             _session.Click(x, y, button, clicks, mode, keepForeground));
+    }
+
+    private ToolResponse ClickRef(JsonElement arguments)
+    {
+        string reference = OptionalString(arguments, "ref")
+            ?? throw new ToolException("E_INVALID_ARG", "click_ref 需要 ref");
+
+        return ToolResponse.Text(_session.ClickElementRef(
+            reference,
+            OptionalString(arguments, "channel"),
+            OptionalBool(arguments, "keep_foreground", false)));
     }
 
     private ToolResponse Gesture(JsonElement arguments) =>
@@ -929,8 +1392,9 @@ internal sealed class McpServer
         int? pid = OptionalNullableInt(arguments, "pid");
         bool verify = OptionalBool(arguments, "verify", true);
         int chunkChars = OptionalInt(arguments, "chunk_chars", 32);
+        string channel = OptionalString(arguments, "channel") ?? "auto";
 
-        return ToolResponse.Text(_session.TypeText(text, pid, verify, chunkChars));
+        return ToolResponse.Text(_session.TypeText(text, pid, verify, chunkChars, channel));
     }
 
     private ToolResponse PressKeys(JsonElement arguments)
@@ -974,7 +1438,8 @@ internal sealed class McpServer
         }
 
         int timeoutMs = OptionalInt(arguments, "timeout_ms", 5000);
-        return ToolResponse.Text(_session.WaitFor(condition, timeoutMs));
+        int? intervalMs = OptionalNullableInt(arguments, "interval_ms");
+        return ToolResponse.Text(_session.WaitFor(condition, timeoutMs, intervalMs));
     }
 
     private ToolResponse AssertRegion(JsonElement arguments)
@@ -1017,6 +1482,19 @@ internal sealed class McpServer
         }
 
         string? level = OptionalString(arguments, "level");
+
+        if (level is not null &&
+            level.Trim().ToUpperInvariant() is not ("DEBUG" or "INFO" or "WARN" or "ERROR"))
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"未知 level: {level}（可选 DEBUG/INFO/WARN/ERROR）",
+                new JsonObject { ["field"] = "level" },
+                retryable: false,
+                hint: "level 只接受 DEBUG/INFO/WARN/ERROR",
+                stage: "validate");
+        }
+
         string? contains = OptionalString(arguments, "contains");
         bool Matches(LogEntry entry) =>
             (string.IsNullOrWhiteSpace(level) ||
@@ -1106,12 +1584,30 @@ internal sealed class McpServer
         return ToolResponse.Text(_session.RunScript(code, timeoutMs));
     }
 
-    private static string? OptionalString(JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object &&
-        element.TryGetProperty(property, out JsonElement value) &&
-        value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
+    private static string? OptionalString(JsonElement element, string property)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(property, out JsonElement value))
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            return value.GetString();
+        }
+
+        throw InvalidType(property, "string", value.ValueKind);
+    }
+
+    private static ToolException InvalidType(string property, string expected, JsonValueKind actual) =>
+        new(
+            "E_INVALID_ARG",
+            $"参数 {property} 必须是 {expected}（收到 {actual}）",
+            new JsonObject { ["field"] = property, ["expected"] = expected, ["actual"] = actual.ToString() },
+            retryable: false,
+            hint: "修正参数类型后重试；不会使用默认值静默吞掉",
+            stage: "validate");
 
     private static int RequiredCoordinate(JsonElement element, string property)
     {
@@ -1131,12 +1627,21 @@ internal sealed class McpServer
         return result;
     }
 
-    private static int OptionalInt(JsonElement element, string property, int fallback) =>
-        element.ValueKind == JsonValueKind.Object &&
-        element.TryGetProperty(property, out JsonElement value) &&
-        value.TryGetInt32(out int result)
-            ? result
-            : fallback;
+    private static int OptionalInt(JsonElement element, string property, int fallback)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(property, out JsonElement value))
+        {
+            return fallback;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int result))
+        {
+            return result;
+        }
+
+        throw InvalidType(property, "integer", value.ValueKind);
+    }
 
     private static int RequiredInt(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object &&
@@ -1145,12 +1650,21 @@ internal sealed class McpServer
             ? result
             : throw new ToolException("E_INVALID_ARG", $"缺少整数参数 {property}");
 
-    private static double OptionalDouble(JsonElement element, string property, double fallback) =>
-        element.ValueKind == JsonValueKind.Object &&
-        element.TryGetProperty(property, out JsonElement value) &&
-        value.TryGetDouble(out double result)
-            ? result
-            : fallback;
+    private static double OptionalDouble(JsonElement element, string property, double fallback)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(property, out JsonElement value))
+        {
+            return fallback;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out double result))
+        {
+            return result;
+        }
+
+        throw InvalidType(property, "number", value.ValueKind);
+    }
 
     private static bool OptionalBool(JsonElement element, string property, bool fallback)
     {
@@ -1164,16 +1678,25 @@ internal sealed class McpServer
         {
             JsonValueKind.True => true,
             JsonValueKind.False => false,
-            _ => fallback,
+            _ => throw InvalidType(property, "boolean", value.ValueKind),
         };
     }
 
-    private static int? OptionalNullableInt(JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object &&
-        element.TryGetProperty(property, out JsonElement value) &&
-        value.TryGetInt32(out int result)
-            ? result
-            : null;
+    private static int? OptionalNullableInt(JsonElement element, string property)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(property, out JsonElement value))
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int result))
+        {
+            return result;
+        }
+
+        throw InvalidType(property, "integer", value.ValueKind);
+    }
 
     private static bool? OptionalNullableBool(JsonElement element, string property)
     {
@@ -1187,7 +1710,7 @@ internal sealed class McpServer
         {
             JsonValueKind.True => true,
             JsonValueKind.False => false,
-            _ => null,
+            _ => throw InvalidType(property, "boolean", value.ValueKind),
         };
     }
 }

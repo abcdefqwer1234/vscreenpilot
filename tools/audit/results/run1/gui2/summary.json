@@ -1,0 +1,278 @@
+{
+  "cases": [
+    {
+      "id": "GUI-01",
+      "purpose": "Notepad 输入并保存（文件 oracle）",
+      "ok": false,
+      "title": "记事本",
+      "args_ok": false,
+      "verified": false,
+      "save": "ok",
+      "bytes": 0,
+      "content": ""
+    },
+    {
+      "id": "GUI-02",
+      "purpose": "Unicode/长文本输入与回读",
+      "ok": false,
+      "verified": false,
+      "ms": 9778.53,
+      "chars": 2600,
+      "bytes": 0,
+      "warning": "输入未能通过 TextPattern/ValuePattern 回读确认；请用 get_element_text 或截图复核"
+    },
+    {
+      "id": "GUI-04",
+      "purpose": "WinForms 表单填写/勾选/提交（JSON oracle）",
+      "ok": false,
+      "title": "VSP UiTarget",
+      "set": [
+        null,
+        null
+      ],
+      "toggle": "ok",
+      "invoke": "E_INTERNAL",
+      "invoke_msg": "One or more errors occurred. (系统找不到指定的路径。 (0x80070003))",
+      "oracle": null
+    },
+    {
+      "id": "GUI-05",
+      "purpose": "find_element exact/contains/regex/all",
+      "ok": true,
+      "count": 5,
+      "codes": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "id": "GUI-06",
+      "purpose": "get_ui_tree depth 3/5/8",
+      "ok": true,
+      "depths": {
+        "3": {
+          "nodes": 12,
+          "ms": 42.0,
+          "bytes": 1690,
+          "truncated": false
+        },
+        "5": {
+          "nodes": 12,
+          "ms": 38.2,
+          "bytes": 1690,
+          "truncated": false
+        },
+        "8": {
+          "nodes": 12,
+          "ms": 43.7,
+          "bytes": 1690,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "id": "GUI-07",
+      "purpose": "set_element_value 各模式与破坏性保护",
+      "ok": true,
+      "observed": {
+        "append_blocked": "E_PATTERN_UNSUPPORTED",
+        "append_keyboard": null,
+        "insert_blocked": "E_DESTRUCTIVE_REQUIRED",
+        "insert_allowed": null,
+        "replace_blocked": "E_DESTRUCTIVE_REQUIRED",
+        "replace_keyboard": null
+      },
+      "read": "C"
+    },
+    {
+      "id": "GUI-08",
+      "purpose": "invoke_element auto/toggle/不支持模式",
+      "ok": false,
+      "submit": "E_INTERNAL",
+      "toggle": "ok",
+      "unsupported": "E_PATTERN_UNSUPPORTED",
+      "submit_msg": "One or more errors occurred. (系统找不到指定的路径。 (0x80070003))"
+    },
+    {
+      "id": "GUI-09",
+      "purpose": "press_keys 单键/组合/sequence",
+      "ok": true,
+      "sequence": "ok",
+      "combo": "ok"
+    },
+    {
+      "id": "GUI-10",
+      "purpose": "wait_for element/color/window/pixel_diff",
+      "ok": true,
+      "codes": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "elapsed": [
+        49.21,
+        17.57,
+        1.54,
+        12.25
+      ]
+    },
+    {
+      "id": "GUI-11",
+      "purpose": "assert_region color/changed/baseline",
+      "ok": true,
+      "color": {
+        "passed": true,
+        "matched_ratio": 0.3454,
+        "actual_coverage": 0.3454,
+        "coverage": 0.1,
+        "coverage_semantics": "coverage 是请求阈值；actual_coverage/matched_ratio 是实际覆盖率",
+        "tolerance": 10,
+        "expected": "#FFFFFF",
+        "average": "#F3F3F3",
+        "region": {
+          "width": 80,
+          "height": 60
+        }
+      },
+      "same": {
+        "passed": true,
+        "changed_ratio": 0,
+        "threshold": 0.01,
+        "expect_changed": false,
+        "baseline_frame_id": "f1",
+        "baseline": {
+          "x": 1940,
+          "y": 20,
+          "width": 80,
+          "height": 60
+        }
+      },
+      "changed": {
+        "passed": false,
+        "changed_ratio": 0,
+        "threshold": 0.99,
+        "expect_changed": true,
+        "baseline_frame_id": "f1",
+        "baseline": {
+          "x": 1940,
+          "y": 20,
+          "width": 80,
+          "height": 60
+        }
+      }
+    },
+    {
+      "id": "GUI-12",
+      "purpose": "match_visual template/color/pixel 精度",
+      "ok": true,
+      "expected": {
+        "x": 1980,
+        "y": 273,
+        "width": 24,
+        "height": 24
+      },
+      "found": {
+        "x": 1980,
+        "y": 273,
+        "width": 24,
+        "height": 24,
+        "center": {
+          "x": 1992,
+          "y": 285
+        },
+        "score": 1,
+        "confidence": 1
+      },
+      "error_px": 0,
+      "color_count": 1,
+      "pixel": "#FF0000"
+    },
+    {
+      "id": "GUI-13",
+      "purpose": "release keep_display true/false",
+      "ok": true,
+      "kept_ms": 294.87,
+      "removed_ms": 378.38,
+      "kept": {
+        "released": true,
+        "display_removed": false,
+        "display_kept": true,
+        "on_dirty": "discard",
+        "restored_pids": [],
+        "closed_pids": [
+          8884
+        ],
+        "forced_pids": [],
+        "kept_pids": [],
+        "saved_pids": [],
+        "discarded_pids": [],
+        "memory": {
+          "before_mb": 48.2,
+          "after_gc_mb": 47.6,
+          "after_mb": 1.1,
+          "trimmed": true,
+          "emptied": true
+        },
+        "warnings": []
+      },
+      "removed": {
+        "display_removed": true,
+        "display_kept": false
+      }
+    },
+    {
+      "id": "GUI-14",
+      "purpose": "多应用 pid 隔离",
+      "ok": true,
+      "note_pid": 3492,
+      "target_pid": 2788,
+      "type": "ok",
+      "find": "ok"
+    },
+    {
+      "id": "GUI-15",
+      "purpose": "应用被杀后错误可识别并可重启恢复",
+      "ok": true,
+      "dead": "E_NO_TARGET",
+      "relaunch": "ok",
+      "recovered": "ok"
+    }
+  ],
+  "timings": {
+    "type_text": {
+      "n": 1,
+      "min": 501.56,
+      "p50": 501.56,
+      "p95": 501.56,
+      "p99": 501.56,
+      "max": 501.56,
+      "mean": 501.56
+    },
+    "type_text_long": {
+      "n": 1,
+      "min": 9778.53,
+      "p50": 9778.53,
+      "p95": 9778.53,
+      "p99": 9778.53,
+      "max": 9778.53,
+      "mean": 9778.53
+    },
+    "get_ui_tree": {
+      "n": 3,
+      "min": 38.2,
+      "p50": 42.0,
+      "p95": 43.7,
+      "p99": 43.7,
+      "max": 43.7,
+      "mean": 41.3
+    }
+  },
+  "origin": {
+    "x": 1920,
+    "y": 0
+  },
+  "calls": 69
+}

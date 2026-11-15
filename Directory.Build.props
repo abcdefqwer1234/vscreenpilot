@@ -1,0 +1,19 @@
+<Project>
+
+  <!-- 全仓库统一构建基线：SDK 由 global.json 固定，分析器与确定性构建在此开启。 -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <!-- minimum 只保留高置信度规则，避免历史代码一次性冒出上百条噪声；后续逐条提升。 -->
+    <AnalysisLevel>latest-minimum</AnalysisLevel>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- CA1822/CA1859 是风格建议；CA1806 不再整体关闭，P/Invoke 返回值必须显式检查。 -->
+    <NoWarn>$(NoWarn);CA1822;CA1859</NoWarn>
+  </PropertyGroup>
+
+</Project>

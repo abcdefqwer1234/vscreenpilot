@@ -1,0 +1,289 @@
+{
+  "cases": [
+    {
+      "id": "GUI-01",
+      "purpose": "Notepad 输入并保存（文件 oracle）",
+      "ok": true,
+      "title": "gui01-1794718700.txt - Notepad",
+      "args_ok": true,
+      "verified": true,
+      "save": "ok",
+      "bytes": 33,
+      "content": "Hello 虚拟屏 123\n第二行 ABC"
+    },
+    {
+      "id": "GUI-02",
+      "purpose": "Unicode/长文本输入与回读",
+      "ok": true,
+      "verified": true,
+      "ms": 244.05,
+      "chars": 2600,
+      "bytes": 4000,
+      "warning": null
+    },
+    {
+      "id": "GUI-04",
+      "purpose": "WinForms 表单填写/勾选/提交（JSON oracle）",
+      "ok": true,
+      "title": "VSP UiTarget",
+      "set": [
+        null,
+        null
+      ],
+      "toggle": "ok",
+      "invoke": "ok",
+      "invoke_msg": "",
+      "oracle": {
+        "input": "审计文本",
+        "count": "7",
+        "opt": true,
+        "submitted": true
+      }
+    },
+    {
+      "id": "GUI-05",
+      "purpose": "find_element exact/contains/regex/all",
+      "ok": true,
+      "count": 5,
+      "codes": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "id": "GUI-06",
+      "purpose": "get_ui_tree depth 3/5/8",
+      "ok": true,
+      "depths": {
+        "3": {
+          "nodes": 12,
+          "ms": 49.72,
+          "bytes": 1759,
+          "truncated": false
+        },
+        "5": {
+          "nodes": 12,
+          "ms": 65.36,
+          "bytes": 1759,
+          "truncated": false
+        },
+        "8": {
+          "nodes": 12,
+          "ms": 55.15,
+          "bytes": 1758,
+          "truncated": false
+        }
+      }
+    },
+    {
+      "id": "GUI-07",
+      "purpose": "set_element_value 各模式与破坏性保护",
+      "ok": true,
+      "observed": {
+        "append_blocked": "E_PATTERN_UNSUPPORTED",
+        "append_keyboard": null,
+        "insert_blocked": "E_DESTRUCTIVE_REQUIRED",
+        "insert_allowed": null,
+        "replace_blocked": "E_DESTRUCTIVE_REQUIRED",
+        "replace_keyboard": null
+      },
+      "read": "C"
+    },
+    {
+      "id": "GUI-08",
+      "purpose": "invoke_element auto/toggle/不支持模式",
+      "ok": true,
+      "submit": "ok",
+      "toggle": "ok",
+      "unsupported": "E_PATTERN_UNSUPPORTED",
+      "submit_msg": ""
+    },
+    {
+      "id": "GUI-09",
+      "purpose": "press_keys 单键/组合/sequence",
+      "ok": true,
+      "sequence": "ok",
+      "combo": "ok"
+    },
+    {
+      "id": "GUI-10",
+      "purpose": "wait_for element/color/window/pixel_diff",
+      "ok": true,
+      "codes": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "elapsed": [
+        54.43,
+        13.61,
+        5.09,
+        23.83
+      ]
+    },
+    {
+      "id": "GUI-11",
+      "purpose": "assert_region color/changed/baseline",
+      "ok": true,
+      "color": {
+        "passed": true,
+        "matched_ratio": 0.3454,
+        "actual_coverage": 0.3454,
+        "coverage": 0.1,
+        "coverage_semantics": "coverage 是请求阈值；actual_coverage/matched_ratio 是实际覆盖率",
+        "tolerance": 10,
+        "expected": "#FFFFFF",
+        "average": "#F3F3F3",
+        "region": {
+          "width": 80,
+          "height": 60
+        },
+        "request_id": "8c903f9d51bd"
+      },
+      "same": {
+        "passed": true,
+        "changed_ratio": 0,
+        "threshold": 0.01,
+        "expect_changed": false,
+        "baseline_frame_id": "f1",
+        "baseline": {
+          "x": 1940,
+          "y": 20,
+          "width": 80,
+          "height": 60
+        },
+        "request_id": "60dc1f34cf24"
+      },
+      "changed": {
+        "passed": false,
+        "changed_ratio": 0,
+        "threshold": 0.99,
+        "expect_changed": true,
+        "baseline_frame_id": "f1",
+        "baseline": {
+          "x": 1940,
+          "y": 20,
+          "width": 80,
+          "height": 60
+        },
+        "request_id": "3b5e25b3f119"
+      }
+    },
+    {
+      "id": "GUI-12",
+      "purpose": "match_visual template/color/pixel 精度",
+      "ok": true,
+      "expected": {
+        "x": 1940,
+        "y": 153,
+        "width": 100,
+        "height": 23
+      },
+      "found": {
+        "x": 1940,
+        "y": 153,
+        "width": 100,
+        "height": 23,
+        "center": {
+          "x": 1990,
+          "y": 164
+        },
+        "score": 1,
+        "confidence": 1,
+        "scale": 1
+      },
+      "error_px": 0,
+      "color_count": 3,
+      "pixel": "#FDFDFD"
+    },
+    {
+      "id": "GUI-13",
+      "purpose": "release keep_display true/false",
+      "ok": true,
+      "kept_ms": 156.2,
+      "removed_ms": 384.89,
+      "kept": {
+        "released": true,
+        "display_removed": false,
+        "display_kept": true,
+        "on_dirty": "discard",
+        "restored_pids": [],
+        "closed_pids": [
+          3048
+        ],
+        "forced_pids": [],
+        "kept_pids": [],
+        "saved_pids": [],
+        "discarded_pids": [],
+        "memory": {
+          "before_mb": 72.5,
+          "after_gc_mb": 65.6,
+          "after_mb": 1.3,
+          "trimmed": true,
+          "emptied": true
+        },
+        "warnings": [],
+        "request_id": "355927c609de"
+      },
+      "removed": {
+        "display_removed": true,
+        "display_kept": false
+      }
+    },
+    {
+      "id": "GUI-14",
+      "purpose": "多应用 pid 隔离",
+      "ok": true,
+      "note_pid": 3364,
+      "target_pid": 6216,
+      "type": "ok",
+      "find": "ok"
+    },
+    {
+      "id": "GUI-15",
+      "purpose": "应用被杀后错误可识别并可重启恢复",
+      "ok": true,
+      "dead": "E_NO_TARGET",
+      "relaunch": "ok",
+      "recovered": "ok"
+    }
+  ],
+  "timings": {
+    "type_text": {
+      "n": 1,
+      "min": 556.61,
+      "p50": 556.61,
+      "p95": 556.61,
+      "p99": 556.61,
+      "max": 556.61,
+      "mean": 556.61
+    },
+    "type_text_long": {
+      "n": 1,
+      "min": 244.05,
+      "p50": 244.05,
+      "p95": 244.05,
+      "p99": 244.05,
+      "max": 244.05,
+      "mean": 244.05
+    },
+    "get_ui_tree": {
+      "n": 3,
+      "min": 49.72,
+      "p50": 55.15,
+      "p95": 65.36,
+      "p99": 65.36,
+      "max": 65.36,
+      "mean": 56.74
+    }
+  },
+  "origin": {
+    "x": 1920,
+    "y": 0
+  },
+  "calls": 69,
+  "binary_sha256": "84BEA3E1120C8C4DED316F33F6F4BDBB3EDF01E29A7468693C7E2FCAF065BFD8"
+}

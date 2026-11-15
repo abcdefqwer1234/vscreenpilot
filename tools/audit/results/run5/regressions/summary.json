@@ -1,0 +1,309 @@
+{
+  "exe": "artifacts\\server5\\VScreenPilot.exe",
+  "cases": [
+    {
+      "id": "REG-02",
+      "purpose": "同标题双窗口提示可执行",
+      "ok": true,
+      "code": "E_WINDOW_AMBIGUOUS",
+      "hint": "标题匹配到 2 个窗口，拒绝猜一个接管；请用 pid 精确指定",
+      "candidates": null,
+      "pids": [
+        7724,
+        8696
+      ]
+    },
+    {
+      "id": "REG-03",
+      "purpose": "可选参数类型严格校验",
+      "ok": true,
+      "observed": {
+        "pid_str": "E_INVALID_ARG",
+        "new_instance_str": "E_INVALID_ARG",
+        "allow_destructive_str": "E_INVALID_ARG",
+        "max_nodes_str": "E_INVALID_ARG"
+      }
+    },
+    {
+      "id": "REG-05",
+      "purpose": "并发请求取消互不干扰",
+      "ok": true,
+      "other": "ok",
+      "slow_code": null,
+      "slow_response_empty": true
+    },
+    {
+      "id": "REG-06",
+      "purpose": "release(on_dirty=force) 不误点窗口按钮",
+      "ok": true,
+      "released": true,
+      "clicks": false,
+      "pid": null
+    },
+    {
+      "id": "REG-07",
+      "purpose": "系统键变体全部拦截",
+      "ok": true,
+      "observed": {
+        "Alt+Shift+Tab": "E_SYSTEM_KEY_BLOCKED",
+        "Ctrl+Alt+Tab": "E_SYSTEM_KEY_BLOCKED",
+        "Alt+Esc": "E_SYSTEM_KEY_BLOCKED",
+        "Win+D": "E_SYSTEM_KEY_BLOCKED",
+        "Win+Tab": "E_SYSTEM_KEY_BLOCKED",
+        "Ctrl+Shift+Esc": "E_SYSTEM_KEY_BLOCKED",
+        "Win+R": "E_SYSTEM_KEY_BLOCKED"
+      },
+      "blocked": 7,
+      "total": 7
+    },
+    {
+      "id": "REG-08",
+      "purpose": "断言阈值越界返回 E_INVALID_ARG",
+      "ok": true,
+      "observed": {
+        "coverage_1.5": "E_INVALID_ARG",
+        "coverage_-0.5": "E_INVALID_ARG",
+        "threshold_-1": "E_INVALID_ARG",
+        "threshold_2": "E_INVALID_ARG"
+      }
+    },
+    {
+      "id": "REG-09",
+      "purpose": "run_script 中文输出不乱码",
+      "ok": true,
+      "observed": "{\"stdout\":\"中文输出 OK\\r\\nutf-8\\r\\n\",\"stderr\":\"\",\"exit_code\":0,\"timed_out\":false,\"duration_ms\":872,\"policy\":\"blocklist\",\"sandbox\":false,\"request_id\":\"bde3a903bb53\"}",
+      "code": null
+    },
+    {
+      "id": "REG-12",
+      "purpose": "10MB 单行不导致崩溃/OOM",
+      "ok": true,
+      "alive": true,
+      "responsive": true,
+      "rss_before": 40.09,
+      "rss_after": 154.29,
+      "ms": 2078.9
+    },
+    {
+      "id": "REG-13",
+      "purpose": "condition/expectation 错误字段返回 E_INVALID_ARG",
+      "ok": true,
+      "observed": {
+        "wait_bad_type": "E_INVALID_ARG",
+        "wait_empty": "E_INVALID_ARG",
+        "assert_empty": "E_INVALID_ARG",
+        "assert_bad_region": "E_INVALID_ARG",
+        "find_name_number": "E_INVALID_ARG"
+      }
+    },
+    {
+      "id": "REG-14",
+      "purpose": "UWP Calculator 可接管/查找/触发",
+      "ok": true,
+      "pid": 11540,
+      "find": "ok",
+      "invoke": null,
+      "nodes": 1,
+      "has_result": false
+    },
+    {
+      "id": "REG-15",
+      "purpose": "消息拖拽/滚轮有明确结果或错误码",
+      "ok": true,
+      "drag": "E_INPUT_UNSUPPORTED",
+      "scroll": "E_INPUT_UNSUPPORTED",
+      "drag_data": {
+        "code": "E_INPUT_UNSUPPORTED",
+        "message": "窗口消息拖拽失败；如接受光标跳变，请显式使用 mode=\"input\"",
+        "details": {
+          "detail": "窗口消息拖拽无法维持鼠标捕获；请使用 gesture mode=input"
+        },
+        "retryable": false,
+        "hint": "该窗口忽略窗口消息；改用 channel=input 或 CDP/OCR 通道",
+        "stage": "input",
+        "docs": "docs/errors.md#e_input_unsupported",
+        "request_id": "ad2378e7745e"
+      }
+    },
+    {
+      "id": "REG-16",
+      "purpose": "特殊字符/中文输入正确",
+      "ok": true,
+      "verified": true,
+      "code": null,
+      "read": {
+        "ref": "e3",
+        "control_type": "Document",
+        "automation_id": "",
+        "text": "AAA BBBAltGr: @€ \\ ~ 中文",
+        "length": 23,
+        "truncated": false,
+        "refreshed": false,
+        "request_id": "d2cfc8538138"
+      }
+    },
+    {
+      "id": "REG-17",
+      "purpose": "1×1 像素采样性能",
+      "ok": true,
+      "pixel": {
+        "n": 100,
+        "min": 9.04,
+        "p50": 15.93,
+        "p95": 21.55,
+        "p99": 31.51,
+        "max": 32.45,
+        "mean": 16.34
+      },
+      "wait_color": {
+        "n": 100,
+        "min": 6.2,
+        "p50": 15.78,
+        "p95": 17.81,
+        "p99": 28.73,
+        "max": 30.2,
+        "mean": 16.04
+      },
+      "capture64": {
+        "n": 20,
+        "min": 9.21,
+        "p50": 16.86,
+        "p95": 28.14,
+        "p99": 29.55,
+        "max": 29.55,
+        "mean": 17.71
+      }
+    },
+    {
+      "id": "REG-18",
+      "purpose": "P3 抽查：scale 边界/日志过滤",
+      "ok": true,
+      "observed": {
+        "scale_0": "E_INVALID_ARG",
+        "scale_10": "E_INVALID_ARG",
+        "log_text": true,
+        "log_file": true,
+        "log_bad_level": "E_INVALID_ARG"
+      }
+    },
+    {
+      "id": "PRT-09b",
+      "purpose": "取消 wait_for 返回 E_CANCELLED/无响应且 ping 可用",
+      "ok": true,
+      "code": null,
+      "empty": true,
+      "ms": null
+    },
+    {
+      "id": "PRT-10b",
+      "purpose": "wait_for 期间返回 progress 通知",
+      "ok": true,
+      "events": 14,
+      "sample": {
+        "progressToken": "audit-2",
+        "progress": 0,
+        "total": 1,
+        "message": "started"
+      }
+    },
+    {
+      "id": "SEC-02b",
+      "purpose": "外来窗口点击被拒绝",
+      "ok": true,
+      "observed": "E_FOREIGN_WINDOW",
+      "message": "click 落在非本会话窗口，拒绝操作以免影响用户桌面"
+    },
+    {
+      "id": "SEC-09b",
+      "purpose": "baseline 区域不同应拒绝/明确处理",
+      "ok": true,
+      "same": "ok",
+      "shifted": "E_NO_BASELINE",
+      "shifted_data": {
+        "code": "E_NO_BASELINE",
+        "message": "没有同区域的基线帧；请先 capture_screen 同一 region，或传 baseline_frame_id",
+        "details": {
+          "current": {
+            "x": 2240,
+            "y": 220,
+            "width": 120,
+            "height": 90
+          },
+          "available_frames": [
+            {
+              "frame_id": "f14",
+              "x": 2120,
+              "y": 200,
+              "width": 64,
+              "height": 64
+            },
+            {
+              "frame_id": "f15",
+              "x": 2120,
+              "y": 200,
+              "width": 64,
+              "height": 64
+            },
+            {
+              "frame_id": "f16",
+              "x": 2120,
+              "y": 200,
+              "width": 64,
+              "height": 64
+            },
+            {
+              "frame_id": "f17",
+              "x": 2120,
+              "y": 200,
+              "width": 64,
+              "height": 64
+            },
+            {
+              "frame_id": "f18",
+              "x": 2120,
+              "y": 200,
+              "width": 64,
+              "height": 64
+            },
+            {
+              "frame_id": "f19",
+              "x": 2120,
+              "y": 200,
+              "width": 64,
+              "height": 64
+            },
+            {
+              "frame_id": "f20",
+              "x": 2120,
+              "y": 200,
+              "width": 64,
+              "height": 64
+            },
+            {
+              "frame_id": "f21",
+              "x": 1940,
+              "y": 20,
+              "width": 120,
+              "height": 90
+            }
+          ]
+        },
+        "retryable": false,
+        "hint": "基线区域与请求区域不一致；先对同一区域 capture_screen，或改传 baseline_frame_id",
+        "stage": "verify",
+        "docs": "docs/errors.md#e_no_baseline",
+        "request_id": "7f5795931184"
+      },
+      "message": "没有同区域的基线帧；请先 capture_screen 同一 region，或传 baseline_frame_id"
+    },
+    {
+      "id": "PRT-14b",
+      "purpose": "孤儿屏接管标志可观测（adopted_orphan）",
+      "ok": true,
+      "state_exists": true,
+      "adopted": false,
+      "note": "静态复核：_adoptedOrphan 无任何赋值点"
+    }
+  ],
+  "binary_sha256": "CDD905C93180D89E941356558F31FC2B02B4DE8CB0FBD11065A2ED2CE3A367CD"
+}

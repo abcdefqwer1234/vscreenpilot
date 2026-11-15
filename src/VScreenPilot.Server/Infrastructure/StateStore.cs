@@ -53,7 +53,7 @@ public sealed class StateStore
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "VScreenPilot");
             Directory.CreateDirectory(directory);
-            _path = Path.Combine(directory, "state.json");
+            _path = Path.Combine(directory, Profile.StateFileName(Profile.Resolve()));
         }
         catch (Exception exception)
         {
@@ -100,7 +100,7 @@ public sealed class StateStore
                 {
                     ["pid"] = app.Pid,
                     ["exe"] = app.ExePath,
-                    ["title"] = app.Title,
+                    // 不持久化窗口标题：可能包含文档名/客户名，属于隐私面。
                     ["hwnd"] = app.Hwnd,
                     ["launchedByUs"] = app.LaunchedByUs,
                     ["showCmd"] = app.ShowCmd,

@@ -1,0 +1,5898 @@
+{
+  "soak": {
+    "samples": [
+      {
+        "t": 1794649856.035,
+        "pid": 7972,
+        "rss_mb": 58.31,
+        "handles": 419,
+        "cursor": {
+          "x": 960,
+          "y": 720
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649861.387,
+        "pid": 7972,
+        "rss_mb": 111.93,
+        "handles": 430,
+        "cursor": {
+          "x": 960,
+          "y": 720
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649866.747,
+        "pid": 7972,
+        "rss_mb": 151.01,
+        "handles": 430,
+        "cursor": {
+          "x": 960,
+          "y": 720
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649872.164,
+        "pid": 7972,
+        "rss_mb": 168.98,
+        "handles": 430,
+        "cursor": {
+          "x": 960,
+          "y": 720
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649877.608,
+        "pid": 7972,
+        "rss_mb": 169.2,
+        "handles": 431,
+        "cursor": {
+          "x": 960,
+          "y": 720
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649882.95,
+        "pid": 7972,
+        "rss_mb": 171.34,
+        "handles": 431,
+        "cursor": {
+          "x": 960,
+          "y": 720
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649888.287,
+        "pid": 7972,
+        "rss_mb": 192.14,
+        "handles": 431,
+        "cursor": {
+          "x": 960,
+          "y": 720
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649893.52,
+        "pid": 7972,
+        "rss_mb": 178.56,
+        "handles": 431,
+        "cursor": {
+          "x": 960,
+          "y": 720
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649898.739,
+        "pid": 7972,
+        "rss_mb": 167.43,
+        "handles": 437,
+        "cursor": {
+          "x": 960,
+          "y": 720
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649904.02,
+        "pid": 7972,
+        "rss_mb": 184.68,
+        "handles": 437,
+        "cursor": {
+          "x": 960,
+          "y": 720
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649909.278,
+        "pid": 7972,
+        "rss_mb": 179.45,
+        "handles": 437,
+        "cursor": {
+          "x": 960,
+          "y": 720
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649914.526,
+        "pid": 7972,
+        "rss_mb": 174.21,
+        "handles": 436,
+        "cursor": {
+          "x": 960,
+          "y": 720
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649919.626,
+        "pid": 7972,
+        "rss_mb": 171.47,
+        "handles": 438,
+        "cursor": {
+          "x": 960,
+          "y": 720
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649924.927,
+        "pid": 7972,
+        "rss_mb": 182.95,
+        "handles": 438,
+        "cursor": {
+          "x": 960,
+          "y": 720
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649930.277,
+        "pid": 7972,
+        "rss_mb": 181.55,
+        "handles": 438,
+        "cursor": {
+          "x": 960,
+          "y": 720
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649935.622,
+        "pid": 7972,
+        "rss_mb": 175.36,
+        "handles": 436,
+        "cursor": {
+          "x": 0,
+          "y": 0
+        },
+        "foreground": "",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649940.864,
+        "pid": 7972,
+        "rss_mb": 177.86,
+        "handles": 442,
+        "cursor": {
+          "x": 0,
+          "y": 0
+        },
+        "foreground": "",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649945.915,
+        "pid": 7972,
+        "rss_mb": 184.3,
+        "handles": 442,
+        "cursor": {
+          "x": 0,
+          "y": 0
+        },
+        "foreground": "",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649951.001,
+        "pid": 7972,
+        "rss_mb": 183.16,
+        "handles": 439,
+        "cursor": {
+          "x": 0,
+          "y": 0
+        },
+        "foreground": "",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649956.045,
+        "pid": 7972,
+        "rss_mb": 183.13,
+        "handles": 436,
+        "cursor": {
+          "x": 0,
+          "y": 0
+        },
+        "foreground": "",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649961.219,
+        "pid": 7972,
+        "rss_mb": 182.5,
+        "handles": 431,
+        "cursor": {
+          "x": 0,
+          "y": 0
+        },
+        "foreground": "",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649966.236,
+        "pid": 7972,
+        "rss_mb": 185.57,
+        "handles": 431,
+        "cursor": {
+          "x": 0,
+          "y": 0
+        },
+        "foreground": "",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649971.453,
+        "pid": 7972,
+        "rss_mb": 186.5,
+        "handles": 428,
+        "cursor": {
+          "x": 0,
+          "y": 0
+        },
+        "foreground": "",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649976.65,
+        "pid": 7972,
+        "rss_mb": 186.5,
+        "handles": 428,
+        "cursor": {
+          "x": 0,
+          "y": 0
+        },
+        "foreground": "",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649981.732,
+        "pid": 7972,
+        "rss_mb": 186.66,
+        "handles": 431,
+        "cursor": {
+          "x": 0,
+          "y": 0
+        },
+        "foreground": "",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649986.784,
+        "pid": 7972,
+        "rss_mb": 186.89,
+        "handles": 427,
+        "cursor": {
+          "x": 0,
+          "y": 0
+        },
+        "foreground": "",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649991.999,
+        "pid": 7972,
+        "rss_mb": 186.46,
+        "handles": 424,
+        "cursor": {
+          "x": 0,
+          "y": 0
+        },
+        "foreground": "",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794649997.021,
+        "pid": 7972,
+        "rss_mb": 186.71,
+        "handles": 432,
+        "cursor": {
+          "x": 0,
+          "y": 0
+        },
+        "foreground": "",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650002.554,
+        "pid": 7972,
+        "rss_mb": 196.98,
+        "handles": 432,
+        "cursor": {
+          "x": 1272,
+          "y": 973
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650007.88,
+        "pid": 7972,
+        "rss_mb": 177.68,
+        "handles": 435,
+        "cursor": {
+          "x": 1360,
+          "y": 950
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650013.255,
+        "pid": 7972,
+        "rss_mb": 183.82,
+        "handles": 433,
+        "cursor": {
+          "x": 1464,
+          "y": 1118
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650018.368,
+        "pid": 7972,
+        "rss_mb": 197.75,
+        "handles": 438,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650023.641,
+        "pid": 7972,
+        "rss_mb": 204.17,
+        "handles": 435,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650028.999,
+        "pid": 7972,
+        "rss_mb": 199.48,
+        "handles": 435,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650034.216,
+        "pid": 7972,
+        "rss_mb": 206.38,
+        "handles": 435,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650039.425,
+        "pid": 7972,
+        "rss_mb": 206.41,
+        "handles": 430,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650044.752,
+        "pid": 7972,
+        "rss_mb": 194.56,
+        "handles": 430,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650050.049,
+        "pid": 7972,
+        "rss_mb": 177.61,
+        "handles": 430,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650055.344,
+        "pid": 7972,
+        "rss_mb": 170.11,
+        "handles": 430,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650060.592,
+        "pid": 7972,
+        "rss_mb": 191.45,
+        "handles": 438,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650065.838,
+        "pid": 7972,
+        "rss_mb": 194.79,
+        "handles": 435,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650070.952,
+        "pid": 7972,
+        "rss_mb": 195.46,
+        "handles": 435,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650076.205,
+        "pid": 7972,
+        "rss_mb": 187.29,
+        "handles": 430,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650081.681,
+        "pid": 7972,
+        "rss_mb": 213.06,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650086.943,
+        "pid": 7972,
+        "rss_mb": 204.91,
+        "handles": 428,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650092.284,
+        "pid": 7972,
+        "rss_mb": 201.9,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650097.506,
+        "pid": 7972,
+        "rss_mb": 186.11,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650102.892,
+        "pid": 7972,
+        "rss_mb": 205.18,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650108.01,
+        "pid": 7972,
+        "rss_mb": 188.9,
+        "handles": 430,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650113.408,
+        "pid": 7972,
+        "rss_mb": 187.69,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650118.64,
+        "pid": 7972,
+        "rss_mb": 197.76,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650123.986,
+        "pid": 7972,
+        "rss_mb": 194.05,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650129.196,
+        "pid": 7972,
+        "rss_mb": 190.59,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650134.393,
+        "pid": 7972,
+        "rss_mb": 189.99,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650139.651,
+        "pid": 7972,
+        "rss_mb": 200.27,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650145.116,
+        "pid": 7972,
+        "rss_mb": 192.96,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650150.148,
+        "pid": 7972,
+        "rss_mb": 189.02,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650155.526,
+        "pid": 7972,
+        "rss_mb": 175.25,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650160.707,
+        "pid": 7972,
+        "rss_mb": 195.71,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650165.961,
+        "pid": 7972,
+        "rss_mb": 194.4,
+        "handles": 430,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650171.294,
+        "pid": 7972,
+        "rss_mb": 194.02,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650176.467,
+        "pid": 7972,
+        "rss_mb": 188.96,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650181.912,
+        "pid": 7972,
+        "rss_mb": 184.52,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650187.155,
+        "pid": 7972,
+        "rss_mb": 189.74,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650192.51,
+        "pid": 7972,
+        "rss_mb": 168.19,
+        "handles": 430,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650197.803,
+        "pid": 7972,
+        "rss_mb": 189.18,
+        "handles": 438,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650203.071,
+        "pid": 7972,
+        "rss_mb": 193.73,
+        "handles": 438,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650208.259,
+        "pid": 7972,
+        "rss_mb": 187.74,
+        "handles": 435,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650213.496,
+        "pid": 7972,
+        "rss_mb": 189.54,
+        "handles": 436,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650218.747,
+        "pid": 7972,
+        "rss_mb": 187.69,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650224.172,
+        "pid": 7972,
+        "rss_mb": 187.6,
+        "handles": 434,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650229.69,
+        "pid": 7972,
+        "rss_mb": 181.51,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650235.156,
+        "pid": 7972,
+        "rss_mb": 190.1,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650240.325,
+        "pid": 7972,
+        "rss_mb": 196.89,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650245.535,
+        "pid": 7972,
+        "rss_mb": 180.45,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650250.917,
+        "pid": 7972,
+        "rss_mb": 178.73,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650256.077,
+        "pid": 7972,
+        "rss_mb": 179.95,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650261.286,
+        "pid": 7972,
+        "rss_mb": 186.98,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650266.468,
+        "pid": 7972,
+        "rss_mb": 192.27,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650271.819,
+        "pid": 7972,
+        "rss_mb": 186.99,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650277.079,
+        "pid": 7972,
+        "rss_mb": 194.79,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650282.12,
+        "pid": 7972,
+        "rss_mb": 179.79,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650287.362,
+        "pid": 7972,
+        "rss_mb": 190.09,
+        "handles": 432,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650292.676,
+        "pid": 7972,
+        "rss_mb": 190.31,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650297.886,
+        "pid": 7972,
+        "rss_mb": 182.35,
+        "handles": 434,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650303.026,
+        "pid": 7972,
+        "rss_mb": 179.86,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650308.451,
+        "pid": 7972,
+        "rss_mb": 183.34,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650313.472,
+        "pid": 7972,
+        "rss_mb": 197.41,
+        "handles": 434,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650318.714,
+        "pid": 7972,
+        "rss_mb": 182.12,
+        "handles": 431,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650323.941,
+        "pid": 7972,
+        "rss_mb": 196.04,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650329.23,
+        "pid": 7972,
+        "rss_mb": 178.7,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650334.235,
+        "pid": 7972,
+        "rss_mb": 192.66,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650339.699,
+        "pid": 7972,
+        "rss_mb": 171.14,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650345.306,
+        "pid": 7972,
+        "rss_mb": 191.87,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650350.641,
+        "pid": 7972,
+        "rss_mb": 189.2,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650355.964,
+        "pid": 7972,
+        "rss_mb": 196.25,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650361.084,
+        "pid": 7972,
+        "rss_mb": 186.7,
+        "handles": 430,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650366.398,
+        "pid": 7972,
+        "rss_mb": 184.02,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650371.849,
+        "pid": 7972,
+        "rss_mb": 191.22,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650377.077,
+        "pid": 7972,
+        "rss_mb": 186.75,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650382.279,
+        "pid": 7972,
+        "rss_mb": 188.49,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650387.504,
+        "pid": 7972,
+        "rss_mb": 185.94,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650392.815,
+        "pid": 7972,
+        "rss_mb": 200.32,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650398.088,
+        "pid": 7972,
+        "rss_mb": 181.74,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650403.208,
+        "pid": 7972,
+        "rss_mb": 185.18,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650408.352,
+        "pid": 7972,
+        "rss_mb": 189.26,
+        "handles": 427,
+        "cursor": {
+          "x": 1515,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650413.963,
+        "pid": 7972,
+        "rss_mb": 188.91,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650419.229,
+        "pid": 7972,
+        "rss_mb": 168.98,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650424.52,
+        "pid": 7972,
+        "rss_mb": 191.51,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650429.915,
+        "pid": 7972,
+        "rss_mb": 184.26,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650435.092,
+        "pid": 7972,
+        "rss_mb": 198.4,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650440.398,
+        "pid": 7972,
+        "rss_mb": 166.68,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650445.754,
+        "pid": 7972,
+        "rss_mb": 188.09,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650450.966,
+        "pid": 7972,
+        "rss_mb": 182.59,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650456.383,
+        "pid": 7972,
+        "rss_mb": 194.74,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650461.616,
+        "pid": 7972,
+        "rss_mb": 186.32,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650466.659,
+        "pid": 7972,
+        "rss_mb": 203.65,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650471.868,
+        "pid": 7972,
+        "rss_mb": 191.82,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650477.162,
+        "pid": 7972,
+        "rss_mb": 198.8,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650482.376,
+        "pid": 7972,
+        "rss_mb": 192.66,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650487.627,
+        "pid": 7972,
+        "rss_mb": 182.11,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650492.954,
+        "pid": 7972,
+        "rss_mb": 192.71,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650498.227,
+        "pid": 7972,
+        "rss_mb": 181.33,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650503.291,
+        "pid": 7972,
+        "rss_mb": 187.6,
+        "handles": 428,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650508.613,
+        "pid": 7972,
+        "rss_mb": 187.43,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650513.862,
+        "pid": 7972,
+        "rss_mb": 198.08,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650519.062,
+        "pid": 7972,
+        "rss_mb": 190.24,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650524.307,
+        "pid": 7972,
+        "rss_mb": 191.86,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650529.36,
+        "pid": 7972,
+        "rss_mb": 177.08,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650534.417,
+        "pid": 7972,
+        "rss_mb": 196.37,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650539.466,
+        "pid": 7972,
+        "rss_mb": 187.24,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650544.646,
+        "pid": 7972,
+        "rss_mb": 194.47,
+        "handles": 428,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650549.948,
+        "pid": 7972,
+        "rss_mb": 190.41,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650555.011,
+        "pid": 7972,
+        "rss_mb": 183.05,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650560.291,
+        "pid": 7972,
+        "rss_mb": 193.49,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650565.58,
+        "pid": 7972,
+        "rss_mb": 158.32,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650570.682,
+        "pid": 7972,
+        "rss_mb": 188.47,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650576.108,
+        "pid": 7972,
+        "rss_mb": 184.68,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650581.372,
+        "pid": 7972,
+        "rss_mb": 191.99,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650586.715,
+        "pid": 7972,
+        "rss_mb": 184.47,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650592.008,
+        "pid": 7972,
+        "rss_mb": 180.04,
+        "handles": 430,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650597.26,
+        "pid": 7972,
+        "rss_mb": 192.13,
+        "handles": 435,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650602.592,
+        "pid": 7972,
+        "rss_mb": 191.02,
+        "handles": 435,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650607.949,
+        "pid": 7972,
+        "rss_mb": 188.77,
+        "handles": 435,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650613.328,
+        "pid": 7972,
+        "rss_mb": 213.18,
+        "handles": 430,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650618.644,
+        "pid": 7972,
+        "rss_mb": 205.37,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650624.141,
+        "pid": 7972,
+        "rss_mb": 176.96,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650629.3,
+        "pid": 7972,
+        "rss_mb": 191.09,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650634.513,
+        "pid": 7972,
+        "rss_mb": 196.04,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650639.891,
+        "pid": 7972,
+        "rss_mb": 176.9,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650644.986,
+        "pid": 7972,
+        "rss_mb": 182.1,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650650.21,
+        "pid": 7972,
+        "rss_mb": 195.17,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650656.029,
+        "pid": 7972,
+        "rss_mb": 184.67,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650661.285,
+        "pid": 7972,
+        "rss_mb": 186.21,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650666.377,
+        "pid": 7972,
+        "rss_mb": 188.57,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650671.473,
+        "pid": 7972,
+        "rss_mb": 192.17,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650676.775,
+        "pid": 7972,
+        "rss_mb": 199.02,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650682.109,
+        "pid": 7972,
+        "rss_mb": 177.58,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650687.303,
+        "pid": 7972,
+        "rss_mb": 191.39,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650692.575,
+        "pid": 7972,
+        "rss_mb": 188.0,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650697.825,
+        "pid": 7972,
+        "rss_mb": 198.63,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650702.925,
+        "pid": 7972,
+        "rss_mb": 189.07,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650708.297,
+        "pid": 7972,
+        "rss_mb": 199.41,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650713.544,
+        "pid": 7972,
+        "rss_mb": 191.16,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650718.757,
+        "pid": 7972,
+        "rss_mb": 184.83,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650723.949,
+        "pid": 7972,
+        "rss_mb": 181.44,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650729.192,
+        "pid": 7972,
+        "rss_mb": 189.89,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650734.509,
+        "pid": 7972,
+        "rss_mb": 189.97,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650739.771,
+        "pid": 7972,
+        "rss_mb": 189.59,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650745.098,
+        "pid": 7972,
+        "rss_mb": 190.96,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650750.358,
+        "pid": 7972,
+        "rss_mb": 181.34,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      },
+      {
+        "t": 1794650755.702,
+        "pid": 7972,
+        "rss_mb": 198.69,
+        "handles": 427,
+        "cursor": {
+          "x": 1905,
+          "y": 1439
+        },
+        "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+        "monitors": 2,
+        "virtual_screen": {
+          "x": 0,
+          "y": 0,
+          "width": 3200,
+          "height": 1440
+        }
+      }
+    ],
+    "errors": [
+      {
+        "iteration": 107,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 107,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 108,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 108,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 109,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 109,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 110,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 110,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 111,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 111,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 112,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 112,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 113,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 113,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 114,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 114,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 115,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 115,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 116,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 116,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 117,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 117,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 118,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 118,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 119,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 119,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 120,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 120,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 121,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 121,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 122,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 122,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 123,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 123,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 124,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 124,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 125,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 125,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 126,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 126,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 127,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 127,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 128,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 128,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 129,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 129,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 130,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 130,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 131,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 131,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 132,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 132,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 133,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 133,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 134,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 134,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 135,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 135,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 136,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 136,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 137,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 137,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 138,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 138,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 139,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 139,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 140,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 140,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 141,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 141,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 142,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 142,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 143,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 143,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 144,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 144,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 145,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 145,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 146,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 146,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 147,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 147,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 148,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 148,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 149,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 149,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 150,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 150,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 151,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 151,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 152,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 152,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 153,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 153,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 154,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 154,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 155,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 155,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 156,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 156,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 157,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 157,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 158,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 158,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 159,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 159,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 160,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 160,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 161,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 161,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 162,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 162,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 163,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 163,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 164,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 164,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 165,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 165,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 166,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 166,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 167,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 167,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 168,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 168,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 169,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 169,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 170,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 170,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 171,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 171,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 172,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 172,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 173,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 173,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 174,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 174,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 175,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 175,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 176,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 176,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 177,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 177,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 178,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 178,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 179,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 179,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 180,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 180,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 181,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 181,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 182,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 182,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 183,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 183,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 184,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 184,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 185,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 185,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 186,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 186,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 187,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 187,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 188,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 188,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 189,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 189,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 190,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 190,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 191,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 191,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 192,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 192,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 193,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 193,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 194,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 194,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 195,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 195,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 196,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 196,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 197,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 197,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 198,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 198,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 199,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 199,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 200,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 200,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 201,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 201,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 202,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 202,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 203,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 203,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 204,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 204,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 205,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 205,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 206,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 206,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 207,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 207,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 208,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 208,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 209,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 209,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 210,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 210,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 211,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 211,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 212,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 212,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 213,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 213,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 214,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 214,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 215,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 215,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 216,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 216,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 217,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 217,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 218,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 218,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 219,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 219,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 220,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 220,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 221,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 221,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 222,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 222,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 223,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 223,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 224,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 224,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 225,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 225,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 226,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 226,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 227,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 227,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 228,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 228,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 229,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 229,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 230,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 230,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 231,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 231,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 232,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 232,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 233,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 233,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 234,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 234,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 235,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 235,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 236,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 236,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 237,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 237,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 238,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 238,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 239,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 239,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 240,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 240,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 241,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 241,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 242,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 242,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 243,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 243,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 244,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 244,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 245,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 245,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 246,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 246,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 247,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 247,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 248,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 248,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 249,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 249,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 250,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 250,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 251,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 251,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 252,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 252,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 253,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 253,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 254,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 254,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 255,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 255,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 256,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 256,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 257,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 257,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 258,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 258,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 259,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 259,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 260,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 260,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 261,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 261,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 262,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 262,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 263,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 263,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 264,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 264,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 265,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 265,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 266,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 266,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 267,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 267,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 268,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 268,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 269,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 269,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 270,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 270,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 271,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 271,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 272,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 272,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 273,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 273,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 274,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 274,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 275,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 275,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 276,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 276,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 277,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 277,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 278,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 278,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 279,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 279,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 280,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 280,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 281,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 281,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 282,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 282,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 283,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 283,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 284,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 284,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 285,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 285,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 286,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 286,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 287,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 287,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 288,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 288,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 289,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 289,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 290,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 290,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 291,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 291,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 292,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 292,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 293,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 293,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 294,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 294,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 295,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 295,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 296,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 296,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 297,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 297,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 298,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 298,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 299,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 299,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 300,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 300,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 301,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 301,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 302,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 302,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 303,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 303,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 304,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 304,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 305,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 305,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 306,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 306,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 307,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 307,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 308,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 308,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 309,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 309,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 310,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 310,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 311,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 311,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 312,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 312,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 313,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 313,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 314,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 314,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 315,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 315,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 316,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 316,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 317,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 317,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 318,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 318,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 319,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 319,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 320,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 320,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 321,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 321,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 322,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 322,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 323,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 323,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 324,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 324,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 325,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 325,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 326,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 326,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 327,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 327,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 328,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 328,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 329,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 329,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 330,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 330,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 331,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 331,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 332,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 332,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 333,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 333,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 334,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 334,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 335,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 335,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 336,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 336,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 337,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 337,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 338,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 338,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 339,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 339,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 340,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 340,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 341,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 341,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 342,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 342,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 343,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 343,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 344,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 344,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 345,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 345,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 346,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 346,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 347,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 347,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 348,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 348,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 349,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 349,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 350,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 350,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 351,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 351,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 352,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 352,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 353,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 353,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 354,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 354,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 355,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 355,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 356,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 356,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 357,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 357,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 358,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 358,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 359,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 359,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 360,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 360,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 361,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 361,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 362,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 362,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 363,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 363,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 364,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 364,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 365,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 365,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 366,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 366,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 367,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 367,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 368,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 368,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 369,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 369,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 370,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 370,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 371,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 371,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 372,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 372,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 373,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 373,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 374,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 374,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      },
+      {
+        "iteration": 375,
+        "tool": "capture_screen",
+        "code": "E_INTERNAL"
+      },
+      {
+        "iteration": 375,
+        "tool": "type_text",
+        "code": "E_NO_INTERACTIVE_DESKTOP"
+      }
+    ],
+    "iterations": 1388,
+    "slope_mb_per_hour": 50.38,
+    "peak_rss_mb": 213.18
+  },
+  "cases": [
+    {
+      "id": "STAB-01",
+      "purpose": "50 会话循环",
+      "ok": true,
+      "passed": 50,
+      "total": 50,
+      "total_s": 311.9,
+      "start_ms": {
+        "n": 50,
+        "min": 75.1,
+        "p50": 115.9,
+        "p95": 695.2,
+        "p99": 954.0,
+        "max": 954.0,
+        "mean": 176.87
+      },
+      "ensure_ms": {
+        "n": 50,
+        "min": 732.52,
+        "p50": 2666.06,
+        "p95": 3620.17,
+        "p99": 3740.48,
+        "max": 3740.48,
+        "mean": 2755.45
+      },
+      "shot_ms": {
+        "n": 50,
+        "min": 65.78,
+        "p50": 82.72,
+        "p95": 128.45,
+        "p99": 2009.16,
+        "max": 2009.16,
+        "mean": 123.51
+      },
+      "release_ms": {
+        "n": 50,
+        "min": 516.64,
+        "p50": 2874.29,
+        "p95": 3144.69,
+        "p99": 3493.89,
+        "max": 3493.89,
+        "mean": 2828.63
+      },
+      "eof_ms": {
+        "n": 50,
+        "min": 20.4,
+        "p50": 28.4,
+        "p95": 152.7,
+        "p99": 227.2,
+        "max": 227.2,
+        "mean": 48.15
+      }
+    },
+    {
+      "id": "STAB-02",
+      "purpose": "15 分钟 soak",
+      "ok": false,
+      "iterations": 1388,
+      "samples": 172,
+      "errors": 538,
+      "error_sample": [
+        {
+          "iteration": 107,
+          "tool": "capture_screen",
+          "code": "E_INTERNAL"
+        },
+        {
+          "iteration": 107,
+          "tool": "type_text",
+          "code": "E_NO_INTERACTIVE_DESKTOP"
+        },
+        {
+          "iteration": 108,
+          "tool": "capture_screen",
+          "code": "E_INTERNAL"
+        },
+        {
+          "iteration": 108,
+          "tool": "type_text",
+          "code": "E_NO_INTERACTIVE_DESKTOP"
+        },
+        {
+          "iteration": 109,
+          "tool": "capture_screen",
+          "code": "E_INTERNAL"
+        }
+      ],
+      "peak_rss_mb": 213.18,
+      "start_rss_mb": 58.31,
+      "slope_mb_per_hour": 50.38,
+      "handle_start": [
+        419
+      ],
+      "handle_end": [
+        427
+      ],
+      "handle_delta": -5.3,
+      "exit": 0
+    }
+  ]
+}

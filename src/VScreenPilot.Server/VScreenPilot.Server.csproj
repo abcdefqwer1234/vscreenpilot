@@ -26,6 +26,12 @@
     <PublishReadyToRun>true</PublishReadyToRun>
     <PublishTrimmed>false</PublishTrimmed>
     <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <!-- 分发：winget/npm 走原生 exe。dotnet tool(PackAsTool) 不支持 net10.0-windows，
+         所以 dnx 入口需要单独的原生包，见 docs/audit/06。 -->
+    <PackageId>VScreenPilot.Cli</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>VScreenPilot</Authors>
+    <Description>Virtual-display MCP server for Windows desktop automation.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -34,6 +40,12 @@
 
   <ItemGroup>
     <PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+    <PackageReference Include="ModelContextProtocol" Version="2.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="VScreenPilot.Tests" />
   </ItemGroup>
 
 </Project>

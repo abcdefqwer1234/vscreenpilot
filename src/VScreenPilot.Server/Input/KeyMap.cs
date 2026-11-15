@@ -51,11 +51,18 @@ internal static class KeyMap
         }
     }
 
-    public static bool TryResolve(string token, out ushort virtualKey, out bool needsShift, out bool extended)
+    public static bool TryResolve(
+        string token, out ushort virtualKey, out bool needsShift, out bool extended) =>
+        TryResolve(token, out virtualKey, out needsShift, out extended, out _);
+
+    public static bool TryResolve(
+        string token, out ushort virtualKey, out bool needsShift, out bool extended,
+        out bool needsAltGr)
     {
         virtualKey = 0;
         needsShift = false;
         extended = false;
+        needsAltGr = false;
 
         if (Named.TryGetValue(token, out virtualKey))
         {
@@ -91,6 +98,9 @@ internal static class KeyMap
                 byte state = (byte)((scan >> 8) & 0xFF);
                 virtualKey = vk;
                 needsShift = (state & 1) != 0;
+                // VkKeyScanW 的 state 位：1=Shift、2=Ctrl、4=Alt。Ctrl+Alt 即 AltGr；
+                // 当前按键模型只表达 Shift，遇到 AltGr 字符必须显式拒绝，否则会打错。
+                needsAltGr = (state & 6) != 0;
                 extended = IsExtended(vk);
                 return true;
             }
@@ -146,9 +156,18 @@ internal static class SystemKeyGuard
         }
 
         string normalized = Normalize(keys);
+        string[] tokens = normalized.Split('+');
+        bool win = tokens.Contains("win", StringComparer.OrdinalIgnoreCase);
+        bool alt = tokens.Contains("alt", StringComparer.OrdinalIgnoreCase);
+        bool tab = tokens.Contains("tab", StringComparer.OrdinalIgnoreCase);
+        bool escape = tokens.Contains("esc", StringComparer.OrdinalIgnoreCase);
 
+        // 变体必须按语义拦截：Alt+Shift+Tab / Ctrl+Alt+Tab 都是窗口切换，
+        // 只匹配精确字符串会漏掉它们（SEC-03）。
         if (Blocked.Contains(normalized) ||
-            normalized.Split('+').Contains("win", StringComparer.OrdinalIgnoreCase))
+            win ||
+            (alt && tab) ||
+            (alt && escape))
         {
             throw new VScreenPilot.Mcp.ToolException(
                 "E_SYSTEM_KEY_BLOCKED",

@@ -1,0 +1,19 @@
+# winget manifest（本地提交用；发布前把 URL/SHA256 换成正式 release）
+PackageIdentifier: VScreenPilot.VScreenPilot
+PackageVersion: 0.1.0
+PackageLocale: en-US
+Publisher: VScreenPilot
+PackageName: VScreenPilot
+License: MIT
+ShortDescription: Virtual-display MCP server for Windows desktop automation.
+Installers:
+  - Architecture: x64
+    InstallerType: zip
+    NestedInstallerType: portable
+    NestedInstallerFiles:
+      - RelativeFilePath: VScreenPilot.exe
+        PortableCommandAlias: vscreenpilot
+    InstallerUrl: https://github.com/vscreenpilot/vscreenpilot/releases/download/v0.1.0/VScreenPilot-win-x64.zip
+    InstallerSha256: REPLACE_WITH_RELEASE_SHA256
+ManifestType: singleton
+ManifestVersion: 1.6.0

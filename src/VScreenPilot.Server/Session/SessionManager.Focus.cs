@@ -67,7 +67,7 @@ internal sealed partial class SessionManager
             return false;
         }
 
-        NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
+        _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
 
         lock (_gate)
         {

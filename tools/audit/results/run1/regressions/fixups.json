@@ -1,0 +1,64 @@
+{
+  "cases": [
+    {
+      "id": "REG-09",
+      "purpose": "run_script 中文输出不乱码",
+      "ok": false,
+      "observed": "{\"stdout\":\"\\uFFFD\\uFFFD\\uFFFD\\uFFFD\\uFFFD\\uFFFD\\uFFFD OK\\r\\ngb2312\\r\\n\",\"stderr\":\"\",\"exit_code\":0,\"timed_out\":false,\"duration_ms\":1759}",
+      "code": null
+    },
+    {
+      "id": "REG-08",
+      "purpose": "断言阈值越界返回 E_INVALID_ARG",
+      "ok": false,
+      "observed": {
+        "coverage_1.5": null,
+        "coverage_-0.5": null,
+        "threshold_-1": null,
+        "threshold_2": null
+      }
+    },
+    {
+      "id": "SEC-09c",
+      "purpose": "同区域 baseline 对照",
+      "ok": true,
+      "same": "ok",
+      "data": {
+        "passed": true,
+        "changed_ratio": 0,
+        "threshold": 0.01,
+        "expect_changed": false,
+        "baseline_frame_id": "f1",
+        "baseline": {
+          "x": 1940,
+          "y": 20,
+          "width": 80,
+          "height": 80
+        }
+      }
+    },
+    {
+      "id": "REG-13",
+      "purpose": "condition/expectation 错误字段返回 E_INVALID_ARG",
+      "ok": false,
+      "observed": {
+        "assert_empty": "E_INVALID_ARG",
+        "assert_bad_region": "E_INTERNAL",
+        "find_name_number": null
+      }
+    },
+    {
+      "id": "REG-14",
+      "purpose": "UWP Calculator 可按窗口接管并触发按钮",
+      "ok": false,
+      "adopt": "E_WINDOW_NOT_FOUND",
+      "adopt_data": {
+        "code": "E_WINDOW_NOT_FOUND",
+        "message": "找不到标题匹配的窗口: Calculator"
+      },
+      "find": "E_ELEMENT_NOT_FOUND",
+      "invoke": null,
+      "ui_ok": true
+    }
+  ]
+}

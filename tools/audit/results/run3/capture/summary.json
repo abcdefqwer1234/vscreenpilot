@@ -1,0 +1,663 @@
+{
+  "cases": [
+    {
+      "id": "CAP-01",
+      "purpose": "区域截图 500 次无性能劣化（服务端 P95 ≤50ms）",
+      "ok": true,
+      "server_stats": {
+        "n": 500,
+        "min": 4.05,
+        "p50": 16.44,
+        "p95": 28.4,
+        "p99": 33.5,
+        "max": 40.31,
+        "mean": 16.45
+      },
+      "client_stats": {
+        "n": 500,
+        "min": 19.67,
+        "p50": 63.65,
+        "p95": 86.59,
+        "p99": 93.85,
+        "max": 110.92,
+        "mean": 62.9
+      },
+      "rss_slope_mb_h": 1492.06,
+      "gdi_slope": 0.0,
+      "user_slope": 165.97,
+      "gdi_start": 3,
+      "gdi_end": 3,
+      "user_start": 4,
+      "user_end": 7
+    },
+    {
+      "id": "CAP-02",
+      "purpose": "全屏截图无悬崖（服务端 P95 ≤80ms）",
+      "ok": true,
+      "onset_call": null,
+      "client_stats": {
+        "n": 120,
+        "min": 127.11,
+        "p50": 197.13,
+        "p95": 233.7,
+        "p99": 240.39,
+        "max": 248.33,
+        "mean": 191.66
+      },
+      "server_stats": {
+        "n": 120,
+        "min": 18.26,
+        "p50": 38.01,
+        "p95": 56.16,
+        "p99": 65.64,
+        "max": 66.43,
+        "mean": 38.54
+      },
+      "slow_flags": 0,
+      "peak_rss_mb": 263.32,
+      "rss_slope_mb_h": 21970.38,
+      "gdi_start": 5,
+      "gdi_end": 5
+    },
+    {
+      "id": "CAP-03",
+      "purpose": "全屏之后区域截图仍保持低延迟（服务端 P95 ≤50ms）",
+      "ok": true,
+      "stats": {
+        "n": 10,
+        "min": 5.92,
+        "p50": 12.57,
+        "p95": 22.24,
+        "p99": 22.24,
+        "max": 22.24,
+        "mean": 14.36
+      }
+    }
+  ],
+  "region_samples": [
+    {
+      "t": 1794662893.46,
+      "pid": 8268,
+      "rss_mb": 14.6,
+      "handles": 416,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 3,
+      "user": 4
+    },
+    {
+      "t": 1794662895.069,
+      "pid": 8268,
+      "rss_mb": 47.2,
+      "handles": 429,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 3,
+      "user": 7
+    },
+    {
+      "t": 1794662898.153,
+      "pid": 8268,
+      "rss_mb": 53.73,
+      "handles": 431,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 3,
+      "user": 7
+    },
+    {
+      "t": 1794662901.427,
+      "pid": 8268,
+      "rss_mb": 57.76,
+      "handles": 431,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 3,
+      "user": 7
+    },
+    {
+      "t": 1794662904.944,
+      "pid": 8268,
+      "rss_mb": 48.64,
+      "handles": 431,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 3,
+      "user": 7
+    },
+    {
+      "t": 1794662908.255,
+      "pid": 8268,
+      "rss_mb": 46.55,
+      "handles": 431,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 3,
+      "user": 7
+    },
+    {
+      "t": 1794662911.644,
+      "pid": 8268,
+      "rss_mb": 48.12,
+      "handles": 431,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 3,
+      "user": 7
+    },
+    {
+      "t": 1794662914.932,
+      "pid": 8268,
+      "rss_mb": 48.15,
+      "handles": 431,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 3,
+      "user": 7
+    },
+    {
+      "t": 1794662918.342,
+      "pid": 8268,
+      "rss_mb": 48.62,
+      "handles": 431,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 3,
+      "user": 7
+    },
+    {
+      "t": 1794662921.614,
+      "pid": 8268,
+      "rss_mb": 48.07,
+      "handles": 428,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 3,
+      "user": 7
+    }
+  ],
+  "full_samples": [
+    {
+      "t": 1794662925.144,
+      "pid": 8268,
+      "rss_mb": 65.26,
+      "handles": 432,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 5,
+      "user": 7
+    },
+    {
+      "t": 1794662927.011,
+      "pid": 8268,
+      "rss_mb": 147.91,
+      "handles": 432,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 5,
+      "user": 7
+    },
+    {
+      "t": 1794662928.942,
+      "pid": 8268,
+      "rss_mb": 179.32,
+      "handles": 432,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 5,
+      "user": 7
+    },
+    {
+      "t": 1794662930.893,
+      "pid": 8268,
+      "rss_mb": 183.56,
+      "handles": 432,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 5,
+      "user": 7
+    },
+    {
+      "t": 1794662932.853,
+      "pid": 8268,
+      "rss_mb": 186.03,
+      "handles": 432,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 5,
+      "user": 7
+    },
+    {
+      "t": 1794662934.772,
+      "pid": 8268,
+      "rss_mb": 224.54,
+      "handles": 432,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 5,
+      "user": 7
+    },
+    {
+      "t": 1794662936.757,
+      "pid": 8268,
+      "rss_mb": 263.07,
+      "handles": 432,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 5,
+      "user": 7
+    },
+    {
+      "t": 1794662938.613,
+      "pid": 8268,
+      "rss_mb": 263.32,
+      "handles": 432,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 5,
+      "user": 7
+    },
+    {
+      "t": 1794662940.365,
+      "pid": 8268,
+      "rss_mb": 251.18,
+      "handles": 432,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 5,
+      "user": 7
+    },
+    {
+      "t": 1794662942.243,
+      "pid": 8268,
+      "rss_mb": 256.0,
+      "handles": 432,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 5,
+      "user": 7
+    },
+    {
+      "t": 1794662944.32,
+      "pid": 8268,
+      "rss_mb": 222.52,
+      "handles": 432,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 5,
+      "user": 7
+    },
+    {
+      "t": 1794662946.209,
+      "pid": 8268,
+      "rss_mb": 203.16,
+      "handles": 432,
+      "cursor": {
+        "x": 960,
+        "y": 720
+      },
+      "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+      "monitors": 2,
+      "virtual_screen": {
+        "x": 0,
+        "y": 0,
+        "width": 3200,
+        "height": 1440
+      },
+      "gdi": 5,
+      "user": 7
+    }
+  ],
+  "full_ms": [
+    235.53,
+    226.93,
+    197.13,
+    171.24,
+    155.45,
+    176.1,
+    212.88,
+    238.97,
+    146.4,
+    163.9,
+    176.53,
+    225.71,
+    204.73,
+    198.59,
+    178.1,
+    172.63,
+    237.64,
+    222.94,
+    170.49,
+    142.43,
+    176.54,
+    191.63,
+    226.22,
+    214.9,
+    174.26,
+    190.11,
+    188.94,
+    205.09,
+    221.67,
+    166.31,
+    170.68,
+    220.24,
+    217.82,
+    223.05,
+    178.15,
+    189.55,
+    202.61,
+    228.31,
+    207.69,
+    144.04,
+    147.74,
+    139.02,
+    216.09,
+    209.96,
+    203.52,
+    183.72,
+    160.07,
+    229.91,
+    211.23,
+    202.79,
+    161.85,
+    162.46,
+    214.02,
+    204.31,
+    226.05,
+    200.64,
+    168.67,
+    204.29,
+    229.13,
+    212.8,
+    161.71,
+    146.93,
+    177.03,
+    230.58,
+    233.95,
+    146.17,
+    152.34,
+    156.37,
+    212.8,
+    224.11,
+    174.43,
+    157.77,
+    127.11,
+    128.1,
+    205.56,
+    210.7,
+    193.37,
+    161.76,
+    147.49,
+    188.24,
+    230.63,
+    221.7,
+    147.54,
+    142.28,
+    153.74,
+    215.23,
+    219.46,
+    217.9,
+    186.54,
+    162.38,
+    210.04,
+    218.11,
+    219.45,
+    207.49,
+    233.7,
+    183.64,
+    183.64,
+    240.39,
+    216.97,
+    219.19,
+    153.26,
+    155.0,
+    180.79,
+    203.5,
+    231.12,
+    151.6,
+    153.1,
+    149.44,
+    229.16,
+    248.33,
+    185.09,
+    158.94,
+    169.53,
+    203.89,
+    224.76,
+    188.57,
+    174.23,
+    167.76,
+    207.23,
+    217.0
+  ],
+  "final": {
+    "t": 1794662948.56,
+    "pid": 8268,
+    "rss_mb": 196.25,
+    "handles": 432,
+    "cursor": {
+      "x": 960,
+      "y": 720
+    },
+    "foreground": "CCW MCP工具静态审查与测试计划 - VScreenPilot - Visual Studio Code",
+    "monitors": 2,
+    "virtual_screen": {
+      "x": 0,
+      "y": 0,
+      "width": 3200,
+      "height": 1440
+    },
+    "gdi": 5,
+    "user": 7
+  }
+}

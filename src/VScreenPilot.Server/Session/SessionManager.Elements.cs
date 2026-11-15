@@ -13,6 +13,9 @@ internal sealed class ElementRefEntry
 {
     public required string Ref { get; init; }
     public required string Key { get; init; }
+
+    /// <summary>创建该 ref 时的快照代际；跨代使用返回 E_STALE_SNAPSHOT。</summary>
+    public long Generation { get; set; }
     public string RuntimeId { get; set; } = string.Empty;
     public int Pid { get; init; }
     public IntPtr Hwnd { get; set; }
@@ -42,23 +45,87 @@ internal sealed class ElementRefEntry
 
 internal sealed partial class SessionManager
 {
-    private const int ElementRefCapacity = 1024;
+    // 保留当前代 + 上一代（max_nodes 1024），避免新快照把自己的 ref 挤掉。
+    private const int ElementRefCapacity = 2048;
     private const long ElementRefTtlMs = 5 * 60 * 1000;
 
     private readonly Dictionary<string, ElementRefEntry> _elements = new();
     private readonly Dictionary<string, string> _elementKeys = new();
+    // 快照构建与 ref 解析共用一把锁：保证“清空 + 建树 + 登记”对其他线程是原子的。
+    private readonly object _refGate = new();
+    // snapshot 的建树与提交串行化：避免两个 snapshot 乱序提交、互相覆盖代际。
+    private readonly SemaphoreSlim _snapshotGate = new(1, 1);
     private long _elementSeq;
+    private long _snapshotSeq;
+    private long _snapshotGeneration;
+    private string _snapshotId = string.Empty;
+
+    /// <summary>最近一次 snapshot 的 id；ref 只在该快照内有效。</summary>
+    public string SnapshotId => _snapshotId;
+
+    /// <summary>
+    /// 当前快照 id；若还没有任何快照则创建第一个。
+    /// get_ui_tree/find_element 默认复用当前代，不再每次调用都让既有 ref 失效。
+    /// </summary>
+    public string EnsureSnapshot()
+    {
+        lock (_refGate)
+        {
+            return Volatile.Read(ref _snapshotGeneration) > 0
+                ? _snapshotId
+                : BeginSnapshot();
+        }
+    }
+
+    /// <summary>开始新快照：清空旧 ref，让跨快照使用返回 E_ELEMENT_STALE 而不是“碰巧还能用”。</summary>
+    public string BeginSnapshot()
+    {
+        lock (_refGate)
+        {
+            lock (_gate)
+            {
+                long generation = Interlocked.Increment(ref _snapshotGeneration);
+
+                // 保留上一代 ref，才能对“旧快照 ref”返回 E_STALE_SNAPSHOT 而不是“未知 ref”。
+                // 更老的代际直接淘汰，避免容量被历史快照占满。
+                List<string>? expired = null;
+
+                foreach ((string key, ElementRefEntry value) in _elements)
+                {
+                    if (value.Generation < generation - 1)
+                    {
+                        (expired ??= new List<string>()).Add(key);
+                    }
+                }
+
+                if (expired is not null)
+                {
+                    foreach (string key in expired)
+                    {
+                        RemoveElement(key);
+                    }
+                }
+
+                _snapshotId = "s" + Interlocked.Increment(ref _snapshotSeq);
+                return _snapshotId;
+            }
+        }
+    }
 
     /// <summary>登记元素并返回稳定的会话内引用（只对外暴露 ref）。</summary>
     public string RegisterElement(UiaElementInfo info, IntPtr hwnd)
     {
+        lock (_refGate)
         lock (_gate)
         {
             PruneExpiredElements();
 
-            string key = ElementKey(info);
+            string key = ElementKey(info, hwnd);
+            long generation = Volatile.Read(ref _snapshotGeneration);
+
             if (_elementKeys.TryGetValue(key, out string? existingRef) &&
-                _elements.TryGetValue(existingRef, out ElementRefEntry? existing))
+                _elements.TryGetValue(existingRef, out ElementRefEntry? existing) &&
+                existing.Generation == generation)
             {
                 existing.Update(info, hwnd);
                 return existing.Ref;
@@ -70,12 +137,16 @@ internal sealed partial class SessionManager
             }
 
             string reference = "e" + (++_elementSeq);
+            // UWP 等跨进程宿主：元素属于内容进程，HWND 属于 ApplicationFrameHost。
+            // ref 的归属校验必须按 HWND 的进程，否则每次解析都会被判成“句柄复用”。
+            int ownerPid = hwnd != IntPtr.Zero ? WindowManager.GetProcessId(hwnd) : 0;
             var entry = new ElementRefEntry
             {
                 Ref = reference,
                 Key = key,
-                Pid = info.ProcessId,
+                Pid = ownerPid > 0 ? ownerPid : info.ProcessId,
                 Hwnd = hwnd,
+                Generation = generation,
                 LastUsedTicks = Environment.TickCount64,
             };
             entry.Update(info, hwnd);
@@ -86,10 +157,10 @@ internal sealed partial class SessionManager
         }
     }
 
-    private static string ElementKey(UiaElementInfo info) =>
+    private static string ElementKey(UiaElementInfo info, IntPtr hwnd) =>
         !string.IsNullOrEmpty(info.RuntimeId)
-            ? $"{info.ProcessId}:{info.RuntimeId}"
-            : $"{info.ProcessId}:{info.ControlType}:{info.AutomationId}:{info.Name}:{info.Left},{info.Top}";
+            ? $"{info.ProcessId}:{hwnd.ToInt64():X}:{info.RuntimeId}"
+            : $"{info.ProcessId}:{hwnd.ToInt64():X}:{info.ControlType}:{info.AutomationId}:{info.Name}:{info.Left},{info.Top}";
 
     private void PruneExpiredElements()
     {
@@ -168,7 +239,9 @@ internal sealed partial class SessionManager
         }
 
         ElementRefEntry? entry;
+        bool staleSnapshot = false;
 
+        lock (_refGate)
         lock (_gate)
         {
             if (!_elements.TryGetValue(key, out entry))
@@ -181,10 +254,28 @@ internal sealed partial class SessionManager
                 RemoveElement(key);
                 entry = null;
             }
+            else if (Volatile.Read(ref _snapshotGeneration) > 0 &&
+                     entry.Generation != Volatile.Read(ref _snapshotGeneration))
+            {
+                // ref 只对创建它的快照有效：跨快照使用是明确错误，而不是“碰巧还能用”。
+                entry = null;
+                staleSnapshot = true;
+            }
             else
             {
                 entry.LastUsedTicks = Environment.TickCount64;
             }
+        }
+
+        if (staleSnapshot)
+        {
+            throw new ToolException(
+                "E_STALE_SNAPSHOT",
+                $"element_ref {key} 属于旧快照，已失效",
+                new JsonObject { ["ref"] = key, ["current_snapshot"] = SnapshotId },
+                retryable: true,
+                hint: "重新调用 snapshot，并只使用新返回的 ref",
+                stage: "snapshot");
         }
 
         if (entry is null)
@@ -220,7 +311,7 @@ internal sealed partial class SessionManager
         int entryPid = entry.Pid;
 
         // 句柄可能被系统复用：必须确认该 HWND 仍属于登记时的进程。
-        NativeMethods.GetWindowThreadProcessId(entry.Hwnd, out uint entryHwndPid);
+        _ = NativeMethods.GetWindowThreadProcessId(entry.Hwnd, out uint entryHwndPid);
 
         if (entryHwndPid != (uint)entryPid)
         {
@@ -314,19 +405,30 @@ internal sealed partial class SessionManager
     /* ------------------------------------------------------------------ */
 
     public JsonObject GetUiTree(
-        int? maxDepth, bool? interactiveOnly, int? maxNodes, string? root, int? pid)
+        int? maxDepth, bool? interactiveOnly, int? maxNodes, string? root, int? pid,
+        string? format = null, bool newSnapshot = false)
     {
-        DisplayInfo display = EnsureEnvironment();
+        DisplayInfo display = EnsureEnvironmentFast();
 
         int depth = Math.Clamp(maxDepth ?? 3, 1, 10);
-        int nodes = Math.Clamp(maxNodes ?? 300, 1, 2000);
+        // 树节点上限不能超过 ref 容量，否则返回的早期 ref 已被淘汰（E5）。
+        int nodes = Math.Clamp(maxNodes ?? 300, 1, Math.Min(1024, ElementRefCapacity));
         bool interactive = interactiveOnly ?? true;
+        int effectiveNodes = nodes;
 
         IntPtr hwnd;
         string rootRuntimeId;
 
         if (!string.IsNullOrWhiteSpace(root))
         {
+            // MSAA ref 不是 UIA runtime_id，不能走 ResolveElementHandle；单独展开成扁平树。
+            ElementRefEntry msaaEntry = RequireElementEntry(root);
+
+            if (MsaaService.TryParse(msaaEntry.RuntimeId, out IntPtr msaaHwnd, out int msaaOrdinal))
+            {
+                return BuildMsaaTree(msaaEntry, msaaHwnd, msaaOrdinal, nodes, format);
+            }
+
             // 走完整的 ref 校验：pid 仍在会话、窗口在虚拟屏、runtime_id 失效时按指纹重定位。
             using (UiaElementHandle handle = ResolveElementHandle(
                        root, display, out ElementRefEntry entry, out bool refreshed))
@@ -367,6 +469,8 @@ internal sealed partial class SessionManager
             rootRuntimeId = string.Empty;
         }
 
+        // 建树不持 _refGate：UIA 最坏 3s，不能把 ref 解析/其它观察一起堵住。
+        // 只有“推进代际 + 登记 ref + 生成 JSON”这段纯内存操作才进锁。
         UiaTreeResult result = Uia.BuildTree(
             hwnd,
             rootRuntimeId,
@@ -387,7 +491,16 @@ internal sealed partial class SessionManager
         }
 
         string rootRef = string.Empty;
-        JsonObject tree = ConvertTreeNode(result.Root, hwnd, ref rootRef);
+        JsonObject tree;
+        string snapshotId;
+
+        lock (_refGate)
+        {
+            // 只有显式 new_snapshot 才推进代际；默认复用当前快照，
+            // 这样 find -> get_ui_tree -> invoke 不会莫名 E_STALE_SNAPSHOT。
+            snapshotId = newSnapshot ? BeginSnapshot() : EnsureSnapshot();
+            tree = ConvertTreeNode(result.Root, hwnd, ref rootRef);
+        }
 
         WindowInfo? window = WindowManager.FromHandle(hwnd);
         var json = new JsonObject
@@ -402,7 +515,21 @@ internal sealed partial class SessionManager
             ["max_depth"] = depth,
             ["max_depth_reached"] = result.MaxDepthReached,
             ["elapsed_ms"] = result.ElapsedMs,
+            ["ref_capacity"] = ElementRefCapacity,
+            ["max_nodes_effective"] = effectiveNodes,
+            ["snapshot_id"] = snapshotId,
+            ["new_snapshot"] = newSnapshot,
         };
+
+        if (nodes != (maxNodes ?? 300))
+        {
+            json["max_nodes_clamped"] = true;
+        }
+
+        if (string.Equals(format, "text", StringComparison.OrdinalIgnoreCase))
+        {
+            json["text"] = SnapshotFormat.Render(tree, includeValues: true);
+        }
 
         if (result.Reason is not null)
         {
@@ -417,6 +544,83 @@ internal sealed partial class SessionManager
                 ["pid"] = window.Pid,
                 ["title"] = window.Title,
             };
+        }
+
+        return json;
+    }
+
+    /// <summary>
+    /// MSAA 对话框没有 UIA 树；把控件展开成一层扁平树，ref 可直接 invoke/click/get_text。
+    /// </summary>
+    private JsonObject BuildMsaaTree(
+        ElementRefEntry rootEntry, IntPtr hwnd, int ordinal, int maxNodes, string? format)
+    {
+        MsaaFindResult found = MsaaService.FindElements(
+            hwnd, null, UiaNameMatch.Exact, null, maxNodes);
+
+        var children = new JsonArray();
+        string snapshotId;
+        int count = 0;
+
+        lock (_refGate)
+        {
+            snapshotId = EnsureSnapshot();
+
+            foreach (UiaElementInfo info in found.Items)
+            {
+                if (info.RuntimeId == rootEntry.RuntimeId)
+                {
+                    continue;
+                }
+
+                children.Add((JsonNode)new JsonObject
+                {
+                    ["ref"] = RegisterElement(info, hwnd),
+                    ["control_type"] = info.ControlTypeName,
+                    ["name"] = info.Name,
+                    ["bounds"] = new JsonObject
+                    {
+                        ["x"] = info.Left,
+                        ["y"] = info.Top,
+                        ["width"] = info.Width,
+                        ["height"] = info.Height,
+                    },
+                });
+                count++;
+            }
+        }
+
+        var tree = new JsonObject
+        {
+            ["ref"] = rootEntry.Ref,
+            ["control_type"] = rootEntry.ControlTypeName,
+            ["name"] = rootEntry.Name,
+            ["children"] = children,
+        };
+
+        var json = new JsonObject
+        {
+            ["root_ref"] = rootEntry.Ref,
+            ["tree"] = tree,
+            ["nodes"] = count + 1,
+            ["truncated"] = found.Truncated,
+            ["interactive_only"] = true,
+            ["max_depth"] = 1,
+            ["max_nodes_effective"] = maxNodes,
+            ["ref_capacity"] = ElementRefCapacity,
+            ["snapshot_id"] = snapshotId,
+            ["new_snapshot"] = false,
+            ["backend"] = "msaa",
+        };
+
+        if (found.Truncated)
+        {
+            json["truncated_reason"] = "msaa_limit";
+        }
+
+        if (string.Equals(format, "text", StringComparison.OrdinalIgnoreCase))
+        {
+            json["text"] = SnapshotFormat.Render(tree, includeValues: true);
         }
 
         return json;
@@ -498,6 +702,43 @@ internal sealed partial class SessionManager
     public JsonObject InvokeElement(string reference, bool allowClick, string? pattern = null)
     {
         DisplayInfo display = EnsureEnvironment();
+        ElementRefEntry probe = RequireElementEntry(reference);
+
+        if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaChildId))
+        {
+            bool invoked = MsaaService.DoDefaultAction(msaaHwnd, msaaChildId);
+
+            if (!invoked && allowClick)
+            {
+                var bounds = MsaaService.GetBounds(msaaHwnd, msaaChildId);
+
+                if (bounds is not null)
+                {
+                    invoked = MessageInput.Click(
+                        bounds.Value.Left + bounds.Value.Width / 2,
+                        bounds.Value.Top + bounds.Value.Height / 2,
+                        "left", 1, out _);
+                }
+            }
+
+            if (!invoked)
+            {
+                throw new ToolException(
+                    "E_PATTERN_UNSUPPORTED",
+                    "MSAA 控件不支持默认动作；可改用 click 或 allow_click=true",
+                    new JsonObject { ["ref"] = probe.Ref });
+            }
+
+            return new JsonObject
+            {
+                ["ref"] = probe.Ref,
+                ["method"] = "msaa",
+                ["invoked"] = true,
+                ["verified"] = false,
+                ["refreshed"] = false,
+            };
+        }
+
         UiaElementHandle handle = ResolveElementHandle(reference, display, out ElementRefEntry entry, out bool refreshed);
         bool handleTransferred = false;
 
@@ -714,6 +955,73 @@ internal sealed partial class SessionManager
         string reference, string value, bool allowKeyboard, string? mode = null, bool allowDestructive = false)
     {
         DisplayInfo display = EnsureEnvironment();
+        ElementRefEntry probe = RequireElementEntry(reference);
+
+        if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaChildId))
+        {
+            string? existing = MsaaService.GetValue(msaaHwnd, msaaChildId);
+
+            if (!string.IsNullOrEmpty(existing) &&
+                !string.Equals(existing, value, StringComparison.Ordinal) &&
+                !allowDestructive)
+            {
+                throw new ToolException(
+                    "E_DESTRUCTIVE_REQUIRED",
+                    "MSAA 控件已有内容；覆盖请显式传 allow_destructive=true",
+                    new JsonObject { ["ref"] = probe.Ref, ["existing_length"] = existing.Length });
+            }
+
+            if (!MsaaService.SetValue(msaaHwnd, msaaChildId, value))
+            {
+                if (!allowKeyboard)
+                {
+                    throw new ToolException(
+                        "E_PATTERN_UNSUPPORTED",
+                        "MSAA 控件不支持 accValue 写入；可改用 allow_keyboard=true 的键盘路径",
+                        new JsonObject { ["ref"] = probe.Ref });
+                }
+
+                var bounds = MsaaService.GetBounds(msaaHwnd, msaaChildId);
+
+                if (bounds is null)
+                {
+                    throw new ToolException(
+                        "E_ELEMENT_OFFSCREEN",
+                        "MSAA 控件没有可用位置，无法切换到键盘写入",
+                        new JsonObject { ["ref"] = probe.Ref });
+                }
+
+                Click(
+                    bounds.Value.Left + bounds.Value.Width / 2,
+                    bounds.Value.Top + bounds.Value.Height / 2,
+                    "left", 1, "message");
+
+                JsonObject typed = TypeText(value, null, verify: true, chunkChars: 32, channel: "auto");
+                return new JsonObject
+                {
+                    ["ref"] = probe.Ref,
+                    ["method"] = "msaa+keyboard",
+                    ["mode"] = mode ?? "auto",
+                    ["verified"] = typed["verified"]?.GetValue<bool>() ?? false,
+                    ["written"] = value,
+                    ["value"] = typed["observed_length"],
+                    ["refreshed"] = false,
+                };
+            }
+
+            string? observed = MsaaService.GetValue(msaaHwnd, msaaChildId);
+            return new JsonObject
+            {
+                ["ref"] = probe.Ref,
+                ["method"] = "msaa",
+                ["mode"] = mode ?? "auto",
+                ["verified"] = string.Equals(observed, value, StringComparison.Ordinal),
+                ["written"] = value,
+                ["value"] = observed,
+                ["refreshed"] = false,
+            };
+        }
+
         using UiaElementHandle handle = ResolveElementHandle(reference, display, out ElementRefEntry entry, out bool refreshed);
         UiaElementInfo info = handle.Info;
 
@@ -837,10 +1145,27 @@ internal sealed partial class SessionManager
     public JsonObject GetElementText(string reference, int maxChars)
     {
         DisplayInfo display = EnsureEnvironment();
+        ElementRefEntry probe = RequireElementEntry(reference);
+        maxChars = Math.Clamp(maxChars, 1, 65536);
+
+        if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaChildId))
+        {
+            string msaaText = MsaaService.GetValue(msaaHwnd, msaaChildId) ?? string.Empty;
+            return new JsonObject
+            {
+                ["ref"] = probe.Ref,
+                ["control_type"] = probe.ControlTypeName,
+                ["automation_id"] = probe.AutomationId,
+                ["text"] = msaaText.Length > maxChars ? msaaText[..maxChars] : msaaText,
+                ["length"] = msaaText.Length,
+                ["truncated"] = msaaText.Length > maxChars,
+                ["refreshed"] = false,
+            };
+        }
+
         using UiaElementHandle handle = ResolveElementHandle(
             reference, display, out ElementRefEntry entry, out bool refreshed);
 
-        maxChars = Math.Clamp(maxChars, 1, 65536);
         string? text = handle.GetText(maxChars);
 
         if (text is null)

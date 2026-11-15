@@ -1,10 +1,12 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json.Nodes;
 using VScreenPilot.Apps;
 using VScreenPilot.Core.Displays;
 using VScreenPilot.Input;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
+using VScreenPilot.Uia;
 
 namespace VScreenPilot.Session;
 
@@ -16,13 +18,17 @@ internal sealed partial class SessionManager
         string? arguments,
         int waitMs,
         bool newInstance,
-        bool ensureDocument = true)
+        bool ensureDocument = true,
+        int? pid = null)
     {
         DisplayInfo display = EnsureEnvironment();
         // 在启动任何进程之前记录用户当前窗口：新窗口出现时往往已经抢到前台。
         IntPtr userForeground = WindowManager.GetForegroundWindow();
         WindowInfo? window;
         bool started = false;
+        // UWP：真实内容进程（CalculatorApp 等）与 frame host 不同，关闭/白名单必须用前者。
+        int contentPid = 0;
+        string contentPath = string.Empty;
         bool closeOnRelease = false;
         bool dedicated = false;
         bool hadRunningInstance = false;
@@ -61,10 +67,15 @@ internal sealed partial class SessionManager
 
                     throw new ToolException(
                         "E_WINDOW_AMBIGUOUS",
-                        $"标题匹配到 {candidates.Count} 个窗口，拒绝猜一个接管",
-                        new JsonObject { ["title"] = windowTitle, ["candidates"] = list },
+                        $"标题匹配到 {candidates.Count} 个窗口，拒绝猜一个接管；请用 pid 精确指定",
+                        new JsonObject
+                        {
+                            ["title"] = windowTitle,
+                            ["windows"] = list.DeepClone(),
+                            ["candidates"] = list,
+                        },
                         retryable: true,
-                        hint: "传更完整的标题，或改用 hwnd/pid 精确指定",
+                        hint: "传更完整的标题，或改用 pid 精确指定（details.windows 给出候选）",
                         stage: "window");
                 }
 
@@ -75,6 +86,26 @@ internal sealed partial class SessionManager
 
             // 显式指定窗口时按接管处理，不创建新实例。
             newInstance = false;
+        }
+        else if (pid is not null)
+        {
+            // 按 pid 接管是最精确的方式：UWP/单实例/多标签都绕开了标题歧义。
+            // 普通应用有主窗口；UWP 的内容进程没有顶层窗口，只能反查 frame host。
+            window = WindowManager.FindMainWindow(pid.Value)
+                ?? FindUwpFrameForProcess(pid.Value)
+                ?? throw new ToolException(
+                    "E_WINDOW_NOT_FOUND",
+                    $"pid={pid} 没有可见主窗口",
+                    new JsonObject { ["pid"] = pid });
+
+            newInstance = false;
+            exeName = GetProcessName(pid.Value);
+
+            if (window.Pid != pid.Value)
+            {
+                contentPid = pid.Value;
+                contentPath = WindowManager.GetProcessPath(pid.Value);
+            }
         }
         else if (!string.IsNullOrWhiteSpace(path))
         {
@@ -119,7 +150,8 @@ internal sealed partial class SessionManager
                         _log.Warn($"应用 {processId} 未能加入作业对象，崩溃兜底不可用");
                     }
 
-                    window = WaitForNewWindow(process, exeName, before, waitMs);
+                    window = WaitForNewWindow(
+                        process, exeName, before, waitMs, out contentPid, out contentPath);
                 }
 
                 if (window is null)
@@ -145,7 +177,8 @@ internal sealed partial class SessionManager
 
                         if (reuse is not null)
                         {
-                            _log.Warn($"无法创建独立实例，已接管现有窗口 pid={reuse.Pid} \"{reuse.Title}\"");
+                            // 不记录窗口标题：可能包含文档名/客户名。
+                            _log.Warn($"无法创建独立实例，已接管现有窗口 pid={reuse.Pid}");
                             window = reuse;
                             newInstance = false;
                             closeOnRelease = false;
@@ -219,7 +252,8 @@ internal sealed partial class SessionManager
                             _log.Warn($"应用 {processId} 未能加入作业对象，崩溃兜底不可用");
                         }
 
-                        window = WaitForNewWindow(process, exeName, before, waitMs);
+                        window = WaitForNewWindow(
+                            process, exeName, before, waitMs, out contentPid, out contentPath);
                     }
 
                     if (window is null)
@@ -248,6 +282,18 @@ internal sealed partial class SessionManager
 
         window = WaitForStableWindow(window, waitMs, display.Width * display.Height) ?? window;
 
+        // UWP 的 frame host 路径不是用户要启动的应用；内容进程解析失败时才退回 frame。
+        if (contentPid == 0)
+        {
+            (contentPid, contentPath) = ResolveUwpContentProcess(window.Hwnd);
+        }
+
+        // path 启动时已校验；pid/window 接管也必须校验真实 exe，避免绕过 VSP_APP_ALLOWLIST（R24）。
+        string allowPath = string.IsNullOrEmpty(contentPath)
+            ? WindowManager.GetProcessPath(window.Pid)
+            : contentPath;
+        EnsureAppAllowed(allowPath);
+
         TrackedApp? tracked;
         lock (_gate)
         {
@@ -259,6 +305,8 @@ internal sealed partial class SessionManager
                 {
                     Pid = window.Pid,
                     ExePath = WindowManager.GetProcessPath(window.Pid),
+                    ContentPid = contentPid,
+                    ContentExePath = contentPath,
                     Hwnd = window.Hwnd,
                     Title = window.Title,
                     StartedProcess = started,
@@ -271,7 +319,7 @@ internal sealed partial class SessionManager
                 };
                 _apps.Add(tracked);
                 _log.Info(
-                    $"接管应用 pid={window.Pid} \"{window.Title}\" started={started} newInstance={newInstance}");
+                    $"接管应用 pid={window.Pid} started={started} newInstance={newInstance}");
             }
             else
             {
@@ -279,6 +327,12 @@ internal sealed partial class SessionManager
                 tracked.Title = window.Title;
                 tracked.Owned |= started && closeOnRelease;
                 tracked.CloseWindowOnRelease |= closeOnRelease;
+
+                if (contentPid > 0)
+                {
+                    tracked.ContentPid = contentPid;
+                    tracked.ContentExePath = contentPath;
+                }
             }
         }
 
@@ -372,6 +426,22 @@ internal sealed partial class SessionManager
                 ? "已复用本会话已启动的窗口；release_environment 会关闭它"
                 : "已接管现有窗口；关闭调试后只归位、不关闭该应用";
         }
+
+        // 接管时就把“主窗口之外的 owned 窗口”暴露出来：Office 的自定义对话框、
+        // 经典 #32770、#32768 菜单都不在主窗口 UIA 树里，模型需要先知道它们存在。
+        var dialogs = new JsonArray();
+
+        foreach (WindowInfo dialog in WindowManager.ListOwnedWindows(window.Pid, window.Hwnd))
+        {
+            dialogs.Add((JsonNode)new JsonObject
+            {
+                ["hwnd"] = dialog.Hwnd.ToInt64(),
+                ["title"] = dialog.Title,
+                ["class"] = dialog.ClassName,
+            });
+        }
+
+        result["dialogs"] = dialogs;
 
         return result;
     }
@@ -542,32 +612,49 @@ internal sealed partial class SessionManager
 
     private void AssignWindowProcessToJob(int pid)
     {
-        try
+        // 启动壳进程会转交给真实进程；重试几次再判定失败，避免把正常的交接记成兜底不可用。
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            using var process = Process.GetProcessById(pid);
-            if (process.HasExited)
+            try
             {
-                return;
-            }
+                using var process = Process.GetProcessById(pid);
 
-            if (_job.Assign(process))
-            {
-                _log.Info($"已将进程 {pid} 加入作业对象");
+                if (process.HasExited)
+                {
+                    Thread.Sleep(150);
+                    continue;
+                }
+
+                if (_job.Assign(process))
+                {
+                    _log.Info($"已将进程 {pid} 加入作业对象");
+                    return;
+                }
+
+                Thread.Sleep(150);
             }
-            else
+            catch
             {
-                _log.Warn($"进程 {pid} 未能加入作业对象，崩溃兜底不可用");
+                // 进程可能在分配前已经退出/转交。
+                Thread.Sleep(150);
             }
         }
-        catch
+
+        if (!_jobUnavailableLogged)
         {
-            // 进程可能在分配前已经退出/转交。
+            _jobUnavailableLogged = true;
+            _log.Warn(
+                $"进程 {pid} 未能加入作业对象（{_job.Status}）；崩溃兜底不可用，" +
+                "将依赖进程树清理与启动时孤儿清扫");
         }
     }
 
     private WindowInfo? WaitForNewWindow(
-        Process process, string exeName, HashSet<IntPtr> before, int waitMs)
+        Process process, string exeName, HashSet<IntPtr> before, int waitMs,
+        out int contentPid, out string contentPath)
     {
+        contentPid = 0;
+        contentPath = string.Empty;
         var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(2000, waitMs));
 
         while (DateTime.UtcNow < deadline)
@@ -602,10 +689,152 @@ internal sealed partial class SessionManager
                 return WindowManager.FromHandle(byName.Hwnd) ?? byName;
             }
 
+            // UWP：calc.exe 只是启动器，真正窗口属于 ApplicationFrameWindow。
+            // 先认内容进程与 exe 匹配的宿主（可复用已存在的 frame），
+            // 再退化为“新出现的 ApplicationFrameWindow 窗口”。
+            WindowInfo? byUwp = candidates
+                .Where(item => item.ClassName.Contains(
+                    "ApplicationFrame", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(item => item.Area)
+                .FirstOrDefault();
+
+            if (byUwp is not null)
+            {
+                (contentPid, contentPath) = ResolveUwpContentProcess(byUwp.Hwnd);
+                Thread.Sleep(300);
+                return WindowManager.FromHandle(byUwp.Hwnd) ?? byUwp;
+            }
+
             Thread.Sleep(100);
         }
 
+        // 超时前再做一次 UIA 探测：UWP 内容进程没有独立 HWND，
+        // 只能从 frame 的语义树里找 ProcessId。
+        UwpWindow? uwp = FindUwpWindowByUia(exeName);
+
+        if (uwp is not null)
+        {
+            contentPid = uwp.ContentPid;
+            contentPath = uwp.ContentPath;
+            return uwp.Window;
+        }
+
         return null;
+    }
+
+    private sealed record UwpWindow(WindowInfo Window, int ContentPid, string ContentPath);
+
+    /// <summary>
+    /// UWP 的顶层是 ApplicationFrameWindow，内容进程（CalculatorApp 等）没有独立 HWND。
+    /// 用 UIA 树里的 ProcessId 反查 exe，避免把别的 UWP 窗口当成目标。
+    /// </summary>
+    private UwpWindow? FindUwpWindowByUia(string exeName)
+    {
+        if (string.IsNullOrWhiteSpace(exeName))
+        {
+            return null;
+        }
+
+        foreach (WindowInfo candidate in WindowManager.ListTopLevel())
+        {
+            if (!candidate.Visible || !IsApplicationFrame(candidate.Hwnd))
+            {
+                continue;
+            }
+
+            (int pid, string path) = ResolveUwpContentProcess(candidate.Hwnd);
+
+            if (pid > 0 &&
+                Path.GetFileNameWithoutExtension(path)
+                    .Contains(exeName, StringComparison.OrdinalIgnoreCase))
+            {
+                return new UwpWindow(candidate, pid, path);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>pid 接管时 UWP 内容进程没有顶层窗口，反查承载它的 frame。</summary>
+    private WindowInfo? FindUwpFrameForProcess(int pid)
+    {
+        foreach (WindowInfo candidate in WindowManager.ListTopLevel())
+        {
+            if (!candidate.Visible || !IsApplicationFrame(candidate.Hwnd))
+            {
+                continue;
+            }
+
+            (int contentPid, _) = ResolveUwpContentProcess(candidate.Hwnd);
+
+            if (contentPid == pid)
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsApplicationFrame(IntPtr hwnd)
+    {
+        var className = new StringBuilder(256);
+        _ = NativeMethods.GetClassNameW(hwnd, className, className.Capacity);
+        return className.ToString().Contains("ApplicationFrame", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>从 frame 的 UIA 树里找非 frame-host 的内容进程。</summary>
+    private (int Pid, string Path) ResolveUwpContentProcess(IntPtr frameHwnd)
+    {
+        if (frameHwnd == IntPtr.Zero || !IsApplicationFrame(frameHwnd))
+        {
+            return (0, string.Empty);
+        }
+
+        UiaTreeResult tree = Uia.BuildTree(
+            frameHwnd,
+            rootRuntimeId: string.Empty,
+            maxDepth: 4,
+            interactiveOnly: false,
+            maxNodes: 300,
+            timeBudgetMs: 1200,
+            isCancelled: () => false);
+
+        if (tree.Root is null)
+        {
+            return (0, string.Empty);
+        }
+
+        var processIds = new HashSet<int>();
+        CollectProcessIds(tree.Root, processIds);
+        int framePid = WindowManager.GetProcessId(frameHwnd);
+
+        foreach (int pid in processIds)
+        {
+            if (pid == framePid)
+            {
+                continue;
+            }
+
+            string path = WindowManager.GetProcessPath(pid);
+
+            if (!string.IsNullOrEmpty(path))
+            {
+                return (pid, path);
+            }
+        }
+
+        return (0, string.Empty);
+    }
+
+    private static void CollectProcessIds(UiaTreeNode node, HashSet<int> processIds)
+    {
+        processIds.Add(node.Info.ProcessId);
+
+        foreach (UiaTreeNode child in node.Children)
+        {
+            CollectProcessIds(child, processIds);
+        }
     }
 
     private static string GetProcessName(int pid)
@@ -705,9 +934,9 @@ internal sealed partial class SessionManager
                 lastArea = next.Area;
                 stable = 0;
                 smallWindow = displayArea > 0 && window.Area < displayArea * 0.50;
+                // 不记录标题：可能含文档名/客户名。
                 _log.Info(
-                    $"窗口更新: hwnd=0x{window.Hwnd.ToInt64():X} area={window.Area} " +
-                    $"title=\"{window.Title}\" small={smallWindow}");
+                    $"窗口更新: hwnd=0x{window.Hwnd.ToInt64():X} area={window.Area} small={smallWindow}");
                 continue;
             }
 
@@ -724,9 +953,7 @@ internal sealed partial class SessionManager
             .OrderByDescending(item => item.Area)
             .FirstOrDefault() ?? window;
 
-        _log.Info(
-            $"等待窗口稳定结束: hwnd=0x{final.Hwnd.ToInt64():X} area={final.Area} " +
-            $"title=\"{final.Title}\"");
+        _log.Info($"等待窗口稳定结束: hwnd=0x{final.Hwnd.ToInt64():X} area={final.Area}");
 
         return final;
     }

@@ -1,0 +1,19 @@
+{
+  "t": 1794718148.711,
+  "pid": 6340,
+  "rss_mb": 6.71,
+  "handles": 586,
+  "cursor": {
+    "x": 960,
+    "y": 720
+  },
+  "foreground": "计算器",
+  "monitors": 1,
+  "virtual_screen": {
+    "x": 0,
+    "y": 0,
+    "width": 1920,
+    "height": 1440
+  },
+  "binary_sha256": "CDD905C93180D89E941356558F31FC2B02B4DE8CB0FBD11065A2ED2CE3A367CD"
+}

@@ -1,0 +1,219 @@
+{
+  "cases": [
+    {
+      "id": "CCW-C1",
+      "purpose": "启动 CCW 并移动到虚拟屏",
+      "ok": true,
+      "code": "ok",
+      "data": {
+        "launched": true,
+        "new_instance": true,
+        "reused": false,
+        "maximized": true,
+        "close_on_release": true,
+        "hwnd": 1508714,
+        "pid": 1700,
+        "title": "Connected Components Workbench",
+        "document_ready": true,
+        "ensure_document": true,
+        "bounds": {
+          "x": 1913,
+          "y": -7,
+          "width": 1294,
+          "height": 734
+        }
+      },
+      "ms": 21434.16
+    },
+    {
+      "id": "CCW-C3",
+      "purpose": "主界面截图",
+      "ok": true,
+      "code": "ok",
+      "bytes": 53139,
+      "ms": 131.45
+    },
+    {
+      "id": "CCW-C4",
+      "purpose": "UIA 树深度与控件类型",
+      "ok": true,
+      "depths": {
+        "3": {
+          "nodes": 6,
+          "reported": 6,
+          "truncated": false,
+          "ms": 422.94,
+          "bytes": 1015,
+          "types": {
+            "Window": 1,
+            "Button": 2,
+            "Image": 1,
+            "Text": 1,
+            "TitleBar": 1
+          }
+        },
+        "5": {
+          "nodes": 6,
+          "reported": 6,
+          "truncated": false,
+          "ms": 52.13,
+          "bytes": 1014,
+          "types": {
+            "Window": 1,
+            "Button": 2,
+            "Image": 1,
+            "Text": 1,
+            "TitleBar": 1
+          }
+        },
+        "8": {
+          "nodes": 6,
+          "reported": 6,
+          "truncated": false,
+          "ms": 63.4,
+          "bytes": 1014,
+          "types": {
+            "Window": 1,
+            "Button": 2,
+            "Image": 1,
+            "Text": 1,
+            "TitleBar": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "CCW-C5",
+      "purpose": "关键控件语义定位",
+      "ok": false,
+      "finds": {
+        "new_project": {
+          "code": "E_ELEMENT_NOT_FOUND",
+          "data": {
+            "code": "E_ELEMENT_NOT_FOUND",
+            "message": "未找到匹配控件",
+            "details": {
+              "name": "新建项目",
+              "name_match": "contains",
+              "control_type": null,
+              "automation_id": null,
+              "role": null
+            }
+          }
+        },
+        "new_project_en": {
+          "code": "E_ELEMENT_NOT_FOUND",
+          "data": {
+            "code": "E_ELEMENT_NOT_FOUND",
+            "message": "未找到匹配控件",
+            "details": {
+              "name": "New Project",
+              "name_match": "contains",
+              "control_type": null,
+              "automation_id": null,
+              "role": null
+            }
+          }
+        },
+        "device": {
+          "code": "E_ELEMENT_NOT_FOUND",
+          "data": {
+            "code": "E_ELEMENT_NOT_FOUND",
+            "message": "未找到匹配控件",
+            "details": {
+              "name": "设备",
+              "name_match": "contains",
+              "control_type": null,
+              "automation_id": null,
+              "role": null
+            }
+          }
+        },
+        "programs": {
+          "code": "E_ELEMENT_NOT_FOUND",
+          "data": {
+            "code": "E_ELEMENT_NOT_FOUND",
+            "message": "未找到匹配控件",
+            "details": {
+              "name": "程序",
+              "name_match": "contains",
+              "control_type": null,
+              "automation_id": null,
+              "role": null
+            }
+          }
+        },
+        "build": {
+          "code": "E_ELEMENT_NOT_FOUND",
+          "data": {
+            "code": "E_ELEMENT_NOT_FOUND",
+            "message": "未找到匹配控件",
+            "details": {
+              "name": "生成",
+              "name_match": "contains",
+              "control_type": null,
+              "automation_id": null,
+              "role": null
+            }
+          }
+        },
+        "build_en": {
+          "code": "E_ELEMENT_NOT_FOUND",
+          "data": {
+            "code": "E_ELEMENT_NOT_FOUND",
+            "message": "未找到匹配控件",
+            "details": {
+              "name": "Build",
+              "name_match": "contains",
+              "control_type": null,
+              "automation_id": null,
+              "role": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CCW-C7",
+      "purpose": "消息/输入/键盘通道探测",
+      "ok": true,
+      "message": "ok",
+      "input": "ok",
+      "keys": "ok",
+      "shot": true
+    },
+    {
+      "id": "CCW-C11",
+      "purpose": "释放与残留",
+      "ok": true,
+      "released": {
+        "released": true,
+        "display_removed": true,
+        "display_kept": false,
+        "on_dirty": "discard",
+        "restored_pids": [],
+        "closed_pids": [
+          1700
+        ],
+        "forced_pids": [],
+        "kept_pids": [],
+        "saved_pids": [],
+        "discarded_pids": [],
+        "memory": {
+          "before_mb": 68.3,
+          "after_gc_mb": 61.3,
+          "after_mb": 0.8,
+          "trimmed": true,
+          "emptied": true
+        },
+        "warnings": []
+      },
+      "ms": 548.65
+    }
+  ],
+  "pid": 1700,
+  "origin": {
+    "x": 1920,
+    "y": 0
+  }
+}

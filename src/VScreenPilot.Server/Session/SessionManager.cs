@@ -14,6 +14,9 @@ internal sealed class TrackedApp
 {
     public int Pid { get; set; }
     public string ExePath { get; init; } = string.Empty;
+    /// <summary>UWP 内容进程；普通应用为 0。关闭/杀进程必须用它，不能杀 frame host。</summary>
+    public int ContentPid { get; set; }
+    public string ContentExePath { get; set; } = string.Empty;
     public IntPtr Hwnd { get; set; }
     public string Title { get; set; } = string.Empty;
     public bool StartedProcess { get; init; }
@@ -54,6 +57,10 @@ internal sealed partial class SessionManager : IDisposable
     }
 
     private readonly object _gate = new();
+
+    // 只读观察与 release 的读写闸：release 摘屏/清应用时先等观察者排空。
+    private readonly ReaderWriterLockSlim _sessionLock =
+        new(LockRecursionPolicy.NoRecursion);
     private readonly LogRing _log;
     private readonly StateStore _stateStore;
     private readonly JobObject _job;
@@ -71,12 +78,16 @@ internal sealed partial class SessionManager : IDisposable
     private readonly object _frameLock = new();
     private long _nextFrameId;
     // 按区域保留更多基线，避免只截另一区域就把当前区域基线挤掉。
-    private const int MaxFrames = 16;
+    private const int MaxFrames = 8;
     private readonly HashSet<int> _uiaBlockedPids = new();
+    private bool _jobUnavailableLogged;
 
     private UiaService? _uia;
+    private readonly List<UiaService> _retiredUia = new();
     private CursorGuard? _cursorGuard;
-    private CancellationTokenSource? _cancellationSource;
+    // 每调用一个异步流：并发工具不会互相清掉取消令牌（旧实现是单个字段）。
+    private readonly AsyncLocal<CancellationTokenSource?> _cancellation = new();
+    private long _epoch;
     private long _lastGeometryCheckTicks;
     private bool _selfHealed;
     private int _selfHealCount;
@@ -97,7 +108,22 @@ internal sealed partial class SessionManager : IDisposable
     private long _nextFocusRestoreTicks;
     private long _focusGuardResumeAtTicks;
 
-    private UiaService Uia => _uia ??= new UiaService();
+    private UiaService Uia
+    {
+        get
+        {
+            UiaService? current = _uia;
+
+            if (current is not null)
+            {
+                return current;
+            }
+
+            var created = new UiaService();
+            UiaService? existing = Interlocked.CompareExchange(ref _uia, created, null);
+            return existing ?? created;
+        }
+    }
 
     /// <summary>
     /// 放弃当前 UIA 服务并换新实例。只在 UIA 调用超时/疑似卡死时调用：
@@ -106,9 +132,24 @@ internal sealed partial class SessionManager : IDisposable
     public void ResetUia()
     {
         UiaService? old = Interlocked.Exchange(ref _uia, null);
-        if (old is not null)
+
+        if (old is null)
         {
-            _log.Warn("UIA 服务疑似卡死，已切换到新实例（旧实例留给后台线程自行结束）");
+            return;
+        }
+
+        _log.Warn("UIA 服务疑似卡死，已切换到新实例（旧实例后台释放）");
+
+        // 不在 Reset 时立刻 Dispose：卡死实例可能仍有线程在 COM 调用里，
+        // 从另一线程释放 RCW 有 use-after-free 风险。只做有界退休，会话结束时统一释放。
+        lock (_retiredUia)
+        {
+            _retiredUia.Add(old);
+
+            while (_retiredUia.Count > 4)
+            {
+                _retiredUia.RemoveAt(0);
+            }
         }
     }
 
@@ -117,7 +158,7 @@ internal sealed partial class SessionManager : IDisposable
     {
         get
         {
-            CancellationTokenSource? source = _cancellationSource;
+            CancellationTokenSource? source = _cancellation.Value;
             if (source is null)
             {
                 return CancellationToken.None;
@@ -134,7 +175,51 @@ internal sealed partial class SessionManager : IDisposable
         }
     }
 
-    public void SetCancellation(CancellationTokenSource? source) => _cancellationSource = source;
+    public void SetCancellation(CancellationTokenSource? source) => _cancellation.Value = source;
+
+    /// <summary>会话代际：release_environment 之后递增，旧 handler 的结果会被丢弃。</summary>
+    public long Epoch => Interlocked.Read(ref _epoch);
+
+    public void EnterRead() => _sessionLock.EnterReadLock();
+
+    public void ExitRead()
+    {
+        if (_sessionLock.IsReadLockHeld)
+        {
+            _sessionLock.ExitReadLock();
+        }
+    }
+
+    public bool TryEnterExclusive(int milliseconds) =>
+        _sessionLock.TryEnterWriteLock(Math.Max(0, milliseconds));
+
+    public void ExitExclusive()
+    {
+        if (_sessionLock.IsWriteLockHeld)
+        {
+            _sessionLock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>多会话 profile 名（--profile / VSP_PROFILE）；默认 default。</summary>
+    public string ProfileName { get; } = Profile.Resolve();
+
+    private string? _artifactDirectory;
+
+    /// <summary>大截图/快照的落盘目录；通过 vsp://artifacts/ 资源 URI 暴露。</summary>
+    public string ArtifactDirectory => _artifactDirectory ??= CreateArtifactDirectory();
+
+    private string CreateArtifactDirectory()
+    {
+        string root = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "VScreenPilot",
+            "artifacts",
+            ProfileName,
+            $"{DateTime.Now:yyyyMMdd-HHmmss}-{Environment.ProcessId}");
+        Directory.CreateDirectory(root);
+        return root;
+    }
 
     public SessionManager(
         LogRing log, StateStore stateStore, JobObject job, bool allowScript = false)
@@ -169,7 +254,7 @@ internal sealed partial class SessionManager : IDisposable
             return false;
         }
 
-        NativeMethods.GetWindowThreadProcessId(app.Hwnd, out uint ownerPid);
+        _ = NativeMethods.GetWindowThreadProcessId(app.Hwnd, out uint ownerPid);
         return ownerPid == (uint)app.Pid;
     }
 
@@ -239,7 +324,7 @@ internal sealed partial class SessionManager : IDisposable
         }
 
         _log.Warn(
-            $"应用 pid={app.Pid} 已退出，按 exe 重定位到 pid={candidate.Pid} \"{candidate.Title}\"");
+            $"应用 pid={app.Pid} 已退出，按 exe 重定位到 pid={candidate.Pid}");
         app.Pid = candidate.Pid;
         app.Hwnd = candidate.Hwnd;
         app.Title = candidate.Title;
@@ -259,6 +344,19 @@ internal sealed partial class SessionManager : IDisposable
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// 读路径的快速入口：已挂载就直接返回，不拿 _gate，也不重算拓扑。
+    /// 真正失效时再回落到 EnsureEnvironment 自愈。
+    /// </summary>
+    public DisplayInfo EnsureEnvironmentFast()
+    {
+        DisplayInfo? display = _virtualDisplay;
+
+        return display is { Attached: true } && _vdd.IsOpen
+            ? display
+            : EnsureEnvironment();
     }
 
     /// <summary>按需构造虚拟屏；幂等，必要时自愈。</summary>
@@ -580,9 +678,71 @@ internal sealed partial class SessionManager : IDisposable
     private (int X, int Y) ExpectedPosition()
     {
         DisplayInfo? primary = DisplayTopology.FindPrimary();
-        return primary is null
-            ? (_virtualDisplay?.X ?? 0, _virtualDisplay?.Y ?? 0)
-            : (primary.X + primary.Width, primary.Y);
+
+        if (primary is null)
+        {
+            return (_virtualDisplay?.X ?? 0, _virtualDisplay?.Y ?? 0);
+        }
+
+        // 多 profile 不能都放在主屏右侧同一点：默认 profile 偏移 0，
+        // 其他 profile 用稳定哈希取 1..7 个屏宽，避免互相覆盖。
+        int offset = DisplayOffset();
+
+        return (primary.X + primary.Width + offset, primary.Y);
+    }
+
+    private int DisplayOffset()
+    {
+        string? raw = Environment.GetEnvironmentVariable("VSP_DISPLAY_OFFSET");
+
+        if (int.TryParse(raw, out int configured))
+        {
+            return Math.Clamp(configured, 0, 20000);
+        }
+
+        // 选择“第一个真正空闲的槽位”，避免第 8 个 profile 与前面的重叠。
+        // 计算时排除本会话自己的 Parsec 屏，否则每次启动都会把上次的位置当成占用而漂移。
+        DisplayInfo? own = DisplayTopology.FindParsecDisplay();
+        var occupied = new HashSet<int>();
+
+        foreach (DisplayInfo display in DisplayTopology.List())
+        {
+            if (own is not null &&
+                string.Equals(display.DeviceName, own.DeviceName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            occupied.Add(display.X);
+        }
+
+        DisplayInfo? primary = DisplayTopology.FindPrimary();
+        int originX = primary is null ? 0 : primary.X + primary.Width;
+        int preferredSlot = 0;
+
+        if (!string.Equals(ProfileName, "default", StringComparison.Ordinal))
+        {
+            int hash = 17;
+
+            foreach (char ch in ProfileName)
+            {
+                hash = unchecked(hash * 31 + ch) & 0x7FFFFFFF;
+            }
+
+            preferredSlot = hash % 8;
+        }
+
+        for (int step = 0; step < 8; step++)
+        {
+            int slot = (preferredSlot + step) % 8;
+
+            if (!occupied.Contains(originX + slot * VirtualWidth))
+            {
+                return slot * VirtualWidth;
+            }
+        }
+
+        return preferredSlot * VirtualWidth;
     }
 
     private bool TryActivateDisplay(string deviceName, out string? failure)
@@ -634,11 +794,19 @@ internal sealed partial class SessionManager : IDisposable
         int? focusedPid = null;
         JsonObject result;
 
+        // 锁外做可能慢的驱动/显示枚举：launch/release 持 _gate 时 get_environment 不应被拖住。
+        string driverStatus = VddDevice.QueryStatus().ToString();
+        DisplayInfo? parsecDisplay = DisplayTopology.FindParsecDisplay();
+        (int vx, int vy, int vw, int vh) virtualBounds = DisplayTopology.VirtualScreenBounds();
+        DisplayInfo? primaryDisplay = DisplayTopology.FindPrimary();
+        int monitorCount = GetMonitorCount();
+        IntPtr foregroundWindow = WindowManager.GetForegroundWindow();
+
         lock (_gate)
         {
             var driver = new JsonObject
             {
-                ["status"] = VddDevice.QueryStatus().ToString(),
+                ["status"] = driverStatus,
             };
 
             if (_vdd.IsOpen)
@@ -669,6 +837,9 @@ internal sealed partial class SessionManager : IDisposable
                 ["input_desktop"] = IsInputDesktopAvailable(),
                 ["elevated"] = IsElevatedSession(),
                 ["isolation"] = "shared_desktop",
+                ["profile"] = ProfileName,
+                ["epoch"] = Epoch,
+                ["job_object"] = _job.Status,
             };
 
             try
@@ -683,7 +854,7 @@ internal sealed partial class SessionManager : IDisposable
             }
 
             var virtualDisplay = new JsonObject();
-            DisplayInfo? display = DisplayTopology.FindParsecDisplay();
+            DisplayInfo? display = parsecDisplay;
             if (display is null)
             {
                 virtualDisplay["enabled"] = false;
@@ -715,17 +886,17 @@ internal sealed partial class SessionManager : IDisposable
                 virtualDisplay["lifetime"] = "host_session";
             }
 
-            (int vx, int vy, int vw, int vh) = DisplayTopology.VirtualScreenBounds();
+            (int vx, int vy, int vw, int vh) = virtualBounds;
             var virtualScreen = new JsonObject
             {
                 ["x"] = vx,
                 ["y"] = vy,
                 ["width"] = vw,
                 ["height"] = vh,
-                ["monitors"] = GetMonitorCount(),
+                ["monitors"] = monitorCount,
             };
 
-            DisplayInfo? primary = DisplayTopology.FindPrimary();
+            DisplayInfo? primary = primaryDisplay;
             var primaryJson = primary is null
                 ? new JsonObject()
                 : new JsonObject
@@ -738,13 +909,13 @@ internal sealed partial class SessionManager : IDisposable
                     ["dpi"] = primary.Dpi,
                 };
 
-            IntPtr foreground = WindowManager.GetForegroundWindow();
+            IntPtr foreground = foregroundWindow;
             var foregroundJson = new JsonObject();
             TrackedApp? foregroundApp = null;
 
             if (foreground != IntPtr.Zero)
             {
-                NativeMethods.GetWindowThreadProcessId(foreground, out uint foregroundPid);
+                _ = NativeMethods.GetWindowThreadProcessId(foreground, out uint foregroundPid);
                 foregroundApp = _apps.FirstOrDefault(
                     app => app.Pid == (int)foregroundPid && IsLiveTrackedApp(app));
 
@@ -824,6 +995,9 @@ internal sealed partial class SessionManager : IDisposable
 
     public JsonObject ReleaseEnvironment(bool keepDisplay, string onDirty = "force")
     {
+        // 先推进代际：在途 handler 即便卡在 UIA 里，结果也不会再被当真。
+        Interlocked.Increment(ref _epoch);
+
         lock (_gate)
         {
             var closed = new List<int>();
@@ -948,6 +1122,8 @@ internal sealed partial class SessionManager : IDisposable
                 ResumeFocusGuard();
 
                 _apps.Clear();
+                // 注意：这里已持 _gate；不要再拿 _refGate（Ref 路径的锁顺序是 _refGate -> _gate）。
+                // MCP 层用 session 读写锁保证 release 不与 find/tree 并发。
                 _elements.Clear();
                 _elementKeys.Clear();
 
@@ -1017,6 +1193,12 @@ internal sealed partial class SessionManager : IDisposable
     {
         warning = null;
 
+        // UWP 的 Pid/ExePath 是共享的 ApplicationFrameHost；
+        // 必须按内容进程关闭/杀，绝不能强杀 frame host。
+        bool uwp = app.ContentPid > 0;
+        int closePid = uwp ? app.ContentPid : app.Pid;
+        string closePath = uwp ? app.ContentExePath : app.ExePath;
+
         if (policy == "abort")
         {
             return "kept";
@@ -1024,10 +1206,13 @@ internal sealed partial class SessionManager : IDisposable
 
         if (policy is "save" or "discard")
         {
-            // Office/Chromium 常忽略 WM_CLOSE；直接触发窗口自身的关闭按钮。
-            if (!InvokeWindowCloseButton(app.Hwnd))
+            // 先走标准 WM_CLOSE：它等价于用户点标题栏 X，不会误点文档/标签页的关闭按钮。
+            // 只有窗口忽略 WM_CLOSE 时，才退化为 UIA 查找关闭按钮。
+            NativeMethods.PostMessageW(app.Hwnd, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero);
+
+            if (!WaitForWindowClosed(app.Hwnd, 500))
             {
-                NativeMethods.PostMessageW(app.Hwnd, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero);
+                InvokeWindowCloseButton(app.Hwnd);
             }
 
             WaitForWindowClosed(app.Hwnd, 500);
@@ -1080,8 +1265,14 @@ internal sealed partial class SessionManager : IDisposable
             if (app.DedicatedProcess ||
                 (app.StartedProcess && !HasOtherWindows(app.Pid, app.Hwnd)))
             {
-                KillProcessTreeIfMatches(app.Pid, app.ExePath);
-                WaitForProcessExit(app.Pid, 2000);
+                if (uwp && string.IsNullOrEmpty(closePath))
+                {
+                    warning = "UWP 内容进程路径不可用，拒绝强杀共享 frame host";
+                    return "kept";
+                }
+
+                KillProcessTreeIfMatches(closePid, closePath);
+                WaitForProcessExit(closePid, 2000);
                 return "forced";
             }
 
@@ -1089,10 +1280,10 @@ internal sealed partial class SessionManager : IDisposable
             return "kept";
         }
 
-        if (app.DedicatedProcess && IsProcessAlive(app.Pid))
+        if (app.DedicatedProcess && IsProcessAlive(closePid))
         {
             // 窗口已关闭但进程常驻（Office/Edge 常见）；保持原有兜底。
-            KillProcessTree(app.Pid);
+            KillProcessTreeIfMatches(closePid, closePath);
             return "forced";
         }
 
@@ -1119,7 +1310,7 @@ internal sealed partial class SessionManager : IDisposable
 
                 if (InvokeDialogButton(candidate.Hwnd, save))
                 {
-                    _log.Info($"已处理保存对话框: {candidate.Title}");
+                    _log.Info($"已处理保存对话框: class={candidate.ClassName}");
                     return true;
                 }
             }
@@ -1202,7 +1393,16 @@ internal sealed partial class SessionManager : IDisposable
             List<UiaElementInfo> buttons = Uia.FindElements(
                 dialogHwnd, null, UiaNameMatch.Contains, "Button", null, 30);
 
-            UiaElementInfo? target = buttons.FirstOrDefault(item =>
+            // 先按 Win32 对话框按钮 ID（是/否/取消 = 6/7/2）识别，避免只支持中英文；
+            // 文本匹配只作为兜底。
+            string[] preferredIds = save
+                ? new[] { "6", "1" }
+                : new[] { "7", "2" };
+
+            UiaElementInfo? target = buttons.FirstOrDefault(
+                item => preferredIds.Contains(item.AutomationId, StringComparer.OrdinalIgnoreCase));
+
+            target ??= buttons.FirstOrDefault(item =>
             {
                 string name = item.Name ?? string.Empty;
 
@@ -1313,9 +1513,20 @@ internal sealed partial class SessionManager : IDisposable
     }
 
     /// <summary>仅在 PID 仍对应记录的 exe 时才杀进程树，避免 PID 复用误杀。</summary>
+    private static readonly HashSet<string> ProtectedSystemProcesses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "applicationframehost", "explorer", "dwm", "sihost", "shellexperiencehost",
+        "startmenuexperiencehost", "textinputhost", "searchhost", "taskhostw", "runtimebroker",
+    };
+
     private static void KillProcessTreeIfMatches(int pid, string expectedPath)
     {
         if (string.IsNullOrEmpty(expectedPath))
+        {
+            return;
+        }
+
+        if (ProtectedSystemProcesses.Contains(Path.GetFileNameWithoutExtension(expectedPath)))
         {
             return;
         }
@@ -1468,7 +1679,7 @@ internal sealed partial class SessionManager : IDisposable
             }
 
             // 句柄可能已被系统复用：必须确认仍属于记录中的进程。
-            NativeMethods.GetWindowThreadProcessId(hwnd, out uint ownerPid);
+            _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint ownerPid);
             if (ownerPid != (uint)app.Pid)
             {
                 _log.Warn($"崩溃恢复跳过已复用的窗口句柄 0x{app.Hwnd:X} (pid={app.Pid})");
@@ -1493,7 +1704,7 @@ internal sealed partial class SessionManager : IDisposable
 
             if (WindowManager.SetPlacement(hwnd, placement))
             {
-                _log.Info($"崩溃恢复: 已还原窗口 {app.Title} (pid={app.Pid})");
+                _log.Info($"崩溃恢复: 已还原窗口 (pid={app.Pid})");
             }
         }
 
@@ -1637,13 +1848,55 @@ internal sealed partial class SessionManager : IDisposable
 
         StopFocusGuard();
 
+        // 清理不能无限等：如果某个 handler 卡在 UIA COM 里并持有 _gate，
+        // 直接 Dispose 会让宿主退出永久挂起。给 3s 预算，超时就做最小清理。
+        Task cleanup = Task.Run(() =>
+        {
+            try
+            {
+                ReleaseEnvironment(keepDisplay: false);
+            }
+            catch (Exception exception)
+            {
+                _log.Error("释放环境失败", exception);
+            }
+        });
+
+        if (!cleanup.Wait(TimeSpan.FromSeconds(3)))
+        {
+            _log.Warn("清理超过 3s 未完成，执行最小清理并退出");
+
+            try
+            {
+                if (_displayIndex >= 0)
+                {
+                    _vdd.RemoveDisplay(_displayIndex);
+                }
+            }
+            catch (Exception exception)
+            {
+                _log.Warn($"强制摘屏失败: {exception.Message}");
+            }
+        }
+
+        // 会话结束时统一释放 UIA COM 引用（当前 + 退休实例）。
         try
         {
-            ReleaseEnvironment(keepDisplay: false);
+            Interlocked.Exchange(ref _uia, null)?.Dispose();
+
+            lock (_retiredUia)
+            {
+                foreach (UiaService retired in _retiredUia)
+                {
+                    retired.Dispose();
+                }
+
+                _retiredUia.Clear();
+            }
         }
-        catch (Exception exception)
+        catch
         {
-            _log.Error("释放环境失败", exception);
+            // 退出路径上的释放失败不影响进程结束。
         }
 
         _job.Dispose();

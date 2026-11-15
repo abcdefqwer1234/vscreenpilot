@@ -83,10 +83,12 @@ internal sealed partial class SessionManager
         };
 
         List<(UiaElementInfo Info, IntPtr Hwnd)> candidates;
+        bool findTruncated;
 
         try
         {
-            candidates = FindAcrossAppWindows(hwnd, name, mode, controlType, automationId, limit);
+            (candidates, findTruncated) =
+                FindAcrossAppWindows(hwnd, name, mode, controlType, automationId, limit);
         }
         catch (RegexMatchTimeoutException)
         {
@@ -102,6 +104,39 @@ internal sealed partial class SessionManager
         if (!includeOffscreen)
         {
             matches = matches.Where(item => !item.Offscreen && item.Width > 0 && item.Height > 0).ToList();
+        }
+
+        // UIA 完全看不到时走 MSAA（Office 旧对话框、bosa_sdm_msword 等）。
+        if (matches.Count == 0)
+        {
+            var fallback = new List<(UiaElementInfo Info, IntPtr Hwnd)>();
+            int pidForMsaa = WindowManager.GetProcessId(hwnd);
+
+            foreach (WindowInfo window in WindowManager.ListForProcess(pidForMsaa))
+            {
+                MsaaFindResult msaa = MsaaService.FindElements(
+                    window.Hwnd, name, mode, controlType, limit);
+                fallback.AddRange(msaa.Items.Select(info => (info, window.Hwnd)));
+                findTruncated |= msaa.Truncated;
+
+                if (fallback.Count >= limit)
+                {
+                    break;
+                }
+            }
+
+            if (!includeOffscreen)
+            {
+                fallback = fallback
+                    .Where(item => !item.Info.Offscreen && item.Info.Width > 0 && item.Info.Height > 0)
+                    .ToList();
+            }
+
+            if (fallback.Count > 0)
+            {
+                candidates = fallback;
+                matches = fallback.Select(item => item.Info).ToList();
+            }
         }
 
         if (matches.Count == 0)
@@ -126,6 +161,9 @@ internal sealed partial class SessionManager
                 ? found
                 : hwnd;
 
+        // find_element 属于“当前快照”：不推进代际，避免让刚拿到的 ref 立刻失效。
+        string snapshotId = EnsureSnapshot();
+
         if (all)
         {
             var elements = new JsonArray();
@@ -140,9 +178,12 @@ internal sealed partial class SessionManager
             return new JsonObject
             {
                 ["count"] = elements.Count,
+                ["total"] = matches.Count,
+                ["truncated"] = findTruncated || matches.Count > maxResults,
                 ["name_match"] = nameMatch,
                 ["role"] = role,
                 ["prefer"] = preferMode,
+                ["snapshot_id"] = snapshotId,
                 ["elements"] = elements,
             };
         }
@@ -163,6 +204,8 @@ internal sealed partial class SessionManager
         result["prefer"] = preferMode;
         result["index"] = index;
         result["count"] = matches.Count;
+        result["truncated"] = findTruncated;
+        result["snapshot_id"] = snapshotId;
         return result;
     }
 
@@ -170,7 +213,7 @@ internal sealed partial class SessionManager
     /// 在同一进程的主窗口与所有顶层弹窗（含模态对话框）里查找控件。
     /// 只查主窗口会把 MessageBox / 保存框等真实场景漏掉。
     /// </summary>
-    private List<(UiaElementInfo Info, IntPtr Hwnd)> FindAcrossAppWindows(
+    private (List<(UiaElementInfo Info, IntPtr Hwnd)> Items, bool Truncated) FindAcrossAppWindows(
         IntPtr mainHwnd,
         string? name,
         UiaNameMatch mode,
@@ -181,6 +224,7 @@ internal sealed partial class SessionManager
         var result = new List<(UiaElementInfo Info, IntPtr Hwnd)>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var windows = new List<IntPtr> { mainHwnd };
+        bool truncated = false;
 
         foreach (WindowInfo window in WindowManager.ListForProcess(WindowManager.GetProcessId(mainHwnd)))
         {
@@ -197,6 +241,17 @@ internal sealed partial class SessionManager
             try
             {
                 found = Uia.FindElements(window, name, mode, controlType, automationId, limit);
+                truncated |= Uia.LastFindTruncated;
+
+                // 单个窗口 UIA 完全不可见时，就地回退 MSAA。
+                // 不能等全局 0 结果再回退：主窗口有控件会掩盖掉 bosa_sdm_msword 对话框。
+                if (found.Count == 0)
+                {
+                    MsaaFindResult msaa = MsaaService.FindElements(
+                        window, name, mode, controlType, limit);
+                    found = msaa.Items;
+                    truncated |= msaa.Truncated;
+                }
             }
             catch (COMException)
             {
@@ -216,7 +271,7 @@ internal sealed partial class SessionManager
             }
         }
 
-        return result;
+        return (result, truncated);
     }
 
     private static (string? ControlType, string? AutomationId) ApplyRole(
@@ -255,13 +310,30 @@ internal sealed partial class SessionManager
                 .ToList(),
         };
 
-    public JsonObject WaitFor(JsonElement condition, int timeoutMs)
+    public JsonObject WaitFor(JsonElement condition, int timeoutMs, int? intervalMs = null)
     {
-        DisplayInfo display = EnsureEnvironment();
+        DisplayInfo display = EnsureEnvironmentFast();
         timeoutMs = Math.Clamp(timeoutMs, 0, 120_000);
+        int? requestedInterval = intervalMs is null ? null : Math.Clamp(intervalMs.Value, 50, 2000);
 
         var stopwatch = Stopwatch.StartNew();
-        JsonObject last = EvaluateCondition(condition, display);
+        // wait_for 可能持续 120s，不能整段持读锁把 release 挡死；
+        // 每次轮询取一次短读锁，release 最多等一次轮询。
+        JsonObject Evaluate()
+        {
+            EnterRead();
+
+            try
+            {
+                return EvaluateCondition(condition, display);
+            }
+            finally
+            {
+                ExitRead();
+            }
+        }
+
+        JsonObject last = Evaluate();
 
         while (!(last["satisfied"]?.GetValue<bool>() ?? false))
         {
@@ -280,7 +352,7 @@ internal sealed partial class SessionManager
             }
 
             // 只有短等待需要高频轮询；长时间等待逐步退避，避免持续占用 CPU/UIA。
-            int interval = stopwatch.ElapsedMilliseconds switch
+            int interval = requestedInterval ?? stopwatch.ElapsedMilliseconds switch
             {
                 < 2_000 => 100,
                 < 5_000 => 250,
@@ -302,7 +374,7 @@ internal sealed partial class SessionManager
                 throw new ToolException("E_CANCELLED", "请求已取消");
             }
 
-            last = EvaluateCondition(condition, display);
+            last = Evaluate();
         }
 
         bool satisfied = last["satisfied"]?.GetValue<bool>() ?? false;
@@ -317,8 +389,43 @@ internal sealed partial class SessionManager
 
     public JsonObject AssertRegion(JsonElement region, JsonElement expectation)
     {
-        DisplayInfo display = EnsureEnvironment();
+        DisplayInfo display = EnsureEnvironmentFast();
         (int x, int y, int width, int height) = ParseRegion(region);
+
+        if (width <= 0 || height <= 0 || x < int.MinValue + 1 || y < int.MinValue + 1)
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                "assert_region 的 region 必须包含正整数 width/height",
+                new JsonObject
+                {
+                    ["field"] = "region",
+                    ["x"] = x, ["y"] = y, ["width"] = width, ["height"] = height,
+                },
+                retryable: false,
+                hint: "传 {x,y,width,height}，width/height ≥ 1",
+                stage: "validate");
+        }
+
+        // expectation 至少要有一种断言，否则不要浪费一次截图。
+        bool hasExpectation =
+            (expectation.ValueKind == JsonValueKind.Object) &&
+            (expectation.TryGetProperty("color", out _) ||
+             expectation.TryGetProperty("changed", out _) ||
+             expectation.TryGetProperty("baseline", out _) ||
+             expectation.TryGetProperty("baseline_frame_id", out _));
+
+        if (!hasExpectation)
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                "assert_region 需要 expectation.color / expectation.changed / baseline",
+                new JsonObject { ["field"] = "expectation" },
+                retryable: false,
+                hint: "示例：{\"changed\":true,\"threshold\":0.01} 或 {\"color\":\"#RRGGBB\",\"coverage\":0.9}",
+                stage: "validate");
+        }
+
         RequireRegionInDisplay(display, x, y, width, height, "assert_region");
 
         (byte[] bgra, int capturedWidth, int capturedHeight) = CaptureRegion(x, y, width, height);
@@ -422,7 +529,7 @@ internal sealed partial class SessionManager
 
                 RequireRegionInDisplay(display, x, y, 1, 1, "color");
 
-                (byte[] pixel, _, _) = CaptureRegion(x, y, 1, 1);
+                byte[] pixel = Perception.ScreenCapture.CapturePixel(x, y);
                 int tolerance = GetInt(condition, "tolerance", 10);
                 bool satisfied = ColorMatches(pixel, 0, r, g, b, tolerance);
 
@@ -579,6 +686,28 @@ internal sealed partial class SessionManager
         int tolerance = GetInt(expectation, "tolerance", 10);
         double coverage = GetDouble(expectation, "coverage", 0.9);
 
+        if (tolerance is < 0 or > 255)
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"tolerance 必须在 0..255（收到 {tolerance}）",
+                new JsonObject { ["field"] = "tolerance", ["value"] = tolerance },
+                retryable: false,
+                hint: "颜色容差按 0..255 的每通道绝对差计算",
+                stage: "validate");
+        }
+
+        if (coverage is < 0 or > 1)
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"coverage 必须在 0..1（收到 {coverage}）",
+                new JsonObject { ["field"] = "coverage", ["value"] = coverage },
+                retryable: false,
+                hint: "coverage 是比例阈值；1.0 表示全部像素匹配",
+                stage: "validate");
+        }
+
         int total = width * height;
         int matched = 0;
         long sumR = 0, sumG = 0, sumB = 0;
@@ -619,9 +748,41 @@ internal sealed partial class SessionManager
         };
     }
 
+    private static void ValidateChangedExpectation(JsonElement expectation)
+    {
+        double threshold = GetDouble(expectation, "threshold", 0.01);
+        int tolerance = GetInt(expectation, "tolerance", 8);
+
+        if (threshold is < 0 or > 1)
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"threshold 必须在 0..1（收到 {threshold}）",
+                new JsonObject { ["field"] = "threshold", ["value"] = threshold },
+                retryable: false,
+                hint: "threshold 是变化像素比例；2.0 会恒假、-1 会恒真",
+                stage: "validate");
+        }
+
+        if (tolerance is < 0 or > 255)
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"tolerance 必须在 0..255（收到 {tolerance}）",
+                new JsonObject { ["field"] = "tolerance", ["value"] = tolerance },
+                retryable: false,
+                hint: "像素差容差按 0..255 计算",
+                stage: "validate");
+        }
+    }
+
     private JsonObject AssertChanged(
         byte[] bgra, int width, int height, bool expectChanged, JsonElement expectation, int x, int y)
     {
+        // 先校验阈值：非法阈值应在“找基线之前”就返回 E_INVALID_ARG，
+        // 否则会被 E_NO_BASELINE 掩盖（REG-08）。
+        ValidateChangedExpectation(expectation);
+
         FrameSnapshot? baseline = ResolveBaselineFrame(expectation, x, y, width, height);
 
         if (baseline is null)
@@ -672,7 +833,11 @@ internal sealed partial class SessionManager
             frameIdElement.ValueKind == JsonValueKind.String)
         {
             FrameSnapshot? frame = FindFrame(frameIdElement.GetString() ?? string.Empty);
+
+            // 显式 baseline 也必须校验区域，否则“同尺寸不同区域”会被静默拿来比较（SEC-09）。
             return frame is not null &&
+                   frame.X == x &&
+                   frame.Y == y &&
                    frame.Width == width &&
                    frame.Height == height
                 ? frame

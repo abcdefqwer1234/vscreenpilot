@@ -1,0 +1,65 @@
+{
+  "cases": [
+    {
+      "id": "DIA-01",
+      "purpose": "Word 保存对话框：存在但不在 UIA，type_text 落入正文",
+      "ok": false,
+      "dialog": null,
+      "in_uia": false,
+      "windows": [
+        "文档1 - Word"
+      ],
+      "typed": "ok",
+      "landed_in_document": false,
+      "before_len": 15,
+      "after_len": 15
+    },
+    {
+      "id": "DIA-02",
+      "purpose": "Word 查找替换：存在但不在 UIA，type_text 落入正文",
+      "ok": false,
+      "dialog": {
+        "hwnd": 787906,
+        "title": "查找和替换",
+        "class": "bosa_sdm_msword",
+        "owner": 1377478
+      },
+      "in_uia": false,
+      "windows": [
+        "查找和替换",
+        "文档1 - Word"
+      ],
+      "typed": "ok",
+      "landed_in_document": false,
+      "before_len": 15,
+      "after_len": 15
+    },
+    {
+      "id": "DIA-03",
+      "purpose": "Notepad 另存为：存在但不在 UIA，type_text 行为",
+      "ok": false,
+      "dialog": {
+        "hwnd": 918846,
+        "title": "另存为",
+        "class": "#32770",
+        "owner": 984414
+      },
+      "in_uia": true,
+      "windows": [
+        "另存为",
+        "*NOTEPAD-SEED - Notepad"
+      ],
+      "typed": "ok"
+    },
+    {
+      "id": "DIA-04",
+      "purpose": "受保护视图/只读：输入应失败或明确提示",
+      "ok": true,
+      "launch": "Word",
+      "typed": "ok",
+      "verified": false,
+      "message": "",
+      "shot": false
+    }
+  ]
+}

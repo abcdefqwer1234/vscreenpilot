@@ -16,6 +16,7 @@ npm/LICENSE
 # logs and local verification output
 *.log
 *.tgz
+__pycache__/
 m0-stress-*.csv
 
 # TestTool runtime output（脚本保留，产物不入库）

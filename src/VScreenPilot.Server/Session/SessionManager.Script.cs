@@ -23,14 +23,17 @@ internal sealed partial class SessionManager
             throw new ToolException("E_INVALID_ARG", "code 不能为空");
         }
 
+        EnsureScriptSafe(code);
         timeoutMs = Math.Clamp(timeoutMs, 1000, 120_000);
 
         string root = Path.Combine(
             Path.GetTempPath(), "VScreenPilot", "scripts", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         string scriptPath = Path.Combine(root, "script.ps1");
-        // Windows PowerShell 5.1 无 BOM 时按系统 ANSI 解码，中文脚本会乱码，必须写 BOM。
-        File.WriteAllText(scriptPath, code, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+        // Windows PowerShell 5.1 无 BOM 时按系统 ANSI 解码，中文脚本会乱码，必须写 BOM；
+        // 同时强制控制台输出为 UTF-8，否则重定向的 stdout 会按 GBK 输出后被按 UTF-8 解码。
+        string script = "$OutputEncoding = [Console]::OutputEncoding = [Text.Encoding]::UTF8\n" + code;
+        File.WriteAllText(scriptPath, script, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
         string powershell = Path.Combine(
             Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
@@ -57,6 +60,8 @@ internal sealed partial class SessionManager
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                StandardOutputEncoding = new UTF8Encoding(false),
+                StandardErrorEncoding = new UTF8Encoding(false),
             };
 
             using var process = new Process { StartInfo = startInfo };
@@ -149,8 +154,51 @@ internal sealed partial class SessionManager
             ["exit_code"] = timedOut ? -1 : exitCode,
             ["timed_out"] = timedOut,
             ["duration_ms"] = stopwatch.ElapsedMilliseconds,
+            ["policy"] = "blocklist",
+            // 明确告诉调用方：这不是安全沙箱，只是危险命令黑名单。
+            ["sandbox"] = false,
         };
     }
+
+    private static readonly string[] UnsafeScriptTokens =
+    {
+        "Invoke-WebRequest", "Invoke-RestMethod", "DownloadString", "DownloadFile",
+        "Start-Process", "Start-Job", "New-Service", "sc.exe", "schtasks", "bcdedit",
+        "reg add", "reg delete", "Format-Volume", "Clear-Disk", "Remove-Partition",
+        "Set-MpPreference", "Add-MpPreference", "Disable-WindowsOptionalFeature",
+        "Set-ExecutionPolicy", "New-LocalUser", "net user", "wmic", "bitsadmin",
+        "certutil", "Remove-Item -Recurse", "rm -r", "Add-Type", "Reflection.Assembly",
+    };
+
+    /// <summary>
+    /// run_script 默认关闭；启用后也只做危险命令黑名单 + 超时 + Job Object。
+    /// 这不是安全边界，需要真隔离请用 VM/容器；可用 VSP_ALLOW_UNSAFE_SCRIPT=1 显式绕过。
+    /// </summary>
+    private static void EnsureScriptSafe(string code)
+    {
+        if (IsTruthy(Environment.GetEnvironmentVariable("VSP_ALLOW_UNSAFE_SCRIPT")))
+        {
+            return;
+        }
+
+        foreach (string token in UnsafeScriptTokens)
+        {
+            if (code.Contains(token, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ToolException(
+                    "E_DISABLED",
+                    $"run_script 黑名单拒绝命令: {token}",
+                    new JsonObject { ["token"] = token },
+                    retryable: false,
+                    hint: "该能力不是沙箱；如确需执行，设置 VSP_ALLOW_UNSAFE_SCRIPT=1 并自行承担风险",
+                    stage: "script");
+            }
+        }
+    }
+
+    private static bool IsTruthy(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Trim().ToLowerInvariant() is "1" or "true" or "yes" or "on";
 
     private static string ReadTask(Task<string> task)
     {

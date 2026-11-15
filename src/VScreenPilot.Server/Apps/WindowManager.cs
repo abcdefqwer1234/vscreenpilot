@@ -26,7 +26,7 @@ internal static class WindowManager
     {
         var result = new List<WindowInfo>();
 
-        NativeMethods.EnumWindows((hwnd, _) =>
+        NativeMethods.EnumWindows((hwnd, lParam) =>
         {
             try
             {
@@ -37,11 +37,11 @@ internal static class WindowManager
 
                 string title = GetTitle(hwnd);
 
-                NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
+                _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
                 NativeMethods.GetWindowRect(hwnd, out var rect);
 
                 var className = new StringBuilder(256);
-                NativeMethods.GetClassNameW(hwnd, className, className.Capacity);
+                _ = NativeMethods.GetClassNameW(hwnd, className, className.Capacity);
 
                 bool owned = NativeMethods.GetWindow(hwnd, NativeMethods.GwOwner) != IntPtr.Zero;
 
@@ -86,7 +86,7 @@ internal static class WindowManager
     {
         var result = new List<WindowInfo>();
 
-        NativeMethods.EnumWindows((hwnd, _) =>
+        NativeMethods.EnumWindows((hwnd, lParam) =>
         {
             try
             {
@@ -129,7 +129,7 @@ internal static class WindowManager
         WindowInfo? bestAny = null;
         long titleArea = -1, unownedArea = -1, anyArea = -1;
 
-        NativeMethods.EnumWindows((hwnd, _) =>
+        NativeMethods.EnumWindows((hwnd, lParam) =>
         {
             try
             {
@@ -138,7 +138,7 @@ internal static class WindowManager
                     return true;
                 }
 
-                NativeMethods.GetWindowThreadProcessId(hwnd, out uint ownerPid);
+                _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint ownerPid);
                 if (ownerPid != (uint)pid)
                 {
                     return true;
@@ -182,10 +182,10 @@ internal static class WindowManager
 
     private static WindowInfo Describe(IntPtr hwnd, string title)
     {
-        NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
+        _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
         NativeMethods.GetWindowRect(hwnd, out var rect);
         var className = new StringBuilder(256);
-        NativeMethods.GetClassNameW(hwnd, className, className.Capacity);
+        _ = NativeMethods.GetClassNameW(hwnd, className, className.Capacity);
 
         return new WindowInfo(
             hwnd, (int)pid, title, className.ToString(), rect,
@@ -200,10 +200,10 @@ internal static class WindowManager
             return null;
         }
 
-        NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
+        _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
         NativeMethods.GetWindowRect(hwnd, out var rect);
         var className = new StringBuilder(256);
-        NativeMethods.GetClassNameW(hwnd, className, className.Capacity);
+        _ = NativeMethods.GetClassNameW(hwnd, className, className.Capacity);
 
         return new WindowInfo(
             hwnd, (int)pid, GetTitle(hwnd), className.ToString(), rect,
@@ -213,22 +213,20 @@ internal static class WindowManager
 
     public static string GetTitle(IntPtr hwnd)
     {
-        int length = NativeMethods.GetWindowTextLengthW(hwnd);
-        if (length <= 0)
-        {
-            return string.Empty;
-        }
+        // 不用 GetWindowTextW：目标线程挂起时会同步等 WM_GETTEXT。
+        var buffer = new StringBuilder(512);
+        IntPtr result = NativeMethods.SendMessageTimeoutW(
+            hwnd, NativeMethods.WmGetText, (IntPtr)buffer.Capacity, buffer,
+            NativeMethods.SmtoAbortIfHung, 120, out _);
 
-        var buffer = new StringBuilder(length + 1);
-        NativeMethods.GetWindowTextW(hwnd, buffer, buffer.Capacity);
-        return buffer.ToString();
+        return result == IntPtr.Zero ? string.Empty : buffer.ToString();
     }
 
     public static IntPtr GetForegroundWindow() => NativeMethods.GetForegroundWindow();
 
     public static int GetProcessId(IntPtr hwnd)
     {
-        NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
+        _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
         return (int)pid;
     }
 
@@ -237,6 +235,65 @@ internal static class WindowManager
 
     public static IReadOnlyList<WindowInfo> ListForProcess(int pid) =>
         ListTopLevel().Where(window => window.Pid == pid).ToList();
+
+    /// <summary>
+    /// 枚举属于该进程、且 owner 链指向主窗口的可见窗口。
+    /// 覆盖 Office 的 bosa_sdm_msword、经典 #32770 与 #32768 弹出菜单——
+    /// 这些窗口通常不在主窗口的 UIA 树里，但仍然是可操作的顶层窗口。
+    /// </summary>
+    public static IReadOnlyList<WindowInfo> ListOwnedWindows(int pid, IntPtr mainHwnd)
+    {
+        var result = new List<WindowInfo>();
+
+        NativeMethods.EnumWindows((hwnd, lParam) =>
+        {
+            try
+            {
+                if (hwnd == mainHwnd || !NativeMethods.IsWindowVisible(hwnd))
+                {
+                    return true;
+                }
+
+                _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint ownerPid);
+                if (ownerPid != (uint)pid)
+                {
+                    return true;
+                }
+
+                var className = new StringBuilder(256);
+                _ = NativeMethods.GetClassNameW(hwnd, className, className.Capacity);
+
+                bool owned = false;
+                IntPtr current = NativeMethods.GetWindow(hwnd, NativeMethods.GwOwner);
+
+                for (int depth = 0; depth < 8 && current != IntPtr.Zero; depth++)
+                {
+                    if (current == mainHwnd)
+                    {
+                        owned = true;
+                        break;
+                    }
+
+                    current = NativeMethods.GetWindow(current, NativeMethods.GwOwner);
+                }
+
+                bool popupMenu = className.ToString() == "#32768";
+
+                if (owned || popupMenu)
+                {
+                    result.Add(Describe(hwnd, GetTitle(hwnd)));
+                }
+            }
+            catch
+            {
+                // 单个窗口失败不影响枚举。
+            }
+
+            return true;
+        }, IntPtr.Zero);
+
+        return result;
+    }
 
     public static IntPtr GetActivePopup(IntPtr hwnd)
     {
@@ -271,6 +328,15 @@ internal static class WindowManager
             ? 0
             : NativeMethods.GetWindowThreadProcessId(foreground, out _);
         uint targetThread = NativeMethods.GetWindowThreadProcessId(hwnd, out _);
+
+        // 目标 UI 线程挂起时 AttachThreadInput 会把服务端一起拖死；
+        // 先用 WM_NULL + SMTO_ABORTIFHUNG 做 120ms 健康检查。
+        if (NativeMethods.SendMessageTimeoutW(
+                hwnd, NativeMethods.WmNull, IntPtr.Zero, IntPtr.Zero,
+                NativeMethods.SmtoAbortIfHung, 120, out _) == IntPtr.Zero)
+        {
+            return false;
+        }
 
         bool attachedForeground = false;
         bool attachedTarget = false;

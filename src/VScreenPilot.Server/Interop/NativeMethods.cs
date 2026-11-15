@@ -69,6 +69,10 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern IntPtr FindWindowExW(
+        IntPtr hWndParent, IntPtr hWndChildAfter, string? lpszClass, string? lpszWindow);
+
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
 
@@ -121,6 +125,62 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool ScreenToClient(IntPtr hWnd, ref POINT lpPoint);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
+
+    /// <summary>把物理屏幕坐标转换为目标 DPI-unaware 窗口使用的逻辑坐标。</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool PhysicalToLogicalPointForPerMonitorDPI(IntPtr hWnd, ref POINT lpPoint);
+
+    [DllImport("user32.dll")]
+    internal static extern uint GetDpiForWindow(IntPtr hWnd);
+
+    /// <summary>探测目标 UI 线程是否响应：AttachThreadInput 到挂起线程会把调用方一起拖住。</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern IntPtr SendMessageTimeoutW(
+        IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam, uint fuFlags, uint uTimeout,
+        out IntPtr lpdwResult);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern IntPtr SendMessageTimeoutW(
+        IntPtr hWnd, uint Msg, IntPtr wParam, StringBuilder lParam, uint fuFlags, uint uTimeout,
+        out IntPtr lpdwResult);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct GUITHREADINFO
+    {
+        public int cbSize;
+        public uint flags;
+        public IntPtr hwndActive;
+        public IntPtr hwndFocus;
+        public IntPtr hwndCapture;
+        public IntPtr hwndMenuOwner;
+        public IntPtr hwndMoveSize;
+        public IntPtr hwndCaret;
+        public RECT rcCaret;
+    }
+
+    internal const uint SmtoAbortIfHung = 0x0002;
+    internal const uint WmNull = 0x0000;
+    internal const uint WmGetText = 0x000D;
+
+    internal const uint GuiInMenuMode = 0x00000001;
+    internal const uint GuiInMoveSize = 0x00000004;
+    internal const uint GuiPopupMenuMode = 0x00000008;
+    internal const uint GuiSystemMenuMode = 0x00000010;
+
+    internal const uint WmNcLButtonDown = 0x00A1;
+    internal const uint WmNcLButtonUp = 0x00A2;
+    internal const uint WmLButtonDown = 0x0201;
+    internal const uint WmLButtonUp = 0x0202;
+    internal const uint WmNcHitTest = 0x0084;
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -215,6 +275,9 @@ internal static class NativeMethods
     internal const uint MouseWheel = 0x0800;
     internal const uint MouseHWheel = 0x1000;
     internal const uint MouseAbsolute = 0x8000;
+
+    /// <summary>绝对坐标映射到整个虚拟桌面；缺了它 Windows 只映射主屏（P0 输入缺陷）。</summary>
+    internal const uint MouseVirtualDesk = 0x4000;
 
     internal const uint KeyEventExtendedKey = 0x0001;
     internal const uint KeyEventKeyUp = 0x0002;

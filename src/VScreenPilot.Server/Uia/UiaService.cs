@@ -1,7 +1,10 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json.Nodes;
 using Interop.UIAutomationClient;
+using VScreenPilot.Interop;
+using VScreenPilot.Mcp;
 
 namespace VScreenPilot.Uia;
 
@@ -189,7 +192,7 @@ internal enum UiaInvokePattern
 }
 
 /// <summary>UI Automation 语义通道。非线程安全，调用方需串行化。</summary>
-internal sealed class UiaService
+internal sealed class UiaService : IDisposable
 {
     private const int RuntimeIdPropertyId = 30000;
     private const int BoundingRectanglePropertyId = 30001;
@@ -247,6 +250,54 @@ internal sealed class UiaService
 
     private readonly object _sync = new();
     private readonly IUIAutomation _automation;
+    private int _disposed;
+
+    // 线程本地：调用方拿到结果后立刻读，避免其它线程的下一次查询把标志覆盖。
+    [ThreadStatic]
+    private static bool _lastFindTruncated;
+
+    /// <summary>最近一次 FindElements 是否因为 maxResults/5000 上限被截断。</summary>
+    public bool LastFindTruncated => _lastFindTruncated;
+
+    /// <summary>
+    /// 释放 COM 引用。卡死的 provider 可能让调用阻塞，因此 ResetUia 只在后台线程调用，
+    /// 并且超过保留上限的旧实例直接交给 GC。
+    /// </summary>
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_trueCondition is not null)
+            {
+                Marshal.ReleaseComObject(_trueCondition);
+            }
+        }
+        catch
+        {
+            // provider 卡死时释放可能失败；交给 GC。
+        }
+
+        try
+        {
+            Marshal.ReleaseComObject(_elementCache);
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            Marshal.FinalReleaseComObject(_automation);
+        }
+        catch
+        {
+        }
+    }
     private readonly IUIAutomationCacheRequest _elementCache;
     private IUIAutomationCondition? _trueCondition;
 
@@ -371,9 +422,7 @@ internal sealed class UiaService
 
         try
         {
-            root = hwnd != IntPtr.Zero
-                ? _automation.ElementFromHandle(hwnd)
-                : _automation.GetRootElement();
+            root = RootFromHandle(hwnd);
 
             if (root is null)
             {
@@ -403,6 +452,36 @@ internal sealed class UiaService
         }
     }
 
+    /// <summary>
+    /// UWP 顶层是 ApplicationFrameHost，UIA 树根在子窗口 Windows.UI.Core.CoreWindow 上。
+    /// 不先下钻会得到“只有边框、没有控件”的树（REG-14）。
+    /// </summary>
+    private static IntPtr ResolveUwpContentHwnd(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return hwnd;
+        }
+
+        var className = new StringBuilder(256);
+        _ = NativeMethods.GetClassNameW(hwnd, className, className.Capacity);
+
+        if (className.ToString().IndexOf("ApplicationFrame", StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            return hwnd;
+        }
+
+        IntPtr content = NativeMethods.FindWindowExW(
+            hwnd, IntPtr.Zero, "Windows.UI.Core.CoreWindow", null);
+
+        return content != IntPtr.Zero ? content : hwnd;
+    }
+
+    private IUIAutomationElement? RootFromHandle(IntPtr hwnd) =>
+        hwnd == IntPtr.Zero
+            ? _automation.GetRootElement()
+            : _automation.ElementFromHandle(ResolveUwpContentHwnd(hwnd));
+
     /// <summary>按属性查询控件；name 支持 exact/contains/regex 过滤。</summary>
     public List<UiaElementInfo> FindElements(
         IntPtr hwnd,
@@ -415,6 +494,7 @@ internal sealed class UiaService
         lock (_sync)
         {
         var results = new List<UiaElementInfo>();
+        _lastFindTruncated = false;
         // prefer=largest/focused 需要完整候选集；其余调用仍按较小的上限快速返回。
         maxResults = Math.Clamp(maxResults, 1, 2000);
 
@@ -429,9 +509,7 @@ internal sealed class UiaService
 
         try
         {
-            root = hwnd != IntPtr.Zero
-                ? _automation.ElementFromHandle(hwnd)
-                : _automation.GetRootElement();
+            root = RootFromHandle(hwnd);
 
             if (root is null)
             {
@@ -451,6 +529,7 @@ internal sealed class UiaService
                 var usable = new List<UiaElementInfo>();
                 var hidden = new List<UiaElementInfo>();
                 int count = Math.Min(all.Length, 5000);
+                _lastFindTruncated = all.Length > count;
 
                 for (int i = 0; i < count; i++)
                 {
@@ -473,6 +552,8 @@ internal sealed class UiaService
                             usable.Add(info);
                             if (usable.Count >= maxResults)
                             {
+                                // 后面还有候选（或已有 hidden）说明结果被截断。
+                                _lastFindTruncated |= i + 1 < count || hidden.Count > 0;
                                 break;
                             }
                         }
@@ -531,9 +612,7 @@ internal sealed class UiaService
 
         try
         {
-            root = hwnd != IntPtr.Zero
-                ? _automation.ElementFromHandle(hwnd)
-                : _automation.GetRootElement();
+            root = RootFromHandle(hwnd);
 
             if (root is null)
             {
@@ -599,9 +678,7 @@ internal sealed class UiaService
 
         try
         {
-            root = hwnd != IntPtr.Zero
-                ? _automation.ElementFromHandle(hwnd)
-                : _automation.GetRootElement();
+            root = RootFromHandle(hwnd);
 
             if (root is null)
             {
@@ -750,6 +827,8 @@ internal sealed class UiaService
     /// </summary>
     public bool TryInvokeAtPoint(int x, int y, int? expectedPid, out UiaElementInfo? info)
     {
+        lock (_sync)
+        {
         info = null;
         IUIAutomationElement? element = null;
         object? pattern = null;
@@ -795,6 +874,7 @@ internal sealed class UiaService
         }
 
         return false;
+        }
     }
 
     /* ------------------------------------------------------------------ */
@@ -922,6 +1002,8 @@ internal sealed class UiaService
     /// <summary>通过 ValuePattern 写值；Failure 非空表示写值调用本身失败。</summary>
     public UiaSetValueResult TrySetValue(IUIAutomationElement element, string value)
     {
+        lock (_sync)
+        {
         object? pattern = null;
 
         try
@@ -972,6 +1054,7 @@ internal sealed class UiaService
         {
             ReleaseElement(pattern);
         }
+        }
     }
 
     private static string? ReadValuePattern(IUIAutomationValuePattern pattern)
@@ -990,6 +1073,8 @@ internal sealed class UiaService
     /// <summary>读取 ValuePattern 的当前值；不支持时返回 null。</summary>
     public string? GetValue(IUIAutomationElement element)
     {
+        lock (_sync)
+        {
         object? pattern = null;
 
         try
@@ -1007,6 +1092,7 @@ internal sealed class UiaService
         {
             ReleaseElement(pattern);
         }
+        }
     }
 
     /// <summary>
@@ -1015,6 +1101,8 @@ internal sealed class UiaService
     /// </summary>
     public string? GetText(IUIAutomationElement element, int maxChars = 65536)
     {
+        lock (_sync)
+        {
         object? pattern = null;
         object? range = null;
 
@@ -1044,6 +1132,7 @@ internal sealed class UiaService
         }
 
         return GetValue(element);
+        }
     }
 
     /// <summary>返回当前焦点元素句柄；调用方负责 Dispose。expectedPid 用于拒绝焦点落在其他进程。</summary>
@@ -1186,6 +1275,23 @@ internal sealed class UiaService
         int timeBudgetMs,
         Func<bool>? isCancelled)
     {
+        // 树构建同样访问 IUIAutomation；必须与 find/invoke 串行，否则会跨线程使用 COM 对象。
+        lock (_sync)
+        {
+            return BuildTreeCore(
+                hwnd, rootRuntimeId, maxDepth, interactiveOnly, maxNodes, timeBudgetMs, isCancelled);
+        }
+    }
+
+    private UiaTreeResult BuildTreeCore(
+        IntPtr hwnd,
+        string? rootRuntimeId,
+        int maxDepth,
+        bool interactiveOnly,
+        int maxNodes,
+        int timeBudgetMs,
+        Func<bool>? isCancelled)
+    {
         IUIAutomationElement? rootElement = null;
         UiaElementHandle? rootHandle = null;
         var stopwatch = Stopwatch.StartNew();
@@ -1211,7 +1317,8 @@ internal sealed class UiaService
             {
                 // 必须使用 BuildCache 版本，否则后续读取 Cached* 属性会抛 ArgumentException。
                 rootElement = hwnd != IntPtr.Zero
-                    ? _automation.ElementFromHandleBuildCache(hwnd, _elementCache)
+                    ? _automation.ElementFromHandleBuildCache(
+                        ResolveUwpContentHwnd(hwnd), _elementCache)
                     : _automation.GetRootElementBuildCache(_elementCache);
             }
 
@@ -1458,10 +1565,26 @@ internal sealed class UiaService
 
         if (!string.IsNullOrWhiteSpace(controlType))
         {
-            if (TryParseControlType(controlType, out int controlTypeId))
+            if (!TryParseControlType(controlType, out int controlTypeId))
             {
-                condition = And(condition, _automation.CreatePropertyCondition(ControlTypePropertyId, controlTypeId));
+                // 静默忽略会让 find_element(control_type:"Buton") 返回第一个元素，模型点错控件。
+                var supported = new JsonArray();
+
+                foreach (string typeName in ControlTypes.Values.OrderBy(value => value, StringComparer.Ordinal))
+                {
+                    supported.Add(typeName);
+                }
+
+                throw new ToolException(
+                    "E_INVALID_ARG",
+                    $"control_type 无效: {controlType}",
+                    new JsonObject { ["field"] = "control_type", ["supported"] = supported },
+                    retryable: false,
+                    hint: "使用 UIA 控件类型英文名，例如 Button、Edit、Document",
+                    stage: "validate");
             }
+
+            condition = And(condition, _automation.CreatePropertyCondition(ControlTypePropertyId, controlTypeId));
         }
 
         if (!string.IsNullOrWhiteSpace(runtimeId) && TryParseRuntimeId(runtimeId, out int[] ids))
@@ -1704,6 +1827,11 @@ internal sealed class UiaService
 
         return ids.Length > 0;
     }
+
+    public static bool IsKnownControlType(string value) => TryParseControlType(value, out _);
+
+    public static IReadOnlyList<string> SupportedControlTypes =>
+        ControlTypes.Values.OrderBy(value => value, StringComparer.Ordinal).ToList();
 
     private static bool TryParseControlType(string value, out int controlTypeId)
     {

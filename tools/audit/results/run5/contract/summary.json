@@ -1,0 +1,77 @@
+{
+  "cases": [
+    {
+      "id": "CONT-01",
+      "purpose": "18 个有返回工具（含 snapshot）outputSchema 与 structuredContent 一致（release 见 CONT-05）",
+      "ok": true,
+      "violations": [],
+      "checked": 18
+    },
+    {
+      "id": "CONT-02",
+      "purpose": "错误响应包含 isError + code + message",
+      "ok": true,
+      "violations": []
+    },
+    {
+      "id": "CONT-03",
+      "purpose": "相对 save_path 被明确拒绝，不产生歧义落盘",
+      "ok": true,
+      "code": "E_INVALID_ARG",
+      "server_file": "C:\\Users\\31746\\Desktop\\VScreenPilot\\artifacts\\server5\\rel-audit-1794717968.png",
+      "server_exists": false,
+      "client_cwd": "C:\\Users\\31746\\Desktop\\VScreenPilot",
+      "client_file_exists": false
+    },
+    {
+      "id": "CONT-04",
+      "purpose": "返回内容包含文本与图片（字节可统计）",
+      "ok": true,
+      "text_bytes": 970,
+      "image_bytes": 26254,
+      "png_bytes": 35894
+    },
+    {
+      "id": "CONT-06",
+      "purpose": "get_ui_tree 默认复用当前快照，不使 find_element 的 ref 失效",
+      "ok": true,
+      "snapshot_before": "s2",
+      "snapshot_after": "s2",
+      "code": null
+    },
+    {
+      "id": "CONT-07",
+      "purpose": "嵌套参数类型/范围错误返回 E_INVALID_ARG",
+      "ok": true,
+      "coverage": "E_INVALID_ARG",
+      "tolerance": "E_INVALID_ARG"
+    },
+    {
+      "id": "CONT-08",
+      "purpose": "save_path + inline=false 只落指定文件",
+      "ok": true,
+      "path": "C:\\Users\\31746\\AppData\\Local\\Temp\\vsp-contract-1794717968.png",
+      "artifact": null
+    },
+    {
+      "id": "CONT-09",
+      "purpose": "resources/list 带 size，artifacts?preview=1 可读",
+      "ok": true,
+      "count": 1,
+      "uri": "vsp://artifacts/shot-124608-469-b92fd6cd.png"
+    },
+    {
+      "id": "CONT-10",
+      "purpose": "snapshot max_nodes 超过 1024 返回 E_INVALID_ARG",
+      "ok": true,
+      "code": "E_INVALID_ARG"
+    },
+    {
+      "id": "CONT-05",
+      "purpose": "release_environment 的 outputSchema 一致",
+      "ok": true,
+      "violations": []
+    }
+  ],
+  "binary_sha256": "CDD905C93180D89E941356558F31FC2B02B4DE8CB0FBD11065A2ED2CE3A367CD"
+}
