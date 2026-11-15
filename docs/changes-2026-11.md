@@ -27,6 +27,7 @@
   `resources/read` 对 >512KB 的图默认返回 preview，`?full=1` 才取原图。
 - `snapshot` 推进 ref 代际；`find_element`/`get_ui_tree` 复用当前代并返回 `snapshot_id`，
   不再让既有 ref 无故失效。`get_ui_tree(new_snapshot=true)` 可显式换代。
+- `release_environment` 默认 `on_dirty=abort`（保留未保存窗口与应用跟踪）；`force`/`discard` 需要 `allow_data_loss=true`，否则返回 `E_DATA_LOSS_REQUIRED`；进程退出路径始终 `force` 并摘屏。
 - `release_environment` 3s 等不到只读观察结束会返回 `E_BUSY`，不再边读边清理。
 - `wait_for` 不持长读锁；每轮取一次短读锁。
 - `baseline_frame_id` 必须与区域 x/y/width/height 完全一致，否则 `E_NO_BASELINE`。

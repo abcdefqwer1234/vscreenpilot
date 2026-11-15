@@ -150,19 +150,35 @@ def main() -> int:
                           annotations=len((annotate.data or {}).get("annotations") or []),
                           images=len(annotate.images)))
 
-        observed = client.call("press_keys", {
-            "keys": "Alt+F", "keep_foreground": True, "observe": True}, 60)
-        changed = ((observed.data or {}).get("observed") or {}).get("changed")
-        cases.append(case("FIX-07", "press_keys 返回 observed.changed", observed.ok
+        selected = client.call("press_keys", {
+            "keys": "Ctrl+A", "keep_foreground": True, "observe": True}, 60)
+        changed = ((selected.data or {}).get("observed") or {}).get("changed")
+        cases.append(case("FIX-07", "press_keys 返回 observed.changed", selected.ok
                           and changed is True,
                           changed=changed,
-                          ratio=((observed.data or {}).get("observed") or {}).get("ratio")))
-        client.call("press_keys", {"keys": "Esc", "keep_foreground": True}, 30)
+                          ratio=((selected.data or {}).get("observed") or {}).get("ratio")))
+        client.call("press_keys", {"keys": "Right", "keep_foreground": True}, 30)
+
+        region = {"x": display["x"] + 100, "y": display["y"] + 120,
+                  "width": 900, "height": 500}
+        region_ocr = client.call("read_screen_text", {
+            "region": region, "query": MARKER}, 120)
+        clicked_text = client.call("click_text", {
+            "text": MARKER, "region": region, "observe": False}, 120)
+        bounds = (clicked_text.data or {}).get("bounds") or {}
+        cases.append(case("FIX-14", "click_text 按 region 定位",
+                          clicked_text.ok
+                          and region["x"] <= bounds.get("x", -1) <= region["x"] + region["width"]
+                          and region["y"] <= bounds.get("y", -1) <= region["y"] + region["height"],
+                          x=bounds.get("x"), y=bounds.get("y"),
+                          region_matches=len((region_ocr.data or {}).get("matches") or []),
+                          ambiguous=(clicked_text.data or {}).get("ambiguous"),
+                          code=clicked_text.code))
 
         blocked = client.call("release_environment", {
             "keep_display": True, "on_dirty": "force"}, 60)
         cases.append(case("FIX-08", "force 缺少 allow_data_loss 被拒绝",
-                          (not blocked.ok) and blocked.code == "E_DESTRUCTIVE_REQUIRED"
+                          (not blocked.ok) and blocked.code == "E_DATA_LOSS_REQUIRED"
                           and process_alive(pid),
                           code=blocked.code, alive=process_alive(pid)))
 
@@ -175,7 +191,14 @@ def main() -> int:
                           on_dirty=(default_release.data or {}).get("on_dirty"),
                           kept=kept, alive=process_alive(pid)))
 
-        # 默认 abort 之后 _apps 已清空，重新接管一个新实例再测剪贴板/强制释放。
+        env_after = client.call("get_environment", {}, 30)
+        tracked_after = [a for a in ((env_after.data or {}).get("apps") or [])
+                         if a.get("pid") == pid]
+        cases.append(case("FIX-13", "abort 后仍保留应用跟踪",
+                          bool(tracked_after) and tracked_after[0].get("alive") is True,
+                          apps=tracked_after))
+
+        # abort 之后应用仍被跟踪；显式 taskkill 收尾，再重新接管新实例测剪贴板/强制释放。
         subprocess.run(["taskkill", "/PID", str(pid), "/F"],
                        capture_output=True, text=True, timeout=20)
         time.sleep(0.5)
@@ -190,11 +213,15 @@ def main() -> int:
             client.call("click", {"x": area["x"] + 40, "y": area["y"] + 40,
                                   "channel": "message", "keep_foreground": True}, 30)
             before = set_image()
-            client.call("type_text", {
+            typed = client.call("type_text", {
                 "text": "剪贴板保护" * 60, "verify": False, "channel": "auto"}, 120)
             after = image_present()
             cases.append(case("FIX-11", "长文本自动回退且图片剪贴板仍在",
-                              before and after, before=before, after=after))
+                              before and after and typed.ok
+                              and (typed.data or {}).get("channel") != "clipboard",
+                              before=before, after=after,
+                              channel=(typed.data or {}).get("channel"),
+                              code=typed.code))
 
             forced = client.call("release_environment", {
                 "keep_display": False, "on_dirty": "force",

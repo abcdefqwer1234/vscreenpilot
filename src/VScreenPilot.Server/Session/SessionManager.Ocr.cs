@@ -34,13 +34,12 @@ internal sealed partial class SessionManager
             CaptureRegion(left, top, regionWidth, regionHeight);
 
         List<ScreenTextLine> lines;
-        bool preferLatin = !string.IsNullOrWhiteSpace(query) && IsAscii(query!);
 
         try
         {
             lines = OcrService.Read(
                 bgra, captureWidth, captureHeight,
-                out string engine, out string language, preferLatin);
+                out string engine, out string language, query ?? string.Empty);
             return BuildTextResult(
                 lines, left, top, captureWidth, captureHeight, query, maxLines, engine, language, stopwatch);
         }
@@ -74,12 +73,15 @@ internal sealed partial class SessionManager
         var all = new JsonArray();
         var matches = new JsonArray();
         int limit = Math.Clamp(maxLines, 1, 200);
+        int redactions = 0;
 
         foreach (ScreenTextLine line in lines)
         {
+            string redacted = RedactEmails(line.Text, ref redactions);
+
             var item = new JsonObject
             {
-                ["text"] = line.Text,
+                ["text"] = redacted,
                 ["bounds"] = new JsonObject
                 {
                     ["x"] = originX + line.Left,
@@ -108,6 +110,9 @@ internal sealed partial class SessionManager
             ["lines"] = all,
             ["matches"] = matches,
             ["count"] = lines.Count,
+            ["returned"] = all.Count,
+            ["truncated"] = lines.Count > all.Count,
+            ["privacy_redactions"] = redactions,
             ["region"] = new JsonObject
             {
                 ["x"] = originX,
@@ -121,7 +126,10 @@ internal sealed partial class SessionManager
 
     /// <summary>OCR 定位 + 点击 + 前后差异，供 click_ref 找不到元素的画布应用使用。</summary>
     public JsonObject ClickText(
-        string text, bool keepForeground = false, bool observe = true, string channel = "auto")
+        string text, bool keepForeground = false, bool observe = true,
+        string channel = "auto", bool requireUnique = false,
+        int? regionX = null, int? regionY = null,
+        int? regionWidth = null, int? regionHeight = null)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -129,15 +137,32 @@ internal sealed partial class SessionManager
         }
 
         DisplayInfo display = EnsureEnvironmentFast();
+        int left = display.X;
+        int top = display.Y;
+        int width = display.Width;
+        int height = display.Height;
+
+        if (regionX is not null && regionY is not null &&
+            regionWidth is not null && regionHeight is not null)
+        {
+            RequireRegionInDisplay(
+                display, regionX.Value, regionY.Value, regionWidth.Value, regionHeight.Value,
+                "click_text");
+            left = regionX.Value;
+            top = regionY.Value;
+            width = regionWidth.Value;
+            height = regionHeight.Value;
+        }
+
         (byte[] bgra, int captureWidth, int captureHeight) =
-            CaptureRegion(display.X, display.Y, display.Width, display.Height);
+            CaptureRegion(left, top, width, height);
 
         List<ScreenTextLine> lines;
 
         try
         {
             lines = OcrService.Read(
-                bgra, captureWidth, captureHeight, out _, out _, IsAscii(text));
+                bgra, captureWidth, captureHeight, out _, out _, text);
         }
         catch (NotSupportedException exception)
         {
@@ -149,40 +174,84 @@ internal sealed partial class SessionManager
                 stage: "ocr");
         }
 
-        ScreenTextLine? match = lines.FirstOrDefault(
-            line => OcrTextMatches(line.Text, text));
+        List<ScreenTextLine> matches = lines
+            .Where(line => OcrTextMatches(line.Text, text))
+            .ToList();
 
-        if (match is null)
+        if (matches.Count == 0)
         {
             throw new ToolException(
                 "E_NO_MATCH",
                 $"OCR 未找到文本: {text}",
-                new JsonObject { ["text"] = text, ["lines"] = lines.Count },
+                new JsonObject
+                {
+                    ["text"] = text,
+                    ["lines"] = lines.Count,
+                    ["region"] = RegionJson(left, top, width, height),
+                },
                 retryable: true,
-                hint: "先用 read_screen_text 看 OCR 结果；或缩小查询词、换 region",
+                hint: "先用 read_screen_text 看 OCR 结果；或缩小 region/查询词",
                 stage: "ocr");
         }
 
-        int clickX = display.X + match.Left + match.Width / 2;
-        int clickY = display.Y + match.Top + match.Height / 2;
+        if (requireUnique && matches.Count > 1)
+        {
+            throw new ToolException(
+                "E_MULTIPLE_MATCHES",
+                $"OCR 命中 {matches.Count} 处文本，require_unique=true 拒绝点击",
+                new JsonObject
+                {
+                    ["text"] = text,
+                    ["matches"] = DescribeMatches(matches, left, top),
+                },
+                retryable: true,
+                hint: "缩小 region、使用更长的查询词，或显式 require_unique=false",
+                stage: "ocr");
+        }
+
+        ScreenTextLine match = matches
+            .OrderByDescending(line => line.Width * line.Height)
+            .First();
+
+        int clickX = left + match.Left + match.Width / 2;
+        int clickY = top + match.Top + match.Height / 2;
         JsonObject click = Click(clickX, clickY, "left", 1, channel, keepForeground, observe);
+
+        int clickRedactions = 0;
+        string clickedText = RedactEmails(match.Text, ref clickRedactions);
 
         return new JsonObject
         {
             ["found"] = true,
-            ["text"] = match.Text,
+            ["text"] = clickedText,
             ["x"] = clickX,
             ["y"] = clickY,
-            ["bounds"] = new JsonObject
-            {
-                ["x"] = display.X + match.Left,
-                ["y"] = display.Y + match.Top,
-                ["width"] = match.Width,
-                ["height"] = match.Height,
-            },
+            ["bounds"] = RegionJson(left + match.Left, top + match.Top, match.Width, match.Height),
+            ["ambiguous"] = matches.Count > 1,
+            ["matches"] = DescribeMatches(matches, left, top),
             ["method"] = click["method"]?.GetValue<string>(),
             ["observed"] = click["observed"]?.DeepClone(),
+            ["privacy_redactions"] = clickRedactions,
         };
+    }
+
+    private static JsonArray DescribeMatches(
+        List<ScreenTextLine> matches, int originX, int originY)
+    {
+        var array = new JsonArray();
+        int redactions = 0;
+
+        foreach (ScreenTextLine line in matches.Take(8))
+        {
+            array.Add((JsonNode)new JsonObject
+            {
+                ["text"] = RedactEmails(line.Text, ref redactions),
+                ["bounds"] = RegionJson(
+                    originX + line.Left, originY + line.Top, line.Width, line.Height),
+            });
+        }
+
+        return array;
     }
 
     private static bool IsAscii(string value)
@@ -238,6 +307,12 @@ internal sealed partial class SessionManager
 
         foreach (char ch in value)
         {
+            // OCR 常把英文连字符识别成 “һ/一/ー/·” 等字符；匹配时统一丢弃。
+            if (ch is '-' or '_' or '.' or '·' or '—' or '–' or '一' or 'ー' or 'һ')
+            {
+                continue;
+            }
+
             if (char.IsLetterOrDigit(ch))
             {
                 builder.Append(char.ToLowerInvariant(ch));

@@ -90,6 +90,7 @@ internal sealed partial class SessionManager
             isCancelled: () => Cancellation.IsCancellationRequested);
 
         bool emptyRetried = false;
+        bool effectiveInteractiveOnly = interactiveOnly;
 
         // 空树在 UIA 忙/首帧未就绪时很常见。重试一次并放开 interactive_only：
         // 比直接返回“1 个节点 + 无解释”对调用方有用得多（N4）。
@@ -110,6 +111,7 @@ internal sealed partial class SessionManager
             {
                 result = retry;
                 emptyRetried = true;
+                effectiveInteractiveOnly = false;
             }
         }
 
@@ -145,7 +147,7 @@ internal sealed partial class SessionManager
             ["visited"] = result.Visited,
             ["pruned"] = result.Pruned,
             ["truncated"] = result.Truncated,
-            ["interactive_only"] = interactiveOnly,
+            ["interactive_only"] = effectiveInteractiveOnly,
             ["max_depth"] = depth,
             ["max_nodes_effective"] = nodes,
             ["ref_capacity"] = ElementRefCapacity,
@@ -349,6 +351,10 @@ internal sealed partial class SessionManager
                 (byte[] bgra, int captureWidth, int captureHeight) =
                     CaptureRegion(display.X, display.Y, display.Width, display.Height);
 
+                double effectiveScale = Math.Clamp(scale, 0.1, 1.0);
+                int thickness = Math.Max(2, (int)Math.Ceiling(2 / effectiveScale));
+                int numberScale = Math.Max(2, (int)Math.Ceiling(2 / effectiveScale));
+
                 PngOverlay.DrawGrid(bgra, captureWidth, captureHeight, 100);
 
                 foreach (JsonNode? item in annotations)
@@ -366,11 +372,12 @@ internal sealed partial class SessionManager
                     int bh = bounds["height"]?.GetValue<int>() ?? 0;
                     (byte r, byte g, byte b) = PngOverlay.ColorFor(Math.Max(0, index - 1));
 
-                    PngOverlay.DrawBox(bgra, captureWidth, captureHeight, bx, by, bw, bh, r, g, b, 2);
-                    PngOverlay.DrawNumber(bgra, captureWidth, captureHeight, bx + 2, by + 2, index);
+                    PngOverlay.DrawBox(
+                        bgra, captureWidth, captureHeight, bx, by, bw, bh, r, g, b, thickness);
+                    PngOverlay.DrawNumber(
+                        bgra, captureWidth, captureHeight, bx + 2, by + 2, index, numberScale);
                 }
 
-                double effectiveScale = Math.Clamp(scale, 0.1, 1.0);
                 png = PngWriter.Encode(
                     bgra, captureWidth, captureHeight, effectiveScale,
                     out int outputWidth, out int outputHeight);
@@ -424,6 +431,13 @@ internal sealed partial class SessionManager
             data["privacy_redactions"] = redactions;
         }
 
+        RedactJsonStrings(data, ref redactions);
+
+        if (redactions > 0)
+        {
+            data["privacy_redactions"] = redactions;
+        }
+
         return new SnapshotResult(data, png, previewPng, previewMeta);
     }
 
@@ -442,7 +456,10 @@ internal sealed partial class SessionManager
                                controlType is "Button" or "Edit" or "Document" or "ListItem"
                                    or "MenuItem" or "TabItem" or "ComboBox";
 
-            if (interesting &&
+            bool offscreen = node["offscreen"]?.GetValue<bool>() == true;
+
+            if (!offscreen &&
+                interesting &&
                 width >= 8 && height >= 8 &&
                 x + width > display.X && y + height > display.Y &&
                 x < display.X + display.Width && y < display.Y + display.Height)
@@ -496,5 +513,63 @@ internal sealed partial class SessionManager
 
         count += matches;
         return result;
+    }
+
+    /// <summary>递归脱敏 Json 树里的所有字符串（tree/windows/foreground/annotations/text）。</summary>
+    internal static void RedactJsonStrings(JsonNode? node, ref int count)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+            {
+                foreach (string key in obj.Select(pair => pair.Key).ToList())
+                {
+                    JsonNode? value = obj[key];
+
+                    if (value is JsonValue scalar && scalar.TryGetValue(out string? text) &&
+                        text is not null)
+                    {
+                        string redacted = RedactEmails(text, ref count);
+
+                        if (!ReferenceEquals(redacted, text) &&
+                            !string.Equals(redacted, text, StringComparison.Ordinal))
+                        {
+                            obj[key] = redacted;
+                        }
+                    }
+                    else
+                    {
+                        RedactJsonStrings(value, ref count);
+                    }
+                }
+
+                break;
+            }
+
+            case JsonArray array:
+            {
+                for (int index = 0; index < array.Count; index++)
+                {
+                    JsonNode? value = array[index];
+
+                    if (value is JsonValue scalar && scalar.TryGetValue(out string? text) &&
+                        text is not null)
+                    {
+                        string redacted = RedactEmails(text, ref count);
+
+                        if (!string.Equals(redacted, text, StringComparison.Ordinal))
+                        {
+                            array[index] = redacted;
+                        }
+                    }
+                    else
+                    {
+                        RedactJsonStrings(value, ref count);
+                    }
+                }
+
+                break;
+            }
+        }
     }
 }

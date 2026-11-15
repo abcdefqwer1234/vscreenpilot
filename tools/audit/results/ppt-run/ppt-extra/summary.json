@@ -13,7 +13,7 @@
         "",
         ""
       ],
-      "nodes": 17
+      "nodes": 33
     },
     {
       "id": "SUP-01",
@@ -27,7 +27,7 @@
       "purpose": "snapshot 内联图是合法 base64",
       "ok": true,
       "detail": "89504e47",
-      "bytes": 86760
+      "bytes": 86528
     },
     {
       "id": "SUP-04a",
@@ -83,7 +83,7 @@
       "ok": true,
       "drag_code": null,
       "passed": true,
-      "ratio": 0.1185
+      "ratio": 0.1172
     },
     {
       "id": "SUP-10a",
@@ -109,7 +109,8 @@
       "purpose": "长文本输入后图片剪贴板仍在",
       "ok": true,
       "before": true,
-      "after": true
+      "after": true,
+      "code": "E_CLIPBOARD_UNSAFE"
     },
     {
       "id": "SUP-13",
@@ -117,7 +118,7 @@
       "ok": true,
       "saved": {
         "ok": true,
-        "bytes": 40359
+        "bytes": 40353
       },
       "found": true
     },
@@ -127,9 +128,9 @@
       "ok": true,
       "display_removed": true,
       "forced": [
-        7204
+        9444
       ]
     }
   ],
-  "binary_sha256": "9F2C16EC1FB2DA32887854D221E1E51B0F31DD642BE21B1FDBA1497504271B32"
+  "binary_sha256": "A0AD89C775FDE7BE97ECB1F9CC2B72788E40185875CC4E64A894C493C7B71107"
 }

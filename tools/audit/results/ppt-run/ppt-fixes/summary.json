@@ -5,7 +5,7 @@
       "id": "FIX-00",
       "purpose": "记事本就绪",
       "ok": true,
-      "pid": 6592,
+      "pid": 2852,
       "document_ready": null,
       "reason": "not_modeled"
     },
@@ -28,7 +28,7 @@
       "purpose": "snapshot{include_screenshot} 是合法 base64",
       "ok": true,
       "detail": "89504e47",
-      "bytes": 48596,
+      "bytes": 48560,
       "nodes": 33
     },
     {
@@ -42,8 +42,8 @@
       "id": "FIX-05",
       "purpose": "OCR 读到屏幕文本",
       "ok": true,
-      "count": 21,
-      "matches": 1,
+      "count": 20,
+      "matches": 2,
       "language": "zh-Hans-CN",
       "code": null
     },
@@ -59,13 +59,23 @@
       "purpose": "press_keys 返回 observed.changed",
       "ok": true,
       "changed": true,
-      "ratio": 0.0625
+      "ratio": 0.0078
+    },
+    {
+      "id": "FIX-14",
+      "purpose": "click_text 按 region 定位",
+      "ok": true,
+      "x": 2312,
+      "y": 312,
+      "region_matches": 1,
+      "ambiguous": false,
+      "code": null
     },
     {
       "id": "FIX-08",
       "purpose": "force 缺少 allow_data_loss 被拒绝",
       "ok": true,
-      "code": "E_DESTRUCTIVE_REQUIRED",
+      "code": "E_DATA_LOSS_REQUIRED",
       "alive": true
     },
     {
@@ -74,29 +84,49 @@
       "ok": true,
       "on_dirty": "abort",
       "kept": [
-        6592
+        2852
       ],
       "alive": true
+    },
+    {
+      "id": "FIX-13",
+      "purpose": "abort 后仍保留应用跟踪",
+      "ok": true,
+      "apps": [
+        {
+          "pid": 2852,
+          "hwnd": 3474508,
+          "title": "*vsp-fix-notepad.txt - Notepad",
+          "exe": "C:\\Program Files\\WindowsApps\\Microsoft.WindowsNotepad_11.2609.11.0_x64__8wekyb3d8bbwe\\Notepad\\Notepad.exe",
+          "alive": true,
+          "launched_by_us": true,
+          "owned": true,
+          "close_on_release": true,
+          "dedicated": true
+        }
+      ]
     },
     {
       "id": "FIX-10",
       "purpose": "重新接管记事本",
       "ok": true,
-      "pid": 2256
+      "pid": 11436
     },
     {
       "id": "FIX-11",
       "purpose": "长文本自动回退且图片剪贴板仍在",
       "ok": true,
       "before": true,
-      "after": true
+      "after": true,
+      "channel": "keys",
+      "code": null
     },
     {
       "id": "FIX-12",
       "purpose": "显式 allow_data_loss 才强杀",
       "ok": true,
       "forced": [
-        2256
+        11436
       ]
     },
     {
@@ -106,5 +136,5 @@
       "display_removed": false
     }
   ],
-  "binary_sha256": "9F2C16EC1FB2DA32887854D221E1E51B0F31DD642BE21B1FDBA1497504271B32"
+  "binary_sha256": "A0AD89C775FDE7BE97ECB1F9CC2B72788E40185875CC4E64A894C493C7B71107"
 }

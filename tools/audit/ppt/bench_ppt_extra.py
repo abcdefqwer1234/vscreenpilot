@@ -274,11 +274,12 @@ def main() -> int:
                                   "channel": "message", "keep_foreground": True}, 30)
             client.call("press_keys", {"keys": "Ctrl+A", "keep_foreground": True}, 30)
             client.call("press_keys", {"keys": "Delete", "keep_foreground": True}, 30)
-            client.call("type_text", {"text": "剪贴板测试" * 60, "verify": False,
-                                      "channel": "clipboard"}, 120)
+            typed = client.call("type_text", {"text": "剪贴板测试" * 60, "verify": False,
+                                              "channel": "clipboard"}, 120)
             after = clipboard_image_present()
-            cases.append(case("SUP-12", "长文本输入后图片剪贴板仍在", before and after,
-                              before=before, after=after))
+            cases.append(case("SUP-12", "长文本输入后图片剪贴板仍在",
+                              before and after and typed.code == "E_CLIPBOARD_UNSAFE",
+                              before=before, after=after, code=typed.code))
         else:
             cases.append(case("SUP-12", "长文本输入后图片剪贴板仍在", False,
                               reason="set image clipboard failed"))

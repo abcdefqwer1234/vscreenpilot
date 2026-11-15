@@ -21,9 +21,6 @@ internal static class ClipboardText
     private const uint CfDibV5 = 17;
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool IsClipboardFormatAvailable(uint format);
-
-    [DllImport("user32.dll", SetLastError = true)]
     private static extern uint EnumClipboardFormats(uint format);
 
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
@@ -144,7 +141,10 @@ internal static class ClipboardText
                         value.Contains("GIF", StringComparison.OrdinalIgnoreCase) ||
                         value.Contains("Image", StringComparison.OrdinalIgnoreCase) ||
                         value.Contains("File", StringComparison.OrdinalIgnoreCase) ||
-                        value.Contains("Shell", StringComparison.OrdinalIgnoreCase))
+                        value.Contains("Shell", StringComparison.OrdinalIgnoreCase) ||
+                        value.Contains("HTML", StringComparison.OrdinalIgnoreCase) ||
+                        value.Contains("Rich Text", StringComparison.OrdinalIgnoreCase) ||
+                        value.Contains("RTF", StringComparison.OrdinalIgnoreCase))
                     {
                         return true;
                     }

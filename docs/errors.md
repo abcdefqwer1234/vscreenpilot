@@ -42,7 +42,8 @@
 | `E_DRIVER` | VDD IOCTL 失败 | `--doctor` 查看；必要时重启服务端 |
 | `E_DRIVER_OPEN` | VDD 设备打不开 | 查看 `driver.open_error`；驱动可能被其他进程占用 |
 | `E_DISPLAY` | 显示拓扑操作失败 | 检查是否有其他显示管理软件占用 |
-| `E_TIMEOUT` | 工具超时 | 可重试；持续超时先 `release_environment` |
+| `E_TIMEOUT` | 工具超时 | 可重试；若持续超时，先保存再 `release_environment{on_dirty:"force",allow_data_loss:true}` 重置会话 |
+| `E_DATA_LOSS_REQUIRED` | release 的 `force`/`discard` 会丢弃未保存内容 | 先保存；确认可丢弃后传 `allow_data_loss=true` |
 | `E_BUSY` | 另一个写操作正在执行，或 release 等不到只读观察结束 | 按 `details.retry_after_ms` 重试；release 请等 snapshot/capture 返回后再试 |
 | `E_RATE_LIMITED` | 请求速率超过令牌桶（默认 300 突发 / 100 每秒） | 按 `details.retry_after_ms` 退避；合并批量调用 |
 | `E_CANCELLED` | 请求被取消或会话被重置 | 不要自动重试；重新观察后再操作 |
@@ -385,3 +386,10 @@ UIA 调用失败（stage: `uia`）
 ### E_INTERNAL
 
 内部错误（stage: `internal`）
+
+<a id="e_data_loss_required"></a>
+
+### E_DATA_LOSS_REQUIRED
+
+需要数据丢失确认（stage: `release`）
+

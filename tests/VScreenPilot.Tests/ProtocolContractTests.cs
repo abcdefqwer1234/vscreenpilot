@@ -108,4 +108,46 @@ public sealed class ProtocolContractTests
         Assert.Equal("input", info.Stage);
         Assert.Contains("剪贴板", info.Hint);
     }
+
+    [Fact]
+    public void ErrorCatalogContainsDataLossCode()
+    {
+        ErrorInfo info = ErrorCatalog.Get("E_DATA_LOSS_REQUIRED");
+
+        Assert.Equal("release", info.Stage);
+        Assert.Contains("allow_data_loss", info.Hint);
+    }
+
+    [Fact]
+    public void JsonRedactionWalksNestedTrees()
+    {
+        var tree = new JsonObject
+        {
+            ["name"] = "alice@example.com",
+            ["children"] = new JsonArray
+            {
+                new JsonObject { ["value"] = "bob@corp.cn" },
+                new JsonObject { ["value"] = "no email here" },
+            },
+        };
+
+        int count = 0;
+        SessionManager.RedactJsonStrings(tree, ref count);
+
+        Assert.Equal(2, count);
+        Assert.DoesNotContain("alice@", tree.ToJsonString());
+        Assert.DoesNotContain("bob@", tree.ToJsonString());
+        Assert.Contains("***@example.com", tree.ToJsonString());
+        Assert.Contains("no email here", tree.ToJsonString());
+    }
+
+    [Theory]
+    [InlineData("VSP һ FIX һ MARKER", "VSP-FIX-MARKER", true)]
+    [InlineData("VSP FIX MARKER", "VSP-FIX-MARKER", true)]
+    [InlineData("完全不同的文本", "VSP-FIX-MARKER", false)]
+    [InlineData("报告标题", "报告", true)]
+    public void OcrMatchingToleratesPunctuation(string haystack, string needle, bool expected)
+    {
+        Assert.Equal(expected, SessionManager.OcrTextMatches(haystack, needle));
+    }
 }

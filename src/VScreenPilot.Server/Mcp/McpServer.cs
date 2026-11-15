@@ -366,6 +366,7 @@ internal sealed class McpServer
         WriteScheduler.Lease? lease = null;
         CancellationTokenSource? callCts = null;
         bool callCtsTransferred = false;
+        Task<ToolResponse>? handlerTask = null;
         bool mutating = MutatingTools.Contains(tool.Name);
 
         try
@@ -389,7 +390,7 @@ internal sealed class McpServer
             // 长任务至少给一次“已开始/已完成”进度，客户端不会以为调用挂死。
             ReportProgress(context, 0, 1, "started");
 
-            Task<ToolResponse> handlerTask = Task.Run(() =>
+            handlerTask = Task.Run(() =>
             {
                 Action<int, int, string>? reporter = context.Params?.Meta?["progressToken"] is null
                     ? null
@@ -399,7 +400,7 @@ internal sealed class McpServer
                 // wait_for 可能持续 120s，不能持读锁阻塞 release；get_log 不碰显示，也跳过。
                 // 注意：这里用“是否读会话”而不是 readOnlyHint 判断。snapshot/capture_screen
                 // 会换代/写盘，标注上不是只读，但仍然必须受 release 的读锁保护。
-                bool sessionRead = tool.Name is not ("wait_for" or "get_log" or "run_script" or "release_environment");
+                bool sessionRead = tool.Name is not ("wait_for" or "get_log" or "release_environment");
                 bool sessionWrite = tool.Name == "release_environment";
                 bool writeHeld = false;
 
@@ -461,7 +462,7 @@ internal sealed class McpServer
 
             try
             {
-                response = await handlerTask
+                response = await handlerTask!
                     .WaitAsync(TimeSpan.FromMilliseconds(tool.TimeoutMs), cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -470,7 +471,7 @@ internal sealed class McpServer
                 // 写锁不释放：卡住的 handler 仍在操作 UI，不能让另一个写操作重叠。
                 if (lease is not null)
                 {
-                    WriteScheduler.ReleaseWhen(handlerTask, lease);
+                    WriteScheduler.ReleaseWhen(handlerTask!, lease);
                     lease = null;
                 }
 
@@ -484,7 +485,7 @@ internal sealed class McpServer
                 {
                     // 已经结束。
                 }
-                _ = handlerTask.ContinueWith(
+                _ = handlerTask!.ContinueWith(
                     _ => callCts?.Dispose(), TaskScheduler.Default);
                 callCtsTransferred = true;
 
@@ -494,7 +495,7 @@ internal sealed class McpServer
                     $"工具 {tool.Name} 超过 {tool.TimeoutMs}ms 未完成",
                     new JsonObject { ["tool"] = tool.Name, ["timeout_ms"] = tool.TimeoutMs },
                     retryable: true,
-                    hint: "可重试；若持续超时先调用 release_environment 重置会话",
+                    hint: "可重试；若持续超时，先保存再 release_environment{on_dirty:\"force\",allow_data_loss:true} 重置会话",
                     stage: "tool");
             }
 
@@ -517,6 +518,29 @@ internal sealed class McpServer
         }
         catch (OperationCanceledException)
         {
+            // 客户端取消：handler 可能仍在注入。写锁交给它，CTS 也交给它释放，
+            // 避免 “已取消但仍在点击” 与新写操作并发（S5 的另一半）。
+            if (lease is not null)
+            {
+                WriteScheduler.ReleaseWhen(handlerTask!, lease);
+                lease = null;
+            }
+
+            try
+            {
+                callCts?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // 已经结束。
+            }
+
+            if (callCts is not null && !handlerTask!.IsCompleted)
+            {
+                _ = handlerTask!.ContinueWith(_ => callCts?.Dispose(), TaskScheduler.Default);
+                callCtsTransferred = true;
+            }
+
             throw;
         }
         catch (ToolException exception)
@@ -915,7 +939,9 @@ internal sealed class McpServer
               "observe":{"type":"boolean","description":"Default true: capture a small before/after diff and return observed.changed."}},
               "required":["x","y"]}
             """,
-            Out("channel:string", "hwnd:integer", "verified:boolean", "observed:object"),
+            Out("x:integer", "y:integer", "button:string", "clicks:integer", "mode:string",
+                "method:string", "inject_ms:number", "duration_ms:number", "verified:boolean",
+                "keep_foreground:boolean", "detail:string", "hint:string", "observed:object"),
             readOnly: false, destructive: true, timeoutMs: 25000, Click);
 
         Add(tools, "click_ref", "Click element by ref",
@@ -945,7 +971,7 @@ internal sealed class McpServer
               "max_lines":{"type":"integer","minimum":1,"maximum":200}}}
             """,
             Out("engine:string", "language:string", "lines:array", "matches:array", "count:integer",
-                "region:object", "duration_ms:number"),
+                "returned:integer", "truncated:boolean", "region:object", "duration_ms:number"),
             readOnly: true, destructive: false, timeoutMs: 60000, ReadScreenText);
 
         Add(tools, "click_text", "Click text on screen",
@@ -960,11 +986,12 @@ internal sealed class McpServer
                 "required":["x","y","width","height"]},
               "channel":{"type":"string","enum":["auto","uia","message","input"]},
               "keep_foreground":{"type":"boolean"},
+              "require_unique":{"type":"boolean","description":"Fail with E_MULTIPLE_MATCHES when more than one line matches."},
               "observe":{"type":"boolean"}},
               "required":["text"]}
             """,
             Out("found:boolean", "text:string", "x:integer", "y:integer", "bounds:object",
-                "observed:object", "code:string"),
+                "ambiguous:boolean", "matches:array", "method:string", "observed:object"),
             readOnly: false, destructive: true, timeoutMs: 60000, ClickText);
 
         Add(tools, "gesture", "Gesture",
@@ -981,7 +1008,9 @@ internal sealed class McpServer
               "mode":{"type":"string","enum":["auto","message","input"]}},
               "required":["type"]}
             """,
-            Out("channel:string", "steps:integer", "verified:boolean", "observed:object"),
+            Out("type:string", "from:object", "to:object", "dx:integer", "dy:integer",
+                "button:string", "method:string", "detail:string", "verified:boolean",
+                "inject_ms:number", "duration_ms:number", "observed:object", "hint:string"),
             readOnly: false, destructive: true, timeoutMs: 35000, Gesture);
 
         Add(tools, "type_text", "Type text",
@@ -1012,7 +1041,8 @@ internal sealed class McpServer
               "observe":{"type":"boolean","description":"Default true: capture a before/after diff and return observed.changed."},
               "pid":{"type":"integer","minimum":1}}}
             """,
-            Out("sent:integer", "channel:string", "observed:object"),
+            Out("keys:string", "count:integer", "target_pid:integer", "inject_ms:number",
+                "duration_ms:number", "keep_foreground:boolean", "verified:boolean", "observed:object"),
             readOnly: false, destructive: true, timeoutMs: 35000, PressKeys);
 
         Add(tools, "wait_for", "Wait for condition",
@@ -1081,8 +1111,10 @@ internal sealed class McpServer
               "on_dirty":{"type":"string","enum":["force","discard","save","abort"],"description":"Default abort."},
               "allow_data_loss":{"type":"boolean","description":"Required for on_dirty=force/discard when a tracked app may have unsaved content."}}}
             """,
-            Out("released:boolean", "apps:array", "display_kept:boolean", "warnings:array",
-                "on_dirty:string", "forced:array", "kept:array"),
+            Out("released:boolean", "display_removed:boolean", "display_kept:boolean",
+                "on_dirty:string", "restored_pids:array", "closed_pids:array",
+                "forced_pids:array", "kept_pids:array", "saved_pids:array",
+                "discarded_pids:array", "memory:object", "warnings:array"),
             readOnly: false, destructive: true, timeoutMs: 90000, ReleaseEnvironment);
 
         Add(tools, "get_log", "Get log",
@@ -1249,17 +1281,23 @@ internal sealed class McpServer
             return ToolResponse.Text(result.Data);
         }
 
+        bool hasPreview = result.PreviewPng is not null;
+
+        if (hasPreview)
+        {
+            // preview 与主图来自同一帧，不再二次截屏。
+            result.Data["screenshot_preview"] = result.PreviewMeta;
+        }
+
         ToolResponse response = ToolResponse.Text(result.Data)
             .AddResourceLink(artifactUri, artifactName, "image/png", result.Png.Length);
 
-        if (result.PreviewPng is null)
+        if (!hasPreview)
         {
             return response;
         }
 
-        // preview 与主图来自同一帧，不再二次截屏。
-        result.Data["screenshot_preview"] = result.PreviewMeta;
-        return response.AddImage(result.PreviewPng);
+        return response.AddImage(result.PreviewPng!);
     }
 
     private (string Path, string Uri) WriteArtifact(byte[] png, string prefix, byte[]? preview = null)
@@ -1357,6 +1395,13 @@ internal sealed class McpServer
 
         meta["inline"] = false;
 
+        bool hasPreview = inline && capture.PreviewPng is not null;
+
+        if (hasPreview)
+        {
+            meta["preview"] = capture.PreviewMeta;
+        }
+
         ToolResponse response = ToolResponse.Text(meta);
 
         if (artifactUri is not null)
@@ -1365,11 +1410,9 @@ internal sealed class McpServer
             response.AddResourceLink(artifactUri, artifactName ?? "shot.png", "image/png", png.Length);
         }
 
-        if (inline && capture.PreviewPng is not null)
+        if (hasPreview)
         {
-            // 给模型一张可看的缩略图；完整图通过 artifact_uri/path 获取。
-            meta["preview"] = capture.PreviewMeta;
-            response.AddImage(capture.PreviewPng);
+            response.AddImage(capture.PreviewPng!);
         }
 
         return response;
@@ -1527,9 +1570,34 @@ internal sealed class McpServer
             ?? throw new ToolException("E_INVALID_ARG", "click_text 需要 text");
         bool keepForeground = OptionalBool(arguments, "keep_foreground", false);
         bool observe = OptionalBool(arguments, "observe", true);
+        bool requireUnique = OptionalBool(arguments, "require_unique", false);
         string channel = OptionalString(arguments, "channel") ?? "auto";
 
-        return ToolResponse.Text(_session.ClickText(text, keepForeground, observe, channel));
+        int? x = null, y = null, width = null, height = null;
+
+        if (arguments.TryGetProperty("region", out JsonElement region))
+        {
+            if (region.ValueKind != JsonValueKind.Object)
+            {
+                throw new ToolException("E_INVALID_ARG", "region 必须是对象");
+            }
+
+            x = OptionalNullableInt(region, "x");
+            y = OptionalNullableInt(region, "y");
+            width = OptionalNullableInt(region, "width");
+            height = OptionalNullableInt(region, "height");
+
+            if (x is null || y is null || width is null || height is null)
+            {
+                throw new ToolException(
+                    "E_INVALID_ARG", "region 需要 x/y/width/height",
+                    hint: "省略 region 表示整个虚拟屏", stage: "validate");
+            }
+        }
+
+        return ToolResponse.Text(_session.ClickText(
+            text, keepForeground, observe, channel, requireUnique,
+            x, y, width, height));
     }
 
     private ToolResponse TypeText(JsonElement arguments)

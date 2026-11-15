@@ -19,7 +19,7 @@ internal static class OcrService
 
     public static (string Engine, string Language) Describe(bool preferLatin = false)
     {
-        OcrEngine? engine = EnsureEngine(preferLatin, out string language);
+        OcrEngine? engine = EnsureEngine(preferLatin, !preferLatin, out string language);
         return engine is null
             ? ("windows-ocr", string.Empty)
             : ("windows-ocr", language);
@@ -27,14 +27,16 @@ internal static class OcrService
 
     public static List<ScreenTextLine> Read(
         byte[] bgra, int width, int height,
-        out string engine, out string language, bool preferLatin = false)
+        out string engine, out string language, string textHint)
     {
         if (width <= 0 || height <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(width));
         }
 
-        OcrEngine? ocr = EnsureEngine(preferLatin, out language);
+        bool preferLatin = IsAsciiOnly(textHint);
+        bool preferCjk = !preferLatin && !string.IsNullOrWhiteSpace(textHint);
+        OcrEngine? ocr = EnsureEngine(preferLatin, preferCjk, out language);
 
         if (ocr is null)
         {
@@ -92,13 +94,18 @@ internal static class OcrService
         return lines;
     }
 
-    private static OcrEngine? EnsureEngine(bool preferLatin, out string language)
+    private static OcrEngine? EnsureEngine(bool preferLatin, bool preferCjk, out string language)
     {
         lock (Sync)
         {
             if (preferLatin && TryGet("en-US", preferLatin: true, out OcrEngine? latin, out language))
             {
                 return latin;
+            }
+
+            if (preferCjk && TryGet("zh-Hans", preferLatin: false, out OcrEngine? cjk, out language))
+            {
+                return cjk;
             }
 
             if (TryGet(null, preferLatin: false, out OcrEngine? primary, out language))
@@ -121,8 +128,7 @@ internal static class OcrService
 
     private static bool TryGet(
         string? tag, bool preferLatin, out OcrEngine? engine, out string language)
-    {
-        string key = tag ?? "user-profile";
+    {        string key = tag ?? "user-profile";
 
         if (Engines.TryGetValue(key, out OcrEngine? cached))
         {
@@ -155,5 +161,23 @@ internal static class OcrService
             language = string.Empty;
             return false;
         }
+    }
+
+    private static bool IsAsciiOnly(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return false;
+        }
+
+        foreach (char ch in value)
+        {
+            if (ch > 127)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

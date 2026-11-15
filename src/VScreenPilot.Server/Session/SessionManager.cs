@@ -1044,6 +1044,14 @@ internal sealed partial class SessionManager : IDisposable
             }
         }
 
+        int focusRedactions = 0;
+        RedactJsonStrings(focusedElement, ref focusRedactions);
+
+        if (focusRedactions > 0)
+        {
+            result["privacy_redactions"] = focusRedactions;
+        }
+
         result["focused_element"] = focusedElement;
         return result;
     }
@@ -1074,7 +1082,7 @@ internal sealed partial class SessionManager : IDisposable
             if (onDirty is "force" or "discard" && !allowDataLoss)
             {
                 throw new ToolException(
-                    "E_DESTRUCTIVE_REQUIRED",
+                    "E_DATA_LOSS_REQUIRED",
                     $"on_dirty={onDirty} 会丢弃未保存内容，需要显式 allow_data_loss=true",
                     new JsonObject { ["on_dirty"] = onDirty },
                     retryable: true,
@@ -1188,7 +1196,13 @@ internal sealed partial class SessionManager : IDisposable
                 // keep_foreground 可能暂停了焦点护栏；释放时恢复，避免用户前台一直留在虚拟屏。
                 ResumeFocusGuard();
 
-                _apps.Clear();
+                // abort 的语义是“保留未保存窗口”，因此必须保留跟踪信息：
+                // 否则后续 release 无法关闭/归位这些窗口，虚拟屏上会留下工具看不见的孤儿。
+                if (onDirty != "abort")
+                {
+                    _apps.Clear();
+                }
+
                 // 注意：这里已持 _gate；不要再拿 _refGate（Ref 路径的锁顺序是 _refGate -> _gate）。
                 // MCP 层用 session 读写锁保证 release 不与 find/tree 并发。
                 _elements.Clear();
@@ -1921,7 +1935,12 @@ internal sealed partial class SessionManager : IDisposable
         {
             try
             {
-                ReleaseEnvironment(keepDisplay: false);
+                // 进程退出必须摘屏并回收本会话进程；不能沿用 abort 的“保留窗口/保留屏”语义，
+                // 否则会留下孤儿虚拟屏（下次启动可能 E_ORPHAN_DISPLAY）。
+                ReleaseEnvironment(
+                    keepDisplay: false,
+                    onDirty: "force",
+                    allowDataLoss: true);
             }
             catch (Exception exception)
             {

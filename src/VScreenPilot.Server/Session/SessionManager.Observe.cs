@@ -12,7 +12,7 @@ internal sealed partial class SessionManager
     internal sealed record ObserveSignature(
         byte[] Cells, int Grid, string Hash, int X, int Y, int Width, int Height);
 
-    private const double ObserveChangeThreshold = 0.01;
+    private const double ObserveChangeThreshold = 0.005;
     private const int ObserveGrid = 16;
     private const int ObserveChannelTolerance = 12;
 
