@@ -73,7 +73,7 @@ def main() -> int:
                          "verified": verified, "file": "第二行 ABC" in content, "save": saved.code or "ok"})
         if verified and "第二行 ABC" in content:
             break
-        client.call("release_environment", {"keep_display": True, "on_dirty": "discard"}, 120)
+        client.call("release_environment", {"keep_display": True, "on_dirty": "discard", "allow_data_loss": True}, 120)
         time.sleep(1.0)
     cases.append(case("GUI-01", "Notepad 输入并保存（文件 oracle）",
                       verified and "第二行 ABC" in content,
@@ -94,7 +94,7 @@ def main() -> int:
 
     # ---------------- GUI-04 UiTarget 表单 ----------------
     # 先释放 Notepad（close_on_release），避免默认目标歧义
-    client.call("release_environment", {"keep_display": True, "on_dirty": "discard"}, 120)
+    client.call("release_environment", {"keep_display": True, "on_dirty": "discard", "allow_data_loss": True}, 120)
     oracle_path = os.path.join(gui_dir, "uitarget.json")
     attempts = []
     oracle = None
@@ -121,7 +121,7 @@ def main() -> int:
                          "oracle": oracle})
         if oracle and oracle.get("input") == "审计文本" and oracle.get("count") == "7" and oracle.get("opt") is True:
             break
-        client.call("release_environment", {"keep_display": True, "on_dirty": "discard"}, 120)
+        client.call("release_environment", {"keep_display": True, "on_dirty": "discard", "allow_data_loss": True}, 120)
         time.sleep(1.0)
     cases.append(case("GUI-04", "WinForms 表单填写/勾选/提交（JSON oracle）",
                       bool(oracle) and oracle.get("input") == "审计文本" and oracle.get("count") == "7" and oracle.get("opt") is True,
@@ -249,8 +249,8 @@ def main() -> int:
                       dead=dead.code, relaunch=relaunched.code or "ok", recovered=recovered.code or "ok"))
 
     # ---------------- GUI-13 释放 ----------------
-    kept = client.call("release_environment", {"keep_display": True, "on_dirty": "discard"}, 120)
-    removed = client.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+    kept = client.call("release_environment", {"keep_display": True, "on_dirty": "discard", "allow_data_loss": True}, 120)
+    removed = client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     cases.append(case("GUI-13", "release keep_display true/false",
                       kept.ok and (kept.data or {}).get("display_kept") is True and removed.ok and (removed.data or {}).get("display_removed") is True,
                       kept=kept.data, removed={k: removed.data.get(k) for k in ("display_removed", "display_kept")} if isinstance(removed.data, dict) else removed.data,

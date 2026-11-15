@@ -221,7 +221,7 @@ def main() -> int:
                       too_many.code == "E_INVALID_ARG", code=too_many.code))
 
     # CONT-05 release_environment 的 structuredContent
-    release = client.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+    release = client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     structured = (release.raw or {}).get("structuredContent")
     release_errors: list[str] = []
     if structured is None:

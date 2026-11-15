@@ -110,7 +110,7 @@ def main() -> int:
     env2 = client.call("get_environment", {}, 30)
     write_json(os.path.join(ccw_dir, "environment.json"), env2.data or {})
 
-    release = client.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+    release = client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     cases.append(case("CCW-C11", "释放与残留", release.ok,
                       released=release.data, ms=release.ms))
     client.stop()

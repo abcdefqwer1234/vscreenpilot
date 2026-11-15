@@ -515,6 +515,78 @@ internal sealed partial class SessionManager
                 }
             }
 
+            case "text":
+            {
+                string? needle = GetString(condition, "text");
+
+                if (string.IsNullOrWhiteSpace(needle))
+                {
+                    throw new ToolException("E_INVALID_ARG", "text 条件需要非空 text");
+                }
+
+                (int rx, int ry, int rw, int rh)? region = null;
+
+                if (condition.TryGetProperty("region", out JsonElement regionElement) &&
+                    regionElement.ValueKind == JsonValueKind.Object)
+                {
+                    (int x, int y, int width, int height) = ParseRegion(regionElement);
+                    RequireRegionInDisplay(display, x, y, width, height, "text");
+                    region = (x, y, width, height);
+                }
+
+                List<TrackedApp> candidates;
+
+                lock (_gate)
+                {
+                    candidates = _apps.Where(IsLiveTrackedApp).ToList();
+                }
+
+                int? requestedPid = GetInt(condition, "pid", -1) is var pidValue && pidValue >= 0
+                    ? pidValue
+                    : null;
+
+                foreach (TrackedApp app in candidates)
+                {
+                    if (requestedPid is not null && app.Pid != requestedPid)
+                    {
+                        continue;
+                    }
+
+                    UiaElementInfo? info = Uia.FindTextElement(app.Hwnd, needle);
+
+                    if (info is null || info.Offscreen)
+                    {
+                        continue;
+                    }
+
+                    if (region is { } bounds &&
+                        (info.Left + info.Width <= bounds.rx ||
+                         info.Top + info.Height <= bounds.ry ||
+                         info.Left >= bounds.rx + bounds.rw ||
+                         info.Top >= bounds.ry + bounds.rh))
+                    {
+                        continue;
+                    }
+
+                    return new JsonObject
+                    {
+                        ["satisfied"] = true,
+                        ["element"] = info.ToCompactJson(),
+                        ["window"] = new JsonObject
+                        {
+                            ["pid"] = app.Pid,
+                            ["title"] = WindowManager.GetTitle(app.Hwnd),
+                        },
+                    };
+                }
+
+                return new JsonObject
+                {
+                    ["satisfied"] = false,
+                    ["reason"] = candidates.Count == 0 ? "no_target_window" : "uia_text_not_found",
+                };
+            }
+
             case "color":
             {
                 int x = GetInt(condition, "x", int.MinValue);

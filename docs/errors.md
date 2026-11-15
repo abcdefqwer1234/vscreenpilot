@@ -31,6 +31,7 @@
 | `E_UIPI` | 被 UIPI 拦截 | 以相同权限运行，或改用 UIA 语义操作 |
 | `E_INPUT` | 输入未完整注入 | 检查前台、输入法与目标是否禁用输入 |
 | `E_SYSTEM_KEY_BLOCKED` | 系统级快捷键会逃逸到用户桌面 | 确需发送时传 `allow_system_keys=true` |
+| `E_CLIPBOARD_UNSAFE` | 剪贴板含图片/文件，写文本会永久清空且无法还原 | 改用 `channel=auto/keys`（SendInput），或先备份剪贴板 |
 
 ## 会话、显示与生命周期
 
@@ -41,7 +42,6 @@
 | `E_DRIVER` | VDD IOCTL 失败 | `--doctor` 查看；必要时重启服务端 |
 | `E_DRIVER_OPEN` | VDD 设备打不开 | 查看 `driver.open_error`；驱动可能被其他进程占用 |
 | `E_DISPLAY` | 显示拓扑操作失败 | 检查是否有其他显示管理软件占用 |
-| `E_DISPLAY_IN_USE` | 虚拟屏仍被其他会话占用 | 先 `release_environment`，或用 `--profile` 隔离 |
 | `E_TIMEOUT` | 工具超时 | 可重试；持续超时先 `release_environment` |
 | `E_BUSY` | 另一个写操作正在执行，或 release 等不到只读观察结束 | 按 `details.retry_after_ms` 重试；release 请等 snapshot/capture 返回后再试 |
 | `E_RATE_LIMITED` | 请求速率超过令牌桶（默认 300 突发 / 100 每秒） | 按 `details.retry_after_ms` 退避；合并批量调用 |
@@ -52,13 +52,10 @@
 | 错误码 | 含义 | 下一步 |
 | --- | --- | --- |
 | `E_IO` | 文件写入失败 | 检查路径权限/同名文件 |
-| `E_ENCODING` | 文本编码不受支持 | 使用 UTF-8 |
 | `E_UNSUPPORTED_IMAGE` | PNG 格式不支持 | 8-bit、非隔行、RGB/RGBA、≤16M 像素 |
 | `E_NO_BASELINE` | 基线区域与请求区域不一致 | 对同一区域重新 `capture_screen` |
-| `E_DIALOG_UNREACHABLE` | 对话框不暴露 UIA/MSAA | 用键盘路径或 app profile 的按键序列 |
-| `E_SNAPSHOT_LIMIT` | 快照节点超过上限 | 降低 `max_depth` 或用 `root` 裁剪 |
 | `E_DISABLED` | 能力默认关闭，或 run_script 命中危险命令黑名单 | 需要 `--allow-script`；黑名单可用 `VSP_ALLOW_UNSAFE_SCRIPT=1` 显式绕过（不是沙箱） |
-| `E_NOT_SUPPORTED` | 当前平台/应用不支持 | 查看 `hint` 中的替代通道 |
+| `E_NOT_SUPPORTED` | 当前平台/应用不支持；OCR 时表示没有可用语言包 | 查看 `hint`；OCR 需在系统设置里添加识别语言 |
 | `E_INTERNAL` | 未归类的内部错误 | `get_log` 读最近错误；附 `stage` 反馈 |
 
 ## 应用、显示与 UIA 细分
@@ -84,3 +81,307 @@
 
 > 设计原则：已知失败不返回 `E_INTERNAL`；`AggregateException` 会拆到内层；
 > COM `0x80070003`/`0x80004005` 映射为 `E_APP_GONE`，`0x80070005` 映射为 `E_UIPI`。
+
+## 锚点索引
+
+> 每个错误码都提供 `#e_xxx` 锚点；`docs` 字段直接指向这里。
+
+<a id="e_invalid_arg"></a>
+
+### E_INVALID_ARG
+
+参数不合法（stage: `validate`）
+
+<a id="e_out_of_bounds"></a>
+
+### E_OUT_OF_BOUNDS
+
+坐标越界（stage: `validate`）
+
+<a id="e_foreign_window"></a>
+
+### E_FOREIGN_WINDOW
+
+外来窗口（stage: `validate`）
+
+<a id="e_no_target"></a>
+
+### E_NO_TARGET
+
+无目标应用（stage: `resolve`）
+
+<a id="e_window_not_found"></a>
+
+### E_WINDOW_NOT_FOUND
+
+窗口不存在（stage: `resolve`）
+
+<a id="e_window_timeout"></a>
+
+### E_WINDOW_TIMEOUT
+
+等待窗口超时（stage: `launch`）
+
+<a id="e_window_ambiguous"></a>
+
+### E_WINDOW_AMBIGUOUS
+
+窗口歧义（stage: `resolve`）
+
+<a id="e_element_not_found"></a>
+
+### E_ELEMENT_NOT_FOUND
+
+控件不存在（stage: `uia`）
+
+<a id="e_element_stale"></a>
+
+### E_ELEMENT_STALE
+
+元素已失效（stage: `uia`）
+
+<a id="e_stale_snapshot"></a>
+
+### E_STALE_SNAPSHOT
+
+快照已过期（stage: `snapshot`）
+
+<a id="e_pattern_unsupported"></a>
+
+### E_PATTERN_UNSUPPORTED
+
+控件不支持该模式（stage: `uia`）
+
+<a id="e_destructive_required"></a>
+
+### E_DESTRUCTIVE_REQUIRED
+
+需要破坏性写入确认（stage: `validate`）
+
+<a id="e_focus"></a>
+
+### E_FOCUS
+
+无法获得前台（stage: `focus`）
+
+<a id="e_focus_lost"></a>
+
+### E_FOCUS_LOST
+
+输入中丢失前台（stage: `focus`）
+
+<a id="e_no_interactive_desktop"></a>
+
+### E_NO_INTERACTIVE_DESKTOP
+
+没有交互桌面（stage: `desktop`）
+
+<a id="e_uipi"></a>
+
+### E_UIPI
+
+被 UIPI 拦截（stage: `input`）
+
+<a id="e_input"></a>
+
+### E_INPUT
+
+输入失败（stage: `input`）
+
+<a id="e_input_unsupported"></a>
+
+### E_INPUT_UNSUPPORTED
+
+输入通道不支持（stage: `input`）
+
+<a id="e_system_key_blocked"></a>
+
+### E_SYSTEM_KEY_BLOCKED
+
+系统键被拒绝（stage: `input`）
+
+<a id="e_app_gone"></a>
+
+### E_APP_GONE
+
+目标进程已退出（stage: `app`）
+
+<a id="e_driver_open"></a>
+
+### E_DRIVER_OPEN
+
+驱动设备打开失败（stage: `display`）
+
+<a id="e_driver"></a>
+
+### E_DRIVER
+
+驱动调用失败（stage: `display`）
+
+<a id="e_display"></a>
+
+### E_DISPLAY
+
+显示操作失败（stage: `display`）
+
+<a id="e_timeout"></a>
+
+### E_TIMEOUT
+
+操作超时（stage: `tool`）
+
+<a id="e_busy"></a>
+
+### E_BUSY
+
+资源忙（stage: `gate`）
+
+<a id="e_rate_limited"></a>
+
+### E_RATE_LIMITED
+
+请求过于频繁（stage: `rate`）
+
+<a id="e_cancelled"></a>
+
+### E_CANCELLED
+
+请求已取消（stage: `tool`）
+
+<a id="e_io"></a>
+
+### E_IO
+
+IO 失败（stage: `io`）
+
+<a id="e_unsupported_image"></a>
+
+### E_UNSUPPORTED_IMAGE
+
+图片格式不支持（stage: `perception`）
+
+<a id="e_no_baseline"></a>
+
+### E_NO_BASELINE
+
+没有可用基线（stage: `verify`）
+
+<a id="e_disabled"></a>
+
+### E_DISABLED
+
+能力未启用（stage: `script`）
+
+<a id="e_not_supported"></a>
+
+### E_NOT_SUPPORTED
+
+不支持（stage: `tool`）
+
+<a id="e_clipboard_unsafe"></a>
+
+### E_CLIPBOARD_UNSAFE
+
+剪贴板不安全（stage: `input`）
+
+<a id="e_app_exited"></a>
+
+### E_APP_EXITED
+
+应用已退出（stage: `app`）
+
+<a id="e_app_not_allowed"></a>
+
+### E_APP_NOT_ALLOWED
+
+应用不在白名单（stage: `launch`）
+
+<a id="e_app_start"></a>
+
+### E_APP_START
+
+应用启动失败（stage: `launch`）
+
+<a id="e_display_add"></a>
+
+### E_DISPLAY_ADD
+
+添加虚拟屏失败（stage: `display`）
+
+<a id="e_display_mode"></a>
+
+### E_DISPLAY_MODE
+
+设置显示模式失败（stage: `display`）
+
+<a id="e_element_disabled"></a>
+
+### E_ELEMENT_DISABLED
+
+控件已禁用（stage: `uia`）
+
+<a id="e_element_offscreen"></a>
+
+### E_ELEMENT_OFFSCREEN
+
+控件不在可视区（stage: `uia`）
+
+<a id="e_element_readonly"></a>
+
+### E_ELEMENT_READONLY
+
+控件只读（stage: `uia`）
+
+<a id="e_multiple_matches"></a>
+
+### E_MULTIPLE_MATCHES
+
+模板多重命中（stage: `perception`）
+
+<a id="e_new_instance_unsupported"></a>
+
+### E_NEW_INSTANCE_UNSUPPORTED
+
+不支持新实例（stage: `launch`）
+
+<a id="e_no_match"></a>
+
+### E_NO_MATCH
+
+未找到匹配（stage: `perception`）
+
+<a id="e_orphan_display"></a>
+
+### E_ORPHAN_DISPLAY
+
+孤儿虚拟屏（stage: `display`）
+
+<a id="e_released"></a>
+
+### E_RELEASED
+
+会话已释放（stage: `session`）
+
+<a id="e_script"></a>
+
+### E_SCRIPT
+
+脚本执行失败（stage: `script`）
+
+<a id="e_target_offscreen"></a>
+
+### E_TARGET_OFFSCREEN
+
+目标窗口不在虚拟屏（stage: `window`）
+
+<a id="e_uia"></a>
+
+### E_UIA
+
+UIA 调用失败（stage: `uia`）
+
+<a id="e_internal"></a>
+
+### E_INTERNAL
+
+内部错误（stage: `internal`）

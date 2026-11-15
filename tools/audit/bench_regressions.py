@@ -134,7 +134,7 @@ def run_regressions(exe: str) -> list[dict]:
         if os.path.exists(probe_log):
             os.remove(probe_log)
         started = client.call("launch_or_place_app", {"path": CLICKPROBE, "args": [probe_log], "new_instance": True, "wait_ms": 15000}, 120)
-        released = client.call("release_environment", {"keep_display": True, "on_dirty": "force"}, 120)
+        released = client.call("release_environment", {"keep_display": True, "on_dirty": "force", "allow_data_loss": True}, 120)
         time.sleep(0.8)
         clicked = os.path.exists(probe_log) and os.path.getsize(probe_log) > 0
         return case("REG-06", "release(on_dirty=force) 不误点窗口按钮", released.ok and not clicked,
@@ -417,7 +417,7 @@ def run_regressions(exe: str) -> list[dict]:
 
     safe(cases, "PRT-14b", "接管标志", prt14b)
 
-    client.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+    client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     snapshot = client.sample()
     client.stop()
     write_json(os.path.join(RESULTS, "regressions", "sample.json"), snapshot)

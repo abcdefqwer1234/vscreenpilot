@@ -48,7 +48,7 @@ def main() -> int:
 
         # 不保存，直接 release（默认 force）
         released = client.call("release_environment",
-                               {"keep_display": False, "on_dirty": "force"}, 120)
+                               {"keep_display": False, "on_dirty": "force", "allow_data_loss": True}, 120)
         time.sleep(1.5)
         data = released.data or {}
         cases.append(case(

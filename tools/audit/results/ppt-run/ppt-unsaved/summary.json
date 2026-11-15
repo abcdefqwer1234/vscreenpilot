@@ -8,15 +8,19 @@
       "launch": {
         "ok": true,
         "code": null,
-        "ms": 4596.58,
-        "pid": 8428,
+        "ms": 9460.54,
+        "pid": 8652,
         "title": "PowerPoint",
-        "document_ready": true,
+        "document_ready": false,
         "maximized": true,
         "dialogs": [],
-        "warnings": null,
+        "warnings": [
+          "PowerPoint 停在开始屏幕；请输入文件名/点“空白演示文稿”，或手动 Ctrl+N"
+        ],
         "blank_tile_click": true,
-        "dialogs_after": [],
+        "dialogs_after": [
+          ""
+        ],
         "title_after": "演示文稿1 - PowerPoint"
       }
     },
@@ -25,10 +29,10 @@
       "purpose": "默认 force release 直接结束进程",
       "ok": true,
       "forced": [
-        8428
+        8652
       ],
       "closed": [
-        8428
+        8652
       ],
       "warnings": []
     },
@@ -39,5 +43,5 @@
       "warnings": []
     }
   ],
-  "binary_sha256": "A90D33A19F74B0A61F6E5924EBBF20CD45CA0A9FE865EA41C7CA07267F7F3EB0"
+  "binary_sha256": "9F2C16EC1FB2DA32887854D221E1E51B0F31DD642BE21B1FDBA1497504271B32"
 }

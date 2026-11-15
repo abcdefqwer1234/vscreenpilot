@@ -35,7 +35,7 @@ class Harness:
         self.out = out_dir
 
     def reset(self) -> None:
-        self.client.call("release_environment", {"keep_display": True, "on_dirty": "discard"}, 120)
+        self.client.call("release_environment", {"keep_display": True, "on_dirty": "discard", "allow_data_loss": True}, 120)
         time.sleep(0.5)
 
     def call(self, name: str, args: dict, timeout: float = 120):
@@ -242,8 +242,8 @@ def main() -> int:
                       color_count=len((color.data or {}).get("matches") or []), pixel=pixel_color))
 
     # ---------------- GUI-13 ----------------
-    kept = h.call("release_environment", {"keep_display": True, "on_dirty": "discard"}, 120)
-    removed = h.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+    kept = h.call("release_environment", {"keep_display": True, "on_dirty": "discard", "allow_data_loss": True}, 120)
+    removed = h.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     cases.append(case("GUI-13", "release keep_display true/false",
                       (kept.data or {}).get("display_kept") is True and (removed.data or {}).get("display_removed") is True,
                       kept_ms=kept.ms, removed_ms=removed.ms,
@@ -272,7 +272,7 @@ def main() -> int:
                       dead.code is not None and relaunched.ok and recovered.ok,
                       dead=dead.code, relaunch=relaunched.code or "ok", recovered=recovered.code or "ok"))
 
-    h.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+    h.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     timings_out = {name: stats(values) for name, values in timings.items()}
     h.client.stop()
 

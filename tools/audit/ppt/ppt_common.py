@@ -40,7 +40,7 @@ def ensure_clean(client: McpClient) -> None:
     env = client.call("get_environment", {}, 30)
     display = (env.data or {}).get("virtual_display") or {}
     if display.get("enabled"):
-        client.call("release_environment", {"keep_display": False, "on_dirty": "force"}, 90)
+        client.call("release_environment", {"keep_display": False, "on_dirty": "force", "allow_data_loss": True}, 90)
 
 
 def display_rect(client: McpClient) -> dict:
@@ -168,7 +168,7 @@ def type_into(client: McpClient, x: int, y: int, text: str, channel: str = "mess
 
 def release(client: McpClient, keep_display: bool = False) -> dict:
     result = client.call(
-        "release_environment", {"keep_display": keep_display, "on_dirty": "force"}, 120
+        "release_environment", {"keep_display": keep_display, "on_dirty": "force", "allow_data_loss": True}, 120
     )
     return {
         "ok": result.ok,

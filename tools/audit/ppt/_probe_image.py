@@ -55,7 +55,7 @@ except Exception as exc:
     print("b64_fail", type(exc).__name__, exc, repr(data[:30]))
 
 send({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {
-    "name": "release_environment", "arguments": {"keep_display": False, "on_dirty": "force"}}})
+    "name": "release_environment", "arguments": {"keep_display": False, "on_dirty": "force", "allow_data_loss": True}}})
 print("rel", read()[:120])
 proc.stdin.close()
 proc.wait(timeout=20)

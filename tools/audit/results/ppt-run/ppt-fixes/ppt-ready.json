@@ -1,0 +1,14 @@
+{
+  "suite": "ppt-document-ready",
+  "binary_sha256": "9F2C16EC1FB2DA32887854D221E1E51B0F31DD642BE21B1FDBA1497504271B32",
+  "start_screen": {
+    "title": "PowerPoint",
+    "document_ready": false,
+    "document_ready_reason": "start_screen_or_no_document"
+  },
+  "ensure_document": {
+    "document_ready": false,
+    "warning": "PowerPoint 停在开始屏幕；请输入文件名/点“空白演示文稿”，或手动 Ctrl+N"
+  },
+  "note": "Ctrl+N on the start screen does nothing and the blank tile is not exposed via UIA on this build; the tool now reports false instead of lying."
+}

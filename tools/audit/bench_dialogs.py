@@ -116,7 +116,7 @@ def main() -> int:
 
     def word_case(case_id: str, purpose: str, open_keys: str, dialog_hint: str,
                   type_text: str, ui_hint: str) -> None:
-        client.call("release_environment", {"keep_display": True, "on_dirty": "discard"}, 120)
+        client.call("release_environment", {"keep_display": True, "on_dirty": "discard", "allow_data_loss": True}, 120)
         launch = client.call("launch_or_place_app", {"path": WORD, "wait_ms": 60000}, 120)
         if not launch.ok:
             cases.append(case(case_id, purpose, False, launch=launch.code, message=launch.message[:120]))
@@ -143,7 +143,7 @@ def main() -> int:
         time.sleep(0.4)
         after = body_text(client)
         # 关掉 Word（对话框随进程结束）
-        client.call("release_environment", {"keep_display": True, "on_dirty": "discard"}, 120)
+        client.call("release_environment", {"keep_display": True, "on_dirty": "discard", "allow_data_loss": True}, 120)
         new_names = names - names_before
         ui_reachable = any(ui_hint in name for name in new_names)
         reachable = bool(dialog) and (dialog["title"] in names or inside > 0) or ui_reachable
@@ -161,7 +161,7 @@ def main() -> int:
               "Ctrl+H", "查找", "DIALOG-FIND-TEXT", "替换")
 
     # Notepad 另存为
-    client.call("release_environment", {"keep_display": True, "on_dirty": "discard"}, 120)
+    client.call("release_environment", {"keep_display": True, "on_dirty": "discard", "allow_data_loss": True}, 120)
     note = client.call("launch_or_place_app", {"path": NOTE, "new_instance": True, "wait_ms": 15000}, 120)
     note_pid = (note.data or {}).get("pid")
     client.call("press_keys", {"keys": "Ctrl+N", "keep_foreground": True}, 30)
@@ -182,7 +182,7 @@ def main() -> int:
                       controls_inside=note_inside,
                       windows=[w["title"] for w in note_windows][:6],
                       typed=typed_note.code or "ok"))
-    client.call("release_environment", {"keep_display": True, "on_dirty": "discard"}, 120)
+    client.call("release_environment", {"keep_display": True, "on_dirty": "discard", "allow_data_loss": True}, 120)
 
     # 只读/受保护视图：给 docx 加 Zone.Identifier（ZoneId=3）
     fixture = os.path.join(dialog_dir, "protected.docx")
@@ -200,7 +200,7 @@ def main() -> int:
                       verified=(typed.data or {}).get("verified"), message=typed.message[:160],
                       shot=shot.ok))
 
-    client.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+    client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     client.stop()
     write_json(os.path.join(dialog_dir, "summary.json"), {"cases": cases})
     print_summary(cases)

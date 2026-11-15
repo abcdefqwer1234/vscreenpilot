@@ -66,7 +66,7 @@ def sessions(exe: str, count: int, cases: list[dict]) -> list[dict]:
             entry["ensure_ms"] = ensure.ms
             shot = client.call("capture_screen", {}, 60)
             entry["shot_ms"] = shot.ms
-            release = client.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+            release = client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
             entry["release_ms"] = release.ms
             entry["display_removed"] = (release.data or {}).get("display_removed")
             client.close_stdin()
@@ -128,7 +128,7 @@ def soak(exe: str, minutes: float, cases: list[dict]) -> dict:
         handle_slope = round((sum(handle_values[-slice_len:]) / slice_len) - (sum(handle_values[:slice_len]) / slice_len), 1)
     peak = max((s["rss_mb"] for s in samples), default=0)
     start_rss = samples[0]["rss_mb"] if samples else 0
-    after = client.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+    after = client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     client.close_stdin()
     code = client.wait(30)
     cases.append(case("STAB-02", f"{minutes:g} 分钟 soak",
@@ -221,7 +221,7 @@ def faults(exe: str, cases: list[dict]) -> None:
     cases.append(case("FAULT-07", "取消后协议仍可用",
                       ping.get("result") == {} and (holder.get("timeout") or holder.get("response") is not None),
                       cancelled_response=bool(holder.get("response")), ping=ping.get("result")))
-    client.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+    client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     client.stop()
 
     # 8 EOF 中断（调用中关闭 stdin）：必须在单实例互斥释放后启动
@@ -260,7 +260,7 @@ def faults(exe: str, cases: list[dict]) -> None:
     none = client.call("find_element", {"name": "__no_such_element__"}, 30)
     cases.append(case("FAULT-12", "UIA 空结果返回明确错误", none.code == "E_ELEMENT_NOT_FOUND", code=none.code))
 
-    client.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+    client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     client.stop()
 
 

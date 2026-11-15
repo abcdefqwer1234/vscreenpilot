@@ -2,12 +2,12 @@
 
 把 Windows 桌面应用放到一块**用完即走、看不见的虚拟屏**上，让 AI 通过 MCP 工具完成截图、点击、输入、语义定位和结果验证。你在主屏继续工作，它不抢鼠标、不挡窗口、不误点你的桌面。
 
-- 对外：一个 MCP Server，20 个工具（含 `snapshot` / `click_ref`）。
+- 对外：一个 MCP Server，22 个工具（含 `snapshot` / `click_ref` / `read_screen_text` / `click_text`）。
 - 对内：自动挂载 1280×720 虚拟屏、启动/接管应用、归位、清理、记日志。
 - 运行期不需要管理员权限；首次安装一次 Parsec VDD 即可。
-- 语义后端：UIA 为主，MSAA 兜底（Office 旧对话框）；支持 UWP `ApplicationFrameWindow`。
+- 语义后端：UIA 为主，MSAA 兜底（Office 旧对话框），OCR 兜底（画布型应用）；支持 UWP `ApplicationFrameWindow`。
 - 重构后的行为变化、错误目录与架构见 [`docs/changes-2026-11.md`](docs/changes-2026-11.md)、[`docs/errors.md`](docs/errors.md)、[`docs/architecture.md`](docs/architecture.md)。
-- 测试与复现见 [`docs/audit/03-实际测试报告-Word.md`](docs/audit/03-实际测试报告-Word.md)（Word 轮）与 [`docs/audit/09-实际测试报告-PPT.md`](docs/audit/09-实际测试报告-PPT.md)（PPT 轮）。Word 轮 run6：GUI 14/14、REG 19/19、DIA 4/4；PPT 轮：产物 11/11、协议 30/30、契约 10/10。
+- 测试与复现见 [`docs/audit/03-实际测试报告-Word.md`](docs/audit/03-实际测试报告-Word.md)（Word 轮）与 [`docs/audit/09-实际测试报告-PPT.md`](docs/audit/09-实际测试报告-PPT.md)（PPT 轮）；修复复验见 [`docs/audit/12-修复复验报告.md`](docs/audit/12-修复复验报告.md)。
 
 > 版本 0.1.0（M4.1）。实现细节见 [技术文档.md](技术文档.md)，需求契约见 [需求文件.md](需求文件.md)。
 
@@ -39,7 +39,9 @@ VScreenPilot 的做法：
 | 工具 | 用途 |
 | --- | --- |
 | `get_environment` | 驱动、虚拟屏、主屏、前台、光标、焦点控件、已接管应用 |
+| `snapshot` | 一次返回语义树 + ref + 窗口/对话框/前台 + 可选标注截图 |
 | `capture_screen` | 截虚拟屏或指定区域，返回 PNG + `frame_id` + 区域元数据 |
+| `read_screen_text` | OCR 读取屏幕/区域文本（画布型应用兜底） |
 | `get_ui_tree` | 读取裁剪后的语义控件树，节点带 `element_ref` |
 | `find_element` | 按名称/类型/AutomationId/角色查找控件，返回 `element_ref` |
 | `get_element_text` | 读正文：优先 TextPattern（Word），其次 ValuePattern |
@@ -49,23 +51,26 @@ VScreenPilot 的做法：
 
 | 工具 | 用途 |
 | --- | --- |
-| `click` | 坐标点击；默认 UIA/窗口消息，不动光标 |
+| `click` | 坐标点击；默认 UIA/窗口消息，不动光标；返回 `observed.changed` |
+| `click_ref` | 按 `element_ref` 点击，优先 UIA pattern |
+| `click_text` | OCR 定位文本并点击（画布型应用兜底） |
 | `gesture` | 拖拽、滚轮、移动 |
 | `type_text` | 向焦点输入文本，支持中文；分块回读确认 |
 | `press_keys` | 组合键；支持 `sequence` 连续菜单导航 |
 | `invoke_element` | 按 `element_ref` 触发控件（Invoke/Toggle/Select/Expand/Legacy） |
 | `set_element_value` | 按 `element_ref` 写值；支持 append/insert/replace |
 | `launch_or_place_app` | 启动/接管应用，移动到虚拟屏并最大化 |
-| `release_environment` | 归还窗口、关闭应用、按需摘屏 |
+| `release_environment` | 归还窗口、关闭应用、按需摘屏；默认 `abort`，强杀需 `allow_data_loss=true` |
 | `run_script` | 兜底 PowerShell；**默认关闭** |
 
 ### 验证
 
 | 工具 | 用途 |
 | --- | --- |
-| `wait_for` | 等元素/颜色/窗口/像素变化/视觉匹配，减少客户端轮询 |
+| `wait_for` | 等元素/颜色/窗口/像素变化/视觉匹配/文本，减少客户端轮询 |
 | `assert_region` | 区域颜色覆盖率、是否变化、与指定帧比较 |
 | `get_log` | 读内存日志或文件日志，含最后错误 |
+| `--cli` | 同一 exe 的 CLI 入口：`--cli env|snapshot|screen` 输出纯 JSON |
 
 ---
 

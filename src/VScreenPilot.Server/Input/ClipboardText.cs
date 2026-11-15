@@ -12,6 +12,24 @@ internal static class ClipboardText
     private const uint CfUnicodeText = 13;
     private const uint GmemMoveable = 0x0002;
 
+    // 已知的“无法用文本方式还原”的二进制格式。
+    private const uint CfBitmap = 2;
+    private const uint CfMetafilePict = 3;
+    private const uint CfDib = 8;
+    private const uint CfEnhMetaFile = 14;
+    private const uint CfHDrop = 15;
+    private const uint CfDibV5 = 17;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool IsClipboardFormatAvailable(uint format);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint EnumClipboardFormats(uint format);
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern int GetClipboardFormatNameW(
+        uint format, [Out] System.Text.StringBuilder name, int capacity);
+
     private static readonly Lazy<Worker> Shared = new(() => new Worker(), isThreadSafe: true);
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -53,7 +71,93 @@ internal static class ClipboardText
     /// <summary>保存当前文本；非文本内容无法还原，调用方应只在必要时走剪贴板通道。</summary>
     public static string? Capture() => GetText();
 
-    public static void Restore(string? previous) => SetText(previous ?? string.Empty);
+    public static void Restore(string? previous)
+    {
+        if (previous is null)
+        {
+            // 原来没有文本：清空，而不是留下一个空字符串条目。
+            Clear();
+            return;
+        }
+
+        SetText(previous);
+    }
+
+    public static void Clear() =>
+        Shared.Value.Invoke(() =>
+        {
+            if (TryOpen())
+            {
+                try
+                {
+                    EmptyClipboard();
+                }
+                finally
+                {
+                    CloseClipboard();
+                }
+            }
+
+            return true;
+        });
+
+    /// <summary>
+    /// 剪贴板里是否有文本以外的内容（图片/文件/图元）。
+    /// 这些格式无法在 WriteCore 之后还原，长文本输入必须绕开剪贴板通道（S7）。
+    /// </summary>
+    public static bool HasNonTextFormats() => Shared.Value.Invoke(HasNonTextCore);
+
+    private static bool HasNonTextCore()
+    {
+        if (!TryOpen())
+        {
+            // 打不开就无法保证还原，按“不安全”处理，让调用方走 SendInput。
+            return true;
+        }
+
+        try
+        {
+            uint format = 0;
+
+            while ((format = EnumClipboardFormats(format)) != 0)
+            {
+                if (format is 1 or 7 or CfUnicodeText or 16)
+                {
+                    continue; // CF_TEXT / CF_OEMTEXT / CF_UNICODETEXT / CF_LOCALE
+                }
+
+                if (format is CfBitmap or CfMetafilePict or CfDib or CfEnhMetaFile or CfHDrop or CfDibV5)
+                {
+                    return true;
+                }
+
+                var name = new System.Text.StringBuilder(128);
+                int length = GetClipboardFormatNameW(format, name, name.Capacity);
+
+                if (length > 0)
+                {
+                    string value = name.ToString(0, length);
+
+                    if (value.Contains("PNG", StringComparison.OrdinalIgnoreCase) ||
+                        value.Contains("JPEG", StringComparison.OrdinalIgnoreCase) ||
+                        value.Contains("JFIF", StringComparison.OrdinalIgnoreCase) ||
+                        value.Contains("GIF", StringComparison.OrdinalIgnoreCase) ||
+                        value.Contains("Image", StringComparison.OrdinalIgnoreCase) ||
+                        value.Contains("File", StringComparison.OrdinalIgnoreCase) ||
+                        value.Contains("Shell", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+    }
 
     private static string? ReadCore()
     {

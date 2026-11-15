@@ -189,6 +189,9 @@ public static class DisplayTopology
         applyResult = Win32.ChangeDisplaySettingsExW(
             null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
 
+        // 注意：部分 VDD/Windows 组合会忽略新激活显示器的 dmPosition，
+        // 固定放在主屏右侧。这里不再做第二次模式切换（会扰动驱动）；
+        // 位置未生效由 SessionManager 记录 position_enforced=false 并接受实际坐标。
         return applyResult;
     }
 

@@ -90,7 +90,7 @@ def main() -> int:
     # 释放（keep_display=true，重复挂/放）
     releases, peaks = [], []
     for _ in range(args.release_cycles):
-        result = client.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+        result = client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
         releases.append(result.ms)
         ensure = client.call("get_environment", {"ensure": True}, 120)
         ensure_ms = ensure.ms

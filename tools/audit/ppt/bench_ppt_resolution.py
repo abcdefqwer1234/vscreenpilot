@@ -40,7 +40,7 @@ def main() -> int:
         vd = (env.data or {}).get("virtual_display") or {}
         if vd.get("enabled"):
             client.call("release_environment",
-                        {"keep_display": False, "on_dirty": "force"}, 90)
+                        {"keep_display": False, "on_dirty": "force", "allow_data_loss": True}, 90)
         display = common.display_rect(client)
         cases.append(case("RES-00", "1920x1080 虚拟屏", 
                           display.get("width") == 1920 and display.get("height") == 1080,

@@ -77,6 +77,22 @@ jobs:
           python tools/audit/bench_capture_soak.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/nightly
           python tools/audit/bench_gui2.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/nightly
 
+      - name: PPT / Office fixes (requires PowerPoint + VDD)
+        shell: pwsh
+        env:
+          VSP_PROFILE: pptci
+          VSP_DISPLAY_OFFSET: "0"
+        run: |
+          if (Test-Path "artifacts/ppt/VScreenPilot-PPT-测评.pptx") {
+            python tools/audit/ppt/bench_ppt_fixes.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/ppt-run/ppt-fixes
+            python tools/audit/ppt/bench_ppt_flow.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/ppt-run/ppt-flow
+            python tools/audit/ppt/bench_ppt_extra.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/ppt-run/ppt-extra
+            python tools/audit/ppt/bench_ppt_unsaved.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/ppt-run/ppt-unsaved
+            python tools/audit/ppt/check_ppt_slo.py
+          } else {
+            Write-Host "PPT deck not found; skipping PPT suites"
+          }
+
       - name: SLO gate
         run: python tools/audit/check_slo.py --results tools/audit/results/nightly
 

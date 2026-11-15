@@ -28,6 +28,8 @@ internal sealed class TrackedApp
     public string? TempProfile { get; init; }
     public NativeMethods.WINDOWPLACEMENT Placement { get; set; }
     public bool PlacementSaved { get; set; }
+    /// <summary>首次观察到窗口失效的时间；超过 3s 才从 apps[] 移除，避免瞬时刷新被误删。</summary>
+    public DateTime? DeadSince { get; set; }
 }
 
 internal sealed class FrameSnapshot
@@ -93,6 +95,13 @@ internal sealed partial class SessionManager : IDisposable
     private int _selfHealCount;
     private string? _lastSelfHealReason;
     private bool _adoptedOrphan;
+    private bool _displayPositionFallback;
+
+    internal bool DisplayPositionFallback
+    {
+        get => _displayPositionFallback;
+        set => _displayPositionFallback = value;
+    }
     private int _displayRecreateCount;
     private int _vddReopenCount;
 
@@ -263,6 +272,33 @@ internal sealed partial class SessionManager : IDisposable
         lock (_gate)
         {
             return _apps.LastOrDefault(IsLiveTrackedApp) ?? TryRelocateLastApp();
+        }
+    }
+
+    /// <summary>清理已死超过 3s 的条目，避免 apps[] 长期残留（N5）。</summary>
+    private void PruneDeadApps()
+    {
+        lock (_gate)
+        {
+            DateTime now = DateTime.UtcNow;
+
+            for (int index = _apps.Count - 1; index >= 0; index--)
+            {
+                TrackedApp app = _apps[index];
+
+                if (IsLiveTrackedApp(app))
+                {
+                    app.DeadSince = null;
+                    continue;
+                }
+
+                app.DeadSince ??= now;
+
+                if ((now - app.DeadSince.Value).TotalSeconds >= 3)
+                {
+                    _apps.RemoveAt(index);
+                }
+            }
         }
     }
 
@@ -748,6 +784,7 @@ internal sealed partial class SessionManager : IDisposable
     private bool TryActivateDisplay(string deviceName, out string? failure)
     {
         failure = null;
+        DisplayPositionFallback = false;
         (int x, int y) = ExpectedPosition();
 
         int setResult = DisplayTopology.SetModeAndPosition(
@@ -778,6 +815,20 @@ internal sealed partial class SessionManager : IDisposable
         if (!settled)
         {
             DisplayInfo? current = DisplayTopology.FindParsecDisplay();
+
+            // Windows/VDD 可能忽略 dmPosition，把新屏固定在主屏右侧。
+            // 只要分辨率正确且已挂载，就接受实际坐标（否则整个 profile 直接不可用）。
+            if (current is { Attached: true } &&
+                current.Width == VirtualWidth &&
+                current.Height == VirtualHeight)
+            {
+                DisplayPositionFallback = true;
+                failure =
+                    $"position_not_applied expected=({x},{y}) actual=({current.X},{current.Y})";
+                _log.Warn($"虚拟屏位置未生效，接受实际坐标 ({current.X},{current.Y})");
+                return true;
+            }
+
             failure = $"set={setResult} apply={applyResult} current={current?.ToString() ?? "not found"}";
         }
 
@@ -790,6 +841,8 @@ internal sealed partial class SessionManager : IDisposable
         {
             EnsureEnvironment();
         }
+
+        PruneDeadApps();
 
         int? focusedPid = null;
         JsonObject result;
@@ -865,6 +918,7 @@ internal sealed partial class SessionManager : IDisposable
                 virtualDisplay["adopted_orphan"] = _adoptedOrphan;
                 virtualDisplay["display_recreate_count"] = _displayRecreateCount;
                 virtualDisplay["vdd_reopen_count"] = _vddReopenCount;
+                virtualDisplay["position_enforced"] = true;
             }
             else
             {
@@ -883,6 +937,7 @@ internal sealed partial class SessionManager : IDisposable
                 virtualDisplay["adopted_orphan"] = _adoptedOrphan;
                 virtualDisplay["display_recreate_count"] = _displayRecreateCount;
                 virtualDisplay["vdd_reopen_count"] = _vddReopenCount;
+                virtualDisplay["position_enforced"] = !_displayPositionFallback;
                 virtualDisplay["lifetime"] = "host_session";
             }
 
@@ -993,11 +1048,9 @@ internal sealed partial class SessionManager : IDisposable
         return result;
     }
 
-    public JsonObject ReleaseEnvironment(bool keepDisplay, string onDirty = "force")
+    public JsonObject ReleaseEnvironment(
+        bool keepDisplay, string onDirty = "abort", bool allowDataLoss = false)
     {
-        // 先推进代际：在途 handler 即便卡在 UIA 里，结果也不会再被当真。
-        Interlocked.Increment(ref _epoch);
-
         lock (_gate)
         {
             var closed = new List<int>();
@@ -1009,7 +1062,7 @@ internal sealed partial class SessionManager : IDisposable
             var warnings = new JsonArray();
             bool removed = false;
 
-            onDirty = (onDirty ?? "force").Trim().ToLowerInvariant();
+            onDirty = (onDirty ?? "abort").Trim().ToLowerInvariant();
 
             if (onDirty is not ("force" or "discard" or "save" or "abort"))
             {
@@ -1017,6 +1070,20 @@ internal sealed partial class SessionManager : IDisposable
                     "E_INVALID_ARG",
                     $"未知 on_dirty: {onDirty}（可选 force/discard/save/abort）");
             }
+
+            if (onDirty is "force" or "discard" && !allowDataLoss)
+            {
+                throw new ToolException(
+                    "E_DESTRUCTIVE_REQUIRED",
+                    $"on_dirty={onDirty} 会丢弃未保存内容，需要显式 allow_data_loss=true",
+                    new JsonObject { ["on_dirty"] = onDirty },
+                    retryable: true,
+                    hint: "先保存；确认可丢弃后传 allow_data_loss=true，或改用 on_dirty=save/abort",
+                    stage: "release");
+            }
+
+            // 校验通过后再推进代际：一次被拒绝的 release 不应让在途结果作废。
+            Interlocked.Increment(ref _epoch);
 
             // abort 的语义是“保留未保存窗口”。如果同时摘掉虚拟屏，窗口会被留在
             // 已不存在的显示器坐标上，因此这里强制保留屏，并明确告知调用方。

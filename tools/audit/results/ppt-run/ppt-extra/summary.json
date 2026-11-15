@@ -6,22 +6,28 @@
       "purpose": "关闭后重开 pptx，无修复提示",
       "ok": true,
       "title": "VScreenPilot-PPT-测评 - PowerPoint",
-      "dialogs": [],
-      "nodes": 11
+      "dialogs": [
+        "继续阅读",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "nodes": 17
     },
     {
       "id": "SUP-01",
       "purpose": "capture_screen 内联图是合法 base64",
-      "ok": false,
-      "detail": "ValueError: string argument should contain only ASCII characters",
-      "bytes": 1085
+      "ok": true,
+      "detail": "89504e47",
+      "bytes": 1500
     },
     {
       "id": "SUP-02",
       "purpose": "snapshot 内联图是合法 base64",
-      "ok": false,
-      "detail": "ValueError: string argument should contain only ASCII characters",
-      "bytes": 62733
+      "ok": true,
+      "detail": "89504e47",
+      "bytes": 86760
     },
     {
       "id": "SUP-04a",
@@ -54,9 +60,9 @@
     {
       "id": "SUP-06",
       "purpose": "wait_for text 可用（schema 声明了 text）",
-      "ok": false,
-      "code": "E_INVALID_ARG",
-      "message": "未知 wait_for 条件类型: text"
+      "ok": true,
+      "code": null,
+      "message": null
     },
     {
       "id": "SUP-07",
@@ -77,7 +83,7 @@
       "ok": true,
       "drag_code": null,
       "passed": true,
-      "ratio": 0.1172
+      "ratio": 0.1185
     },
     {
       "id": "SUP-10a",
@@ -101,9 +107,9 @@
     {
       "id": "SUP-12",
       "purpose": "长文本输入后图片剪贴板仍在",
-      "ok": false,
+      "ok": true,
       "before": true,
-      "after": false
+      "after": true
     },
     {
       "id": "SUP-13",
@@ -111,7 +117,7 @@
       "ok": true,
       "saved": {
         "ok": true,
-        "bytes": 40336
+        "bytes": 40359
       },
       "found": true
     },
@@ -121,9 +127,9 @@
       "ok": true,
       "display_removed": true,
       "forced": [
-        10560
+        7204
       ]
     }
   ],
-  "binary_sha256": "A90D33A19F74B0A61F6E5924EBBF20CD45CA0A9FE865EA41C7CA07267F7F3EB0"
+  "binary_sha256": "9F2C16EC1FB2DA32887854D221E1E51B0F31DD642BE21B1FDBA1497504271B32"
 }

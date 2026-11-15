@@ -123,7 +123,7 @@ def main() -> int:
 
     final = client.sample()
     final.update(gui_resources(client.proc.pid))
-    client.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+    client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     client.stop()
 
     write_json(os.path.join(cap_dir, "summary.json"), {

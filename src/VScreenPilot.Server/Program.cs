@@ -97,6 +97,13 @@ internal static class Program
             log.Warn("run_script 已启用（--allow-script/VSP_ALLOW_SCRIPT），该工具可执行任意 PowerShell");
         }
 
+        string? cliCommand = GetOption(args, "--cli");
+
+        if (!string.IsNullOrWhiteSpace(cliCommand))
+        {
+            return RunCli(cliCommand, args, _session, log, job, mutex);
+        }
+
         int? parentPid = GetParentPid(args);
         if (parentPid is not null)
         {
@@ -180,6 +187,7 @@ internal static class Program
 
             用法:
               VScreenPilot [--allow-script] [--parent-pid <pid>] [--profile <name>]
+              VScreenPilot --cli env|snapshot|screen [--profile <name>]   输出纯 JSON（CLI 伴生入口）
               VScreenPilot --doctor                                输出 JSON 诊断
               VScreenPilot --version                               输出版本
               VScreenPilot --help                                  输出本帮助
@@ -193,6 +201,79 @@ internal static class Program
               VSP_ALLOW_SCRIPT=1        等价于 --allow-script
               VSP_APP_ALLOWLIST=dir1;dir2  仅允许启动这些目录下的 exe（默认允许全部）
             """);
+    }
+
+    /// <summary>
+    /// CLI 伴生入口：同一 exe 不经过 MCP 也能取环境/快照/截图。
+    /// 编码代理用 CLI + skill 可以省掉工具 schema 的上下文成本。
+    /// </summary>
+    private static int RunCli(
+        string command, string[] args, SessionManager session,
+        LogRing log, JobObject job, MutexGuard mutex)
+    {
+        try
+        {
+            JsonObject result;
+
+            switch (command.Trim().ToLowerInvariant())
+            {
+                case "env":
+                    result = session.GetEnvironment(HasFlag(args, "--ensure"));
+                    break;
+
+                case "snapshot":
+                    SnapshotResult snapshot = session.Snapshot(
+                        pid: null,
+                        maxDepth: 4,
+                        interactiveOnly: !HasFlag(args, "--all"),
+                        maxNodes: 300,
+                        includeValues: true,
+                        includeScreenshot: false,
+                        scale: 0.5);
+                    result = snapshot.Data;
+                    break;
+
+                case "screen":
+                    SessionManager.CaptureResult capture = session.CaptureScreenEx(
+                        null, null, null, null, 0.5, savePath: null,
+                        storeFrame: false, previewScale: null);
+                    string path = Path.Combine(
+                        session.ArtifactDirectory,
+                        $"cli-{DateTime.Now:HHmmss-fff}.png");
+                    File.WriteAllBytes(path, capture.Png);
+                    capture.Meta["path"] = path;
+                    result = capture.Meta;
+                    break;
+
+                default:
+                    Console.Error.WriteLine(
+                        $"未知 --cli 命令: {command}（可选 env|snapshot|screen）");
+                    return 2;
+            }
+
+            Console.Out.WriteLine(
+                result.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            var error = new JsonObject
+            {
+                ["ok"] = false,
+                ["error"] = exception.Message,
+            };
+            Console.Out.WriteLine(
+                error.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            log.Error("CLI 执行失败", exception);
+            return 1;
+        }
+        finally
+        {
+            session.Dispose();
+            job.Dispose();
+            mutex.Dispose();
+            log.Dispose();
+        }
     }
 
     private static string? GetOption(string[] args, string option)

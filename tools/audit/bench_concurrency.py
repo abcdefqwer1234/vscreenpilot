@@ -146,7 +146,7 @@ def main() -> int:
     thread = threading.Thread(target=shot, daemon=True)
     thread.start()
     time.sleep(0.05)
-    release = client.call("release_environment", {"keep_display": True, "on_dirty": "discard"}, 120)
+    release = client.call("release_environment", {"keep_display": True, "on_dirty": "discard", "allow_data_loss": True}, 120)
     thread.join(60)
     after_release = client.call("get_environment", {}, 60)
     cases.append(case("CONC-04", "并发 release 后会话可恢复",
@@ -161,7 +161,7 @@ def main() -> int:
                       rss_before=before.get("rss_mb"), rss_after=after.get("rss_mb"),
                       handles_before=before.get("handles"), handles_after=after.get("handles")))
 
-    client.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+    client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     client.stop()
     write_json(os.path.join(conc_dir, "summary.json"), {"cases": cases})
     print_summary(cases)

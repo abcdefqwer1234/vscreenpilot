@@ -1,0 +1,110 @@
+{
+  "suite": "ppt-fixes",
+  "cases": [
+    {
+      "id": "FIX-00",
+      "purpose": "记事本就绪",
+      "ok": true,
+      "pid": 6592,
+      "document_ready": null,
+      "reason": "not_modeled"
+    },
+    {
+      "id": "FIX-01",
+      "purpose": "未建模应用 document_ready=null",
+      "ok": true,
+      "value": null,
+      "reason": "not_modeled"
+    },
+    {
+      "id": "FIX-02",
+      "purpose": "capture_screen 内联图是合法 base64",
+      "ok": true,
+      "detail": "89504e47",
+      "bytes": 3168
+    },
+    {
+      "id": "FIX-03",
+      "purpose": "snapshot{include_screenshot} 是合法 base64",
+      "ok": true,
+      "detail": "89504e47",
+      "bytes": 48596,
+      "nodes": 33
+    },
+    {
+      "id": "FIX-04",
+      "purpose": "wait_for{type:text} 命中",
+      "ok": true,
+      "satisfied": true,
+      "code": null
+    },
+    {
+      "id": "FIX-05",
+      "purpose": "OCR 读到屏幕文本",
+      "ok": true,
+      "count": 21,
+      "matches": 1,
+      "language": "zh-Hans-CN",
+      "code": null
+    },
+    {
+      "id": "FIX-06",
+      "purpose": "snapshot{annotate} 返回标注",
+      "ok": true,
+      "annotations": 23,
+      "images": 1
+    },
+    {
+      "id": "FIX-07",
+      "purpose": "press_keys 返回 observed.changed",
+      "ok": true,
+      "changed": true,
+      "ratio": 0.0625
+    },
+    {
+      "id": "FIX-08",
+      "purpose": "force 缺少 allow_data_loss 被拒绝",
+      "ok": true,
+      "code": "E_DESTRUCTIVE_REQUIRED",
+      "alive": true
+    },
+    {
+      "id": "FIX-09",
+      "purpose": "release 默认 abort 保留未保存进程",
+      "ok": true,
+      "on_dirty": "abort",
+      "kept": [
+        6592
+      ],
+      "alive": true
+    },
+    {
+      "id": "FIX-10",
+      "purpose": "重新接管记事本",
+      "ok": true,
+      "pid": 2256
+    },
+    {
+      "id": "FIX-11",
+      "purpose": "长文本自动回退且图片剪贴板仍在",
+      "ok": true,
+      "before": true,
+      "after": true
+    },
+    {
+      "id": "FIX-12",
+      "purpose": "显式 allow_data_loss 才强杀",
+      "ok": true,
+      "forced": [
+        2256
+      ]
+    },
+    {
+      "id": "FIX-99",
+      "purpose": "释放会话",
+      "ok": true,
+      "display_removed": false
+    }
+  ],
+  "binary_sha256": "9F2C16EC1FB2DA32887854D221E1E51B0F31DD642BE21B1FDBA1497504271B32"
+}

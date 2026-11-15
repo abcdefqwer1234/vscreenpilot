@@ -96,11 +96,11 @@ def main() -> int:
                       find=find.code or "ok", invoke=(invoke.code if invoke else None),
                       ui_ok=read.ok))
     if adopted.ok:
-        client.call("release_environment", {"keep_display": True, "on_dirty": "discard"}, 120)
+        client.call("release_environment", {"keep_display": True, "on_dirty": "discard", "allow_data_loss": True}, 120)
     kill_tree(calc.pid)
 
     # 重新接管 UiTarget，供后续 GUI 脚本使用前清理
-    client.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+    client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     client.stop()
 
     write_json(os.path.join(RESULTS, "regressions", "fixups.json"), {"cases": cases})

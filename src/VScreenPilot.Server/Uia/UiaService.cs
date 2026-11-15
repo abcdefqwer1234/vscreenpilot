@@ -482,6 +482,119 @@ internal sealed class UiaService : IDisposable
             ? _automation.GetRootElement()
             : _automation.ElementFromHandle(ResolveUwpContentHwnd(hwnd));
 
+    /// <summary>
+    /// 按可见文本查找元素：先匹配 Name，再对 Document/Edit/Text 读取 TextPattern。
+    /// 供 wait_for{type:"text"} 使用；不做 OCR（OCR 走 read_screen_text）。
+    /// </summary>
+    public UiaElementInfo? FindTextElement(IntPtr hwnd, string text, int maxChars = 65536)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        lock (_sync)
+        {
+            IUIAutomationElement? root = null;
+            IUIAutomationElementArray? all = null;
+
+            try
+            {
+                root = RootFromHandle(hwnd);
+
+                if (root is null)
+                {
+                    return null;
+                }
+
+                all = root.FindAllBuildCache(
+                    TreeScope.TreeScope_Subtree, _trueCondition, _elementCache);
+
+                if (all is null)
+                {
+                    return null;
+                }
+
+                var textCandidates = new List<IUIAutomationElement>();
+                int count = Math.Min(all.Length, 3000);
+
+                for (int index = 0; index < count; index++)
+                {
+                    IUIAutomationElement? element = all.GetElement(index);
+
+                    if (element is null)
+                    {
+                        continue;
+                    }
+
+                    bool keepForText = false;
+
+                    try
+                    {
+                        UiaElementInfo? info = Describe(element, cached: true);
+
+                        if (info is null || info.Offscreen)
+                        {
+                            continue;
+                        }
+
+                        if (info.Name.Contains(text, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return info;
+                        }
+
+                        if (info.ControlType is 50030 or 50004 or 50020)
+                        {
+                            // 这些类型的正文可能不在 Name 里，循环结束后统一读一次。
+                            keepForText = true;
+                            textCandidates.Add(element);
+                        }
+                    }
+                    finally
+                    {
+                        if (!keepForText)
+                        {
+                            ReleaseElement(element);
+                        }
+                    }
+                }
+
+                foreach (IUIAutomationElement element in textCandidates)
+                {
+                    try
+                    {
+                        string? value = GetText(element, maxChars);
+
+                        if (value is not null &&
+                            value.Contains(text, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return Describe(element, cached: false);
+                        }
+                    }
+                    catch (COMException)
+                    {
+                        // 单个 provider 读文本失败不影响其余候选。
+                    }
+                    finally
+                    {
+                        ReleaseElement(element);
+                    }
+                }
+
+                return null;
+            }
+            catch (COMException)
+            {
+                return null;
+            }
+            finally
+            {
+                ReleaseElement(all);
+                ReleaseElement(root);
+            }
+        }
+    }
+
     /// <summary>按属性查询控件；name 支持 exact/contains/regex 过滤。</summary>
     public List<UiaElementInfo> FindElements(
         IntPtr hwnd,
@@ -1511,7 +1624,11 @@ internal sealed class UiaService : IDisposable
         node.Children.Count > 0 ||
         node.Info.Focusable ||
         node.Info.Focused ||
-        InteractiveControlTypes.Contains(node.Info.ControlType);
+        InteractiveControlTypes.Contains(node.Info.ControlType) ||
+        // 画布/自绘应用常把内容暴露成无子节点、不可聚焦的 Text/Image/Custom。
+        // 只要它带名字，就保留，否则 interactive_only 会把内容整片剪掉（S4）。
+        (node.Info.ControlType is 50020 or 50006 or 50025 &&
+         !string.IsNullOrWhiteSpace(node.Info.Name));
 
     private static bool IsNoiseControl(int controlType) =>
         controlType is 50012 or 50014 or 50027 or 50038; // ProgressBar/ScrollBar/Thumb/Separator

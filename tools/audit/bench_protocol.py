@@ -465,7 +465,7 @@ def main() -> int:
     security(client, cases)
 
     snapshot = client.sample()
-    client.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+    client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     client.stop()
 
     single_instance(args.exe, cases)

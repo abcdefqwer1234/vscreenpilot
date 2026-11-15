@@ -353,16 +353,20 @@ internal sealed partial class SessionManager
         WindowInfo? after = WindowManager.FromHandle(window.Hwnd);
         SaveState();
 
-        bool word = exeName.Equals("winword", StringComparison.OrdinalIgnoreCase);
-        bool documentReady = !word;
         var warnings = new JsonArray();
+        bool word = exeName.Equals("winword", StringComparison.OrdinalIgnoreCase);
+        bool powerpoint = exeName.Equals("powerpnt", StringComparison.OrdinalIgnoreCase);
+        bool excel = exeName.Equals("excel", StringComparison.OrdinalIgnoreCase);
+        bool? documentReady;
+        string documentReason;
 
         if (word)
         {
             documentReady = Uia.FindElement(window.Hwnd, null, "Document", null, null) is not null;
+            documentReason = documentReady == true ? "document_element" : "no_document_element";
 
             // 仅对本会话新启动的专用 Word 自动新建文档；复用用户 Word 时不动其文档状态。
-            if (!documentReady && ensureDocument && started && closeOnRelease)
+            if (documentReady != true && ensureDocument && started && closeOnRelease)
             {
                 PauseFocusGuard();
 
@@ -372,6 +376,7 @@ internal sealed partial class SessionManager
                     {
                         InputInjector.PressKeys("Ctrl+N");
                         documentReady = WaitForWordDocument(window.Hwnd, 6000);
+                        documentReason = documentReady == true ? "created_by_ctrl_n" : "ctrl_n_failed";
                     }
                 }
                 finally
@@ -381,10 +386,70 @@ internal sealed partial class SessionManager
                 }
             }
 
-            if (!documentReady)
+            if (documentReady != true)
             {
                 warnings.Add("Word 当前没有可编辑文档；可传 ensure_document=true 或手动 Ctrl+N");
             }
+        }
+        else if (powerpoint)
+        {
+            string currentTitle = WindowManager.GetTitle(window.Hwnd);
+            documentReady = LooksLikeDocumentWindow(currentTitle, "PowerPoint");
+            documentReason = documentReady == true ? "document_title" : "start_screen_or_no_document";
+
+            if (documentReady != true && ensureDocument && started && closeOnRelease && tracked is not null)
+            {
+                PauseFocusGuard();
+
+                try
+                {
+                    if (EnsureForeground(tracked))
+                    {
+                        InputInjector.PressKeys("Ctrl+N");
+                        documentReady = WaitForDocumentTitle(window.Hwnd, "PowerPoint", 5000);
+
+                        if (documentReady != true)
+                        {
+                            // 开始屏幕的“空白演示文稿”磁贴是普通按钮；按名字找，别猜坐标。
+                            UiaElementInfo? tile = FindBlankPresentationTile(window.Hwnd);
+
+                            if (tile is not null && tile.Width > 0 && tile.Height > 0)
+                            {
+                                InputInjector.Click(
+                                    tile.Left + tile.Width / 2, tile.Top + tile.Height / 2,
+                                    "left", clicks: 1);
+                                documentReady = WaitForDocumentTitle(window.Hwnd, "PowerPoint", 8000);
+                                documentReason = documentReady == true ? "blank_tile" : "blank_tile_failed";
+                            }
+                        }
+                        else
+                        {
+                            documentReason = "created_by_ctrl_n";
+                        }
+                    }
+                }
+                finally
+                {
+                    RestoreForeground(previousForeground);
+                    ResumeFocusGuard();
+                }
+
+                if (documentReady != true)
+                {
+                    warnings.Add("PowerPoint 停在开始屏幕；请输入文件名/点“空白演示文稿”，或手动 Ctrl+N");
+                }
+            }
+        }
+        else if (excel)
+        {
+            documentReady = LooksLikeDocumentWindow(WindowManager.GetTitle(window.Hwnd), "Excel");
+            documentReason = documentReady == true ? "document_title" : "no_workbook";
+        }
+        else
+        {
+            // 没有按应用建模时不要猜：返回 null，让调用方自己决定是否 snapshot。
+            documentReady = null;
+            documentReason = "not_modeled";
         }
 
         var result = new JsonObject
@@ -393,11 +458,12 @@ internal sealed partial class SessionManager
             ["new_instance"] = newInstance,
             ["reused"] = !started,
             ["maximized"] = maximized,
-            ["close_on_release"] = tracked.CloseWindowOnRelease,
+            ["close_on_release"] = tracked?.CloseWindowOnRelease ?? closeOnRelease,
             ["hwnd"] = window.Hwnd.ToInt64(),
             ["pid"] = window.Pid,
             ["title"] = after?.Title ?? window.Title,
-            ["document_ready"] = documentReady,
+            ["document_ready"] = documentReady is null ? null : JsonValue.Create(documentReady.Value),
+            ["document_ready_reason"] = documentReason,
             ["ensure_document"] = ensureDocument,
             ["bounds"] = after is null
                 ? new JsonObject()
@@ -422,7 +488,7 @@ internal sealed partial class SessionManager
 
         if (!newInstance && hadRunningInstance)
         {
-            result["hint"] = tracked.CloseWindowOnRelease
+            result["hint"] = tracked?.CloseWindowOnRelease == true
                 ? "已复用本会话已启动的窗口；release_environment 会关闭它"
                 : "已接管现有窗口；关闭调试后只归位、不关闭该应用";
         }
@@ -473,6 +539,63 @@ internal sealed partial class SessionManager
         }
 
         return false;
+    }
+
+    /// <summary>Office 窗口标题在打开文档后是“文件名 - 产品名”；开始屏幕只有产品名。</summary>
+    internal static bool LooksLikeDocumentWindow(string title, string product)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return false;
+        }
+
+        string trimmed = title.Trim();
+        return trimmed.EndsWith(" - " + product, StringComparison.OrdinalIgnoreCase) &&
+               trimmed.Length > product.Length + 3;
+    }
+
+    private static bool WaitForDocumentTitle(IntPtr hwnd, string product, int timeoutMs)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(1000, timeoutMs));
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (!NativeMethods.IsWindow(hwnd))
+            {
+                return false;
+            }
+
+            if (LooksLikeDocumentWindow(WindowManager.GetTitle(hwnd), product))
+            {
+                return true;
+            }
+
+            Thread.Sleep(150);
+        }
+
+        return false;
+    }
+
+    private UiaElementInfo? FindBlankPresentationTile(IntPtr hwnd)
+    {
+        try
+        {
+            foreach (UiaElementInfo info in Uia.FindElements(
+                         hwnd, null, UiaNameMatch.Exact, "Button", null, 200))
+            {
+                if (info.Name.Contains("空白", StringComparison.OrdinalIgnoreCase) ||
+                    info.Name.Contains("Blank", StringComparison.OrdinalIgnoreCase))
+                {
+                    return info;
+                }
+            }
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            // 开始屏幕的 UIA 提供程序不稳定时按“找不到磁贴”处理。
+        }
+
+        return null;
     }
 
     private static string BuildNewInstanceArguments(

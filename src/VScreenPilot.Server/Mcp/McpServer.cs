@@ -364,6 +364,8 @@ internal sealed class McpServer
         long epoch = _session.Epoch;
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         WriteScheduler.Lease? lease = null;
+        CancellationTokenSource? callCts = null;
+        bool callCtsTransferred = false;
         bool mutating = MutatingTools.Contains(tool.Name);
 
         try
@@ -380,7 +382,7 @@ internal sealed class McpServer
                     bypass: tool.Name == "release_environment").ConfigureAwait(false);
             }
 
-            using var callCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            callCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             callCts.CancelAfter(tool.TimeoutMs);
             _session.SetCancellation(callCts);
 
@@ -395,7 +397,9 @@ internal sealed class McpServer
 
                 // release 与只读观察互斥：release 摘屏前先等 snapshot/capture 结束。
                 // wait_for 可能持续 120s，不能持读锁阻塞 release；get_log 不碰显示，也跳过。
-                bool sessionRead = tool.ReadOnly && tool.Name is not ("wait_for" or "get_log");
+                // 注意：这里用“是否读会话”而不是 readOnlyHint 判断。snapshot/capture_screen
+                // 会换代/写盘，标注上不是只读，但仍然必须受 release 的读锁保护。
+                bool sessionRead = tool.Name is not ("wait_for" or "get_log" or "run_script" or "release_environment");
                 bool sessionWrite = tool.Name == "release_environment";
                 bool writeHeld = false;
 
@@ -470,7 +474,21 @@ internal sealed class McpServer
                     lease = null;
                 }
 
-                _log.Warn($"工具 {tool.Name} 超过 {tool.TimeoutMs}ms 未完成");
+                // 协作式取消：让还在循环里的 handler 尽快停下；CTS 交给 handler 释放，
+                // 否则 using 会先把 token 源 dispose，Cancellation 属性就退化成 None（S5）。
+                try
+                {
+                    callCts?.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // 已经结束。
+                }
+                _ = handlerTask.ContinueWith(
+                    _ => callCts?.Dispose(), TaskScheduler.Default);
+                callCtsTransferred = true;
+
+                _log.Warn($"工具 {tool.Name} 超过 {tool.TimeoutMs}ms 未完成，已请求取消");
                 response = ToolResponse.Error(
                     "E_TIMEOUT",
                     $"工具 {tool.Name} 超过 {tool.TimeoutMs}ms 未完成",
@@ -518,6 +536,13 @@ internal sealed class McpServer
         finally
         {
             _session.SetCancellation(null);
+
+            // 超时后 CTS 的所有权已经交给仍在运行的 handler。
+            if (!callCtsTransferred)
+            {
+                callCts?.Dispose();
+            }
+
             lease?.Dispose();
         }
     }
@@ -664,7 +689,7 @@ internal sealed class McpServer
         return document.RootElement.Clone();
     }
 
-    private static CallToolResult ToResult(ToolResponse response)
+    internal static CallToolResult ToResult(ToolResponse response)
     {
         var content = new List<ContentBlock>();
 
@@ -687,10 +712,22 @@ internal sealed class McpServer
             else if (type == "image")
             {
                 string base64 = block["data"]?.GetValue<string>() ?? string.Empty;
-                content.Add(new ImageContentBlock
+
+                // ImageContentBlock.Data 的契约是“base64 编码后的 UTF-8 字节”，
+                // 不是原始 PNG 字节。用 FromBytes 让 SDK 负责编码；直接把
+                // Convert.FromBase64String 的结果塞进 Data 会让客户端解码失败（N1）。
+                content.Add(ImageContentBlock.FromBytes(
+                    Convert.FromBase64String(base64),
+                    block["mimeType"]?.GetValue<string>() ?? "image/png"));
+            }
+            else if (type == "resource_link")
+            {
+                content.Add(new ResourceLinkBlock
                 {
-                    Data = Convert.FromBase64String(base64),
-                    MimeType = block["mimeType"]?.GetValue<string>() ?? "image/png",
+                    Uri = block["uri"]?.GetValue<string>() ?? string.Empty,
+                    Name = block["name"]?.GetValue<string>() ?? "artifact",
+                    MimeType = block["mimeType"]?.GetValue<string>(),
+                    Size = block["size"]?.GetValue<long>(),
                 });
             }
         }
@@ -717,7 +754,7 @@ internal sealed class McpServer
               "ensure":{"type":"boolean","description":"Mount or heal the virtual display before reading state."}}}
             """,
             Out("virtual_display:object", "session:object", "foreground:object", "primary:object", "virtual_screen:object"),
-            readOnly: true, destructive: false, timeoutMs: 20000, GetEnvironment);
+            readOnly: false, destructive: false, timeoutMs: 20000, GetEnvironment);
 
         Add(tools, "launch_or_place_app", "Launch or attach app",
             "Start an application or attach to an existing window, move it onto the virtual display and maximize it. " +
@@ -730,11 +767,12 @@ internal sealed class McpServer
               "args":{"type":"string"},
               "wait_ms":{"type":"integer","minimum":1000,"maximum":60000},
               "new_instance":{"type":"boolean","description":"Default true: dedicated/new window."},
-              "ensure_document":{"type":"boolean","description":"Office only: Ctrl+N when no document."},
+              "ensure_document":{"type":"boolean","description":"Default true. Word: Ctrl+N. PowerPoint: Ctrl+N then the blank-presentation tile. PowerPoint/Excel report document_ready_reason; apps without modeling return document_ready=null."},
               "pid":{"type":"integer","minimum":1,"description":"Attach by process id (most precise)."}}}
             """,
             Out("launched:boolean", "new_instance:boolean", "reused:boolean", "pid:integer", "hwnd:integer",
-                "title:string", "maximized:boolean", "document_ready:boolean", "dialogs:array", "warnings:array"),
+                "title:string", "maximized:boolean", "document_ready:boolean",
+                "document_ready_reason:string", "dialogs:array", "warnings:array"),
             readOnly: false, destructive: false, timeoutMs: 90000, LaunchOrPlace);
 
         Add(tools, "snapshot", "Snapshot",
@@ -748,14 +786,15 @@ internal sealed class McpServer
               "interactive_only":{"type":"boolean","description":"Default true."},
               "max_nodes":{"type":"integer","minimum":1,"maximum":1024,"description":"Default 300; max 1024 (ref capacity)."},
               "include_screenshot":{"type":"boolean","description":"Default false; adds a scaled PNG."},
+              "annotate":{"type":"boolean","description":"Default false; draw element boxes and numbered labels on the screenshot. Implies include_screenshot."},
               "scale":{"type":"number","minimum":0.1,"maximum":1,"description":"Screenshot scale, default 0.5."},
               "include_values":{"type":"boolean","description":"Include text/value of text controls. Default true."}}}
             """,
             Out("snapshot_id:string", "tree:object", "text:string", "nodes:integer",
                 "truncated:boolean", "max_nodes_effective:integer", "ref_capacity:integer",
                 "windows:array", "dialogs:array", "foreground:object", "screenshot:object",
-                "screenshot_path:string", "screenshot_uri:string", "screenshot_preview:object"),
-            readOnly: true, destructive: false, timeoutMs: 45000, Snapshot);
+                "screenshot_path:string", "screenshot_uri:string", "screenshot_preview:object", "annotations:array"),
+            readOnly: false, destructive: false, timeoutMs: 45000, Snapshot);
 
         Add(tools, "capture_screen", "Capture screen",
             "Capture the virtual display or a region. Returns a PNG plus meta. If save_path is given it is the only " +
@@ -778,7 +817,7 @@ internal sealed class McpServer
                 "artifact_path:string", "resource_uri:string", "artifact_uri:string",
                 "inline:boolean", "preview:object", "preview_error:string",
                 "backend:string", "slow_capture:boolean"),
-            readOnly: true, destructive: false, timeoutMs: 30000, CaptureScreen);
+            readOnly: false, destructive: false, timeoutMs: 30000, CaptureScreen);
 
         Add(tools, "find_element", "Find element",
             "Find UI Automation elements and return refs, bounds, state and snapshot_id. Falls back to MSAA when a " +
@@ -872,11 +911,12 @@ internal sealed class McpServer
               "clicks":{"type":"integer","minimum":1,"maximum":10},
               "mode":{"type":"string","enum":["auto","uia","message","input"],"description":"Legacy alias of channel."},
               "channel":{"type":"string","enum":["auto","uia","message","input"]},
-              "keep_foreground":{"type":"boolean"}},
+              "keep_foreground":{"type":"boolean"},
+              "observe":{"type":"boolean","description":"Default true: capture a small before/after diff and return observed.changed."}},
               "required":["x","y"]}
             """,
-            Out("channel:string", "hwnd:integer", "verified:boolean"),
-            readOnly: false, destructive: true, timeoutMs: 20000, Click);
+            Out("channel:string", "hwnd:integer", "verified:boolean", "observed:object"),
+            readOnly: false, destructive: true, timeoutMs: 25000, Click);
 
         Add(tools, "click_ref", "Click element by ref",
             "Click a control by element_ref. auto first tries UIA Invoke/Toggle/Select, then message click " +
@@ -892,6 +932,41 @@ internal sealed class McpServer
                 "refreshed:boolean", "bounds:object", "observed:object"),
             readOnly: false, destructive: true, timeoutMs: 20000, ClickRef);
 
+        Add(tools, "read_screen_text", "Read screen text (OCR)",
+            "OCR the virtual display or a region with the built-in Windows OCR engine. Use it for canvas apps " +
+            "(PowerPoint, charts, games) where UIA exposes no text. Optional query filters lines by substring.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "region":{"type":"object","additionalProperties":false,"properties":{
+                "x":{"type":"integer"},"y":{"type":"integer"},
+                "width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},
+                "required":["x","y","width","height"]},
+              "query":{"type":"string"},
+              "max_lines":{"type":"integer","minimum":1,"maximum":200}}}
+            """,
+            Out("engine:string", "language:string", "lines:array", "matches:array", "count:integer",
+                "region:object", "duration_ms:number"),
+            readOnly: true, destructive: false, timeoutMs: 60000, ReadScreenText);
+
+        Add(tools, "click_text", "Click text on screen",
+            "OCR the virtual display (or a region), find the first line containing text, click its center and " +
+            "return the before/after diff. Fallback for canvas apps where click_ref cannot find the element.",
+            """
+            {"type":"object","additionalProperties":false,"properties":{
+              "text":{"type":"string"},
+              "region":{"type":"object","additionalProperties":false,"properties":{
+                "x":{"type":"integer"},"y":{"type":"integer"},
+                "width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},
+                "required":["x","y","width","height"]},
+              "channel":{"type":"string","enum":["auto","uia","message","input"]},
+              "keep_foreground":{"type":"boolean"},
+              "observe":{"type":"boolean"}},
+              "required":["text"]}
+            """,
+            Out("found:boolean", "text:string", "x:integer", "y:integer", "bounds:object",
+                "observed:object", "code:string"),
+            readOnly: false, destructive: true, timeoutMs: 60000, ClickText);
+
         Add(tools, "gesture", "Gesture",
             "Composite mouse action: drag, scroll or move. Message mode cannot drag across windows; use channel=input for drags.",
             """
@@ -902,11 +977,12 @@ internal sealed class McpServer
               "dx":{"type":"integer"},"dy":{"type":"integer"},
               "button":{"type":"string","enum":["left","right","middle"]},
               "duration_ms":{"type":"integer","minimum":20,"maximum":5000},
+              "observe":{"type":"boolean","description":"Default true: capture a before/after diff and return observed.changed."},
               "mode":{"type":"string","enum":["auto","message","input"]}},
               "required":["type"]}
             """,
-            Out("channel:string", "steps:integer", "verified:boolean"),
-            readOnly: false, destructive: true, timeoutMs: 30000, Gesture);
+            Out("channel:string", "steps:integer", "verified:boolean", "observed:object"),
+            readOnly: false, destructive: true, timeoutMs: 35000, Gesture);
 
         Add(tools, "type_text", "Type text",
             "Type text into the focused control. auto uses a pattern write, clipboard paste for long text, or " +
@@ -933,10 +1009,11 @@ internal sealed class McpServer
               "sequence":{"type":"array","items":{"type":"string"}},
               "keep_foreground":{"type":"boolean"},
               "allow_system_keys":{"type":"boolean"},
+              "observe":{"type":"boolean","description":"Default true: capture a before/after diff and return observed.changed."},
               "pid":{"type":"integer","minimum":1}}}
             """,
-            Out("sent:integer", "channel:string"),
-            readOnly: false, destructive: true, timeoutMs: 30000, PressKeys);
+            Out("sent:integer", "channel:string", "observed:object"),
+            readOnly: false, destructive: true, timeoutMs: 35000, PressKeys);
 
         Add(tools, "wait_for", "Wait for condition",
             "Poll a condition on the server inside one call. type=element|color|window|pixel_diff|visual|text. " +
@@ -996,13 +1073,16 @@ internal sealed class McpServer
 
         Add(tools, "release_environment", "Release environment",
             "End the debug session: restore window placement, close only processes this session started, optionally " +
-            "remove the virtual display. on_dirty controls unsaved content. Never auto-discards when the result is unknown.",
+            "remove the virtual display. on_dirty controls unsaved content. Default is abort: unsaved windows are kept " +
+            "and the display stays mounted. force/discard require allow_data_loss=true.",
             """
             {"type":"object","additionalProperties":false,"properties":{
               "keep_display":{"type":"boolean","description":"Default true."},
-              "on_dirty":{"type":"string","enum":["force","discard","save","abort"],"description":"Default force."}}}
+              "on_dirty":{"type":"string","enum":["force","discard","save","abort"],"description":"Default abort."},
+              "allow_data_loss":{"type":"boolean","description":"Required for on_dirty=force/discard when a tracked app may have unsaved content."}}}
             """,
-            Out("released:boolean", "apps:array", "display_kept:boolean", "warnings:array"),
+            Out("released:boolean", "apps:array", "display_kept:boolean", "warnings:array",
+                "on_dirty:string", "forced:array", "kept:array"),
             readOnly: false, destructive: true, timeoutMs: 90000, ReleaseEnvironment);
 
         Add(tools, "get_log", "Get log",
@@ -1128,14 +1208,17 @@ internal sealed class McpServer
                 stage: "validate");
         }
 
+        bool annotate = OptionalBool(arguments, "annotate", false);
+
         SnapshotResult result = _session.Snapshot(
             OptionalNullableInt(arguments, "pid"),
             OptionalInt(arguments, "max_depth", 4),
             OptionalBool(arguments, "interactive_only", true),
             OptionalInt(arguments, "max_nodes", 300),
             OptionalBool(arguments, "include_values", true),
-            OptionalBool(arguments, "include_screenshot", false),
-            scale);
+            OptionalBool(arguments, "include_screenshot", false) || annotate,
+            scale,
+            annotate);
 
         if (result.Png is null)
         {
@@ -1148,9 +1231,14 @@ internal sealed class McpServer
         }
 
         // 大图先落盘、把路径写进 data，再序列化；否则 Text() 之后追加的字段不会进入响应。
+        string artifactUri;
+        string artifactName;
+
         try
         {
             (string path, string uri) = WriteArtifact(result.Png, "snapshot", result.PreviewPng);
+            artifactUri = uri;
+            artifactName = Path.GetFileName(path);
             result.Data["screenshot_path"] = path;
             result.Data["screenshot_uri"] = uri;
             result.Data["screenshot_resource_uri"] = uri;
@@ -1161,14 +1249,17 @@ internal sealed class McpServer
             return ToolResponse.Text(result.Data);
         }
 
+        ToolResponse response = ToolResponse.Text(result.Data)
+            .AddResourceLink(artifactUri, artifactName, "image/png", result.Png.Length);
+
         if (result.PreviewPng is null)
         {
-            return ToolResponse.Text(result.Data);
+            return response;
         }
 
         // preview 与主图来自同一帧，不再二次截屏。
         result.Data["screenshot_preview"] = result.PreviewMeta;
-        return ToolResponse.Text(result.Data).AddImage(result.PreviewPng);
+        return response.AddImage(result.PreviewPng);
     }
 
     private (string Path, string Uri) WriteArtifact(byte[] png, string prefix, byte[]? preview = null)
@@ -1242,6 +1333,9 @@ internal sealed class McpServer
             return ToolResponse.Text(meta).AddImage(png);
         }
 
+        string? artifactUri = null;
+        string? artifactName = null;
+
         // 显式 save_path 就是唯一正式产物：不再额外写 artifact（R4）。
         if (!hasSavePath)
         {
@@ -1252,6 +1346,8 @@ internal sealed class McpServer
                 meta["artifact_uri"] = uri;
                 meta["resource_uri"] = uri;
                 meta["path"] = path;
+                artifactUri = uri;
+                artifactName = Path.GetFileName(path);
             }
             catch (Exception exception)
             {
@@ -1261,14 +1357,22 @@ internal sealed class McpServer
 
         meta["inline"] = false;
 
+        ToolResponse response = ToolResponse.Text(meta);
+
+        if (artifactUri is not null)
+        {
+            // 标准 resource_link：客户端可直接按 URI 读取大图，不必依赖自定义字段。
+            response.AddResourceLink(artifactUri, artifactName ?? "shot.png", "image/png", png.Length);
+        }
+
         if (inline && capture.PreviewPng is not null)
         {
             // 给模型一张可看的缩略图；完整图通过 artifact_uri/path 获取。
             meta["preview"] = capture.PreviewMeta;
-            return ToolResponse.Text(meta).AddImage(capture.PreviewPng);
+            response.AddImage(capture.PreviewPng);
         }
 
-        return ToolResponse.Text(meta);
+        return response;
     }
 
     private ToolResponse FindElement(JsonElement arguments)
@@ -1355,6 +1459,37 @@ internal sealed class McpServer
         return ToolResponse.Text(_session.GetElementText(reference, maxChars));
     }
 
+    private ToolResponse ReadScreenText(JsonElement arguments)
+    {
+        int? x = null, y = null, width = null, height = null;
+
+        if (arguments.ValueKind == JsonValueKind.Object &&
+            arguments.TryGetProperty("region", out JsonElement region))
+        {
+            if (region.ValueKind != JsonValueKind.Object)
+            {
+                throw new ToolException("E_INVALID_ARG", "region 必须是对象");
+            }
+
+            x = OptionalNullableInt(region, "x");
+            y = OptionalNullableInt(region, "y");
+            width = OptionalNullableInt(region, "width");
+            height = OptionalNullableInt(region, "height");
+
+            if (x is null || y is null || width is null || height is null)
+            {
+                throw new ToolException(
+                    "E_INVALID_ARG", "region 需要 x/y/width/height",
+                    hint: "省略 region 表示整个虚拟屏", stage: "validate");
+            }
+        }
+
+        return ToolResponse.Text(_session.ReadScreenText(
+            x, y, width, height,
+            OptionalString(arguments, "query"),
+            OptionalInt(arguments, "max_lines", 50)));
+    }
+
     private ToolResponse Click(JsonElement arguments)
     {
         int x = RequiredCoordinate(arguments, "x");
@@ -1366,9 +1501,10 @@ internal sealed class McpServer
             ?? OptionalString(arguments, "mode")
             ?? "auto";
         bool keepForeground = OptionalBool(arguments, "keep_foreground", false);
+        bool observe = OptionalBool(arguments, "observe", true);
 
         return ToolResponse.Text(
-            _session.Click(x, y, button, clicks, mode, keepForeground));
+            _session.Click(x, y, button, clicks, mode, keepForeground, observe));
     }
 
     private ToolResponse ClickRef(JsonElement arguments)
@@ -1384,6 +1520,17 @@ internal sealed class McpServer
 
     private ToolResponse Gesture(JsonElement arguments) =>
         ToolResponse.Text(_session.Gesture(arguments));
+
+    private ToolResponse ClickText(JsonElement arguments)
+    {
+        string text = OptionalString(arguments, "text")
+            ?? throw new ToolException("E_INVALID_ARG", "click_text 需要 text");
+        bool keepForeground = OptionalBool(arguments, "keep_foreground", false);
+        bool observe = OptionalBool(arguments, "observe", true);
+        string channel = OptionalString(arguments, "channel") ?? "auto";
+
+        return ToolResponse.Text(_session.ClickText(text, keepForeground, observe, channel));
+    }
 
     private ToolResponse TypeText(JsonElement arguments)
     {
@@ -1401,6 +1548,7 @@ internal sealed class McpServer
     {
         bool keepForeground = OptionalBool(arguments, "keep_foreground", false);
         bool allowSystemKeys = OptionalBool(arguments, "allow_system_keys", false);
+        bool observe = OptionalBool(arguments, "observe", true);
         int? pid = OptionalNullableInt(arguments, "pid");
 
         if (arguments.TryGetProperty("sequence", out JsonElement sequence) &&
@@ -1419,14 +1567,14 @@ internal sealed class McpServer
             }
 
             return ToolResponse.Text(
-                _session.PressKeySequence(keys, keepForeground, pid, allowSystemKeys));
+                _session.PressKeySequence(keys, keepForeground, pid, allowSystemKeys, observe));
         }
 
         string keysText = OptionalString(arguments, "keys")
             ?? throw new ToolException("E_INVALID_ARG", "press_keys 需要 keys 或 sequence");
 
         return ToolResponse.Text(
-            _session.PressKeys(keysText, keepForeground, pid, allowSystemKeys));
+            _session.PressKeys(keysText, keepForeground, pid, allowSystemKeys, observe));
     }
 
     private ToolResponse WaitFor(JsonElement arguments)
@@ -1465,8 +1613,10 @@ internal sealed class McpServer
     private ToolResponse ReleaseEnvironment(JsonElement arguments)
     {
         bool keepDisplay = OptionalBool(arguments, "keep_display", true);
-        string onDirty = OptionalString(arguments, "on_dirty") ?? "force";
-        return ToolResponse.Text(_session.ReleaseEnvironment(keepDisplay, onDirty));
+        string onDirty = OptionalString(arguments, "on_dirty") ?? "abort";
+        bool allowDataLoss = OptionalBool(arguments, "allow_data_loss", false);
+        return ToolResponse.Text(
+            _session.ReleaseEnvironment(keepDisplay, onDirty, allowDataLoss));
     }
 
     private ToolResponse GetLog(JsonElement arguments)

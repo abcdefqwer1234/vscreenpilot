@@ -55,7 +55,7 @@ def run_click_probe(exe: str, label: str, out_dir: str) -> dict:
         "dy": observed["y"] - expected["y"],
     }
     # 原始构建会把坐标映射到主屏：预期落在 primary 的比例位置
-    client.call("release_environment", {"keep_display": False, "on_dirty": "discard"}, 120)
+    client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     client.stop()
     return {
         "label": label,

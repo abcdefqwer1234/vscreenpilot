@@ -160,7 +160,8 @@ internal sealed partial class SessionManager
     }
 
     public JsonObject Click(
-        int x, int y, string button, int clicks, string mode, bool keepForeground = false)
+        int x, int y, string button, int clicks, string mode,
+        bool keepForeground = false, bool observe = true)
     {
         DisplayInfo display = EnsureEnvironmentFast();
 
@@ -186,6 +187,11 @@ internal sealed partial class SessionManager
         }
 
         TrackedApp app = RequirePointInTrackedApp(display, x, y, "click");
+
+        var observeWatch = Stopwatch.StartNew();
+        ObserveSignature? observeBefore = observe
+            ? CaptureSignature(display, x - 60, y - 60, 120, 120)
+            : null;
 
         string method;
         string? detail = null;
@@ -294,6 +300,12 @@ internal sealed partial class SessionManager
             RestoreFocusAfterClick(previousForeground);
         }
 
+        ObserveSignature? observeAfter = observeBefore is null
+            ? null
+            : CaptureSignature(display, x - 60, y - 60, 120, 120);
+        JsonObject? observed = BuildObserved(
+            observeBefore, observeAfter, observeWatch.Elapsed.TotalMilliseconds);
+
         var result = new JsonObject
         {
             ["x"] = x,
@@ -304,9 +316,14 @@ internal sealed partial class SessionManager
             ["method"] = method,
             ["inject_ms"] = Math.Round(injectMs, 2),
             ["duration_ms"] = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
-            ["verified"] = false,
+            ["verified"] = observed?["changed"]?.GetValue<bool>() ?? false,
             ["keep_foreground"] = keepForeground,
         };
+
+        if (observed is not null)
+        {
+            result["observed"] = observed;
+        }
 
         if (detail is not null)
         {
@@ -442,6 +459,22 @@ internal sealed partial class SessionManager
                     useClipboard = mode == "clipboard" ||
                                    (mode == "auto" && (text.Length >= 200 || hasSurrogate));
 
+                    if (useClipboard && ClipboardText.HasNonTextFormats())
+                    {
+                        // 剪贴板里有图片/文件：写文本会永久清掉它们，且无法还原。
+                        if (mode == "clipboard")
+                        {
+                            throw new ToolException(
+                                "E_CLIPBOARD_UNSAFE",
+                                "剪贴板包含非文本内容（图片/文件），写入文本会清空且无法还原",
+                                retryable: false,
+                                hint: "改用 channel=auto/keys（SendInput），或先让用户备份剪贴板",
+                                stage: "input");
+                        }
+
+                        useClipboard = false;
+                    }
+
                     if (useClipboard)
                     {
                         write = WriteTextViaClipboard(focused, text);
@@ -509,8 +542,9 @@ internal sealed partial class SessionManager
     }
 
     public JsonObject PressKeys(
-        string keys, bool keepForeground = false, int? pid = null, bool allowSystemKeys = false) =>
-        PressKeySequence(new[] { keys }, keepForeground, pid, allowSystemKeys);
+        string keys, bool keepForeground = false, int? pid = null,
+        bool allowSystemKeys = false, bool observe = true) =>
+        PressKeySequence(new[] { keys }, keepForeground, pid, allowSystemKeys, observe);
 
     /// <summary>
     /// 在一次前台租约内发送多个按键序列，供菜单导航（Alt+D → Down → Enter 等）使用。
@@ -520,7 +554,8 @@ internal sealed partial class SessionManager
         IReadOnlyList<string> keys,
         bool keepForeground = false,
         int? pid = null,
-        bool allowSystemKeys = false)
+        bool allowSystemKeys = false,
+        bool observe = true)
     {
         if (keys.Count == 0)
         {
@@ -565,15 +600,39 @@ internal sealed partial class SessionManager
                 var stopwatch = Stopwatch.StartNew();
                 double injectMs = 0;
 
+                ObserveSignature? observeBefore = observe
+                    ? CaptureSignature(display, display.X, display.Y, display.Width, display.Height)
+                    : null;
+
+                int sent = 0;
+
                 foreach (string key in keys)
                 {
+                    if (Cancellation.IsCancellationRequested)
+                    {
+                        throw new ToolException(
+                            "E_CANCELLED",
+                            "press_keys 已被取消，停止继续注入",
+                            new JsonObject { ["sent"] = sent },
+                            retryable: true,
+                            hint: "重新调用；已发送的按键不会自动撤销",
+                            stage: "input");
+                    }
+
                     var watch = Stopwatch.StartNew();
                     InputInjector.PressKeys(key, allowSystemKeys);
+                    sent++;
                     injectMs += watch.Elapsed.TotalMilliseconds;
                     Thread.Sleep(120);
                 }
 
-                return new JsonObject
+                ObserveSignature? observeAfter = observeBefore is null
+                    ? null
+                    : CaptureSignature(display, display.X, display.Y, display.Width, display.Height);
+                JsonObject? observed = BuildObserved(
+                    observeBefore, observeAfter, stopwatch.Elapsed.TotalMilliseconds);
+
+                var result = new JsonObject
                 {
                     ["keys"] = string.Join(",", keys),
                     ["count"] = keys.Count,
@@ -582,6 +641,14 @@ internal sealed partial class SessionManager
                     ["duration_ms"] = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
                     ["keep_foreground"] = keepForeground,
                 };
+
+                if (observed is not null)
+                {
+                    result["observed"] = observed;
+                    result["verified"] = observed["changed"]?.GetValue<bool>() ?? false;
+                }
+
+                return result;
             }
             finally
             {
@@ -608,6 +675,7 @@ internal sealed partial class SessionManager
         string button = GetString(arguments, "button") ?? "left";
         string mode = (GetString(arguments, "mode") ?? "auto").ToLowerInvariant();
         int duration = GetInt(arguments, "duration_ms", 300);
+        bool observe = GetBool(arguments, "observe", true);
         var stopwatch = Stopwatch.StartNew();
         IntPtr previousForeground = WindowManager.GetForegroundWindow();
 
@@ -645,6 +713,15 @@ internal sealed partial class SessionManager
                 int clampedDuration = Math.Clamp(duration, 20, 5000);
                 RequirePointInTrackedApp(display, fromX, fromY, "drag.from");
                 RequirePointInTrackedApp(display, toX, toY, "drag.to");
+
+                int dragLeft = Math.Min(fromX, toX) - 80;
+                int dragTop = Math.Min(fromY, toY) - 80;
+                int dragWidth = Math.Abs(toX - fromX) + 160;
+                int dragHeight = Math.Abs(toY - fromY) + 160;
+                ObserveSignature? dragBefore = observe
+                    ? CaptureSignature(display, dragLeft, dragTop, dragWidth, dragHeight)
+                    : null;
+
                 string? detail = null;
 
                 if (useInput)
@@ -696,6 +773,18 @@ internal sealed partial class SessionManager
                         "窗口消息拖拽可能被应用忽略；如无效请改用 mode=input，并用截图/断言验证";
                 }
 
+                ObserveSignature? dragAfter = dragBefore is null
+                    ? null
+                    : CaptureSignature(display, dragLeft, dragTop, dragWidth, dragHeight);
+                JsonObject? dragObserved = BuildObserved(
+                    dragBefore, dragAfter, stopwatch.Elapsed.TotalMilliseconds);
+
+                if (dragObserved is not null)
+                {
+                    dragResult["observed"] = dragObserved;
+                    dragResult["verified"] = dragObserved["changed"]?.GetValue<bool>() ?? false;
+                }
+
                 return dragResult;
             }
 
@@ -729,6 +818,10 @@ internal sealed partial class SessionManager
                 }
 
                 RequirePointInTrackedApp(display, x.Value, y.Value, "scroll");
+
+                ObserveSignature? scrollBefore = observe
+                    ? CaptureSignature(display, x.Value - 120, y.Value - 120, 240, 240)
+                    : null;
 
                 if (useInput)
                 {
@@ -778,6 +871,18 @@ internal sealed partial class SessionManager
                 {
                     scrollResult["hint"] =
                         "窗口消息滚轮可能被未聚焦的应用忽略，请用 assert_region/wait_for 验证";
+                }
+
+                ObserveSignature? scrollAfter = scrollBefore is null
+                    ? null
+                    : CaptureSignature(display, x.Value - 120, y.Value - 120, 240, 240);
+                JsonObject? scrollObserved = BuildObserved(
+                    scrollBefore, scrollAfter, stopwatch.Elapsed.TotalMilliseconds);
+
+                if (scrollObserved is not null)
+                {
+                    scrollResult["observed"] = scrollObserved;
+                    scrollResult["verified"] = scrollObserved["changed"]?.GetValue<bool>() ?? false;
                 }
 
                 return scrollResult;
@@ -927,6 +1032,17 @@ internal sealed partial class SessionManager
 
         foreach (string chunk in SplitTextChunks(text, chunkChars))
         {
+            if (Cancellation.IsCancellationRequested)
+            {
+                throw new ToolException(
+                    "E_CANCELLED",
+                    "type_text 已被取消，停止继续注入",
+                    new JsonObject { ["typed"] = typed, ["chunks"] = chunks },
+                    retryable: true,
+                    hint: "重新调用 type_text；已输入的内容不会自动撤销",
+                    stage: "input");
+            }
+
             if (!IsAppForeground(app))
             {
                 throw new ToolException(

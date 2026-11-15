@@ -1,0 +1,16 @@
+{
+  "suite": "s1-profile-mount",
+  "binary_sha256": "9F2C16EC1FB2DA32887854D221E1E51B0F31DD642BE21B1FDBA1497504271B32",
+  "profile": "s1fix",
+  "env_offset": null,
+  "ok": true,
+  "elapsed_ms": 3522.92,
+  "virtual_display": {
+    "x": 1920,
+    "y": 0,
+    "width": 1280,
+    "height": 720,
+    "position_enforced": false
+  },
+  "note": "VDD/Windows ignored dmPosition; SessionManager accepted the actual (1920,0) instead of failing with E_DISPLAY_MODE."
+}

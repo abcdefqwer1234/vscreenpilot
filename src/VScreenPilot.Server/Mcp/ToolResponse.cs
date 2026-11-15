@@ -157,4 +157,29 @@ public sealed class ToolResponse
         });
         return this;
     }
+
+    /// <summary>标准 resource_link 内容块：大图/artifact 让客户端自己按 URI 读取。</summary>
+    public ToolResponse AddResourceLink(
+        string uri, string name, string? mimeType = null, long? size = null)
+    {
+        var block = new JsonObject
+        {
+            ["type"] = "resource_link",
+            ["uri"] = uri,
+            ["name"] = name,
+        };
+
+        if (!string.IsNullOrWhiteSpace(mimeType))
+        {
+            block["mimeType"] = mimeType;
+        }
+
+        if (size is not null)
+        {
+            block["size"] = size.Value;
+        }
+
+        Content.Add((JsonNode)block);
+        return this;
+    }
 }

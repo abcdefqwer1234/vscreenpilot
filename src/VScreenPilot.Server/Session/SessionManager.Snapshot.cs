@@ -1,8 +1,10 @@
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using VScreenPilot.Apps;
 using VScreenPilot.Core.Displays;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
+using VScreenPilot.Perception;
 using VScreenPilot.Uia;
 
 namespace VScreenPilot.Session;
@@ -23,7 +25,8 @@ internal sealed partial class SessionManager
         int maxNodes,
         bool includeValues,
         bool includeScreenshot,
-        double scale)
+        double scale,
+        bool annotate = false)
     {
         // snapshot 之间串行：保证 generation 提交顺序与调用顺序一致。
         // 注意这里不持 _refGate——建树（最多 3s）和截图都不能阻塞 ref 解析。
@@ -42,7 +45,7 @@ internal sealed partial class SessionManager
         try
         {
             return SnapshotCore(
-                pid, maxDepth, interactiveOnly, maxNodes, includeValues, includeScreenshot, scale);
+                pid, maxDepth, interactiveOnly, maxNodes, includeValues, includeScreenshot, scale, annotate);
         }
         finally
         {
@@ -57,9 +60,11 @@ internal sealed partial class SessionManager
         int maxNodes,
         bool includeValues,
         bool includeScreenshot,
-        double scale)
+        double scale,
+        bool annotate)
     {
         DisplayInfo display = EnsureEnvironmentFast();
+        PruneDeadApps();
         TrackedApp app = FindLiveTrackedApp(pid)
             ?? throw new ToolException(
                 "E_NO_TARGET",
@@ -84,6 +89,30 @@ internal sealed partial class SessionManager
             timeBudgetMs: 3000,
             isCancelled: () => Cancellation.IsCancellationRequested);
 
+        bool emptyRetried = false;
+
+        // 空树在 UIA 忙/首帧未就绪时很常见。重试一次并放开 interactive_only：
+        // 比直接返回“1 个节点 + 无解释”对调用方有用得多（N4）。
+        if (result.Nodes <= 1)
+        {
+            Thread.Sleep(200);
+
+            UiaTreeResult retry = Uia.BuildTree(
+                hwnd,
+                rootRuntimeId: string.Empty,
+                maxDepth: Math.Max(depth, 4),
+                interactiveOnly: false,
+                maxNodes: nodes,
+                timeBudgetMs: 3000,
+                isCancelled: () => Cancellation.IsCancellationRequested);
+
+            if (retry.Root is not null && retry.Nodes > result.Nodes)
+            {
+                result = retry;
+                emptyRetried = true;
+            }
+        }
+
         if (result.Root is null)
         {
             throw new ToolException(
@@ -103,6 +132,8 @@ internal sealed partial class SessionManager
         }
 
         string text = SnapshotFormat.Render(tree, includeValues);
+        int redactions = 0;
+        text = RedactEmails(text, ref redactions);
 
         var data = new JsonObject
         {
@@ -111,6 +142,8 @@ internal sealed partial class SessionManager
             ["tree"] = tree,
             ["text"] = text,
             ["nodes"] = result.Nodes,
+            ["visited"] = result.Visited,
+            ["pruned"] = result.Pruned,
             ["truncated"] = result.Truncated,
             ["interactive_only"] = interactiveOnly,
             ["max_depth"] = depth,
@@ -121,10 +154,28 @@ internal sealed partial class SessionManager
             {
                 ["hwnd"] = hwnd.ToInt64(),
                 ["pid"] = app.Pid,
-                ["title"] = WindowManager.GetTitle(hwnd),
+                ["title"] = RedactEmails(WindowManager.GetTitle(hwnd), ref redactions),
                 ["exe"] = app.ExePath,
             },
         };
+
+        if (redactions > 0)
+        {
+            data["privacy_redactions"] = redactions;
+        }
+
+        if (emptyRetried)
+        {
+            data["empty_retry"] = true;
+        }
+
+        if (result.Nodes <= 1)
+        {
+            data["empty_reason"] = result.Reason
+                ?? (result.Visited <= 1
+                    ? "root_only"
+                    : result.Pruned > 0 ? "pruned_all" : "uia_busy");
+        }
 
         if (maxNodes > Math.Min(1024, ElementRefCapacity))
         {
@@ -137,13 +188,19 @@ internal sealed partial class SessionManager
         }
 
         var dialogs = new JsonArray();
+        bool rootListed = false;
 
         foreach (WindowInfo dialog in WindowManager.ListOwnedWindows(app.Pid, hwnd))
         {
+            if (dialog.Hwnd == hwnd)
+            {
+                rootListed = true;
+            }
+
             var dialogJson = new JsonObject
             {
                 ["hwnd"] = dialog.Hwnd.ToInt64(),
-                ["title"] = dialog.Title,
+                ["title"] = RedactEmails(dialog.Title, ref redactions),
                 ["class"] = dialog.ClassName,
                 ["bounds"] = new JsonObject
                 {
@@ -200,6 +257,37 @@ internal sealed partial class SessionManager
             dialogs.Add(dialogJson);
         }
 
+        // snapshot 的 root 可能已经是弹窗（GetActivePopup）。此前 dialogs[] 不含它，
+        // 调用方会看到“root 是对话框、dialogs 却是空”的矛盾（N6）。
+        if (hwnd != app.Hwnd)
+        {
+            data["root_hwnd"] = hwnd.ToInt64();
+            data["root_is_dialog"] = true;
+
+            if (!rootListed)
+            {
+                WindowInfo info = WindowManager.FromHandle(hwnd)
+                    ?? new WindowInfo(
+                        hwnd, app.Pid, string.Empty, string.Empty,
+                        default, Visible: false, Owned: false);
+
+                dialogs.Insert(0, (JsonNode)new JsonObject
+                {
+                    ["hwnd"] = hwnd.ToInt64(),
+                    ["title"] = RedactEmails(info.Title, ref redactions),
+                    ["class"] = info.ClassName,
+                    ["is_root"] = true,
+                    ["bounds"] = new JsonObject
+                    {
+                        ["x"] = info.Rect.Left,
+                        ["y"] = info.Rect.Top,
+                        ["width"] = info.Width,
+                        ["height"] = info.Height,
+                    },
+                });
+            }
+        }
+
         data["dialogs"] = dialogs;
 
         var windows = new JsonArray();
@@ -251,17 +339,162 @@ internal sealed partial class SessionManager
 
         if (includeScreenshot)
         {
-            // 快照截图不写帧缓存；preview 与主图同帧，且不阻塞 _refGate（已在锁外）。
-            CaptureResult capture = CaptureScreenEx(
-                null, null, null, null, Math.Clamp(scale, 0.1, 1.0), savePath: null,
-                storeFrame: false, previewScale: Math.Max(0.1, scale * 0.25));
+            if (annotate)
+            {
+                var annotations = new JsonArray();
+                CollectAnnotations(tree, display, annotations, maxCount: 80);
+                data["annotations"] = annotations;
 
-            png = capture.Png;
-            previewPng = capture.PreviewPng;
-            previewMeta = capture.PreviewMeta;
-            data["screenshot"] = capture.Meta;
+                // 直接用源帧做叠加，再缩放编码；网格让模型估坐标时有参照。
+                (byte[] bgra, int captureWidth, int captureHeight) =
+                    CaptureRegion(display.X, display.Y, display.Width, display.Height);
+
+                PngOverlay.DrawGrid(bgra, captureWidth, captureHeight, 100);
+
+                foreach (JsonNode? item in annotations)
+                {
+                    if (item is not JsonObject annotation ||
+                        annotation["bounds"] is not JsonObject bounds)
+                    {
+                        continue;
+                    }
+
+                    int index = annotation["index"]?.GetValue<int>() ?? 0;
+                    int bx = (bounds["x"]?.GetValue<int>() ?? 0) - display.X;
+                    int by = (bounds["y"]?.GetValue<int>() ?? 0) - display.Y;
+                    int bw = bounds["width"]?.GetValue<int>() ?? 0;
+                    int bh = bounds["height"]?.GetValue<int>() ?? 0;
+                    (byte r, byte g, byte b) = PngOverlay.ColorFor(Math.Max(0, index - 1));
+
+                    PngOverlay.DrawBox(bgra, captureWidth, captureHeight, bx, by, bw, bh, r, g, b, 2);
+                    PngOverlay.DrawNumber(bgra, captureWidth, captureHeight, bx + 2, by + 2, index);
+                }
+
+                double effectiveScale = Math.Clamp(scale, 0.1, 1.0);
+                png = PngWriter.Encode(
+                    bgra, captureWidth, captureHeight, effectiveScale,
+                    out int outputWidth, out int outputHeight);
+                previewPng = PngWriter.Encode(
+                    bgra, captureWidth, captureHeight, Math.Max(0.1, effectiveScale * 0.25),
+                    out int previewWidth, out int previewHeight);
+
+                data["screenshot"] = new JsonObject
+                {
+                    ["x"] = display.X,
+                    ["y"] = display.Y,
+                    ["width"] = outputWidth,
+                    ["height"] = outputHeight,
+                    ["source_width"] = captureWidth,
+                    ["source_height"] = captureHeight,
+                    ["scale"] = effectiveScale,
+                    ["png_bytes"] = png.Length,
+                    ["backend"] = "gdi+overlay",
+                    ["baseline"] = new JsonObject
+                    {
+                        ["x"] = display.X,
+                        ["y"] = display.Y,
+                        ["width"] = captureWidth,
+                        ["height"] = captureHeight,
+                    },
+                };
+                previewMeta = new JsonObject
+                {
+                    ["width"] = previewWidth,
+                    ["height"] = previewHeight,
+                    ["scale"] = Math.Max(0.1, effectiveScale * 0.25),
+                    ["png_bytes"] = previewPng.Length,
+                };
+            }
+            else
+            {
+                // 快照截图不写帧缓存；preview 与主图同帧，且不阻塞 _refGate（已在锁外）。
+                CaptureResult capture = CaptureScreenEx(
+                    null, null, null, null, Math.Clamp(scale, 0.1, 1.0), savePath: null,
+                    storeFrame: false, previewScale: Math.Max(0.1, scale * 0.25));
+
+                png = capture.Png;
+                previewPng = capture.PreviewPng;
+                previewMeta = capture.PreviewMeta;
+                data["screenshot"] = capture.Meta;
+            }
+        }
+
+        if (redactions > 0)
+        {
+            data["privacy_redactions"] = redactions;
         }
 
         return new SnapshotResult(data, png, previewPng, previewMeta);
+    }
+
+    private static void CollectAnnotations(
+        JsonObject node, DisplayInfo display, JsonArray target, int maxCount)
+    {
+        if (target.Count < maxCount && node["bounds"] is JsonObject bounds)
+        {
+            int x = bounds["x"]?.GetValue<int>() ?? 0;
+            int y = bounds["y"]?.GetValue<int>() ?? 0;
+            int width = bounds["width"]?.GetValue<int>() ?? 0;
+            int height = bounds["height"]?.GetValue<int>() ?? 0;
+            string? name = node["name"]?.GetValue<string>();
+            string controlType = node["control_type"]?.GetValue<string>() ?? string.Empty;
+            bool interesting = !string.IsNullOrWhiteSpace(name) ||
+                               controlType is "Button" or "Edit" or "Document" or "ListItem"
+                                   or "MenuItem" or "TabItem" or "ComboBox";
+
+            if (interesting &&
+                width >= 8 && height >= 8 &&
+                x + width > display.X && y + height > display.Y &&
+                x < display.X + display.Width && y < display.Y + display.Height)
+            {
+                var annotation = new JsonObject
+                {
+                    ["index"] = target.Count + 1,
+                    ["ref"] = node["ref"]?.GetValue<string>(),
+                    ["control_type"] = controlType,
+                    ["bounds"] = bounds.DeepClone(),
+                };
+
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    annotation["name"] = name.Length > 80 ? name[..80] : name;
+                }
+
+                target.Add(annotation);
+            }
+        }
+
+        if (node["children"] is JsonArray children)
+        {
+            foreach (JsonNode? child in children)
+            {
+                if (child is JsonObject childObject)
+                {
+                    CollectAnnotations(childObject, display, target, maxCount);
+                }
+            }
+        }
+    }
+
+    private static readonly Regex EmailPattern = new(
+        @"[A-Za-z0-9._%+\-]+@([A-Za-z0-9.\-]+\.[A-Za-z]{2,})",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    internal static string RedactEmails(string input, ref int count)
+    {
+        if (string.IsNullOrEmpty(input) || !input.Contains('@'))
+        {
+            return input;
+        }
+
+        int matches = 0;
+        string result = EmailPattern.Replace(input, match =>
+        {
+            matches++;
+            return $"***@{match.Groups[1].Value}";
+        });
+
+        count += matches;
+        return result;
     }
 }
