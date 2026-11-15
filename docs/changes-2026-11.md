@@ -1,6 +1,6 @@
 # 重构后变化（2026-11）
 
-> 详细方案见 [audit/05-重构方案与执行计划.md](audit/05-重构方案与执行计划.md)；
+> 详细方案见 [audit/archive/05-重构方案与执行计划.md](audit/archive/05-重构方案与执行计划.md)；
 > 分层与并发模型见 [architecture.md](architecture.md)；错误码见 [errors.md](errors.md)。
 
 ## 新增能力
@@ -45,7 +45,7 @@
 - 新增 `tests/VScreenPilot.Tests`（xUnit）：PNG 往返/缩放/过滤、KeyMap、快照格式、
   错误目录、写调度、profile、Job Object。
 - 新增 `.github/workflows/ci.yml`（build + 单测 + 无显示协议冒烟）。
-- 新增 `docs/architecture.md`、`docs/errors.md`、`docs/audit/05-重构方案与执行计划.md`。
+- 新增 `docs/architecture.md`、`docs/errors.md`、`docs/audit/archive/05-重构方案与执行计划.md`。
 
 ## 已知限制（下一阶段）
 

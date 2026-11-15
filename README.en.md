@@ -31,8 +31,8 @@ Add it to your MCP client (stdio):
 
 - [Architecture](docs/architecture.md)
 - [Error catalog](docs/errors.md)
-- [Audit reports](docs/audit/09-实际测试报告-PPT.md)
-- [Fix verification](docs/audit/12-修复复验报告.md)
+- [Audit reports](docs/audit/第二轮测试报告.md)
+- [Fix verification](docs/audit/archive/12-修复复验报告.md)
 
 ## Security
 
