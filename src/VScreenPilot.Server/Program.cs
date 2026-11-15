@@ -462,6 +462,46 @@ internal static class Program
             ["detail"] = Environment.UserInteractive ? "ok" : "non-interactive session",
         });
 
+        string powerPointPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            "Microsoft Office", "root", "Office16", "POWERPNT.EXE");
+        bool powerPointFound = File.Exists(powerPointPath);
+
+        checks.Add((JsonNode)new JsonObject
+        {
+            ["id"] = "office.powerpoint",
+            ["ok"] = powerPointFound,
+            ["detail"] = powerPointFound ? powerPointPath : "not found (Office 未安装或路径不同)",
+        });
+
+        bool artifactsWritable;
+        string artifactsDetail;
+
+        try
+        {
+            string probeDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "VScreenPilot", "artifacts", "doctor");
+            Directory.CreateDirectory(probeDirectory);
+            string probeFile = Path.Combine(probeDirectory, $"probe-{Guid.NewGuid():N}.tmp");
+            File.WriteAllText(probeFile, "ok");
+            File.Delete(probeFile);
+            artifactsWritable = true;
+            artifactsDetail = probeDirectory;
+        }
+        catch (Exception exception)
+        {
+            artifactsWritable = false;
+            artifactsDetail = exception.Message;
+        }
+
+        checks.Add((JsonNode)new JsonObject
+        {
+            ["id"] = "artifacts.writable",
+            ["ok"] = artifactsWritable,
+            ["detail"] = artifactsDetail,
+        });
+
         DisplayInfo? parsec = DisplayTopology.FindParsecDisplay();
         result["virtual_display"] = parsec is null
             ? new JsonObject { ["enabled"] = false }

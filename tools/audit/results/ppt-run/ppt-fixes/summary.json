@@ -5,7 +5,7 @@
       "id": "FIX-00",
       "purpose": "记事本就绪",
       "ok": true,
-      "pid": 2852,
+      "pid": 1692,
       "document_ready": null,
       "reason": "not_modeled"
     },
@@ -28,7 +28,7 @@
       "purpose": "snapshot{include_screenshot} 是合法 base64",
       "ok": true,
       "detail": "89504e47",
-      "bytes": 48560,
+      "bytes": 48584,
       "nodes": 33
     },
     {
@@ -42,7 +42,7 @@
       "id": "FIX-05",
       "purpose": "OCR 读到屏幕文本",
       "ok": true,
-      "count": 20,
+      "count": 21,
       "matches": 2,
       "language": "zh-Hans-CN",
       "code": null
@@ -84,7 +84,7 @@
       "ok": true,
       "on_dirty": "abort",
       "kept": [
-        2852
+        1692
       ],
       "alive": true
     },
@@ -94,8 +94,8 @@
       "ok": true,
       "apps": [
         {
-          "pid": 2852,
-          "hwnd": 3474508,
+          "pid": 1692,
+          "hwnd": 2622570,
           "title": "*vsp-fix-notepad.txt - Notepad",
           "exe": "C:\\Program Files\\WindowsApps\\Microsoft.WindowsNotepad_11.2609.11.0_x64__8wekyb3d8bbwe\\Notepad\\Notepad.exe",
           "alive": true,
@@ -110,7 +110,7 @@
       "id": "FIX-10",
       "purpose": "重新接管记事本",
       "ok": true,
-      "pid": 11436
+      "pid": 9940
     },
     {
       "id": "FIX-11",
@@ -126,7 +126,7 @@
       "purpose": "显式 allow_data_loss 才强杀",
       "ok": true,
       "forced": [
-        11436
+        9940
       ]
     },
     {
@@ -136,5 +136,5 @@
       "display_removed": false
     }
   ],
-  "binary_sha256": "A0AD89C775FDE7BE97ECB1F9CC2B72788E40185875CC4E64A894C493C7B71107"
+  "binary_sha256": "03A9EB867E6BE9D2FE88F508277F1D49E676D0D33FB320BDE2C66CC1927A6EC2"
 }
