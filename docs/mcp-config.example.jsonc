@@ -2,7 +2,7 @@
   "$schema": "https://opencode.ai/config.json",
   // OpenCode V2 配置片段：把 VScreenPilot 作为本地 stdio MCP Server 接入。
   // 方式 A：直接指向发布产物（把路径改成实际位置）。
-  // 方式 B：npm 单包（先运行 scripts/build-npm.ps1，或发布后使用 npx）：
+  // 方式 B：npm 单包（发布后使用；本地构建先运行 scripts/build-npm.ps1）：
   //   "command": ["npx", "-y", "vscreenpilot@0.1.0"]
   // 合并到 ~/.config/opencode/opencode.jsonc 的 mcp.servers。
   // codemode=false：capture_screen 返回 image content，直接暴露工具以确保图片进入模型上下文。

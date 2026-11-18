@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.0 — 2026-11-18（首次公开发布）
+
+### Added
+
+- npm 单包（`vscreenpilot@0.1.0`）与 MCP Registry `server.json`；提供 `mcpName`、仓库/主页/Issue 元数据。
+- 发布守卫：`npm/scripts/verify-package.mjs` 在 `prepublishOnly` 检查 exe/License/NOTICE，避免发出空包。
+- `release.yml`：tag 触发 build/test/zip/GitHub Release/npm publish；`check-version.mjs` 与 `check-docs-links.mjs` 纳入 CI。
+- `THIRD-PARTY-NOTICES.md` 与 `scripts/update-winget.ps1`。
+
+### Fixed
+
+- `click_text` 纳入写操作调度：之前不持写锁，可能与 `click`/`type_text` 并发点击。
+- 未知工具改为结构化 `E_UNKNOWN_TOOL`（含 `code/hint/docs/request_id`），不再是 SDK 生成的裸文本。
+- 错误 payload 的 `docs` 改为可直接打开的 GitHub URL；npm 用户不再看到不存在的相对路径。
+- 截图产物默认保留 7 天（`VSP_ARTIFACT_RETENTION_DAYS`，0 关闭），启动时清理旧会话目录。
+- 测试从 48 增至 71：工具目录精确校验、错误 docs、产物保留、参数校验边界、smoke 收紧到 22 工具。
+- 文档对齐：OCR 状态、测试覆盖、工具数量、未知工具行为、归档索引说明。
+
 ## 2026-11-15 — 修复轮（PPT 轮后续）
 
 ### Fixed
@@ -43,6 +61,6 @@
 - 48 个单元测试（新增图片 base64、document_ready、脱敏、叠加绘制、错误目录、OCR 匹配）。
 - `SECURITY.md`、`CONTRIBUTING.md`、`CHANGELOG.md`、`README.en.md`。
 
-## 0.1.0 — 2026-11-14
+## 0.1.0 初始实现 — 2026-11-14
 
 - 官方 MCP C# SDK 2.4.0、20 个工具、虚拟屏隔离、UIA/MSAA、统一错误目录、写调度、快照代际。

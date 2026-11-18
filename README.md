@@ -7,9 +7,10 @@
 - 运行期不需要管理员权限；首次安装一次 Parsec VDD 即可。
 - 语义后端：UIA 为主，MSAA 兜底（Office 旧对话框），OCR 兜底（画布型应用）；支持 UWP `ApplicationFrameWindow`。
 - 重构后的行为变化、错误目录与架构见 [`docs/changes-2026-11.md`](docs/changes-2026-11.md)、[`docs/errors.md`](docs/errors.md)、[`docs/architecture.md`](docs/architecture.md)。
-- 测试与复现见 [`docs/audit/第一轮测试报告.md`](docs/audit/第一轮测试报告.md)（Word/CCW 与重构）与 [`docs/audit/第二轮测试报告.md`](docs/audit/第二轮测试报告.md)（PPT 与修复）；原始记录已归档到 `docs/audit/archive/`。
+- 测试与复现见 [`docs/audit/第一轮测试报告.md`](docs/audit/第一轮测试报告.md)（Word/CCW 与重构）与 [`docs/audit/第二轮测试报告.md`](docs/audit/第二轮测试报告.md)（PPT 与修复）；原始记录已汇总进这两份报告。
 
-> 版本 0.1.0（M4.1）。实现细节见 [技术文档.md](技术文档.md)，需求契约见 [需求文件.md](需求文件.md)。
+> 版本 0.1.0（M4.1）。这是 **0.x 技术预览**：工具名与参数已按契约冻结，但 0.x 阶段仍可能做不兼容调整；升级前请看 [CHANGELOG](CHANGELOG.md)。
+> 实现细节见 [技术文档.md](技术文档.md)，需求契约见 [需求文件.md](需求文件.md)。
 
 ---
 
@@ -334,6 +335,7 @@ VScreenPilot.exe --doctor
 - EOF、Ctrl+C、控制台关闭、SIGTERM、父进程退出都会进入统一清理。
 - 强杀后驱动心跳停止约 1 秒自动摘屏；如仍有残留，下次启动会按 `state.json` 接管孤儿屏并还原窗口。
 - 日志：内存 500 条 + 文件按天/8MB 轮转保留 3 份，14 天清理。
+- 截图产物：落在 `%LOCALAPPDATA%\VScreenPilot\artifacts\<profile>\<会话目录>`，默认保留 7 天；用 `VSP_ARTIFACT_RETENTION_DAYS` 调整，设为 `0` 关闭清理。画面可能含敏感内容，请在共享机器上按需调低或关闭保留。
 
 ---
 
@@ -405,7 +407,7 @@ Electron/Chromium 可能忽略窗口消息。用 `wait_for`/`assert_region` 验�
 - 消息注入可能被 Electron/Chromium 忽略。
 - `on_dirty=save/discard` 目前识别中英文保存对话框。
 - 没有 TextPattern/ValuePattern 的应用无法精确回读输入。
-- 纯单元测试尚未覆盖 PNG/KeyMap/region/ref 注册/协议分帧，当前以集成脚本验收为主。
+- 单元测试覆盖 PNG/KeyMap/参数校验/错误目录/Profile/JobObject/截图保留策略；UIA、输入注入与真实窗口仍需集成脚本验收。
 
 ---
 
@@ -440,4 +442,4 @@ node tools\TestTool\run-all.mjs --report
 
 ## 许可证
 
-MIT，见 [LICENSE](LICENSE)。
+MIT，见 [LICENSE](LICENSE)。随包第三方组件与 Parsec VDD 的许可说明见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。

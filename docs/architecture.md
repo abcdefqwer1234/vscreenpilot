@@ -74,5 +74,6 @@ ref 只在该代内有效；跨代使用返回 `E_STALE_SNAPSHOT`，未知/被�
 - **UIA 专用 MTA worker**：当前用锁串行化；下一阶段改为单线程队列，彻底消除跨 apartment 风险。
 - **MSAA 第二后端**：已接入，按窗口回退；Word 查找替换可读/可触发。
 - **UWP**：`ApplicationFrameWindow` 已解析；REG-14 通过。
-- **CDP 通道 / OCR / WGC**：未实现；需要 WebSocket/DOM 适配器、WinRT TFM、D3D11 依赖。
+- **OCR**：已接入 Windows.Media.Ocr（`read_screen_text` / `click_text`）。
+- **CDP 通道 / WGC**：未实现；需要 WebSocket/DOM 适配器、D3D11 staging readback。
 - **多会话输入所有权**：`--profile` 已隔离互斥体/状态/artifact；同一时刻仍只有一个前台窗口。

@@ -1,6 +1,6 @@
 # 重构后变化（2026-11）
 
-> 详细方案见 [audit/archive/05-重构方案与执行计划.md](audit/archive/05-重构方案与执行计划.md)；
+> 详细方案与复验记录见 [第二轮测试报告](audit/第二轮测试报告.md)；
 > 分层与并发模型见 [architecture.md](architecture.md)；错误码见 [errors.md](errors.md)。
 
 ## 新增能力
@@ -35,7 +35,7 @@
 - `release_environment` 会推进会话 epoch；在途工具的结果会被丢弃并返回 `E_CANCELLED`。
 - `--doctor` 同时检查 `driver.status` 与 `driver.open`，并输出 `checks[]`。
 - 协议层改用官方 MCP C# SDK 2.4.0：实测协商到 **2025-11-25**（SDK 当前最新）；2026-07-28 待 SDK 升级后验证。
-  无状态调用、进度通知；未知工具以 `isError` 结果返回。
+  无状态调用、进度通知；未知工具返回结构化 `E_UNKNOWN_TOOL`（isError），不再是一句裸文本。
 - 新增令牌桶限流（300 突发 / 100 每秒）；超限返回 `E_RATE_LIMITED`。
 - trace 增加 `request_id` 与脱敏参数摘要；日志文件名带 profile。
 
@@ -45,7 +45,7 @@
 - 新增 `tests/VScreenPilot.Tests`（xUnit）：PNG 往返/缩放/过滤、KeyMap、快照格式、
   错误目录、写调度、profile、Job Object。
 - 新增 `.github/workflows/ci.yml`（build + 单测 + 无显示协议冒烟）。
-- 新增 `docs/architecture.md`、`docs/errors.md`、`docs/audit/archive/05-重构方案与执行计划.md`。
+- 新增 `docs/architecture.md`、`docs/errors.md`、`docs/audit/第一轮测试报告.md`、`docs/audit/第二轮测试报告.md`。
 
 ## 已知限制（下一阶段）
 
@@ -56,4 +56,4 @@
 - MSAA 已接入（Office 旧对话框）；OCR 已接入（Windows.Media.Ocr）；CDP 尚未接入。
 - UWP `ApplicationFrameWindow` 已可解析；Word 自定义对话框可经 MSAA 操作。
 - 非默认 profile 可挂载，但部分 VDD/Windows 组合会忽略 `dmPosition`（固定主屏右侧）；`get_environment.virtual_display.position_enforced=false` 会如实标记。
-- NuGet `dnx` 受 `PackAsTool` 不支持 `net10.0-windows` 限制；winget/Registry 清单已就绪。
+- NuGet `dnx` 受 `PackAsTool` 不支持 `net10.0-windows` 限制；winget/Registry 清单模板已就绪，发布时需填真实 URL/SHA。
