@@ -93,6 +93,12 @@ SHA 必须等于 `SHA256SUMS.txt` 里的安装包哈希。
 
 ## 5. 提交 winget
 
+工具安装（只需一次）：
+
+```powershell
+winget install --id Microsoft.WingetCreate -e
+```
+
 首次发布：
 
 ```powershell
@@ -131,6 +137,14 @@ wingetcreate submit --prtitle "Update: VScreenPilot.VScreenPilot to <version>" p
 - 等待 URL/SHA/静默安装/Defender 校验和人工审核。
 
 校验失败时只修清单并更新 PR，不要重打已发布的 tag；Release 资产一旦被覆盖，SHA 就会变，现有 PR 会全部失效。
+
+PR 合并后验证：
+
+```powershell
+winget source update
+winget install --id VScreenPilot.VScreenPilot -e
+VScreenPilot --version
+```
 
 ## 6. 绝对不要做
 

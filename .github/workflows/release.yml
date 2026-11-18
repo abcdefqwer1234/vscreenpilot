@@ -67,9 +67,8 @@ jobs:
           ./scripts/update-winget.ps1 -Version $version
           New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\winget" -Force | Out-Null
           Copy-Item packaging/winget/*.yaml "$env:RUNNER_TEMP\winget" -Force
-          git checkout -- packaging/winget
 
-          Push-Location packaging/winget
+          Push-Location "$env:RUNNER_TEMP\winget"
           try {
             $winget = Get-Command winget -ErrorAction SilentlyContinue
             if ($winget) {
@@ -83,6 +82,8 @@ jobs:
           } finally {
             Pop-Location
           }
+
+          git checkout -- packaging/winget
 
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2
