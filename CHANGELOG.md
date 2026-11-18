@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1 — 2026-11-19（修虚拟屏 ADD 回归）
+
+### Fixed
+
+- **0.2.0 回归：挂虚拟屏报 `E_DISPLAY_ADD`（新建的虚拟显示器未出现在拓扑中）**。0.2.0 为多 profile 改成“只认本次新出现的 device”，但 `DisplayTopology.List()` 会保留未激活的 Parsec 适配器（本机 `DISPLAY5`~`DISPLAY20` 共 16 个）；驱动 ADD 复用 `DISPLAY5` 时名字不变，判定永远不成立，3 秒后超时。
+  - 判定改为“由不可用变为可用”：`Attached || Width > 0`，并排除其他 live profile 已认领的屏（`InstanceRegistry`）。
+  - 新增纯函数 `DisplayTopology.PickNewLiveParsec` 与单测，覆盖“同名 detached 适配器复用时必须选中”；`VddProbe` 不受影响。
+- `E_DISPLAY_ADD` 失败时返回 `details.before_live/after_live/display_index` 并写入日志，便于现场定位。
+- **多虚拟屏时摘屏失败**：`VddDevice.RemoveDisplay` 把 index 按小端 UINT32 写在 offset 0，而驱动按 16 位大端读取；`index=0` 恰好正确，`index=1` 被读成 256 返回 `ERROR_INVALID_PARAMETER`，导致第二个 profile 的屏摘不掉并残留。改为按上游 `parsec-vdd` 的 16 位大端编码，并补单测。
+- 跨 profile 的 `Local\VScreenPilot_DisplayAlloc` 保护范围扩大到“ADD + 解析 device”，避免两个 profile 冷启动时抢同一块新屏。
+- 错误提示明确说明 detached 适配器不算“已存在”。
+
 ## 0.2.0 — 2026-11-18（多客户端共享实例）
 
 ### Added

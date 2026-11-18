@@ -9,8 +9,8 @@
 - 共享实例与 as-built 细节见 [`docs/多客户端共享实例方案.md`](docs/多客户端共享实例方案.md)、[`docs/architecture.md`](docs/architecture.md)；行为变化与错误目录见 [`docs/changes-2026-11.md`](docs/changes-2026-11.md)、[`docs/errors.md`](docs/errors.md)。
 - 测试与复现见 [`docs/audit/第一轮测试报告.md`](docs/audit/第一轮测试报告.md)（Word/CCW 与重构）与 [`docs/audit/第二轮测试报告.md`](docs/audit/第二轮测试报告.md)（PPT 与修复）；原始记录已汇总进这两份报告。
 
-> 版本 0.2.0（多客户端共享实例）。这是 **0.x 技术预览**：工具名与参数已按契约冻结，但 0.x 阶段仍可能做不兼容调整；升级前请看 [CHANGELOG](CHANGELOG.md)。
-> 0.2.0 的 as-built 以 [共享实例方案 §9.10](docs/多客户端共享实例方案.md) 和 [architecture](docs/architecture.md) 为准；[技术文档.md](技术文档.md) 是 0.1.0 的历史快照。需求契约见 [需求文件.md](需求文件.md)。
+> 版本 0.2.1（多客户端共享实例）。这是 **0.x 技术预览**：工具名与参数已按契约冻结，但 0.x 阶段仍可能做不兼容调整；升级前请看 [CHANGELOG](CHANGELOG.md)。
+> 0.2.1 的 as-built 以 [共享实例方案 §9.10](docs/多客户端共享实例方案.md) 和 [architecture](docs/architecture.md) 为准；[技术文档.md](技术文档.md) 是 0.1.0 的历史快照。需求契约见 [需求文件.md](需求文件.md)。
 
 ---
 
@@ -129,7 +129,7 @@ winget install --id Parsec.ParsecVDD -e --accept-package-agreements --accept-sou
 
 ### 方式 A：安装版（推荐）
 
-从 Releases 下载 `VScreenPilot-Setup-0.2.0.exe` 并双击安装：
+从 Releases 下载 `VScreenPilot-Setup-0.2.1.exe` 并双击安装：
 
 - 安装到 `%LOCALAPPDATA%\Programs\VScreenPilot`，**per-user，不需要管理员**；
 - 可选加入当前用户 `PATH`（默认勾选），之后可直接运行 `vscreenpilot --doctor`；
@@ -140,9 +140,9 @@ winget install --id Parsec.ParsecVDD -e --accept-package-agreements --accept-sou
 
 ### 方式 B：绿色版
 
-下载 `VScreenPilot-win-x64-v0.2.0.zip`，解压到固定目录（如 `C:\Tools\VScreenPilot`），直接运行 `VScreenPilot.exe`。
+下载 `VScreenPilot-win-x64-v0.2.1.zip`，解压到固定目录（如 `C:\Tools\VScreenPilot`），直接运行 `VScreenPilot.exe`。
 
-zip 内含 exe、`LICENSE`、`THIRD-PARTY-NOTICES.md`、`README.md`；`.pdb` 在单独的 `VScreenPilot-symbols-v0.2.0.zip`，普通用户不需要。
+zip 内含 exe、`LICENSE`、`THIRD-PARTY-NOTICES.md`、`README.md`；`.pdb` 在单独的 `VScreenPilot-symbols-v0.2.1.zip`，普通用户不需要。
 
 ### 方式 C：winget（提交审核通过后可用）
 
@@ -155,7 +155,7 @@ winget install --id VScreenPilot.VScreenPilot -e
 ### 从源码构建
 
 ```powershell
-.\scripts\release.ps1 -Version 0.2.0
+.\scripts\release.ps1 -Version 0.2.1
 ```
 
 一次生成绿色 zip、安装包和 symbols zip。

@@ -628,62 +628,94 @@ internal sealed partial class SessionManager : IDisposable
 
             if (!configured && _displayIndex < 0)
             {
-                // Parsec 驱动在 REMOVE 后约 3-5 秒内会拒绝 ADD；重试并等待“本次新出现”的设备。
-                var beforeDevices = DisplayTopology.List()
-                    .Where(item => item.IsParsec)
-                    .Select(item => item.DeviceName)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                // ADD 与“解析新屏 device”必须整体串行：只锁 ADD 时，两个 profile 可能在
+                // 解析阶段把同一块刚挂上的屏都认成自己的（后写 registry 的会覆盖前者）。
+                Mutex? allocation = TryAcquireDisplayAllocation(out bool allocationHeld);
 
-                int[] delays = { 0, 500, 1000, 1500, 2000 };
-
-                foreach (int delay in delays)
+                try
                 {
-                    if (delay > 0)
+                    // Parsec 驱动在 REMOVE 后约 3-5 秒内会拒绝 ADD；重试并等待本次新变可用的屏。
+                    // 不能用“设备名是否出现过”判断：驱动会复用已有 detached 适配器的名字（本机 DISPLAY5~20）。
+                    HashSet<string> beforeLive = DisplayTopology.LiveParsecDevices();
+
+                    int[] delays = { 0, 500, 1000, 1500, 2000 };
+
+                    foreach (int delay in delays)
                     {
-                        Thread.Sleep(delay);
+                        if (delay > 0)
+                        {
+                            Thread.Sleep(delay);
+                        }
+
+                        _displayIndex = _vdd.AddDisplay();
+
+                        if (_displayIndex >= 0)
+                        {
+                            displayAdded = true;
+                            break;
+                        }
+
+                        if (DisplayTopology.PickNewLiveParsec(
+                                DisplayTopology.List(), beforeLive, IsDisplayOwnedByOther) is not null)
+                        {
+                            _log.Warn("驱动拒绝 ADD，但检测到本次新变可用的 Parsec 屏，按已创建处理");
+                            break;
+                        }
+
+                        _log.Warn("驱动拒绝创建虚拟显示器，准备重试");
                     }
 
-                    _displayIndex = AddDisplaySerialized();
-
-                    if (_displayIndex >= 0)
+                    if (_displayIndex < 0 &&
+                        DisplayTopology.PickNewLiveParsec(
+                            DisplayTopology.List(), beforeLive, IsDisplayOwnedByOther) is null)
                     {
-                        displayAdded = true;
-                        break;
+                        throw new ToolException(
+                            "E_DISPLAY_ADD",
+                            "驱动拒绝创建虚拟显示器",
+                            new JsonObject
+                            {
+                                ["before_live"] = DescribeDevices(beforeLive),
+                                ["after_live"] = DescribeDevices(DisplayTopology.LiveParsecDevices()),
+                            },
+                            retryable: true,
+                            hint: "驱动 REMOVE 后需要 3-5 秒冷却；稍后重试或重启驱动",
+                            stage: "display");
                     }
 
-                    if (DisplayTopology.List().Any(item =>
-                            item.IsParsec && !beforeDevices.Contains(item.DeviceName)))
+                    if (string.IsNullOrWhiteSpace(targetDevice))
                     {
-                        _log.Warn("驱动拒绝 ADD，但检测到本次新出现的 Parsec 屏，按已创建处理");
-                        break;
-                    }
+                        if (!DisplayTopology.WaitForNewLiveParsecDisplay(
+                                beforeLive,
+                                TimeSpan.FromSeconds(3),
+                                out DisplayInfo? added,
+                                IsDisplayOwnedByOther) ||
+                            added is null)
+                        {
+                            JsonObject details = new()
+                            {
+                                ["display_index"] = _displayIndex,
+                                ["before_live"] = DescribeDevices(beforeLive),
+                                ["after_live"] = DescribeDevices(DisplayTopology.LiveParsecDevices()),
+                            };
 
-                    _log.Warn("驱动拒绝创建虚拟显示器，准备重试");
+                            _log.Warn($"新建虚拟屏未转可用: {details.ToJsonString()}");
+                            RemoveDisplayAfterEnsureFailure(displayAdded);
+                            throw new ToolException(
+                                "E_DISPLAY_ADD",
+                                "新建的虚拟显示器未出现在拓扑中",
+                                details,
+                                retryable: true,
+                                hint: "确认 Parsec VDD 正常；detached 适配器不算已存在，若仍失败请提供 details",
+                                stage: "display");
+                        }
+
+                        targetDevice = added.DeviceName;
+                        _log.Info($"新建虚拟屏已可用: {added}");
+                    }
                 }
-
-                if (_displayIndex < 0 &&
-                    !DisplayTopology.List().Any(item =>
-                        item.IsParsec && !beforeDevices.Contains(item.DeviceName)))
+                finally
                 {
-                    throw new ToolException(
-                        "E_DISPLAY_ADD",
-                        "驱动拒绝创建虚拟显示器",
-                        retryable: true,
-                        hint: "驱动 REMOVE 后需要 3-5 秒冷却；稍后重试或重启驱动",
-                        stage: "display");
-                }
-
-                if (string.IsNullOrWhiteSpace(targetDevice))
-                {
-                    if (!DisplayTopology.WaitForNewParsecDisplay(
-                            beforeDevices, TimeSpan.FromSeconds(3), out DisplayInfo? added) ||
-                        added is null)
-                    {
-                        RemoveDisplayAfterEnsureFailure(displayAdded);
-                        throw new ToolException("E_DISPLAY_ADD", "新建的虚拟显示器未出现在拓扑中");
-                    }
-
-                    targetDevice = added.DeviceName;
+                    ReleaseDisplayAllocation(allocation, allocationHeld);
                 }
             }
 
@@ -733,43 +765,55 @@ internal sealed partial class SessionManager : IDisposable
         }
     }
 
-    /// <summary>不同 profile 同时启动时串行化 ADD，避免抢同一个 slot。</summary>
-    private int AddDisplaySerialized()
+    /// <summary>
+    /// 不同 profile 同时启动时串行化“ADD + 解析 device”，避免抢同一个 slot 或同一块新屏。
+    /// 拿不到锁时返回 null（降级为不串行）；设备身份校验仍会防止认领错屏。
+    /// </summary>
+    private static Mutex? TryAcquireDisplayAllocation(out bool held)
     {
-        Mutex? allocation = null;
-        bool held = false;
+        held = false;
 
         try
         {
-            allocation = new Mutex(false, @"Local\VScreenPilot_DisplayAlloc");
+            var allocation = new Mutex(false, @"Local\VScreenPilot_DisplayAlloc");
 
             try
             {
-                held = allocation.WaitOne(TimeSpan.FromSeconds(10));
+                held = allocation.WaitOne(TimeSpan.FromSeconds(15));
             }
             catch (AbandonedMutexException)
             {
                 held = true;
             }
+
+            return allocation;
         }
         catch
         {
-            // 无法创建本地分配锁时仍按单次 ADD 处理；设备身份校验仍会防止认领错屏。
-            allocation?.Dispose();
-            return _vdd.AddDisplay();
+            return null;
+        }
+    }
+
+    private static void ReleaseDisplayAllocation(Mutex? allocation, bool held)
+    {
+        if (allocation is null)
+        {
+            return;
         }
 
         try
-        {
-            return _vdd.AddDisplay();
-        }
-        finally
         {
             if (held)
             {
                 allocation.ReleaseMutex();
             }
-
+        }
+        catch
+        {
+            // 释放失败不应覆盖原始错误。
+        }
+        finally
+        {
             allocation.Dispose();
         }
     }
@@ -1984,6 +2028,18 @@ internal sealed partial class SessionManager : IDisposable
             .Any(entry =>
                 entry.Pid != Environment.ProcessId &&
                 string.Equals(entry.DisplayDevice, deviceName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>把设备名转成稳定排序的 JSON 数组，便于日志和错误 details。</summary>
+    private static JsonArray DescribeDevices(IEnumerable<string> devices)
+    {
+        var array = new JsonArray();
+        foreach (string device in devices.OrderBy(item => item, StringComparer.OrdinalIgnoreCase))
+        {
+            array.Add(device);
+        }
+
+        return array;
     }
 
     /// <summary>

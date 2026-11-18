@@ -267,14 +267,11 @@ public sealed class VddDevice : IDisposable
 
     public bool RemoveDisplay(int index, int timeoutMs = 5000)
     {
-        // 驱动 ABI：REMOVE 的输入是 offset 0 的 4 字节小端 UINT32。
-        // 之前写到 offset 1，只有 index=0 时结果正确，多屏/共享驱动场景会摘错屏。
-        Span<byte> input = stackalloc byte[4];
-        input.Clear();
-        input[0] = (byte)(index & 0xFF);
-        input[1] = (byte)((index >> 8) & 0xFF);
-        input[2] = (byte)((index >> 16) & 0xFF);
-        input[3] = (byte)((index >> 24) & 0xFF);
+        // 驱动 ABI：REMOVE 的输入是 16 位大端 index（见上游 parsec-vdd 的 VddRemoveDisplay）。
+        // 若按小端 UINT32 写到 offset 0，index=1 会被驱动读成 0x0100(256)，返回 ERROR_INVALID_PARAMETER；
+        // 只有 index=0 恰好正确，多屏/共享驱动场景会摘错屏或摘不掉。
+        Span<byte> input = stackalloc byte[2];
+        EncodeRemoveIndex(index, input);
 
         if (!IoControl(IoctlRemove, input, hasOutput: false, timeoutMs, out _))
         {
@@ -283,6 +280,14 @@ public sealed class VddDevice : IDisposable
 
         Update();
         return true;
+    }
+
+    /// <summary>把 index 编码成驱动要求的 16 位大端序；抽出来便于单测。</summary>
+    internal static void EncodeRemoveIndex(int index, Span<byte> destination)
+    {
+        destination.Clear();
+        destination[0] = (byte)((index >> 8) & 0xFF);
+        destination[1] = (byte)(index & 0xFF);
     }
 
     /// <summary>心跳。必须约每 100ms 调用一次。</summary>

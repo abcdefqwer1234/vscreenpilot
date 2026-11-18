@@ -10,8 +10,8 @@ type, locate elements and verify results — without stealing your cursor or cov
   falls back to an in-process daemon); later processes join as thin proxies over a named pipe.
 - CLI companion: `VScreenPilot.exe --cli env|snapshot|screen|status|stop`.
 
-> 0.2.0 is a technical preview. Tool names and parameters are frozen, but 0.x may still contain
-> breaking changes; read [CHANGELOG.md](CHANGELOG.md) before upgrading. For 0.2.0 as-built details see
+> 0.2.1 is a technical preview. Tool names and parameters are frozen, but 0.x may still contain
+> breaking changes; read [CHANGELOG.md](CHANGELOG.md) before upgrading. For 0.2.1 as-built details see
 > [docs/多客户端共享实例方案.md](docs/多客户端共享实例方案.md) and [docs/architecture.md](docs/architecture.md);
 > [技术文档.md](技术文档.md) is a historical 0.1.0 snapshot.
 
@@ -25,14 +25,14 @@ type, locate elements and verify results — without stealing your cursor or cov
 
 ## Install
 
-**Installer (recommended).** Download `VScreenPilot-Setup-0.2.0.exe` from Releases and run it.
+**Installer (recommended).** Download `VScreenPilot-Setup-0.2.1.exe` from Releases and run it.
 It installs per-user to `%LOCALAPPDATA%\Programs\VScreenPilot` (no administrator prompt) and can add
 that folder to the current user `PATH`. Silent install:
-`VScreenPilot-Setup-0.2.0.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-`.
+`VScreenPilot-Setup-0.2.1.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-`.
 The installer is not code-signed yet; verify the SHA256 from the release before running.
 
-**Portable.** Download `VScreenPilot-win-x64-v0.2.0.zip`, extract it to a stable folder and run
-`VScreenPilot.exe`. Symbols ship separately as `VScreenPilot-symbols-v0.2.0.zip`.
+**Portable.** Download `VScreenPilot-win-x64-v0.2.1.zip`, extract it to a stable folder and run
+`VScreenPilot.exe`. Symbols ship separately as `VScreenPilot-symbols-v0.2.1.zip`.
 
 **winget** (after the manifest is reviewed and merged):
 
@@ -43,7 +43,7 @@ winget install --id VScreenPilot.VScreenPilot -e
 From source:
 
 ```powershell
-.\scripts\release.ps1 -Version 0.2.0   # portable zip + installer + symbols
+.\scripts\release.ps1 -Version 0.2.1   # portable zip + installer + symbols
 ```
 
 ## MCP client configuration

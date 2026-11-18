@@ -14,6 +14,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="VddProbe" />
     <InternalsVisibleTo Include="VScreenPilot" />
+    <InternalsVisibleTo Include="VScreenPilot.Tests" />
   </ItemGroup>
 
 </Project>

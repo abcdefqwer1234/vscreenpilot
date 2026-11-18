@@ -1,6 +1,6 @@
 # winget locale manifest
 PackageIdentifier: VScreenPilot.VScreenPilot
-PackageVersion: 0.2.0
+PackageVersion: 0.2.1
 PackageLocale: en-US
 Publisher: VScreenPilot
 PublisherUrl: https://github.com/abcdefqwer1234

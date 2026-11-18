@@ -124,19 +124,49 @@ public static class DisplayTopology
     }
 
     /// <summary>
-    /// 等待“本次新出现的”Parsec 屏；不能直接取第一个，否则多个 profile 会配错屏。
+    /// 是否是可用的屏：已挂载，或至少具备模式。Parsec 驱动会预先枚举一批
+    /// detached 适配器（本机 DISPLAY5~20），它们既未挂载也没有模式。
     /// </summary>
-    public static bool WaitForNewParsecDisplay(
-        IReadOnlySet<string> existingDevices, TimeSpan timeout, out DisplayInfo? display)
+    public static bool IsLive(DisplayInfo display) => display.Attached || display.Width > 0;
+
+    /// <summary>当前可用的 Parsec 屏名。ADD 前用它做基线，避免把已有 detached 适配器当成新屏。</summary>
+    public static HashSet<string> LiveParsecDevices()
+    {
+        return List()
+            .Where(item => item.IsParsec && IsLive(item))
+            .Select(item => item.DeviceName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 从拓扑里挑出“本次由不可用变为可用”的 Parsec 屏；不能直接取第一个，否则多个 profile 会配错屏。
+    /// 注意不能用“设备名是否出现过”判断：驱动会复用已有 detached 适配器的名字。
+    /// </summary>
+    public static DisplayInfo? PickNewLiveParsec(
+        IEnumerable<DisplayInfo> displays,
+        IReadOnlySet<string> existingLiveDevices,
+        Func<string, bool>? isOwnedByOther = null)
+    {
+        return displays.FirstOrDefault(item =>
+            item.IsParsec &&
+            IsLive(item) &&
+            !existingLiveDevices.Contains(item.DeviceName) &&
+            !(isOwnedByOther?.Invoke(item.DeviceName) ?? false));
+    }
+
+    /// <summary>等待本次新变可用的 Parsec 屏；被其他 live profile 认领的屏会被跳过。</summary>
+    public static bool WaitForNewLiveParsecDisplay(
+        IReadOnlySet<string> existingLiveDevices,
+        TimeSpan timeout,
+        out DisplayInfo? display,
+        Func<string, bool>? isOwnedByOther = null)
     {
         DisplayInfo? found = null;
 
         bool ok = WaitUntil(
             () =>
             {
-                found = List().FirstOrDefault(item =>
-                    item.IsParsec &&
-                    !existingDevices.Contains(item.DeviceName));
+                found = PickNewLiveParsec(List(), existingLiveDevices, isOwnedByOther);
                 return found is not null;
             },
             timeout);

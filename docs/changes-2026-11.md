@@ -19,6 +19,14 @@
 - **安装版**：Inno Setup per-user 安装包，默认装到 `%LOCALAPPDATA%\Programs\VScreenPilot`，
   可选加入用户 PATH；同时保留绿色 zip。
 
+## 0.2.1 修复：虚拟屏 ADD 回归
+
+- 0.2.0 的“只认本次新出现的 device”把 `DISPLAY5`~`DISPLAY20` 这些未激活的 Parsec 适配器也算作已存在；驱动复用其中某个名字 ADD 时判定永不成立，挂屏报 `E_DISPLAY_ADD`。
+- 改为按“是否可用”（`Attached || Width > 0`）取前后差集，并排除其他 live profile 已认领的屏；新增 `PickNewLiveParsec` 纯函数与单测。
+- `RemoveDisplay` 的 index 从小端 UINT32 改为驱动要求的 16 位大端；修掉多屏时 `index>0` 摘不掉、残留虚拟屏的问题。
+- ADD 与“解析 device”整体串行化，避免两个 profile 冷启动抢同一块屏。
+- 失败时 `details` 带 `before_live/after_live/display_index`。
+
 ## 0.2.0 多客户端共享实例
 
 - **共享实例**：首个 MCP 进程优先 spawn 独立 `--daemon`（`CREATE_BREAKAWAY_FROM_JOB`，失败回退普通启动/进程内 daemon）；后续进程通过 `mcp` 命名管道做瘦代理。第二个工作目录不再因全局互斥体退出 3。

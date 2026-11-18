@@ -346,6 +346,9 @@ IO 失败（stage: `io`）
 
 添加虚拟屏失败（stage: `display`）
 
+- 0.2.1 起失败响应带 `details.before_live/after_live/display_index`；未激活（detached）的 Parsec 适配器不算“已存在”。
+- 先看 `--doctor` 的 `driver` 状态；驱动 REMOVE 后需要 3-5 秒冷却。若某块屏被其他 live profile 占用，换 `--profile` 或先关闭该实例。
+
 <a id="e_display_mode"></a>
 
 ### E_DISPLAY_MODE

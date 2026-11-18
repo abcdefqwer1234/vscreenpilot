@@ -188,7 +188,7 @@ internal static class Program
         }
 
         bool ok = vdd.RemoveDisplay(index);
-        Console.WriteLine($"remove({index})   : {ok}");
+        Console.WriteLine($"remove({index})   : {ok} err={vdd.LastError}");
         bool gone = DisplayTopology.WaitForNoParsecDisplay(TimeSpan.FromSeconds(3));
         Console.WriteLine($"gone          : {gone}");
         PrintDisplays();
@@ -207,7 +207,7 @@ internal static class Program
         for (int index = 0; index < 8; index++)
         {
             bool ok = vdd.RemoveDisplay(index);
-            Console.WriteLine($"remove({index})   : {ok}");
+            Console.WriteLine($"remove({index})   : {ok} err={vdd.LastError}");
         }
 
         bool gone = DisplayTopology.WaitForNoParsecDisplay(TimeSpan.FromSeconds(3));
