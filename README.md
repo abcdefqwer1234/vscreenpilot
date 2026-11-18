@@ -130,36 +130,44 @@ winget install --id Parsec.ParsecVDD -e --accept-package-agreements --accept-sou
 
 ## 安装 VScreenPilot
 
-### 方式 A：直接用发布产物
+### 方式 A：安装版（推荐）
+
+从 Releases 下载 `VScreenPilot-Setup-0.1.0.exe` 并双击安装：
+
+- 安装到 `%LOCALAPPDATA%\Programs\VScreenPilot`，**per-user，不需要管理员**；
+- 可选加入当前用户 `PATH`（默认勾选），之后可直接运行 `vscreenpilot --doctor`；
+- 卸载走“设置 → 应用”，日志与截图数据默认保留；
+- 静默安装参数与 winget 一致：`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-`。
+
+> 安装包当前未签名，SmartScreen 会提示“未知发布者”；请先核对 Release 里的 SHA256。
+
+### 方式 B：绿色版
+
+下载 `VScreenPilot-win-x64-v0.1.0.zip`，解压到固定目录（如 `C:\Tools\VScreenPilot`），直接运行 `VScreenPilot.exe`。
+
+zip 内含 exe、`LICENSE`、`THIRD-PARTY-NOTICES.md`、`README.md`；`.pdb` 在单独的 `VScreenPilot-symbols-v0.1.0.zip`，普通用户不需要。
+
+### 方式 C：npm
 
 ```powershell
-dotnet publish src\VScreenPilot.Server\VScreenPilot.Server.csproj `
-  -c Release -r win-x64 -o .\artifacts\server
+npx -y vscreenpilot@0.1.0 --doctor
 ```
 
-得到 `artifacts\server\VScreenPilot.exe`。
-
-### 方式 B：构建 npm 单包
-
-```powershell
-.\scripts\build-npm.ps1
-```
-
-得到 `artifacts\npm\vscreenpilot-0.1.0.tgz`。
-
-当前包尚未发布到 npm registry；本地验证用：
+本地验证用生成的 tgz：
 
 ```powershell
 npm install .\artifacts\npm\vscreenpilot-0.1.0.tgz
 ```
 
-发布后可用：
+> npm 包声明了 `os:["win32"]`、`cpu:["x64"]`，非 Windows 平台会在 `npm install` 阶段直接 `EBADPLATFORM`。
+
+### 从源码构建
 
 ```powershell
-npx -y vscreenpilot@0.1.0
+.\scripts\release.ps1 -Version 0.1.0
 ```
 
-> npm 包声明了 `os:["win32"]`、`cpu:["x64"]`，非 Windows 平台会在 `npm install` 阶段直接 `EBADPLATFORM`。
+一次生成绿色 zip、安装包和 symbols zip；npm 单包用 `.\scripts\build-npm.ps1`。
 
 ### 诊断
 

@@ -21,7 +21,16 @@ type, locate elements and verify results — without stealing your cursor or cov
 
 ## Install
 
-From npm (after the first registry release):
+**Installer (recommended).** Download `VScreenPilot-Setup-0.1.0.exe` from Releases and run it.
+It installs per-user to `%LOCALAPPDATA%\Programs\VScreenPilot` (no administrator prompt) and can add
+that folder to the current user `PATH`. Silent install:
+`VScreenPilot-Setup-0.1.0.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-`.
+The installer is not code-signed yet; verify the SHA256 from the release before running.
+
+**Portable.** Download `VScreenPilot-win-x64-v0.1.0.zip`, extract it to a stable folder and run
+`VScreenPilot.exe`. Symbols ship separately as `VScreenPilot-symbols-v0.1.0.zip`.
+
+**npm** (after the first registry release):
 
 ```powershell
 npx -y vscreenpilot@0.1.0 --doctor
@@ -30,8 +39,8 @@ npx -y vscreenpilot@0.1.0 --doctor
 From source:
 
 ```powershell
-dotnet publish src/VScreenPilot.Server/VScreenPilot.Server.csproj -c Release -r win-x64 -o artifacts/server
-artifacts/server/VScreenPilot.exe --doctor
+.\scripts\release.ps1 -Version 0.1.0   # portable zip + installer + symbols
+.\scripts\build-npm.ps1                # npm tarball
 ```
 
 ## MCP client configuration

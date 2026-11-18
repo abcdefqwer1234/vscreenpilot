@@ -24,6 +24,9 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: 安装 Inno Setup
+        run: choco install innosetup --no-progress -y
+
       - name: 版本一致性
         shell: pwsh
         run: |
@@ -47,18 +50,22 @@ jobs:
       - name: 记录发布产物 SHA256
         shell: pwsh
         run: |
-          $zip = Get-ChildItem artifacts/release/*.zip | Select-Object -First 1
-          $hash = (Get-FileHash -LiteralPath $zip.FullName -Algorithm SHA256).Hash
-          "artifact: $($zip.Name)" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
-          "sha256: $hash" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          Get-ChildItem artifacts/release -File | Where-Object { $_.Extension -in '.zip', '.exe' } | ForEach-Object {
+            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+            "artifact: $($_.Name)" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+            "sha256: $hash" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          }
 
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          files: artifacts/release/VScreenPilot-win-x64-*.zip
+          files: |
+            artifacts/release/VScreenPilot-win-x64-*.zip
+            artifacts/release/VScreenPilot-symbols-*.zip
+            artifacts/release/VScreenPilot-Setup-*.exe
           generate_release_notes: true
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
 
       - name: 构建 npm 包
         run: node scripts/build-npm.mjs
@@ -86,4 +93,5 @@ jobs:
           name: release-assets
           path: |
             artifacts/release/*.zip
+            artifacts/release/*.exe
             artifacts/npm/*.tgz

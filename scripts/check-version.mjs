@@ -16,6 +16,8 @@ const server = JSON.parse(read('server.json'));
 const winget = /^PackageVersion:\s*(\S+)/m.exec(read('packaging/winget/VScreenPilot.VScreenPilot.yaml'))?.[1];
 const buildInfo = /Version\s*=\s*"([^"]+)"/.exec(
   read('src/VScreenPilot.Server/Infrastructure/BuildInfo.cs'))?.[1];
+const installer = /#define\s+MyAppVersion\s+"([^"]+)"/.exec(
+  read('packaging/installer/VScreenPilot.iss'))?.[1];
 
 const versions = {
   'VScreenPilot.Server.csproj': csproj,
@@ -23,6 +25,7 @@ const versions = {
   'server.json': server.version,
   'BuildInfo.cs': buildInfo,
   'winget manifest': winget,
+  'Inno Setup script': installer,
 };
 
 const expected = csproj;

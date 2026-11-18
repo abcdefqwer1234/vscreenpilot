@@ -8,6 +8,7 @@
 - 发布守卫：`npm/scripts/verify-package.mjs` 在 `prepublishOnly` 检查 exe/License/NOTICE，避免发出空包。
 - `release.yml`：tag 触发 build/test/zip/GitHub Release/npm publish；`check-version.mjs` 与 `check-docs-links.mjs` 纳入 CI。
 - `THIRD-PARTY-NOTICES.md` 与 `scripts/update-winget.ps1`。
+- Windows 安装版：Inno Setup per-user 安装包（`VScreenPilot-Setup-0.1.0.exe`），可选加入用户 PATH，自带卸载；同时保留绿色 zip。
 
 ### Fixed
 

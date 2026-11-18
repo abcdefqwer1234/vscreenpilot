@@ -16,6 +16,8 @@
 - **MCP 资源**：`vsp://artifacts/{file}` 可通过 `resources/list`/`resources/read` 读取。
 - **快照代际**：ref 只在创建它的快照内有效；跨代返回 `E_STALE_SNAPSHOT`。
 - **错误目录**：所有错误统一带 `code/message/retryable/stage/hint/docs`。
+- **安装版**：Inno Setup per-user 安装包，默认装到 `%LOCALAPPDATA%\Programs\VScreenPilot`，
+  可选加入用户 PATH；绿色 zip 与 npm 渠道继续保留。
 
 ## 行为变化（可能影响旧调用）
 

@@ -1,7 +1,9 @@
 {
   "$schema": "https://opencode.ai/config.json",
   // OpenCode V2 配置片段：把 VScreenPilot 作为本地 stdio MCP Server 接入。
-  // 方式 A：直接指向发布产物（把路径改成实际位置）。
+  // 方式 A：安装版默认路径（用户名按实际替换）：
+  //   C:\Users\<you>\AppData\Local\Programs\VScreenPilot\VScreenPilot.exe
+  // 绿色版/源码构建则指向解压目录。
   // 方式 B：npm 单包（发布后使用；本地构建先运行 scripts/build-npm.ps1）：
   //   "command": ["npx", "-y", "vscreenpilot@0.1.0"]
   // 合并到 ~/.config/opencode/opencode.jsonc 的 mcp.servers。
