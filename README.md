@@ -423,6 +423,7 @@ artifacts/release/              绿色 zip、安装包、symbols
 技术文档.md                     代码级实现说明
 需求文件.md                     需求契约
 docs/mcp-config.example.jsonc  OpenCode 接入示例
+docs/releasing.md              发布手册（GitHub Release + winget）
 ```
 
 ## 测试脚本

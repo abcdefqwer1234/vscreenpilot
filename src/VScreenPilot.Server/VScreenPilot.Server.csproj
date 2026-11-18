@@ -26,9 +26,9 @@
     <PublishReadyToRun>true</PublishReadyToRun>
     <PublishTrimmed>false</PublishTrimmed>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-    <!-- 分发：winget/Release 走原生 exe。dotnet tool(PackAsTool) 不支持 net10.0-windows，
-         所以 dnx 入口需要单独的原生包，见 docs/audit/06。 -->
-    <PackageId>VScreenPilot.Cli</PackageId>
+    <!-- 分发只有两条：GitHub Releases（安装版/绿色版）与 winget。
+         本项目不发布 NuGet 包或 dotnet tool，IsPackable 显式关闭。 -->
+    <IsPackable>false</IsPackable>
     <Version>0.1.0</Version>
     <Authors>VScreenPilot</Authors>
     <Description>Virtual-display MCP server for Windows desktop automation.</Description>

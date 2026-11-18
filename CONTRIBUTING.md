@@ -32,6 +32,11 @@ Every `summary.json` must include `binary_sha256`. Reports in `docs/audit/` must
 - Prefer semantic actions (UIA/MSAA) over coordinates; use `channel=input` only when explicitly needed.
 - Comments in Chinese are fine; identifiers and API names stay in English.
 
+## Releases
+
+Only two channels are supported: GitHub Releases and winget. See
+[`docs/releasing.md`](docs/releasing.md) for the version, tag, asset and winget submission steps.
+
 ## Pull requests
 
 - Include the failing case and the fix in the description.

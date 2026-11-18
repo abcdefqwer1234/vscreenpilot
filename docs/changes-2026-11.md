@@ -58,4 +58,4 @@
 - MSAA 已接入（Office 旧对话框）；OCR 已接入（Windows.Media.Ocr）；CDP 尚未接入。
 - UWP `ApplicationFrameWindow` 已可解析；Word 自定义对话框可经 MSAA 操作。
 - 非默认 profile 可挂载，但部分 VDD/Windows 组合会忽略 `dmPosition`（固定主屏右侧）；`get_environment.virtual_display.position_enforced=false` 会如实标记。
-- NuGet `dnx` 受 `PackAsTool` 不支持 `net10.0-windows` 限制；winget 清单已就绪并提交审核，npm/MCP Registry 渠道暂不提供。
+- 发布渠道只有两条：GitHub Releases（安装版/绿色版）与 winget；不使用 NuGet、dotnet tool、npm 或 MCP Registry。winget 清单已提交审核。

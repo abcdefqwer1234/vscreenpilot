@@ -4,7 +4,7 @@
 
 ### Added
 
-- 发布渠道：GitHub Release 提供安装版与绿色版；npm 渠道已移除，MCP Registry 暂缓。
+- 发布渠道固定为两条：GitHub Releases（安装版 + 绿色版）与 winget；不再提供 npm/NuGet/MCP Registry。
 - `release.yml`：tag 触发 build/test/zip/GitHub Release；`check-version.mjs` 与 `check-docs-links.mjs` 纳入 CI。
 - `THIRD-PARTY-NOTICES.md` 与 `scripts/update-winget.ps1`。
 - Windows 安装版：Inno Setup per-user 安装包（`VScreenPilot-Setup-0.1.0.exe`），可选加入用户 PATH，自带卸载；同时保留绿色 zip。
