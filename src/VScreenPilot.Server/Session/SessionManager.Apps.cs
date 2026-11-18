@@ -32,6 +32,8 @@ internal sealed partial class SessionManager
         bool closeOnRelease = false;
         bool dedicated = false;
         bool hadRunningInstance = false;
+        bool adoptedExisting = false;
+        string? launchWarning = null;
         string? tempProfile = null;
         string exeName = string.Empty;
 
@@ -186,10 +188,20 @@ internal sealed partial class SessionManager
                         {
                             // 不记录窗口标题：可能包含文档名/客户名。
                             _log.Warn($"无法创建独立实例，已接管现有窗口 pid={reuse.Pid}");
+                            bool alreadyOwned = IsOwnedWindowOnCurrentClient(reuse.Hwnd);
                             window = reuse;
                             newInstance = false;
-                            closeOnRelease = false;
-                            dedicated = false;
+                            started = false;
+
+                            if (!alreadyOwned)
+                            {
+                                // 用户原本就有的窗口：不能算本会话启动，release 只归位、不关闭。
+                                closeOnRelease = false;
+                                dedicated = false;
+                                adoptedExisting = true;
+                                launchWarning =
+                                    "无法创建独立实例，已接管现有窗口；release_environment 只归位、不关闭该窗口";
+                            }
                         }
                         else
                         {
@@ -212,8 +224,12 @@ internal sealed partial class SessionManager
                     }
                 }
 
-                closeOnRelease = true;
-                dedicated = !hadRunningInstance || exeName.Equals("msedge", StringComparison.OrdinalIgnoreCase);
+                // 单实例回退到“接管现有窗口”时，上面已把 closeOnRelease 置 false；
+                // 这里不能无条件覆盖，否则 release 会把用户原有窗口当成本会话启动的应用关闭/强杀。
+                (closeOnRelease, dedicated) = ResolveNewInstanceOwnership(
+                    adoptedExisting,
+                    hadRunningInstance,
+                    exeName.Equals("msedge", StringComparison.OrdinalIgnoreCase));
             }
             else
             {
@@ -386,6 +402,17 @@ internal sealed partial class SessionManager
         SaveState();
 
         var warnings = new JsonArray();
+
+        if (launchWarning is not null)
+        {
+            warnings.Add(launchWarning);
+        }
+        else if (LooksLikeRestoredNotepadTitle(
+                     exeName, started, arguments, after?.Title ?? window.Title))
+        {
+            warnings.Add(
+                "记事本可能恢复了上次会话的标签；请先用 snapshot 确认标题，或传 args 指定文件");
+        }
         bool word = exeName.Equals("winword", StringComparison.OrdinalIgnoreCase);
         bool powerpoint = exeName.Equals("powerpnt", StringComparison.OrdinalIgnoreCase);
         bool excel = exeName.Equals("excel", StringComparison.OrdinalIgnoreCase);
@@ -640,6 +667,56 @@ internal sealed partial class SessionManager
         }
 
         return null;
+    }
+
+    /// <summary>该窗口是否已由当前客户端接管；用于区分“用户原有窗口”和“本会话早前启动的窗口”。</summary>
+    private bool IsOwnedWindowOnCurrentClient(IntPtr hwnd)
+    {
+        lock (_gate)
+        {
+            return _apps.Any(app => IsOwned(app) && app.Hwnd == hwnd && IsLiveTrackedApp(app));
+        }
+    }
+
+    /// <summary>
+    /// 解析“本次启动”的窗口所有权。单实例回退（adoptedExisting=true）必须保留
+    /// closeOnRelease=false，否则 release 会关闭用户原有窗口。
+    /// </summary>
+    internal static (bool CloseOnRelease, bool Dedicated) ResolveNewInstanceOwnership(
+        bool adoptedExisting, bool hadRunningInstance, bool isEdge)
+    {
+        if (adoptedExisting)
+        {
+            return (false, false);
+        }
+
+        return (true, !hadRunningInstance || isEdge);
+    }
+
+    /// <summary>
+    /// Win11 记事本会恢复上次会话的标签：无参数启动时若标题带文件名，提示调用方先确认。
+    /// 只在本次确实启动了新进程时判断，接管旧窗口的场景由 launchWarning 覆盖。
+    /// </summary>
+    internal static bool LooksLikeRestoredNotepadTitle(
+        string exeName, bool started, string? arguments, string? title)
+    {
+        if (!started ||
+            !exeName.Equals("notepad", StringComparison.OrdinalIgnoreCase) ||
+            !string.IsNullOrWhiteSpace(arguments) ||
+            string.IsNullOrWhiteSpace(title))
+        {
+            return false;
+        }
+
+        // 空白标签的标题是“无标题 - 记事本”/“Untitled - Notepad”。
+        if (title.Contains("无标题", StringComparison.OrdinalIgnoreCase) ||
+            title.Contains("Untitled", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return title.Contains("记事本", StringComparison.OrdinalIgnoreCase) ||
+               title.Contains("Notepad", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string BuildNewInstanceArguments(

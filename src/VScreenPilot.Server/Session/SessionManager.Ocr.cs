@@ -139,7 +139,8 @@ internal sealed partial class SessionManager
         string text, bool keepForeground = false, bool observe = true,
         string channel = "auto", bool requireUnique = false,
         int? regionX = null, int? regionY = null,
-        int? regionWidth = null, int? regionHeight = null)
+        int? regionWidth = null, int? regionHeight = null,
+        bool fallbackInput = false)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -234,7 +235,8 @@ internal sealed partial class SessionManager
 
         int clickX = left + match.Left + match.Width / 2;
         int clickY = top + match.Top + match.Height / 2;
-        JsonObject click = Click(clickX, clickY, "left", 1, channel, keepForeground, observe);
+        JsonObject click = Click(
+            clickX, clickY, "left", 1, channel, keepForeground, observe, fallbackInput);
 
         int clickRedactions = 0;
         string clickedText = RedactEmails(match.Text, ref clickRedactions);

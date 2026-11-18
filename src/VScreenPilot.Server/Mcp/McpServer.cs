@@ -237,14 +237,16 @@ internal sealed class McpServer
 
     private const string Instructions =
         "Virtual-display automation for Windows apps. The server mounts a 1280x720 virtual display " +
-        "(override with VSP_DISPLAY_WIDTH/HEIGHT/REFRESH) and only operates windows it has tracked. " +
-        "Start with `snapshot` (semantic tree + dialogs + optional screenshot); it returns a snapshot_id " +
-        "and refs that are valid only for that snapshot. Prefer semantic actions (click_ref/invoke_element/" +
-        "set_element_value) over pixel coordinates. Coordinates must stay inside the virtual display. " +
-        "Chromium/WebView2 apps ignore window messages; the server picks the channel automatically, and " +
-        "`channel=input` is the explicit fallback. Run `release_environment` when finished; the display is " +
-        "kept by default. This is a shared desktop session, not a security sandbox; use a VM for untrusted work. " +
-        "run_script is disabled unless the server was started with --allow-script.";
+        "(override with VSP_DISPLAY_WIDTH/HEIGHT/REFRESH; read when the daemon starts) and only operates " +
+        "windows it has tracked. Start with `snapshot` (semantic tree + dialogs + optional screenshot); it " +
+        "returns a snapshot_id and refs that are valid only for that snapshot. Prefer semantic actions " +
+        "(click_ref/invoke_element/set_element_value) over pixel coordinates. Coordinates must stay inside " +
+        "the virtual display. Chromium/WebView2 apps ignore window messages; for click/click_ref/click_text " +
+        "pass `channel=input` or `fallback_input=true`, and for gesture pass `mode=input`. `auto` never " +
+        "moves the real cursor unless fallback_input or VSP_INPUT_AUTOFALLBACK=1 enables it. Run " +
+        "`release_environment` when finished; the display is kept by default. This is a shared desktop " +
+        "session, not a security sandbox; use a VM for untrusted work. run_script is disabled unless the " +
+        "server was started with --allow-script.";
 
     private ValueTask<ListToolsResult> HandleListToolsAsync(
         RequestContext<ListToolsRequestParams> context, CancellationToken cancellationToken)
@@ -1055,7 +1057,10 @@ internal sealed class McpServer
         Add(tools, "launch_or_place_app", "Launch or attach app",
             "Start an application or attach to an existing window, move it onto the virtual display and maximize it. " +
             "Returns pid/hwnd plus any owned dialogs discovered at attach time. Prefer path for a new instance; " +
-            "window only when you intentionally take over a running app.",
+            "window only when you intentionally take over a running app. Single-instance apps may fall back to " +
+            "adopting an existing window: check `reused` and `warnings`; an adopted window is only moved back on " +
+            "release, never closed. Windows 11 Notepad can restore the previous session's tabs when launched " +
+            "without args; pass `args` or confirm the title with snapshot before typing.",
             """
             {"type":"object","additionalProperties":false,"properties":{
               "path":{"type":"string","description":"Executable path."},
@@ -1197,7 +1202,8 @@ internal sealed class McpServer
             readOnly: true, destructive: false, timeoutMs: 20000, GetElementText);
 
         Add(tools, "click", "Click",
-            "Click at virtual-desktop coordinates. channel=auto picks UIA element, message or SendInput. " +
+            "Click at virtual-desktop coordinates. channel=auto tries a UIA element, then a window message; " +
+            "it only falls back to SendInput when fallback_input=true (or VSP_INPUT_AUTOFALLBACK=1). " +
             "Non-client areas (title bar, caption buttons) and popup menus are handled explicitly. " +
             "keep_foreground=true pauses the focus guard for 30s.",
             """
@@ -1219,12 +1225,14 @@ internal sealed class McpServer
 
         Add(tools, "click_ref", "Click element by ref",
             "Click a control by element_ref. auto first tries UIA Invoke/Toggle/Select, then message click " +
-            "at the control center; channel=input moves the real cursor. Prefer this over coordinate clicks.",
+            "at the control center; channel=input moves the real cursor. fallback_input=true (or " +
+            "VSP_INPUT_AUTOFALLBACK=1) enables SendInput after UIA/message fail. Prefer this over coordinate clicks.",
             """
             {"type":"object","additionalProperties":false,"properties":{
               "ref":{"type":"string"},
               "channel":{"type":"string","enum":["auto","uia","message","input"]},
-              "keep_foreground":{"type":"boolean"}},
+              "keep_foreground":{"type":"boolean"},
+              "fallback_input":{"type":"boolean","description":"Default false. When UIA/message paths fail, move the real cursor and use SendInput."}},
               "required":["ref"]}
             """,
             Out("clicked:boolean", "ref:string", "channel:string", "pattern:string",
@@ -1249,7 +1257,8 @@ internal sealed class McpServer
 
         Add(tools, "click_text", "Click text on screen",
             "OCR the virtual display (or a region), find the first line containing text, click its center and " +
-            "return the before/after diff. Fallback for canvas apps where click_ref cannot find the element.",
+            "return the before/after diff. Fallback for canvas apps where click_ref cannot find the element. " +
+            "fallback_input=true (or VSP_INPUT_AUTOFALLBACK=1) enables SendInput after UIA/message fail.",
             """
             {"type":"object","additionalProperties":false,"properties":{
               "text":{"type":"string"},
@@ -1259,6 +1268,7 @@ internal sealed class McpServer
                 "required":["x","y","width","height"]},
               "channel":{"type":"string","enum":["auto","uia","message","input"]},
               "keep_foreground":{"type":"boolean"},
+              "fallback_input":{"type":"boolean","description":"Default false. When UIA/message paths fail, move the real cursor and use SendInput."},
               "require_unique":{"type":"boolean","description":"Fail with E_MULTIPLE_MATCHES when more than one line matches."},
               "observe":{"type":"boolean"}},
               "required":["text"]}
@@ -1268,7 +1278,8 @@ internal sealed class McpServer
             readOnly: false, destructive: true, timeoutMs: 60000, ClickText);
 
         Add(tools, "gesture", "Gesture",
-            "Composite mouse action: drag, scroll or move. Message mode cannot drag across windows; use channel=input for drags.",
+            "Composite mouse action: drag, scroll or move. Message mode cannot drag across windows; use " +
+            "mode=input for drags (this tool uses `mode`, not `channel`).",
             """
             {"type":"object","additionalProperties":false,"properties":{
               "type":{"type":"string","enum":["drag","scroll","move"]},
@@ -1353,7 +1364,8 @@ internal sealed class McpServer
 
         Add(tools, "match_visual", "Match visual",
             "Locate pixels on the virtual display: color connected components, single pixel, or PNG template match. " +
-            "template requires 1:1 scale and the same DPI as the capture.",
+            "Template matching is done at capture pixel scale; if the template comes from a different render " +
+            "scale/DPI, pass scales (0.5-2.0, default [1], max 5) to search.",
             """
             {"type":"object","required":["mode"],"additionalProperties":false,"properties":{
               "mode":{"type":"string","enum":["template","color","pixel"]},
@@ -1838,7 +1850,8 @@ internal sealed class McpServer
         return ToolResponse.Text(_session.ClickElementRef(
             reference,
             OptionalString(arguments, "channel"),
-            OptionalBool(arguments, "keep_foreground", false)));
+            OptionalBool(arguments, "keep_foreground", false),
+            OptionalBool(arguments, "fallback_input", false)));
     }
 
     private ToolResponse Gesture(JsonElement arguments) =>
@@ -1852,6 +1865,7 @@ internal sealed class McpServer
         bool observe = OptionalBool(arguments, "observe", true);
         bool requireUnique = OptionalBool(arguments, "require_unique", false);
         string channel = OptionalString(arguments, "channel") ?? "auto";
+        bool fallbackInput = OptionalBool(arguments, "fallback_input", false);
 
         int? x = null, y = null, width = null, height = null;
 
@@ -1877,7 +1891,7 @@ internal sealed class McpServer
 
         return ToolResponse.Text(_session.ClickText(
             text, keepForeground, observe, channel, requireUnique,
-            x, y, width, height));
+            x, y, width, height, fallbackInput));
     }
 
     private ToolResponse TypeText(JsonElement arguments)

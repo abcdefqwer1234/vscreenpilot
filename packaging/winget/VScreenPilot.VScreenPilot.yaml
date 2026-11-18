@@ -1,6 +1,6 @@
 # winget version manifest. Fill the real SHA with scripts/update-winget.ps1 after release.
 PackageIdentifier: VScreenPilot.VScreenPilot
-PackageVersion: 0.2.1
+PackageVersion: 0.2.2
 DefaultLocale: en-US
 ManifestType: version
 ManifestVersion: 1.6.0

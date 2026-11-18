@@ -9,8 +9,8 @@
 - 共享实例与 as-built 细节见 [`docs/多客户端共享实例方案.md`](docs/多客户端共享实例方案.md)、[`docs/architecture.md`](docs/architecture.md)；行为变化与错误目录见 [`docs/changes-2026-11.md`](docs/changes-2026-11.md)、[`docs/errors.md`](docs/errors.md)。
 - 测试与复现见 [`docs/audit/第一轮测试报告.md`](docs/audit/第一轮测试报告.md)（Word/CCW 与重构）与 [`docs/audit/第二轮测试报告.md`](docs/audit/第二轮测试报告.md)（PPT 与修复）；原始记录已汇总进这两份报告。
 
-> 版本 0.2.1（多客户端共享实例）。这是 **0.x 技术预览**：工具名与参数已按契约冻结，但 0.x 阶段仍可能做不兼容调整；升级前请看 [CHANGELOG](CHANGELOG.md)。
-> 0.2.1 的 as-built 以 [共享实例方案 §9.10](docs/多客户端共享实例方案.md) 和 [architecture](docs/architecture.md) 为准；[技术文档.md](技术文档.md) 是 0.1.0 的历史快照。需求契约见 [需求文件.md](需求文件.md)。
+> 版本 0.2.2（多客户端共享实例）。这是 **0.x 技术预览**：工具名与参数已按契约冻结，但 0.x 阶段仍可能做不兼容调整；升级前请看 [CHANGELOG](CHANGELOG.md)。
+> 0.2.2 的 as-built 以 [共享实例方案 §9.10](docs/多客户端共享实例方案.md) 和 [architecture](docs/architecture.md) 为准；[技术文档.md](技术文档.md) 是 0.1.0 的历史快照。需求契约见 [需求文件.md](需求文件.md)。
 
 ---
 
@@ -129,7 +129,7 @@ winget install --id Parsec.ParsecVDD -e --accept-package-agreements --accept-sou
 
 ### 方式 A：安装版（推荐）
 
-从 Releases 下载 `VScreenPilot-Setup-0.2.1.exe` 并双击安装：
+从 Releases 下载 `VScreenPilot-Setup-0.2.2.exe` 并双击安装：
 
 - 安装到 `%LOCALAPPDATA%\Programs\VScreenPilot`，**per-user，不需要管理员**；
 - 可选加入当前用户 `PATH`（默认勾选），之后可直接运行 `vscreenpilot --doctor`；
@@ -140,9 +140,9 @@ winget install --id Parsec.ParsecVDD -e --accept-package-agreements --accept-sou
 
 ### 方式 B：绿色版
 
-下载 `VScreenPilot-win-x64-v0.2.1.zip`，解压到固定目录（如 `C:\Tools\VScreenPilot`），直接运行 `VScreenPilot.exe`。
+下载 `VScreenPilot-win-x64-v0.2.2.zip`，解压到固定目录（如 `C:\Tools\VScreenPilot`），直接运行 `VScreenPilot.exe`。
 
-zip 内含 exe、`LICENSE`、`THIRD-PARTY-NOTICES.md`、`README.md`；`.pdb` 在单独的 `VScreenPilot-symbols-v0.2.1.zip`，普通用户不需要。
+zip 内含 exe、`LICENSE`、`THIRD-PARTY-NOTICES.md`、`README.md`；`.pdb` 在单独的 `VScreenPilot-symbols-v0.2.2.zip`，普通用户不需要。
 
 ### 方式 C：winget（提交审核通过后可用）
 
@@ -155,7 +155,7 @@ winget install --id VScreenPilot.VScreenPilot -e
 ### 从源码构建
 
 ```powershell
-.\scripts\release.ps1 -Version 0.2.1
+.\scripts\release.ps1 -Version 0.2.2
 ```
 
 一次生成绿色 zip、安装包和 symbols zip。
@@ -209,9 +209,10 @@ VScreenPilot.exe --doctor
 - `get_environment.session.clients[]` 只返回 id/name/connected_at/holds_lease；`session.screen_lease` 给出当前租约。`get_log` 默认只返回本客户端日志，`include_other_clients=true` 可查看全部。
 - `--allow-script` 或 `VSP_ALLOW_SCRIPT=1`：启用 `run_script`。默认关闭，避免任意 PowerShell。
 - `VSP_APP_ALLOWLIST`：可选，用分号分隔目录，限制 `launch_or_place_app` 通过 `path` 能启动哪些 exe；按 `window` 标题接管不受此限制。
-- `VSP_DISPLAY_WIDTH` / `VSP_DISPLAY_HEIGHT` / `VSP_DISPLAY_REFRESH`：可选，修改虚拟屏分辨率与刷新率，默认 1280×720@60。
+- `VSP_DISPLAY_WIDTH` / `VSP_DISPLAY_HEIGHT` / `VSP_DISPLAY_REFRESH`：可选，修改虚拟屏分辨率与刷新率，默认 1280×720@60（范围 800–3840 / 600–2160 / 30–240）。这些值在 daemon 启动时读取；daemon 已运行时改环境变量不会生效，需先 `--cli stop` 或关闭客户端。改分辨率不会改变 96 DPI（100% 缩放）。
+- `VSP_DAEMON_IDLE_MS`：最后一个客户端断开后的空闲宽限，默认 5000；`0` 立即退出。调大会让虚拟屏在空闲期继续挂在真实桌面上（退出时才摘屏），按需取舍。`VSP_SCREEN_LEASE_WAIT_MS`、`VSP_TOTAL_BUFFER_MB`、`VSP_CLIENT_LIMIT` 分别控制租约等待、总缓冲和客户端上限。
+- `VSP_INPUT_AUTOFALLBACK=1`：允许 `click`/`click_ref`/`click_text` 在 UIA/窗口消息失败后自动降级到 `SendInput`（会移动真实光标，默认关闭）。
 - `VSP_CLIENT_CWD`：可选，覆盖客户端路径基准（`save_path`/`target_path`/相对 exe）；默认使用 proxy 的 cwd。
-- `VSP_DAEMON_IDLE_MS`：最后一个客户端断开后的空闲宽限，默认 5000；`0` 立即退出。`VSP_SCREEN_LEASE_WAIT_MS`、`VSP_TOTAL_BUFFER_MB`、`VSP_CLIENT_LIMIT` 分别控制租约等待、总缓冲和客户端上限。
 - `--cli env|snapshot|screen|status|stop`：`env/snapshot/screen` 在实例存在时通过只读控制管道查询；`stop` 有活跃客户端时需 `--force`。`snapshot` 返回管理员 `apps[]` 视图（同时保留旧顶层字段）。
 - `--daemon`：高级用法，手动启动独立共享实例；通常不需要使用，首个 MCP 客户端会自动 spawn。
 - 完整示例见 [docs/mcp-config.example.jsonc](docs/mcp-config.example.jsonc)。
@@ -284,7 +285,7 @@ VScreenPilot.exe --doctor
 { "mode": "template", "target_path": ".\\button.png", "threshold": 0.9 }
 ```
 
-`target_path` 必须位于当前工作目录或系统临时目录下；模板必须来自 1:1 截图，同 DPI、无缩放/旋转。
+`target_path` 必须位于当前工作目录或系统临时目录下；模板按捕获时的像素比例匹配，要求同一渲染缩放/DPI、无旋转。若模板来自不同缩放或 DPI，传 `scales`（如 `[0.75, 1, 1.25]`，范围 0.5–2.0，默认 `[1]`）搜索。
 
 ### 例子：验证区域变化
 
@@ -325,7 +326,7 @@ VScreenPilot.exe --doctor
 - **不误杀共享进程**：优先只关窗口；专用实例，或本会话启动且没有其他窗口的进程，才强杀；窗口已关闭且需要清理的后台进程（如 Edge 临时配置）按 exe 路径核对，避免 PID 复用误杀。
 - **不覆盖用户文件**：截图/模板落盘只允许工作目录或系统临时目录下的 `.png`，且 `capture_screen` 不覆盖已有文件。
 - **不发送系统级快捷键**：`Win+*`、`Alt+Tab`、`Ctrl+Esc`、`Ctrl+Shift+Esc` 等默认拒绝；确需使用显式传 `allow_system_keys=true`。
-- **不假装消息输入成功**：Chromium/Electron/WinUI 会忽略窗口消息点击/拖拽/滚轮，服务端直接返回 `E_INPUT_UNSUPPORTED`，请显式用 `mode=input` 或 UIA 语义操作。
+- **不假装消息输入成功**：Chromium/Electron/WinUI 会忽略窗口消息点击/拖拽/滚轮，服务端直接返回 `E_INPUT_UNSUPPORTED`。`click`/`click_ref`/`click_text` 可显式传 `channel=input` 或 `fallback_input=true`，`gesture` 用 `mode=input`；也可用 `VSP_INPUT_AUTOFALLBACK=1` 全局开启输入降级。
 - **不是安全沙箱**：虚拟屏与用户共享同一 Windows 会话。`session.isolation=shared_desktop` 是明确提示；处理不可信网页/文档/脚本时，请使用 VM、Windows Sandbox 或独立 Windows 账户。
 
 ---
@@ -333,8 +334,11 @@ VScreenPilot.exe --doctor
 ## 运行期行为
 
 - 启动时后台预热挂屏，第一次黑屏发生在 OpenCode 启动阶段。
-- 虚拟屏默认 1280×720@60、DPI 96、主屏右侧；可用 `VSP_DISPLAY_WIDTH/HEIGHT/REFRESH` 覆盖。
-- 鼠标默认不动；鼠标只有 `mode=input` 才用 `SendInput`，键盘输入（`type_text`/`press_keys`）也使用 `SendInput`，但不移动光标。
+- 虚拟屏默认 1280×720@60、DPI 96、主屏右侧；可用 `VSP_DISPLAY_WIDTH/HEIGHT/REFRESH` 覆盖。DPI 目前固定 96，分辨率变大只增加工作区、不改变缩放比例。
+- 单实例应用（如 Win11 记事本）无法创建独立窗口时会自动接管现有窗口：响应里 `reused=true` 且 `warnings[]` 会说明；`release_environment` 只归位、不关闭该窗口。Win11 记事本无参数启动还可能恢复上次会话的标签，先 `snapshot` 确认标题，或传 `args` 指定文件。
+- 鼠标默认不动；只有 `mode=input`、`channel=input`、`fallback_input=true` 或 `VSP_INPUT_AUTOFALLBACK=1` 才用 `SendInput`；键盘输入（`type_text`/`press_keys`）也使用 `SendInput`，但不移动光标。
+- ref 只在创建它的 `snapshot` 内有效；跨快照使用返回 `E_STALE_SNAPSHOT`。轮询状态用 `get_ui_tree`（默认复用当前代），需要新 ref 时传 `new_snapshot=true`。
+- 只操作虚拟屏内、本会话接管的窗口；物理屏上的用户窗口不会被接管（隔离设计）。虚拟屏上限 3840×2160，坐标边界随 `VSP_DISPLAY_WIDTH/HEIGHT` 变化。
 - 焦点护栏每 200ms 检查：本会话应用意外占前台时归还用户窗口；菜单操作可暂停。
 - 光标护栏每 150ms 检查：光标误入虚拟屏时弹回最近物理屏。
 - EOF、Ctrl+C、控制台关闭、SIGTERM、父进程退出都会进入统一清理。

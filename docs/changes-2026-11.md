@@ -19,6 +19,14 @@
 - **安装版**：Inno Setup per-user 安装包，默认装到 `%LOCALAPPDATA%\Programs\VScreenPilot`，
   可选加入用户 PATH；同时保留绿色 zip。
 
+## 0.2.2 启动与输入通道修正
+
+- **单实例回退不再关闭用户窗口**：`launch_or_place_app` 接管现有窗口时保持 `close_on_release=false`，`release_environment` 只归位；修复此前 `close_on_release` 被覆盖、`on_dirty=save/discard/force` 可能关闭或强杀用户进程的问题。
+- 接管或记事本恢复上次标签时返回 `warnings[]`，避免“以为启动了新文档、实际写进旧标签”。
+- `click_ref`/`click_text` 增加 `fallback_input`；新增 `VSP_INPUT_AUTOFALLBACK=1`（默认关）；fallback 前检查交互桌面。
+- 修正 `click`/`gesture` 工具描述与 server instructions；`match_visual` 文档改为支持 `scales`。
+- `--help` 补齐显示与输入环境变量。
+
 ## 0.2.1 修复：虚拟屏 ADD 回归
 
 - 0.2.0 的“只认本次新出现的 device”把 `DISPLAY5`~`DISPLAY20` 这些未激活的 Parsec 适配器也算作已存在；驱动复用其中某个名字 ADD 时判定永不成立，挂屏报 `E_DISPLAY_ADD`。

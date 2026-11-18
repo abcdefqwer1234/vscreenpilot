@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.2 — 2026-11-19（启动与输入通道修正）
+
+### Fixed
+
+- **单实例接管可能关闭用户原有窗口（安全）**：`launch_or_place_app(new_instance=true)` 在单实例应用（如 Win11 记事本）无法创建新窗口时会回退为接管现有窗口，但随后 `close_on_release`/`dedicated` 被无条件赋值覆盖。`release_environment` 因此会把用户原有窗口当成本会话启动的窗口关闭；`on_dirty=save/discard/force` 下还可能强杀共享进程，默认 `abort` 下也不会恢复窗口位置。现在回退时记录 `adoptedExisting`，保持 `close_on_release=false`、`started=false`，响应 `reused=true` 并写入 `warnings[]`。
+- **记事本恢复标签不可见**：Win11 记事本无参数启动会恢复上次会话的标签。无参数启动且标题带文件名时返回警告，提示先 `snapshot` 确认标题，或传 `args` 指定文件。
+- **Chromium/WebView2 输入文档错误**：`click` 描述声称 auto 会走 SendInput，实际默认不会；`gesture` 描述写 `channel=input`，但参数名是 `mode`。已修正工具描述和 server instructions。
+- **fallback 参数不对称**：`click_ref`/`click_text` 新增 `fallback_input`；新增 `VSP_INPUT_AUTOFALLBACK=1` 进程级开关（默认关闭）。fallback 前补交互桌面检查，锁屏时返回 `E_NO_INTERACTIVE_DESKTOP` 而不是模糊的 `E_INPUT`。
+- **match_visual 文档落后**：模板已支持 `scales`（0.5–2.0，默认 `[1]`），不再声称必须 1:1；README、技术文档同步。
+- `--help` 补 `VSP_DISPLAY_WIDTH/HEIGHT/REFRESH/OFFSET` 与 `VSP_INPUT_AUTOFALLBACK`，并说明显示设置需重启 daemon。
+- 新增 `InputPolicyTests`、`LaunchPolicyTests`；单测 120/120。
+
 ## 0.2.1 — 2026-11-19（修虚拟屏 ADD 回归）
 
 ### Fixed

@@ -29,7 +29,7 @@
 | `E_FOCUS` | 无法把目标切到前台 | 先 `click(keep_foreground=true)`；检查模态框 |
 | `E_FOCUS_OWNED` | 另一个 profile 持有输入租约（`VSP_FOCUS_LEASE=1`） | 稍后重试，或串行执行两个 profile |
 | `E_FOCUS_LOST` | 输入中前台被抢走 | 重试；确认用户没有在操作桌面 |
-| `E_INPUT_UNSUPPORTED` | 该窗口/区域忽略所选输入通道 | 非客户区或 Chromium 改用 `channel=input`；菜单用 UIA |
+| `E_INPUT_UNSUPPORTED` | 该窗口/区域忽略所选输入通道 | 非客户区或 Chromium 改用 `channel=input`/`fallback_input=true`；`gesture` 用 `mode=input` |
 | `E_UIPI` | 被 UIPI 拦截 | 以相同权限运行，或改用 UIA 语义操作 |
 | `E_INPUT` | 输入未完整注入 | 检查前台、输入法与目标是否禁用输入 |
 | `E_SYSTEM_KEY_BLOCKED` | 系统级快捷键会逃逸到用户桌面 | 确需发送时传 `allow_system_keys=true` |
@@ -213,6 +213,9 @@
 ### E_INPUT_UNSUPPORTED
 
 输入通道不支持（stage: `input`）
+
+- Chromium/Electron/WinUI 忽略窗口消息：`click`/`click_ref`/`click_text` 传 `channel=input` 或 `fallback_input=true`；`gesture` 传 `mode=input`。
+- 也可用 `VSP_INPUT_AUTOFALLBACK=1` 全局开启自动降级（会移动真实光标）。
 
 <a id="e_system_key_blocked"></a>
 

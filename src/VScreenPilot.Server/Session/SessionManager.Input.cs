@@ -16,7 +16,8 @@ namespace VScreenPilot.Session;
 internal sealed partial class SessionManager
 {
     /// <summary>按 element_ref 点击：优先 UIA pattern，其次消息/输入通道。</summary>
-    public JsonObject ClickElementRef(string reference, string? channel, bool keepForeground)
+    public JsonObject ClickElementRef(
+        string reference, string? channel, bool keepForeground, bool fallbackInput = false)
     {
         DisplayInfo display = EnsureEnvironmentFast();
         ElementRefEntry probe = RequireElementEntry(reference);
@@ -37,12 +38,20 @@ internal sealed partial class SessionManager
 
             if (!acted && mode != "uia" && bounds is not null)
             {
-                Click(
+                // auto 在 MSAA 默认动作失败后允许继续走 UIA/消息/输入降级链。
+                string msaaMode = mode switch
+                {
+                    "input" => "input",
+                    "message" => "message",
+                    _ => "auto",
+                };
+
+                JsonObject msaaClick = Click(
                     bounds.Value.Left + bounds.Value.Width / 2,
                     bounds.Value.Top + bounds.Value.Height / 2,
-                    "left", 1, mode == "input" ? "input" : "message", keepForeground);
+                    "left", 1, msaaMode, keepForeground, observe: true, fallbackInput: fallbackInput);
                 acted = true;
-                resultChannel = mode == "input" ? "input" : "message";
+                resultChannel = msaaClick["method"]?.GetValue<string>() ?? msaaMode;
             }
 
             if (!acted)
@@ -113,10 +122,11 @@ internal sealed partial class SessionManager
 
         int centerX = info.Left + Math.Max(1, info.Width) / 2;
         int centerY = info.Top + Math.Max(1, info.Height) / 2;
+        // 显式 message/input 保持原语义；auto 才允许继续降级（含 fallback_input）。
+        string coordinateMode = mode is "input" or "message" ? mode : "auto";
         JsonObject result = Click(
-            centerX, centerY, "left", 1,
-            mode == "input" ? "input" : "message",
-            keepForeground);
+            centerX, centerY, "left", 1, coordinateMode,
+            keepForeground, observe: true, fallbackInput: fallbackInput);
 
         result["clicked"] = true;
         result["ref"] = entry.Ref;
@@ -169,11 +179,15 @@ internal sealed partial class SessionManager
         if (clicks is < 1 or > 10)
         {
             throw new ToolException("E_INVALID_ARG", "clicks 必须在 1..10 之间");
-        }        mode = (mode ?? "auto").ToLowerInvariant();
+        }
+
+        mode = (mode ?? "auto").ToLowerInvariant();
         if (mode is not ("auto" or "uia" or "message" or "input"))
         {
             throw new ToolException("E_INVALID_ARG", $"未知 click mode: {mode}");
         }
+
+        bool allowInputFallback = InputPolicy.AllowsInputFallback(fallbackInput);
 
         using var inputLease = InputLease.TryAcquire(3000, "click");
 
@@ -278,8 +292,20 @@ internal sealed partial class SessionManager
                 {
                     method = "message";
                 }
-                else if (fallbackInput)
+                else if (allowInputFallback)
                 {
+                    // fallback 也要检查交互桌面：锁屏/安全桌面下 SendInput 只会得到
+                    // 模糊的 E_INPUT，提前给出 E_NO_INTERACTIVE_DESKTOP 更有用。
+                    if (!IsInputDesktopAvailable())
+                    {
+                        throw new ToolException(
+                            "E_NO_INTERACTIVE_DESKTOP",
+                            "当前没有可交互桌面（锁屏/安全桌面/Session 0），SendInput 无法注入",
+                            retryable: true,
+                            hint: "解锁桌面或改用 UIA 语义操作",
+                            stage: "input");
+                    }
+
                     _cursorGuard?.Pause();
                     PauseFocusGuard();
 

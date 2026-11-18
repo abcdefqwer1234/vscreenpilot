@@ -1,19 +1,19 @@
 # winget installer manifest: Inno Setup, per-user, no administrator required.
 PackageIdentifier: VScreenPilot.VScreenPilot
-PackageVersion: 0.2.1
+PackageVersion: 0.2.2
 InstallerLocale: en-US
 InstallerType: inno
 Scope: user
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/abcdefqwer1234/vscreenpilot/releases/download/v0.2.1/VScreenPilot-Setup-0.2.1.exe
+    InstallerUrl: https://github.com/abcdefqwer1234/vscreenpilot/releases/download/v0.2.2/VScreenPilot-Setup-0.2.2.exe
     InstallerSha256: BD3CDC035EA84573899DB5438C5CB40A5AF4056AD63F26560F1A609722AEC21D
     InstallerSwitches:
       Silent: /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-
       SilentWithProgress: /SILENT /SUPPRESSMSGBOXES /NORESTART /SP-
     AppsAndFeaturesEntries:
       - DisplayName: VScreenPilot
-        DisplayVersion: 0.2.1
+        DisplayVersion: 0.2.2
         Publisher: VScreenPilot
 ManifestType: installer
 ManifestVersion: 1.6.0

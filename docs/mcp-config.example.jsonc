@@ -18,7 +18,13 @@
         "codemode": false,
         "environment": {
           // 可选：限制 launch_or_place_app 只能启动这些目录下的 exe。
-          // "VSP_APP_ALLOWLIST": "C:\\Program Files\\MyApp;D:\\Tools"
+          // "VSP_APP_ALLOWLIST": "C:\\Program Files\\MyApp;D:\\Tools",
+          // 可选：虚拟屏尺寸/刷新率；daemon 启动时读取，改后需先停 daemon。
+          // "VSP_DISPLAY_WIDTH": "1920",
+          // "VSP_DISPLAY_HEIGHT": "1080",
+          // "VSP_DISPLAY_REFRESH": "60",
+          // 可选：允许 UIA/消息点击失败后自动降级 SendInput（会移动真实光标）。
+          // "VSP_INPUT_AUTOFALLBACK": "1"
         },
         "timeout": {
           "startup": 120000,
