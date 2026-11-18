@@ -44,6 +44,14 @@ jobs:
           $version = $tag -replace '^v', ''
           ./scripts/release.ps1 -Version $version
 
+      - name: 记录发布产物 SHA256
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem artifacts/release/*.zip | Select-Object -First 1
+          $hash = (Get-FileHash -LiteralPath $zip.FullName -Algorithm SHA256).Hash
+          "artifact: $($zip.Name)" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          "sha256: $hash" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
