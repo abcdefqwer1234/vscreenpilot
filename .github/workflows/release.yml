@@ -1,0 +1,81 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要发布的 tag（例如 v0.1.0）"
+        required: true
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: 版本一致性
+        shell: pwsh
+        run: |
+          $tag = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ inputs.tag }}" } else { $env:GITHUB_REF_NAME }
+          node scripts/check-version.mjs --tag $tag
+          node scripts/check-docs-links.mjs
+
+      - name: Build
+        run: dotnet build VScreenPilot.slnx -c Release
+
+      - name: Unit tests
+        run: dotnet test tests/VScreenPilot.Tests/VScreenPilot.Tests.csproj -c Release
+
+      - name: 生成 zip + SHA256
+        shell: pwsh
+        run: |
+          $tag = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ inputs.tag }}" } else { $env:GITHUB_REF_NAME }
+          $version = $tag -replace '^v', ''
+          ./scripts/release.ps1 -Version $version
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          files: artifacts/release/VScreenPilot-win-x64-*.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+      - name: 构建 npm 包
+        run: node scripts/build-npm.mjs
+
+      - name: 发布 npm
+        shell: pwsh
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if (-not $env:NODE_AUTH_TOKEN) {
+            Write-Warning "未配置 NPM_TOKEN，跳过 npm publish（GitHub Release 已完成）"
+            exit 0
+          }
+          Push-Location npm
+          try {
+            npm publish --access public --loglevel=warn
+          } finally {
+            Pop-Location
+          }
+
+      - name: 上传发布产物
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: |
+            artifacts/release/*.zip
+            artifacts/npm/*.tgz

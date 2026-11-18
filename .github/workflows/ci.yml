@@ -23,6 +23,12 @@ jobs:
       - name: Build
         run: dotnet build VScreenPilot.slnx -c Release --no-restore
 
+      - name: Docs links
+        run: node scripts/check-docs-links.mjs
+
+      - name: Version consistency
+        run: node scripts/check-version.mjs
+
       - name: Unit tests
         run: dotnet test tests/VScreenPilot.Tests/VScreenPilot.Tests.csproj -c Release --logger "trx;LogFileName=unit.trx"
 
