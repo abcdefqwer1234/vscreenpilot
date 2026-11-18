@@ -1,4 +1,4 @@
-# 发布后更新 winget 清单：填入 GitHub Release 的 zip URL 与 SHA256。
+﻿# 发布后更新 winget 清单：填入 GitHub Release 的 zip URL 与 SHA256。
 # 用法: powershell -File scripts/update-winget.ps1 -Version 0.1.0
 param(
     [Parameter(Mandatory = $true)][string]$Version,

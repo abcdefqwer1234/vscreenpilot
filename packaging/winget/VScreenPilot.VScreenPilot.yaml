@@ -1,5 +1,4 @@
-# winget manifest（本地提交用；发布前用 scripts/update-winget.ps1 填真实 SHA）
-PackageIdentifier: VScreenPilot.VScreenPilot
+# winget manifest锛堟湰鍦版彁浜ょ敤锛涘彂甯冨墠鐢?scripts/update-winget.ps1 濉湡瀹?SHA锛?PackageIdentifier: VScreenPilot.VScreenPilot
 PackageVersion: 0.1.0
 PackageLocale: en-US
 Publisher: VScreenPilot
@@ -25,6 +24,6 @@ Installers:
       - RelativeFilePath: VScreenPilot.exe
         PortableCommandAlias: vscreenpilot
     InstallerUrl: https://github.com/abcdefqwer1234/vscreenpilot/releases/download/v0.1.0/VScreenPilot-win-x64-v0.1.0.zip
-    InstallerSha256: REPLACE_WITH_RELEASE_SHA256
+    InstallerSha256: 9A4759C7787B205F53F9FB29D517BCA85712C409A2BC06BB602E3567583DE34D
 ManifestType: singleton
 ManifestVersion: 1.6.0

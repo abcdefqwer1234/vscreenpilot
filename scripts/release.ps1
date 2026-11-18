@@ -1,4 +1,4 @@
-# 发布准备脚本（不自动上传）
+﻿# 发布准备脚本（不自动上传）
 # 用法: powershell -File scripts/release.ps1 -Version 0.2.0
 param(
     [Parameter(Mandatory = $true)][string]$Version,

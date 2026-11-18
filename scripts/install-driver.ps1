@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     一次性安装 Parsec VDD 官方驱动（需管理员，winget 会触发一次 UAC）。
