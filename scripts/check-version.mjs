@@ -11,17 +11,22 @@ const failures = [];
 const read = (relative) => readFileSync(path.join(root, relative), 'utf8');
 
 const csproj = /<Version>([^<]+)<\/Version>/.exec(read('src/VScreenPilot.Server/VScreenPilot.Server.csproj'))?.[1];
-const winget = /^PackageVersion:\s*(\S+)/m.exec(read('packaging/winget/VScreenPilot.VScreenPilot.yaml'))?.[1];
 const buildInfo = /Version\s*=\s*"([^"]+)"/.exec(
   read('src/VScreenPilot.Server/Infrastructure/BuildInfo.cs'))?.[1];
 const installer = /#define\s+MyAppVersion\s+"([^"]+)"/.exec(
   read('packaging/installer/VScreenPilot.iss'))?.[1];
 
+const wingetVersion = read('packaging/winget/VScreenPilot.VScreenPilot.yaml');
+const wingetLocale = read('packaging/winget/VScreenPilot.VScreenPilot.locale.en-US.yaml');
+const wingetInstaller = read('packaging/winget/VScreenPilot.VScreenPilot.installer.yaml');
+
 const versions = {
   'VScreenPilot.Server.csproj': csproj,
   'BuildInfo.cs': buildInfo,
-  'winget manifest': winget,
   'Inno Setup script': installer,
+  'winget version': /^PackageVersion:\s*(\S+)/m.exec(wingetVersion)?.[1],
+  'winget locale': /^PackageVersion:\s*(\S+)/m.exec(wingetLocale)?.[1],
+  'winget installer': /^PackageVersion:\s*(\S+)/m.exec(wingetInstaller)?.[1],
 };
 
 const expected = csproj;
@@ -30,6 +35,17 @@ for (const [file, version] of Object.entries(versions)) {
   if (version !== expected) {
     failures.push(`${file} 版本 ${version} 与 csproj ${expected} 不一致`);
   }
+}
+
+const displayVersion = /^\s+DisplayVersion:\s*(\S+)/m.exec(wingetInstaller)?.[1];
+if (displayVersion !== expected) {
+  failures.push(`winget DisplayVersion ${displayVersion} 与 ${expected} 不一致`);
+}
+
+const installerUrl = /^\s+InstallerUrl:\s*(\S+)/m.exec(wingetInstaller)?.[1];
+const expectedInstaller = `VScreenPilot-Setup-${expected}.exe`;
+if (!installerUrl || !installerUrl.includes(`/v${expected}/`) || !installerUrl.endsWith(expectedInstaller)) {
+  failures.push(`winget InstallerUrl 不是 /v${expected}/${expectedInstaller}: ${installerUrl}`);
 }
 
 const tagIndex = process.argv.indexOf('--tag');

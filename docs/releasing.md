@@ -2,10 +2,11 @@
 
 > 发布渠道只有两条：**GitHub Releases** 与 **winget**。
 > 不发布 npm、NuGet/dotnet tool、MCP Registry、Chocolatey、Scoop、MSIX。
+> 维护者的账号、路径、PR 记录请放在仓库外的私有文档里，不要提交到本仓库。
 
 ## 1. 版本号位置
 
-发版前把这些位置统一改成同一版本（当前 `0.1.0`）：
+发版前把这些位置统一改成同一版本（当前版本以 `CHANGELOG.md` 顶部为准）：
 
 | 文件 | 字段 |
 | --- | --- |
@@ -14,8 +15,15 @@
 | `packaging/installer/VScreenPilot.iss` | `#define MyAppVersion` |
 | `packaging/winget/VScreenPilot.VScreenPilot.yaml` | `PackageVersion` |
 | `packaging/winget/VScreenPilot.VScreenPilot.locale.en-US.yaml` | `PackageVersion` |
-| `packaging/winget/VScreenPilot.VScreenPilot.installer.yaml` | `PackageVersion`、`DisplayVersion` |
+| `packaging/winget/VScreenPilot.VScreenPilot.installer.yaml` | `PackageVersion`、`DisplayVersion`、`InstallerUrl` |
 | `CHANGELOG.md` | `## <version>` 段落 |
+| `README.md` / `README.en.md` | 顶部版本号、安装示例里的资产文件名与 `-Version` |
+
+`InstallerUrl` 必须在打 tag 前就改成新版本地址（SHA 由 release workflow 事后回填）：
+
+```text
+https://github.com/<owner>/vscreenpilot/releases/download/v<version>/VScreenPilot-Setup-<version>.exe
+```
 
 `node scripts/check-version.mjs --tag v<version>` 会检查以上位置与 tag 是否一致。
 
@@ -41,11 +49,12 @@ start artifacts\release\VScreenPilot-Setup-<version>.exe
 
 ## 3. 打 tag 与自动发布
 
-确认工作区干净后：
+确认工作区干净后，先推 main 并等 CI 变绿：
 
 ```powershell
-git tag -a v<version> -m "VScreenPilot <version>"
 git push origin main
+# 等 GitHub Actions 的 ci 通过
+git tag -a v<version> -m "VScreenPilot <version>"
 git push origin v<version>
 ```
 
@@ -62,13 +71,13 @@ tag 会触发 `.github/workflows/release.yml`：
 
 ## 4. 发布后核对
 
-1. Release 页面有四个资产：
-   - `VScreenPilot-win-x64-v<version>.zip`
-   - `VScreenPilot-Setup-<version>.exe`
-   - `VScreenPilot-symbols-v<version>.zip`
-   - `SHA256SUMS.txt`
-2. `main` 上出现 `chore(winget): 同步 <version> 安装包 SHA [skip ci]` 提交。
-3. 本地核对 winget 清单：
+- Release 页面有四个资产：
+  - `VScreenPilot-win-x64-v<version>.zip`
+  - `VScreenPilot-Setup-<version>.exe`
+  - `VScreenPilot-symbols-v<version>.zip`
+  - `SHA256SUMS.txt`
+- `main` 上出现 `chore(winget): 同步 <version> 安装包 SHA [skip ci]` 提交。
+- 本地核对 winget 清单：
 
 ```powershell
 cd packaging\winget
@@ -78,6 +87,10 @@ Select-String -Path VScreenPilot.VScreenPilot.installer.yaml -Pattern 'Installer
 
 SHA 必须等于 `SHA256SUMS.txt` 里的安装包哈希。
 
+- 编辑 Release 说明：把 `CHANGELOG.md` 对应段落粘进去。自动生成的 notes 只作为补充，不能替代更新日志。
+- 在干净账户/VM 里用 Release 上的安装包安装一次，跑 `VScreenPilot --doctor` 和一次 `snapshot` 冒烟。
+- 如果 README 里还有“winget 提交审核通过后可用”之类临时措辞，合并后改成正式可用。
+
 ## 5. 提交 winget
 
 首次发布：
@@ -86,15 +99,26 @@ SHA 必须等于 `SHA256SUMS.txt` 里的安装包哈希。
 wingetcreate submit --prtitle "New package: VScreenPilot <version>" packaging\winget
 ```
 
-已有包的新版本：
+已有包的新版本，先同步 workflow 回填到 main 的 SHA：
+
+```powershell
+git pull --rebase origin main
+cd packaging\winget
+winget validate --manifest .
+cd ..\..
+```
+
+winget 清单必须以 `main` 为准；tag 里的清单还是打 tag 时的旧 SHA，不要从 tag 提交。
+
+推荐让 wingetcreate 按 Release 资产重新计算 SHA（会保留现有清单字段）：
 
 ```powershell
 wingetcreate update VScreenPilot.VScreenPilot --version <version> `
-  --urls https://github.com/abcdefqwer1234/vscreenpilot/releases/download/v<version>/VScreenPilot-Setup-<version>.exe `
+  --urls https://github.com/<owner>/vscreenpilot/releases/download/v<version>/VScreenPilot-Setup-<version>.exe `
   --submit
 ```
 
-或直接提交已更新的本地清单：
+备选：直接提交 workflow 已回填 SHA 的本地清单：
 
 ```powershell
 wingetcreate submit --prtitle "Update: VScreenPilot.VScreenPilot to <version>" packaging\winget
@@ -102,9 +126,11 @@ wingetcreate submit --prtitle "Update: VScreenPilot.VScreenPilot to <version>" p
 
 首次提交需要：
 
-- GitHub 账号登录（wingetcreate 会走 device flow）；
+- GitHub 账号登录（wingetcreate 会走 device flow，token 只存本机缓存；不要写进仓库）；
 - 在 PR 上签署 Microsoft CLA（回复 `@microsoft-github-policy-service agree`）；
 - 等待 URL/SHA/静默安装/Defender 校验和人工审核。
+
+校验失败时只修清单并更新 PR，不要重打已发布的 tag；Release 资产一旦被覆盖，SHA 就会变，现有 PR 会全部失效。
 
 ## 6. 绝对不要做
 
