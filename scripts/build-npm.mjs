@@ -46,15 +46,22 @@ mkdirSync(packDir, { recursive: true });
 copyFileSync(path.join(publishDir, 'VScreenPilot.exe'), path.join(distDir, 'VScreenPilot.exe'));
 console.log(`[ok] exe -> ${distDir}`);
 
-// npm 包需要自带 LICENSE 与驱动安装脚本，否则 npx 用户无法补齐前置依赖。
+// npm 包需要自带 LICENSE、第三方声明与驱动安装脚本，否则 npx 用户无法补齐前置依赖。
 const npmScripts = path.join(npmDir, 'scripts');
 mkdirSync(npmScripts, { recursive: true });
 copyFileSync(path.join(root, 'LICENSE'), path.join(npmDir, 'LICENSE'));
 copyFileSync(
+  path.join(root, 'THIRD-PARTY-NOTICES.md'),
+  path.join(npmDir, 'THIRD-PARTY-NOTICES.md')
+);
+copyFileSync(
   path.join(root, 'scripts', 'install-driver.ps1'),
   path.join(npmScripts, 'install-driver.ps1')
 );
-console.log('[ok] LICENSE + install-driver.ps1 -> npm');
+console.log('[ok] LICENSE + THIRD-PARTY-NOTICES + install-driver.ps1 -> npm');
+
+// 与 npm publish 使用同一份守卫，避免本地打包成功、发布时才失败。
+run(process.execPath, [path.join(npmScripts, 'verify-package.mjs')]);
 
 const staging = mkdtempSync(path.join(os.tmpdir(), 'vsp-npm-pack-'));
 try {
@@ -77,9 +84,13 @@ try {
 
   const finalPath = path.join(packDir, path.basename(staged));
   copyFileSync(staged, finalPath);
-  console.log(
-    `[ok] ${finalPath} (${(statSync(finalPath).size / 1048576).toFixed(1)} MB)`
-  );
+
+  const sizeMb = statSync(finalPath).size / 1048576;
+  if (sizeMb < 20) {
+    throw new Error(`tgz 只有 ${sizeMb.toFixed(1)} MB，疑似没有包含 exe`);
+  }
+
+  console.log(`[ok] ${finalPath} (${sizeMb.toFixed(1)} MB)`);
 } finally {
   rmSync(staging, { recursive: true, force: true });
 }

@@ -1,9 +1,18 @@
 {
   "name": "vscreenpilot",
   "version": "0.1.0",
+  "mcpName": "io.github.abcdefqwer1234/vscreenpilot",
   "description": "Windows 虚拟屏 MCP Server：在按需启停的虚拟显示器上做桌面应用自动化调试",
   "license": "MIT",
   "author": "VScreenPilot contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abcdefqwer1234/vscreenpilot.git"
+  },
+  "homepage": "https://github.com/abcdefqwer1234/vscreenpilot#readme",
+  "bugs": {
+    "url": "https://github.com/abcdefqwer1234/vscreenpilot/issues"
+  },
   "bin": {
     "vscreenpilot": "bin/vscreenpilot.js"
   },
@@ -12,11 +21,13 @@
     "dist",
     "scripts",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.md"
   ],
   "scripts": {
     "install-driver": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-driver.ps1",
-    "doctor": "node bin/vscreenpilot.js --doctor"
+    "doctor": "node bin/vscreenpilot.js --doctor",
+    "prepublishOnly": "node scripts/verify-package.mjs"
   },
   "os": [
     "win32"
