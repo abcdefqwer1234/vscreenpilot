@@ -218,13 +218,19 @@ internal sealed partial class SessionManager : IDisposable
     /// <summary>大截图/快照的落盘目录；通过 vsp://artifacts/ 资源 URI 暴露。</summary>
     public string ArtifactDirectory => _artifactDirectory ??= CreateArtifactDirectory();
 
+    /// <summary>截图/快照的 profile 根目录；按会话再建时间戳子目录。</summary>
+    public string ArtifactRoot => ArtifactRootFor(ProfileName);
+
+    public static string ArtifactRootFor(string profile) => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "VScreenPilot",
+        "artifacts",
+        profile);
+
     private string CreateArtifactDirectory()
     {
         string root = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "VScreenPilot",
-            "artifacts",
-            ProfileName,
+            ArtifactRoot,
             $"{DateTime.Now:yyyyMMdd-HHmmss}-{Environment.ProcessId}");
         Directory.CreateDirectory(root);
         return root;
@@ -239,6 +245,7 @@ internal sealed partial class SessionManager : IDisposable
         _allowScript = allowScript;
         _appAllowlist = ReadAppAllowlist();
         CleanupStaleProfiles();
+        SweepOldArtifacts();
         RecoverFromPreviousCrash();
     }
 

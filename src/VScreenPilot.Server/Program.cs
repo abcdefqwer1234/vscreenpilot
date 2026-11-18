@@ -542,6 +542,12 @@ internal static class Program
         StateStore stateStore = new(log);
         result["state_file"] = stateStore.FilePath;
         result["state"] = stateStore.Describe();
+        result["artifacts"] = new JsonObject
+        {
+            ["root"] = SessionManager.ArtifactRootFor(profile),
+            ["retention_days"] = SessionManager.ResolveArtifactRetentionDays(
+                Environment.GetEnvironmentVariable(SessionManager.ArtifactRetentionEnv)),
+        };
 
         checks.Add((JsonNode)new JsonObject
         {
