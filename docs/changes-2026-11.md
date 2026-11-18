@@ -17,7 +17,7 @@
 - **快照代际**：ref 只在创建它的快照内有效；跨代返回 `E_STALE_SNAPSHOT`。
 - **错误目录**：所有错误统一带 `code/message/retryable/stage/hint/docs`。
 - **安装版**：Inno Setup per-user 安装包，默认装到 `%LOCALAPPDATA%\Programs\VScreenPilot`，
-  可选加入用户 PATH；绿色 zip 与 npm 渠道继续保留。
+  可选加入用户 PATH；同时保留绿色 zip。
 
 ## 行为变化（可能影响旧调用）
 
@@ -58,4 +58,4 @@
 - MSAA 已接入（Office 旧对话框）；OCR 已接入（Windows.Media.Ocr）；CDP 尚未接入。
 - UWP `ApplicationFrameWindow` 已可解析；Word 自定义对话框可经 MSAA 操作。
 - 非默认 profile 可挂载，但部分 VDD/Windows 组合会忽略 `dmPosition`（固定主屏右侧）；`get_environment.virtual_display.position_enforced=false` 会如实标记。
-- NuGet `dnx` 受 `PackAsTool` 不支持 `net10.0-windows` 限制；winget/Registry 清单模板已就绪，发布时需填真实 URL/SHA。
+- NuGet `dnx` 受 `PackAsTool` 不支持 `net10.0-windows` 限制；winget 清单已就绪并提交审核，npm/MCP Registry 渠道暂不提供。

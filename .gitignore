@@ -6,14 +6,6 @@ node_modules/
 .vs/
 *.exe
 
-# npm 启动器源码必须入库，但 bin/ 规则会误伤它
-!npm/bin/
-
-# npm package build output（dist 与 LICENSE 由 scripts/build-npm.mjs 生成）
-npm/dist/
-npm/LICENSE
-npm/THIRD-PARTY-NOTICES.md
-
 # logs and local verification output
 *.log
 *.tgz

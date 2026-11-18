@@ -1,5 +1,5 @@
 /**
- * 版本一致性检查：csproj / npm / server.json / winget / BuildInfo / CHANGELOG。
+ * 版本一致性检查：csproj / winget / Inno Setup / BuildInfo / CHANGELOG。
  * 用法：node scripts/check-version.mjs [--tag v0.1.0]
  */
 import { readFileSync } from 'node:fs';
@@ -11,8 +11,6 @@ const failures = [];
 const read = (relative) => readFileSync(path.join(root, relative), 'utf8');
 
 const csproj = /<Version>([^<]+)<\/Version>/.exec(read('src/VScreenPilot.Server/VScreenPilot.Server.csproj'))?.[1];
-const pkg = JSON.parse(read('npm/package.json'));
-const server = JSON.parse(read('server.json'));
 const winget = /^PackageVersion:\s*(\S+)/m.exec(read('packaging/winget/VScreenPilot.VScreenPilot.yaml'))?.[1];
 const buildInfo = /Version\s*=\s*"([^"]+)"/.exec(
   read('src/VScreenPilot.Server/Infrastructure/BuildInfo.cs'))?.[1];
@@ -21,8 +19,6 @@ const installer = /#define\s+MyAppVersion\s+"([^"]+)"/.exec(
 
 const versions = {
   'VScreenPilot.Server.csproj': csproj,
-  'npm/package.json': pkg.version,
-  'server.json': server.version,
   'BuildInfo.cs': buildInfo,
   'winget manifest': winget,
   'Inno Setup script': installer,
@@ -42,10 +38,6 @@ if (tagIndex >= 0) {
   if (tag !== `v${expected}`) {
     failures.push(`git tag ${tag} 与版本 v${expected} 不一致（先改版本或重打 tag）`);
   }
-}
-
-if (pkg.mcpName !== server.name) {
-  failures.push(`npm mcpName (${pkg.mcpName}) 与 server.json name (${server.name}) 不一致`);
 }
 
 if (!read('CHANGELOG.md').includes(`## ${expected}`)) {

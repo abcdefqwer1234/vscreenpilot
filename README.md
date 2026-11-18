@@ -81,10 +81,7 @@ VScreenPilot 的做法：
 OpenCode / MCP 客户端
         │ JSON-RPC over stdio
         ▼
-vscreenpilot（npm 启动器）
-        │ 平台检查 + 透传 stdio
-        ▼
-VScreenPilot.exe
+VScreenPilot.exe（安装版 / 绿色版）
         ├─ 自动挂载 1280×720 虚拟屏（主屏右侧）
         ├─ 启动/接管应用并最大化到虚拟屏
         ├─ 截图 / 语义树 / 元素引用 / 输入 / 验证
@@ -106,7 +103,7 @@ VScreenPilot.exe
 - Windows 10/11 x64，单用户交互式会话。
 - 首次使用安装一次 Parsec VDD（一次 UAC，无需重启）。
 - 运行 VScreenPilot 本身**不需要管理员权限**。
-- 从源码构建需要 .NET 10 SDK；使用 npm 包只需 Node.js ≥ 18。
+- 从源码构建需要 .NET 10 SDK。
 
 ### 安装驱动
 
@@ -147,19 +144,13 @@ winget install --id Parsec.ParsecVDD -e --accept-package-agreements --accept-sou
 
 zip 内含 exe、`LICENSE`、`THIRD-PARTY-NOTICES.md`、`README.md`；`.pdb` 在单独的 `VScreenPilot-symbols-v0.1.0.zip`，普通用户不需要。
 
-### 方式 C：npm
+### 方式 C：winget（提交审核通过后可用）
 
 ```powershell
-npx -y vscreenpilot@0.1.0 --doctor
+winget install --id VScreenPilot.VScreenPilot -e
 ```
 
-本地验证用生成的 tgz：
-
-```powershell
-npm install .\artifacts\npm\vscreenpilot-0.1.0.tgz
-```
-
-> npm 包声明了 `os:["win32"]`、`cpu:["x64"]`，非 Windows 平台会在 `npm install` 阶段直接 `EBADPLATFORM`。
+当前清单已提交/待审核；审核通过前请用方式 A 或 B。winget 安装的就是 per-user 安装包，卸载、升级走 winget 或“设置 → 应用”。
 
 ### 从源码构建
 
@@ -167,7 +158,7 @@ npm install .\artifacts\npm\vscreenpilot-0.1.0.tgz
 .\scripts\release.ps1 -Version 0.1.0
 ```
 
-一次生成绿色 zip、安装包和 symbols zip；npm 单包用 `.\scripts\build-npm.ps1`。
+一次生成绿色 zip、安装包和 symbols zip。
 
 ### 诊断
 
@@ -424,11 +415,11 @@ Electron/Chromium 可能忽略窗口消息。用 `wait_for`/`assert_region` 验�
 ```text
 src/VScreenPilot.Core/          VDD IOCTL、显示拓扑、DPI
 src/VScreenPilot.Server/        MCP Server、生命周期、工具、UIA、输入、视觉
-npm/                            npm 单包（启动器 + exe + 驱动脚本 + LICENSE）
-scripts/                        驱动安装、npm 构建
+scripts/                        驱动安装、发布与安装包构建
+packaging/                      Inno Setup 与 winget 清单
 tools/                          VddProbe、AotSmokeTest、TestTool 回归套件
 artifacts/server/               发布 exe
-artifacts/npm/                  npm tgz
+artifacts/release/              绿色 zip、安装包、symbols
 技术文档.md                     代码级实现说明
 需求文件.md                     需求契约
 docs/mcp-config.example.jsonc  OpenCode 接入示例

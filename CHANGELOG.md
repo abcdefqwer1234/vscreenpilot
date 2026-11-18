@@ -4,17 +4,17 @@
 
 ### Added
 
-- npm 单包（`vscreenpilot@0.1.0`）与 MCP Registry `server.json`；提供 `mcpName`、仓库/主页/Issue 元数据。
-- 发布守卫：`npm/scripts/verify-package.mjs` 在 `prepublishOnly` 检查 exe/License/NOTICE，避免发出空包。
-- `release.yml`：tag 触发 build/test/zip/GitHub Release/npm publish；`check-version.mjs` 与 `check-docs-links.mjs` 纳入 CI。
+- 发布渠道：GitHub Release 提供安装版与绿色版；npm 渠道已移除，MCP Registry 暂缓。
+- `release.yml`：tag 触发 build/test/zip/GitHub Release；`check-version.mjs` 与 `check-docs-links.mjs` 纳入 CI。
 - `THIRD-PARTY-NOTICES.md` 与 `scripts/update-winget.ps1`。
 - Windows 安装版：Inno Setup per-user 安装包（`VScreenPilot-Setup-0.1.0.exe`），可选加入用户 PATH，自带卸载；同时保留绿色 zip。
+- winget 多文件清单（version/locale/installer），`winget validate` 通过。
 
 ### Fixed
 
 - `click_text` 纳入写操作调度：之前不持写锁，可能与 `click`/`type_text` 并发点击。
 - 未知工具改为结构化 `E_UNKNOWN_TOOL`（含 `code/hint/docs/request_id`），不再是 SDK 生成的裸文本。
-- 错误 payload 的 `docs` 改为可直接打开的 GitHub URL；npm 用户不再看到不存在的相对路径。
+- 错误 payload 的 `docs` 改为可直接打开的 GitHub URL；安装包用户不再看到不存在的相对路径。
 - 截图产物默认保留 7 天（`VSP_ARTIFACT_RETENTION_DAYS`，0 关闭），启动时清理旧会话目录。
 - 测试从 48 增至 71：工具目录精确校验、错误 docs、产物保留、参数校验边界、smoke 收紧到 22 工具。
 - 文档对齐：OCR 状态、测试覆盖、工具数量、未知工具行为、归档索引说明。

@@ -97,7 +97,7 @@ public sealed class ToolResponse
         }
 
         payload["stage"] = string.IsNullOrWhiteSpace(stage) ? info.Stage : stage;
-        // npm 用户目录里没有 docs/errors.md，必须是可直接打开的公开 URL。
+        // 安装包目录里没有 docs/errors.md，必须是可直接打开的公开 URL。
         payload["docs"] = $"{BuildInfo.DocsErrorsUrl}#{code.ToLowerInvariant()}";
 
         var response = Text(payload);

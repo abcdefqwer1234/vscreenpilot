@@ -17,7 +17,7 @@ type, locate elements and verify results — without stealing your cursor or cov
 - [Parsec VDD](https://github.com/parsec-cloud/parsec-vdd) installed once:
   `winget install --id Parsec.ParsecVDD -e`
 - Runtime does **not** require administrator rights.
-- Node.js ≥ 18 when installing from npm; .NET 10 SDK only when building from source.
+- .NET 10 SDK only when building from source.
 
 ## Install
 
@@ -30,17 +30,16 @@ The installer is not code-signed yet; verify the SHA256 from the release before 
 **Portable.** Download `VScreenPilot-win-x64-v0.1.0.zip`, extract it to a stable folder and run
 `VScreenPilot.exe`. Symbols ship separately as `VScreenPilot-symbols-v0.1.0.zip`.
 
-**npm** (after the first registry release):
+**winget** (after the manifest is reviewed and merged):
 
 ```powershell
-npx -y vscreenpilot@0.1.0 --doctor
+winget install --id VScreenPilot.VScreenPilot -e
 ```
 
 From source:
 
 ```powershell
 .\scripts\release.ps1 -Version 0.1.0   # portable zip + installer + symbols
-.\scripts\build-npm.ps1                # npm tarball
 ```
 
 ## MCP client configuration
@@ -49,8 +48,7 @@ From source:
 {
   "mcpServers": {
     "vscreenpilot": {
-      "command": "npx",
-      "args": ["-y", "vscreenpilot@0.1.0"],
+      "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\VScreenPilot\\VScreenPilot.exe",
       "timeout": { "startup": 120000, "catalog": 60000, "execution": 600000 }
     }
   }
