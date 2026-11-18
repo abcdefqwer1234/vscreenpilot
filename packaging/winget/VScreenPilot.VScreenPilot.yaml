@@ -1,4 +1,4 @@
-# winget manifest锛堟湰鍦版彁浜ょ敤锛涘彂甯冨墠鐢?scripts/update-winget.ps1 濉湡瀹?SHA锛?PackageIdentifier: VScreenPilot.VScreenPilot
+# winget manifest锛堟湰鍦版彁浜ょ敤锛涘彂甯冨墠鐢?scripts/update-winget.ps1 濉湡瀹?SHA锛?# 瀹夎鍣細Inno Setup锛宲er-user锛屾棤闇€绠＄悊鍛樸€?PackageIdentifier: VScreenPilot.VScreenPilot
 PackageVersion: 0.1.0
 PackageLocale: en-US
 Publisher: VScreenPilot
@@ -18,12 +18,16 @@ Tags:
   - uia
 Installers:
   - Architecture: x64
-    InstallerType: zip
-    NestedInstallerType: portable
-    NestedInstallerFiles:
-      - RelativeFilePath: VScreenPilot.exe
-        PortableCommandAlias: vscreenpilot
-    InstallerUrl: https://github.com/abcdefqwer1234/vscreenpilot/releases/download/v0.1.0/VScreenPilot-win-x64-v0.1.0.zip
-    InstallerSha256: 9A4759C7787B205F53F9FB29D517BCA85712C409A2BC06BB602E3567583DE34D
+    InstallerType: inno
+    Scope: user
+    InstallerUrl: https://github.com/abcdefqwer1234/vscreenpilot/releases/download/v0.1.0/VScreenPilot-Setup-0.1.0.exe
+    InstallerSha256: 89A15A753184D0BB59171313431245420021CB743593CBCAB36E902C188D807F
+    InstallerSwitches:
+      Silent: /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-
+      SilentWithProgress: /SILENT /SUPPRESSMSGBOXES /NORESTART /SP-
+    AppsAndFeaturesEntries:
+      - DisplayName: VScreenPilot
+        DisplayVersion: 0.1.0
+        Publisher: VScreenPilot
 ManifestType: singleton
 ManifestVersion: 1.6.0
