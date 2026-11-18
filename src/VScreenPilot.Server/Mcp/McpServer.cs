@@ -18,10 +18,11 @@ namespace VScreenPilot.Mcp;
 /// </summary>
 internal sealed class McpServer
 {
-    private static readonly HashSet<string> MutatingTools = new(StringComparer.Ordinal)
+    internal static readonly HashSet<string> MutatingTools = new(StringComparer.Ordinal)
     {
-        "click", "click_ref", "gesture", "type_text", "press_keys", "invoke_element",
-        "set_element_value", "launch_or_place_app", "release_environment", "run_script",
+        "click", "click_ref", "click_text", "gesture", "type_text", "press_keys",
+        "invoke_element", "set_element_value", "launch_or_place_app", "release_environment",
+        "run_script",
     };
 
     private readonly SessionManager _session;
@@ -37,7 +38,7 @@ internal sealed class McpServer
     private const double RateCapacity = 300;
     private const double RateRefillPerSecond = 100;
 
-    private sealed record ToolDefinition(
+    internal sealed record ToolDefinition(
         string Name,
         string Title,
         string Description,
@@ -48,11 +49,21 @@ internal sealed class McpServer
         int TimeoutMs,
         Func<JsonElement, ToolResponse> Handler);
 
-    public McpServer(SessionManager session, LogRing log)
+    public McpServer(SessionManager session, LogRing log) : this(session, log, trace: true)
+    {
+    }
+
+    /// <summary>trace=false 供单测检查工具目录；此时不读取会话，也不写 trace 文件。</summary>
+    internal McpServer(SessionManager session, LogRing log, bool trace)
     {
         _session = session;
         _log = log;
         _tools = BuildTools();
+
+        if (!trace)
+        {
+            return;
+        }
 
         _trace.Write("session_start", new JsonObject
         {
@@ -309,15 +320,18 @@ internal sealed class McpServer
 
         if (!_tools.TryGetValue(name, out ToolDefinition? tool))
         {
-            _trace.Write("tool_call", new JsonObject
-            {
-                ["request_id"] = requestId,
-                ["tool"] = name,
-                ["code"] = "E_UNKNOWN_TOOL",
-                ["is_error"] = true,
-            });
+            // SDK 会把 handler 异常转成无结构的 isError 文本；这里主动返回统一错误目录，
+            // 客户端和模型都能拿到 code/hint/docs，而不是一句英文。
+            ToolResponse unknown = ToolResponse.Error(
+                "E_UNKNOWN_TOOL",
+                $"Unknown tool: {name}",
+                new JsonObject { ["tool"] = name },
+                retryable: false,
+                hint: "调用 tools/list 查看可用工具名；工具名区分大小写",
+                stage: "validate").SetRequestId(requestId);
 
-            throw new McpException($"Unknown tool: {name}");
+            Trace(name, requestId, null, 0, unknown);
+            return ToResult(unknown);
         }
 
         if (!TryAcquireRateLimit(out int retryAfterMs))
@@ -769,7 +783,7 @@ internal sealed class McpServer
         };
     }
 
-    private Dictionary<string, ToolDefinition> BuildTools()
+    internal Dictionary<string, ToolDefinition> BuildTools()
     {
         var tools = new Dictionary<string, ToolDefinition>(StringComparer.Ordinal);
 

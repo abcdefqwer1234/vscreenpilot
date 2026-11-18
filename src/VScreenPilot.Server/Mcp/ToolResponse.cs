@@ -1,6 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using VScreenPilot.Infrastructure;
 
 namespace VScreenPilot.Mcp;
 
@@ -96,7 +97,8 @@ public sealed class ToolResponse
         }
 
         payload["stage"] = string.IsNullOrWhiteSpace(stage) ? info.Stage : stage;
-        payload["docs"] = $"docs/errors.md#{code.ToLowerInvariant()}";
+        // npm 用户目录里没有 docs/errors.md，必须是可直接打开的公开 URL。
+        payload["docs"] = $"{BuildInfo.DocsErrorsUrl}#{code.ToLowerInvariant()}";
 
         var response = Text(payload);
         response.IsError = true;

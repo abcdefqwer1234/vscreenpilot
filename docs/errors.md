@@ -1,7 +1,7 @@
 # 错误码目录
 
 > 所有对外错误都包含 `code`、`message`、`retryable`、`stage`、`hint`、`docs`。
-> `docs` 指向本文件的锚点。错误码的唯一事实来源是 `src/VScreenPilot.Server/Mcp/ErrorCatalog.cs`，
+> `docs` 是本文件的完整 HTTPS 锚点（可用 `VSP_DOCS_BASE_URL` 覆盖）。错误码的唯一事实来源是 `src/VScreenPilot.Server/Mcp/ErrorCatalog.cs`，
 > 单元测试会检查每个码都有可操作的 hint/summary/stage。
 
 ## 参数与目标
@@ -9,6 +9,7 @@
 | 错误码 | 含义 | 下一步 |
 | --- | --- | --- |
 | `E_INVALID_ARG` | 参数类型/范围/枚举不合法，或出现未声明字段 | 看 `details.field` 与 `details.allowed/supported`；不会静默使用默认值 |
+| `E_UNKNOWN_TOOL` | 工具名不在 `tools/list` 中 | 检查拼写和大小写；先调用 `tools/list` |
 | `E_OUT_OF_BOUNDS` | 坐标不在本会话虚拟屏内 | 先 `get_environment` 读取 `virtual_display` 的 x/y/width/height |
 | `E_FOREIGN_WINDOW` | 目标窗口不属于本会话 | 先 `launch_or_place_app`（可用 `pid` 精确接管） |
 | `E_NO_TARGET` | 没有存活的目标应用 | 启动或重新接管；`snapshot` 可查看 `windows[]` |
@@ -291,6 +292,12 @@ IO 失败（stage: `io`）
 ### E_APP_EXITED
 
 应用已退出（stage: `app`）
+
+<a id="e_unknown_tool"></a>
+
+### E_UNKNOWN_TOOL
+
+未知工具（stage: `validate`）
 
 <a id="e_app_not_allowed"></a>
 

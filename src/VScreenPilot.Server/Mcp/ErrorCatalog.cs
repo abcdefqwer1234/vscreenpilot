@@ -21,6 +21,8 @@ internal static class ErrorCatalog
         {
             ["E_INVALID_ARG"] = new("E_INVALID_ARG", false, "validate",
                 "检查参数类型/范围；每个工具的错误详情里会给出 field 与 expected", "参数不合法"),
+            ["E_UNKNOWN_TOOL"] = new("E_UNKNOWN_TOOL", false, "validate",
+                "工具名不在 tools/list 中；先列出工具并检查拼写（区分大小写）", "未知工具"),
             ["E_OUT_OF_BOUNDS"] = new("E_OUT_OF_BOUNDS", false, "validate",
                 "坐标必须位于本会话虚拟屏矩形内；先调用 get_environment 读取 bounds", "坐标越界"),
             ["E_FOREIGN_WINDOW"] = new("E_FOREIGN_WINDOW", false, "validate",
