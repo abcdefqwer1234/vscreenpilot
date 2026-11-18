@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace VScreenPilot.Infrastructure;
@@ -23,10 +25,22 @@ internal static partial class Profile
     public static string StateFileName(string profile) =>
         profile == "default" ? "state.json" : $"state.{profile}.json";
 
+    private const int MaxLength = 32;
+
     private static string Sanitize(string value)
     {
         string lower = value.Trim().ToLowerInvariant();
-        return NonNameCharacters().Replace(lower, "-").Trim('-', '_');
+        string clean = NonNameCharacters().Replace(lower, "-").Trim('-', '_');
+
+        if (clean.Length <= MaxLength)
+        {
+            return clean;
+        }
+
+        // 保留可读前缀 + 短哈希，避免管道名/状态文件名超限。
+        string hash = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(clean)), 0, 4).ToLowerInvariant();
+        return clean[..(MaxLength - hash.Length - 1)] + "-" + hash;
     }
 
     [GeneratedRegex("[^a-z0-9_-]+")]

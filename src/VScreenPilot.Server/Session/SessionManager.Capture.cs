@@ -179,6 +179,7 @@ internal sealed partial class SessionManager
             _frames.Add(new FrameSnapshot
             {
                 Id = id,
+                ClientId = CurrentClientId,
                 Bgra = bgra,
                 Width = width,
                 Height = height,
@@ -206,18 +207,24 @@ internal sealed partial class SessionManager
 
     internal FrameSnapshot? FindFrame(string frameId)
     {
+        string clientId = CurrentClientId;
+
         lock (_frameLock)
         {
-            return _frames.LastOrDefault(
-                frame => string.Equals(frame.Id, frameId, StringComparison.OrdinalIgnoreCase));
+            return _frames.LastOrDefault(frame =>
+                string.Equals(frame.ClientId, clientId, StringComparison.Ordinal) &&
+                string.Equals(frame.Id, frameId, StringComparison.OrdinalIgnoreCase));
         }
     }
 
     internal FrameSnapshot? FindLatestFrame(int x, int y, int width, int height)
     {
+        string clientId = CurrentClientId;
+
         lock (_frameLock)
         {
             return _frames.LastOrDefault(frame =>
+                string.Equals(frame.ClientId, clientId, StringComparison.Ordinal) &&
                 frame.X == x && frame.Y == y &&
                 frame.Width == width && frame.Height == height);
         }
@@ -236,24 +243,12 @@ internal sealed partial class SessionManager
             throw new ToolException("E_INVALID_ARG", $"{label} 不能为空");
         }
 
-        // 相对路径过去按“服务端 cwd”落盘（artifacts/server），调用方找不到文件。
-        // 直接拒绝并要求绝对路径，比猜客户端 cwd 更诚实。
-        if (!Path.IsPathRooted(path))
-        {
-            throw new ToolException(
-                "E_INVALID_ARG",
-                $"{label} 必须是绝对路径（收到相对路径 {path}）",
-                new JsonObject { ["field"] = label, ["value"] = path },
-                retryable: false,
-                hint: "传绝对路径；相对路径会落到服务端工作目录，客户端通常找不到",
-                stage: "validate");
-        }
-
         string fullPath;
 
         try
         {
-            fullPath = Path.GetFullPath(path);
+            // P-33：相对 save_path/target_path 必须按调用方 cwd 解析，不能用 daemon cwd。
+            fullPath = ResolvePath(path);
         }
         catch (Exception exception) when (
             exception is ArgumentException or NotSupportedException or PathTooLongException)
@@ -285,18 +280,32 @@ internal sealed partial class SessionManager
         }
 
         string tempRoot = Path.GetTempPath();
-
-        if (!IsUnder(fullPath, Environment.CurrentDirectory) && !IsUnder(fullPath, tempRoot))
+        var allowedRoots = new List<string> { CurrentCwd };
+        foreach (string root in CurrentRoots)
         {
+            if (!string.IsNullOrWhiteSpace(root))
+            {
+                allowedRoots.Add(root);
+            }
+        }
+
+        allowedRoots.Add(Path.GetFullPath(tempRoot));
+
+        if (!allowedRoots.Any(root => IsUnder(fullPath, root)))
+        {
+            var rootsJson = new JsonArray();
+            foreach (string root in allowedRoots.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                rootsJson.Add(root);
+            }
+
             throw new ToolException(
                 "E_INVALID_ARG",
-                $"{label} 只能落在当前工作目录或系统临时目录内",
+                $"{label} 只能落在调用方工作目录或系统临时目录内",
                 new JsonObject
                 {
                     ["path"] = fullPath,
-                    ["allowed_roots"] = new JsonArray(
-                        Environment.CurrentDirectory,
-                        Path.GetFullPath(tempRoot)),
+                    ["allowed_roots"] = rootsJson,
                 });
         }
 

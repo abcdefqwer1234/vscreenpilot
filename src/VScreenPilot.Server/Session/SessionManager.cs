@@ -13,6 +13,8 @@ namespace VScreenPilot.Session;
 internal sealed class TrackedApp
 {
     public int Pid { get; set; }
+    /// <summary>哪个 MCP 客户端拥有该窗口；单客户端/旧行为默认 c0。</summary>
+    public string OwnerClientId { get; set; } = "c0";
     public string ExePath { get; init; } = string.Empty;
     /// <summary>UWP 内容进程；普通应用为 0。关闭/杀进程必须用它，不能杀 frame host。</summary>
     public int ContentPid { get; set; }
@@ -35,6 +37,7 @@ internal sealed class TrackedApp
 internal sealed class FrameSnapshot
 {
     public required string Id { get; init; }
+    public string ClientId { get; init; } = "c0";
     public required byte[] Bgra { get; init; }
     public required int Width { get; init; }
     public required int Height { get; init; }
@@ -72,6 +75,7 @@ internal sealed partial class SessionManager : IDisposable
     private readonly string[] _appAllowlist;
 
     private DisplayInfo? _virtualDisplay;
+    private string _displayDevice = string.Empty;
     private int _displayIndex = -1;
     private bool _initialized;
     private int _disposed;
@@ -81,7 +85,8 @@ internal sealed partial class SessionManager : IDisposable
     private long _nextFrameId;
     // 按区域保留更多基线，避免只截另一区域就把当前区域基线挤掉。
     private const int MaxFrames = 8;
-    private readonly HashSet<int> _uiaBlockedPids = new();
+    private readonly Dictionary<string, HashSet<int>> _uiaBlockedPids =
+        new(StringComparer.Ordinal);
     private bool _jobUnavailableLogged;
 
     private UiaService? _uia;
@@ -187,7 +192,21 @@ internal sealed partial class SessionManager : IDisposable
     public void SetCancellation(CancellationTokenSource? source) => _cancellation.Value = source;
 
     /// <summary>会话代际：release_environment 之后递增，旧 handler 的结果会被丢弃。</summary>
-    public long Epoch => Interlocked.Read(ref _epoch);
+    public long Epoch => CurrentClient is { } client
+        ? Interlocked.Read(ref client.Epoch)
+        : Interlocked.Read(ref _epoch);
+
+    private void IncrementEpoch()
+    {
+        if (CurrentClient is { } client)
+        {
+            Interlocked.Increment(ref client.Epoch);
+        }
+        else
+        {
+            Interlocked.Increment(ref _epoch);
+        }
+    }
 
     public void EnterRead() => _sessionLock.EnterReadLock();
 
@@ -213,10 +232,29 @@ internal sealed partial class SessionManager : IDisposable
     /// <summary>多会话 profile 名（--profile / VSP_PROFILE）；默认 default。</summary>
     public string ProfileName { get; } = Profile.Resolve();
 
-    private string? _artifactDirectory;
+    private readonly object _artifactGate = new();
+    private readonly Dictionary<string, string> _artifactDirectories = new(StringComparer.Ordinal);
 
-    /// <summary>大截图/快照的落盘目录；通过 vsp://artifacts/ 资源 URI 暴露。</summary>
-    public string ArtifactDirectory => _artifactDirectory ??= CreateArtifactDirectory();
+    /// <summary>大截图/快照的落盘目录；按客户端隔离，通过 vsp://artifacts/ 资源 URI 暴露。</summary>
+    public string ArtifactDirectory
+    {
+        get
+        {
+            string clientId = CurrentClientId;
+
+            lock (_artifactGate)
+            {
+                if (_artifactDirectories.TryGetValue(clientId, out string? cached))
+                {
+                    return cached;
+                }
+
+                string created = CreateArtifactDirectory(clientId);
+                _artifactDirectories[clientId] = created;
+                return created;
+            }
+        }
+    }
 
     /// <summary>截图/快照的 profile 根目录；按会话再建时间戳子目录。</summary>
     public string ArtifactRoot => ArtifactRootFor(ProfileName);
@@ -227,10 +265,11 @@ internal sealed partial class SessionManager : IDisposable
         "artifacts",
         profile);
 
-    private string CreateArtifactDirectory()
+    private string CreateArtifactDirectory(string clientId)
     {
         string root = Path.Combine(
             ArtifactRoot,
+            clientId,
             $"{DateTime.Now:yyyyMMdd-HHmmss}-{Environment.ProcessId}");
         Directory.CreateDirectory(root);
         return root;
@@ -244,9 +283,11 @@ internal sealed partial class SessionManager : IDisposable
         _job = job;
         _allowScript = allowScript;
         _appAllowlist = ReadAppAllowlist();
+        LogRing.ClientIdProvider = static () => CurrentClientId;
         CleanupStaleProfiles();
         SweepOldArtifacts();
         RecoverFromPreviousCrash();
+        StartMaintenance();
     }
 
     public LogRing Log => _log;
@@ -258,6 +299,15 @@ internal sealed partial class SessionManager : IDisposable
     public DisplayInfo? VirtualDisplay => _virtualDisplay;
 
     public IReadOnlyList<TrackedApp> Apps => _apps;
+
+    /// <summary>控制管道遍历 apps 时使用的稳定快照，避免与 launch/release 并发修改冲突。</summary>
+    internal IReadOnlyList<TrackedApp> GetAppsSnapshot()
+    {
+        lock (_gate)
+        {
+            return _apps.ToArray();
+        }
+    }
 
     /// <summary>
     /// 条目仍可用：窗口存在且仍属于登记时的进程。
@@ -278,7 +328,8 @@ internal sealed partial class SessionManager : IDisposable
     {
         lock (_gate)
         {
-            return _apps.LastOrDefault(IsLiveTrackedApp) ?? TryRelocateLastApp();
+            return _apps.LastOrDefault(app => IsOwned(app) && IsLiveTrackedApp(app))
+                   ?? TryRelocateLastApp();
         }
     }
 
@@ -318,13 +369,14 @@ internal sealed partial class SessionManager : IDisposable
 
         lock (_gate)
         {
-            TrackedApp? live = _apps.LastOrDefault(app => app.Pid == pid.Value && IsLiveTrackedApp(app));
+            TrackedApp? live = _apps.LastOrDefault(
+                app => app.Pid == pid.Value && IsOwned(app) && IsLiveTrackedApp(app));
             if (live is not null)
             {
                 return live;
             }
 
-            TrackedApp? dead = _apps.LastOrDefault(app => app.Pid == pid.Value);
+            TrackedApp? dead = _apps.LastOrDefault(app => app.Pid == pid.Value && IsOwned(app));
             return dead is not null && TryRelocateApp(dead) ? dead : null;
         }
     }
@@ -335,7 +387,7 @@ internal sealed partial class SessionManager : IDisposable
     /// </summary>
     private TrackedApp? TryRelocateLastApp()
     {
-        foreach (TrackedApp app in _apps.AsEnumerable().Reverse())
+        foreach (TrackedApp app in _apps.AsEnumerable().Reverse().Where(IsOwned))
         {
             if (TryRelocateApp(app))
             {
@@ -348,7 +400,7 @@ internal sealed partial class SessionManager : IDisposable
 
     private bool TryRelocateApp(TrackedApp app)
     {
-        if (string.IsNullOrWhiteSpace(app.ExePath))
+        if (!IsOwned(app) || string.IsNullOrWhiteSpace(app.ExePath))
         {
             return false;
         }
@@ -444,7 +496,54 @@ internal sealed partial class SessionManager : IDisposable
             _vdd.StartKeepAlive();
 
             bool configured = false;
-            DisplayInfo? existing = DisplayTopology.FindParsecDisplay();
+            bool displayAdded = false;
+            string? targetDevice = null;
+            DisplayInfo? existing = OwnDisplay();
+
+            if (existing is null)
+            {
+                DisplayInfo? attached = DisplayTopology.FindParsecDisplay();
+
+                // 已经有其他 live profile 认领的屏不能接管；否则会抢别人的屏。
+                if (attached is not null && !IsDisplayOwnedByOther(attached.DeviceName))
+                {
+                    bool matchesRecovered = !string.IsNullOrWhiteSpace(_recoveredDisplayDevice) &&
+                                            string.Equals(
+                                                attached.DeviceName,
+                                                _recoveredDisplayDevice,
+                                                StringComparison.OrdinalIgnoreCase);
+
+                    // 不认领“来源不明”的屏；只有自己的崩溃 state 匹配才允许。
+                    // 另一个 profile 正在启动（registry 已存在但 display_device 还没写）时，
+                    // 不要抢它的屏，也不要直接失败，直接申请一块新的。
+                    if (matchesRecovered)
+                    {
+                        existing = attached;
+                    }
+                    else if (HasOtherLiveProfile())
+                    {
+                        existing = null;
+                    }
+                    else if (!string.Equals(ProfileName, "default", StringComparison.Ordinal))
+                    {
+                        throw new ToolException(
+                            "E_ORPHAN_DISPLAY",
+                            "检测到未归属的虚拟显示器；非默认 profile 不自动接管，避免抢其他 profile 的屏",
+                            new JsonObject
+                            {
+                                ["display"] = attached.ToString(),
+                                ["profile"] = ProfileName,
+                            },
+                            retryable: true,
+                            hint: "确认该屏无人使用后手动摘除，或使用默认 profile/独立 VM",
+                            stage: "display");
+                    }
+                    else
+                    {
+                        existing = attached;
+                    }
+                }
+            }
 
             if (existing is not null && _displayIndex < 0)
             {
@@ -459,6 +558,7 @@ internal sealed partial class SessionManager : IDisposable
 
                     if (configured)
                     {
+                        _displayDevice = existing.DeviceName;
                         _adoptedOrphan = true;
                         selfHealReason = "orphan_adopted";
                         _log.Info($"孤儿虚拟屏已接管: {existing}");
@@ -466,7 +566,7 @@ internal sealed partial class SessionManager : IDisposable
                     else
                     {
                         _log.Warn($"孤儿虚拟屏接管失败 ({adoptFailure})，尝试重置");
-                        TryRemoveDisplay();
+                        RemoveDisplayAfterEnsureFailure(displayAdded);
                         selfHealReason = "orphan_reclaimed";
                     }
                 }
@@ -490,6 +590,11 @@ internal sealed partial class SessionManager : IDisposable
                 _recoveredDisplayDevice = string.Empty;
             }
 
+            if (existing is not null)
+            {
+                targetDevice = existing.DeviceName;
+            }
+
             // 显示索引仍归本会话，但拓扑丢失/几何被改（睡眠、驱动回收、用户改设置）。
             if (existing is not null && _displayIndex >= 0)
             {
@@ -502,7 +607,7 @@ internal sealed partial class SessionManager : IDisposable
                     if (!configured)
                     {
                         _log.Warn($"恢复失败 ({failure})，重建虚拟屏");
-                        TryRemoveDisplay();
+                        RemoveDisplayAfterEnsureFailure(displayAdded);
                         _displayRecreateCount++;
                         selfHealReason = "display_recreated";
                     }
@@ -523,7 +628,12 @@ internal sealed partial class SessionManager : IDisposable
 
             if (!configured && _displayIndex < 0)
             {
-                // Parsec 驱动在 REMOVE 后约 3-5 秒内会拒绝 ADD；重试并检查是否已被其他路径创建。
+                // Parsec 驱动在 REMOVE 后约 3-5 秒内会拒绝 ADD；重试并等待“本次新出现”的设备。
+                var beforeDevices = DisplayTopology.List()
+                    .Where(item => item.IsParsec)
+                    .Select(item => item.DeviceName)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
                 int[] delays = { 0, 500, 1000, 1500, 2000 };
 
                 foreach (int delay in delays)
@@ -533,23 +643,27 @@ internal sealed partial class SessionManager : IDisposable
                         Thread.Sleep(delay);
                     }
 
-                    _displayIndex = _vdd.AddDisplay();
+                    _displayIndex = AddDisplaySerialized();
 
                     if (_displayIndex >= 0)
                     {
+                        displayAdded = true;
                         break;
                     }
 
-                    if (DisplayTopology.FindParsecDisplay() is not null)
+                    if (DisplayTopology.List().Any(item =>
+                            item.IsParsec && !beforeDevices.Contains(item.DeviceName)))
                     {
-                        _log.Warn("驱动拒绝 ADD，但检测到已挂载的 Parsec 屏，按已创建处理");
+                        _log.Warn("驱动拒绝 ADD，但检测到本次新出现的 Parsec 屏，按已创建处理");
                         break;
                     }
 
                     _log.Warn("驱动拒绝创建虚拟显示器，准备重试");
                 }
 
-                if (_displayIndex < 0 && DisplayTopology.FindParsecDisplay() is null)
+                if (_displayIndex < 0 &&
+                    !DisplayTopology.List().Any(item =>
+                        item.IsParsec && !beforeDevices.Contains(item.DeviceName)))
                 {
                     throw new ToolException(
                         "E_DISPLAY_ADD",
@@ -558,22 +672,34 @@ internal sealed partial class SessionManager : IDisposable
                         hint: "驱动 REMOVE 后需要 3-5 秒冷却；稍后重试或重启驱动",
                         stage: "display");
                 }
+
+                if (string.IsNullOrWhiteSpace(targetDevice))
+                {
+                    if (!DisplayTopology.WaitForNewParsecDisplay(
+                            beforeDevices, TimeSpan.FromSeconds(3), out DisplayInfo? added) ||
+                        added is null)
+                    {
+                        RemoveDisplayAfterEnsureFailure(displayAdded);
+                        throw new ToolException("E_DISPLAY_ADD", "新建的虚拟显示器未出现在拓扑中");
+                    }
+
+                    targetDevice = added.DeviceName;
+                }
             }
 
             if (!configured)
             {
-                if (!DisplayTopology.WaitForParsecAdapter(TimeSpan.FromSeconds(3), out DisplayInfo? adapter) ||
-                    adapter is null)
+                if (string.IsNullOrWhiteSpace(targetDevice))
                 {
-                    TryRemoveDisplay();
-                    throw new ToolException("E_DISPLAY_ADD", "虚拟显示器未出现在拓扑中");
+                    RemoveDisplayAfterEnsureFailure(displayAdded);
+                    throw new ToolException("E_DISPLAY_ADD", "无法确定本次虚拟屏的 device");
                 }
 
-                configured = TryActivateDisplay(adapter.DeviceName, out string? failure);
+                configured = TryActivateDisplay(targetDevice, out string? failure);
 
                 if (!configured)
                 {
-                    TryRemoveDisplay();
+                    RemoveDisplayAfterEnsureFailure(displayAdded);
                     throw new ToolException(
                         "E_DISPLAY_MODE",
                         "虚拟显示器模式/坐标未稳定",
@@ -581,14 +707,15 @@ internal sealed partial class SessionManager : IDisposable
                 }
             }
 
-            DisplayInfo? activated = DisplayTopology.FindParsecDisplay();
+            DisplayInfo? activated = DisplayTopology.FindParsecDisplayByDevice(targetDevice);
             if (activated is null)
             {
-                TryRemoveDisplay();
+                RemoveDisplayAfterEnsureFailure(displayAdded);
                 throw new ToolException("E_DISPLAY_ADD", "虚拟显示器激活后消失");
             }
 
             _virtualDisplay = activated;
+            _displayDevice = activated.DeviceName;
             _initialized = true;
 
             if (selfHealReason is not null)
@@ -603,6 +730,47 @@ internal sealed partial class SessionManager : IDisposable
             _log.Info($"环境就绪: {_virtualDisplay}");
             SaveState();
             return _virtualDisplay;
+        }
+    }
+
+    /// <summary>不同 profile 同时启动时串行化 ADD，避免抢同一个 slot。</summary>
+    private int AddDisplaySerialized()
+    {
+        Mutex? allocation = null;
+        bool held = false;
+
+        try
+        {
+            allocation = new Mutex(false, @"Local\VScreenPilot_DisplayAlloc");
+
+            try
+            {
+                held = allocation.WaitOne(TimeSpan.FromSeconds(10));
+            }
+            catch (AbandonedMutexException)
+            {
+                held = true;
+            }
+        }
+        catch
+        {
+            // 无法创建本地分配锁时仍按单次 ADD 处理；设备身份校验仍会防止认领错屏。
+            allocation?.Dispose();
+            return _vdd.AddDisplay();
+        }
+
+        try
+        {
+            return _vdd.AddDisplay();
+        }
+        finally
+        {
+            if (held)
+            {
+                allocation.ReleaseMutex();
+            }
+
+            allocation.Dispose();
         }
     }
 
@@ -693,7 +861,7 @@ internal sealed partial class SessionManager : IDisposable
 
         Interlocked.Exchange(ref _lastGeometryCheckTicks, now);
 
-        DisplayInfo? actual = DisplayTopology.FindParsecDisplay();
+        DisplayInfo? actual = OwnDisplay();
         if (actual is null)
         {
             _log.Warn("虚拟屏已从拓扑中消失，准备重建");
@@ -745,7 +913,7 @@ internal sealed partial class SessionManager : IDisposable
 
         // 选择“第一个真正空闲的槽位”，避免第 8 个 profile 与前面的重叠。
         // 计算时排除本会话自己的 Parsec 屏，否则每次启动都会把上次的位置当成占用而漂移。
-        DisplayInfo? own = DisplayTopology.FindParsecDisplay();
+        DisplayInfo? own = OwnDisplay();
         var occupied = new HashSet<int>();
 
         foreach (DisplayInfo display in DisplayTopology.List())
@@ -798,7 +966,7 @@ internal sealed partial class SessionManager : IDisposable
             deviceName, VirtualWidth, VirtualHeight, VirtualRefresh, x, y, out int applyResult);
 
         if (!DisplayTopology.WaitUntil(
-                () => DisplayTopology.FindParsecDisplay() is { Attached: true },
+                () => DisplayTopology.FindParsecDisplayByDevice(deviceName) is { Attached: true },
                 TimeSpan.FromSeconds(2)))
         {
             int extendResult = DisplayTopology.ExtendDesktop();
@@ -810,7 +978,7 @@ internal sealed partial class SessionManager : IDisposable
         bool settled = DisplayTopology.WaitUntil(
             () =>
             {
-                DisplayInfo? display = DisplayTopology.FindParsecDisplay();
+                DisplayInfo? display = DisplayTopology.FindParsecDisplayByDevice(deviceName);
                 return display is not null &&
                        display.Width == VirtualWidth &&
                        display.Height == VirtualHeight &&
@@ -821,7 +989,7 @@ internal sealed partial class SessionManager : IDisposable
 
         if (!settled)
         {
-            DisplayInfo? current = DisplayTopology.FindParsecDisplay();
+            DisplayInfo? current = DisplayTopology.FindParsecDisplayByDevice(deviceName);
 
             // Windows/VDD 可能忽略 dmPosition，把新屏固定在主屏右侧。
             // 只要分辨率正确且已挂载，就接受实际坐标（否则整个 profile 直接不可用）。
@@ -856,7 +1024,7 @@ internal sealed partial class SessionManager : IDisposable
 
         // 锁外做可能慢的驱动/显示枚举：launch/release 持 _gate 时 get_environment 不应被拖住。
         string driverStatus = VddDevice.QueryStatus().ToString();
-        DisplayInfo? parsecDisplay = DisplayTopology.FindParsecDisplay();
+        DisplayInfo? parsecDisplay = OwnDisplay();
         (int vx, int vy, int vw, int vh) virtualBounds = DisplayTopology.VirtualScreenBounds();
         DisplayInfo? primaryDisplay = DisplayTopology.FindPrimary();
         int monitorCount = GetMonitorCount();
@@ -889,7 +1057,7 @@ internal sealed partial class SessionManager : IDisposable
             {
                 ["pid"] = Environment.ProcessId,
                 ["initialized"] = _initialized,
-                ["mutexHost"] = "VScreenPilot_Session_0",
+                ["mutexHost"] = Profile.MutexName(ProfileName),
                 ["startedAt"] = ProcessStartTime(),
                 ["session_id"] = sessionId,
                 ["interactive"] = Environment.UserInteractive,
@@ -900,7 +1068,49 @@ internal sealed partial class SessionManager : IDisposable
                 ["profile"] = ProfileName,
                 ["epoch"] = Epoch,
                 ["job_object"] = _job.Status,
+                ["role"] = "daemon",
+                ["daemon_pid"] = Environment.ProcessId,
+                ["client_id"] = CurrentClientId,
+                ["client_cwd"] = CurrentCwd,
             };
+
+            var clientRoots = new JsonArray();
+
+            foreach (string root in CurrentRoots)
+            {
+                if (!string.IsNullOrWhiteSpace(root))
+                {
+                    clientRoots.Add(root);
+                }
+            }
+
+            session["client_roots"] = clientRoots;
+
+            if (CurrentClient is { ProxyPid: > 0 } currentClient)
+            {
+                session["proxy_pid"] = currentClient.ProxyPid;
+
+                if (!string.IsNullOrWhiteSpace(currentClient.Version))
+                {
+                    session["client_version"] = currentClient.Version;
+                }
+            }
+
+            JsonArray clientList = ClientSummariesJson();
+            session["clients"] = clientList;
+            int otherClients = clientList.Count;
+
+            if (CurrentClient is null || !CurrentClient.IncludeAllApps)
+            {
+                otherClients = Math.Max(0, otherClients - 1);
+            }
+
+            session["other_clients"] = otherClients;
+
+            if (ScreenLeaseProvider?.Invoke() is { } screenLease)
+            {
+                session["screen_lease"] = screenLease;
+            }
 
             try
             {
@@ -930,7 +1140,10 @@ internal sealed partial class SessionManager : IDisposable
             else
             {
                 virtualDisplay["enabled"] = true;
-                virtualDisplay["owned"] = _displayIndex >= 0;
+                virtualDisplay["owned"] =
+                    _displayIndex >= 0 &&
+                    !string.IsNullOrWhiteSpace(_displayDevice) &&
+                    string.Equals(display.DeviceName, _displayDevice, StringComparison.OrdinalIgnoreCase);
                 virtualDisplay["device"] = display.DeviceName;
                 virtualDisplay["x"] = display.X;
                 virtualDisplay["y"] = display.Y;
@@ -979,7 +1192,7 @@ internal sealed partial class SessionManager : IDisposable
             {
                 _ = NativeMethods.GetWindowThreadProcessId(foreground, out uint foregroundPid);
                 foregroundApp = _apps.FirstOrDefault(
-                    app => app.Pid == (int)foregroundPid && IsLiveTrackedApp(app));
+                    app => IsOwned(app) && app.Pid == (int)foregroundPid && IsLiveTrackedApp(app));
 
                 // 只暴露本会话窗口的标题/PID。用户主屏上的窗口标题常含邮件主题、
                 // 文档名等隐私信息，不应交给模型。
@@ -1001,13 +1214,15 @@ internal sealed partial class SessionManager : IDisposable
             }
 
             var apps = new JsonArray();
-            foreach (TrackedApp app in _apps)
+            bool includeOwner = CurrentClient?.IncludeAllApps == true;
+
+            foreach (TrackedApp app in _apps.Where(IsOwned))
             {
                 WindowInfo? liveWindow = app.Hwnd == IntPtr.Zero
                     ? null
                     : WindowManager.FromHandle(app.Hwnd);
 
-                apps.Add((JsonNode)new JsonObject
+                var appJson = new JsonObject
                 {
                     ["pid"] = app.Pid,
                     ["hwnd"] = app.Hwnd.ToInt64(),
@@ -1018,7 +1233,14 @@ internal sealed partial class SessionManager : IDisposable
                     ["owned"] = app.Owned,
                     ["close_on_release"] = app.CloseWindowOnRelease,
                     ["dedicated"] = app.DedicatedProcess,
-                });
+                };
+
+                if (includeOwner)
+                {
+                    appJson["client_id"] = app.OwnerClientId;
+                }
+
+                apps.Add((JsonNode)appJson);
             }
 
             focusedPid = foregroundApp?.Pid;
@@ -1045,6 +1267,26 @@ internal sealed partial class SessionManager : IDisposable
             try
             {
                 focusedElement = Uia.GetFocusedElement()?.ToJson();
+
+                // 二次校验：焦点元素必须属于当前客户端（含 UWP 内容进程）。
+                if (focusedElement is JsonObject focus &&
+                    focus["process_id"] is JsonValue pidValue &&
+                    pidValue.TryGetValue(out int focusPid))
+                {
+                    bool owned;
+
+                    lock (_gate)
+                    {
+                        owned = _apps.Any(app =>
+                            IsOwned(app) &&
+                            (app.Pid == focusPid || app.ContentPid == focusPid));
+                    }
+
+                    if (!owned)
+                    {
+                        focusedElement = null;
+                    }
+                }
             }
             catch (Exception exception)
             {
@@ -1065,7 +1307,8 @@ internal sealed partial class SessionManager : IDisposable
     }
 
     public JsonObject ReleaseEnvironment(
-        bool keepDisplay, string onDirty = "abort", bool allowDataLoss = false)
+        bool keepDisplay, string onDirty = "abort", bool allowDataLoss = false,
+        bool forceRemoveDisplay = false, bool forceAllClients = false)
     {
         lock (_gate)
         {
@@ -1099,7 +1342,7 @@ internal sealed partial class SessionManager : IDisposable
             }
 
             // 校验通过后再推进代际：一次被拒绝的 release 不应让在途结果作废。
-            Interlocked.Increment(ref _epoch);
+            IncrementEpoch();
 
             // abort 的语义是“保留未保存窗口”。如果同时摘掉虚拟屏，窗口会被留在
             // 已不存在的显示器坐标上，因此这里强制保留屏，并明确告知调用方。
@@ -1111,9 +1354,19 @@ internal sealed partial class SessionManager : IDisposable
                 warnings.Add("on_dirty=abort 需要保留虚拟屏，已忽略 keep_display=false");
             }
 
+            if (!keepDisplayEffective && ActiveClientCount > 1 && !forceRemoveDisplay)
+            {
+                keepDisplayEffective = true;
+                warnings.Add("其他客户端仍在使用虚拟屏，已忽略 keep_display=false");
+            }
+
             try
             {
-                foreach (TrackedApp app in _apps.AsEnumerable().Reverse().ToList())
+                IEnumerable<TrackedApp> releaseApps = forceAllClients
+                    ? _apps
+                    : _apps.Where(IsOwned);
+
+                foreach (TrackedApp app in releaseApps.Reverse().ToList())
                 {
                     try
                     {
@@ -1208,22 +1461,56 @@ internal sealed partial class SessionManager : IDisposable
                 // 否则后续 release 无法关闭/归位这些窗口，虚拟屏上会留下工具看不见的孤儿。
                 if (onDirty != "abort")
                 {
-                    _apps.Clear();
+                    _apps.RemoveAll(app => forceAllClients || IsOwned(app));
                 }
 
                 // 注意：这里已持 _gate；不要再拿 _refGate（Ref 路径的锁顺序是 _refGate -> _gate）。
                 // MCP 层用 session 读写锁保证 release 不与 find/tree 并发。
-                _elements.Clear();
-                _elementKeys.Clear();
+                string releaseClient = CurrentClientId;
 
-                // 基线帧是整屏 BGRA（约 3.7MB）；释放后不应继续常驻。
+                if (forceAllClients)
+                {
+                    _elements.Clear();
+                    _elementKeys.Clear();
+                    ClearSnapshotState(clientId: null);
+                }
+                else
+                {
+                    foreach ((string refKey, ElementRefEntry entry) in _elements
+                                 .Where(pair => string.Equals(
+                                     pair.Value.OwnerClientId, releaseClient, StringComparison.Ordinal))
+                                 .ToList())
+                    {
+                        _elements.Remove(refKey);
+                        _elementKeys.Remove(entry.Key);
+                    }
+
+                    ClearSnapshotState(releaseClient);
+                }
+
+                // 基线帧是整屏 BGRA（约 3.7MB）；只清当前客户端的帧，避免 A release 清掉 B 的基线。
                 lock (_frameLock)
                 {
-                    _frames.Clear();
+                    if (forceAllClients)
+                    {
+                        _frames.Clear();
+                    }
+                    else
+                    {
+                        _frames.RemoveAll(frame =>
+                            string.Equals(frame.ClientId, releaseClient, StringComparison.Ordinal));
+                    }
                 }
-                _uiaBlockedPids.Clear();
-                _nextFrameId = 0;
-                _selfHealed = false;
+                if (forceAllClients)
+                {
+                    _uiaBlockedPids.Clear();
+                    _nextFrameId = 0;
+                    _selfHealed = false;
+                }
+                else
+                {
+                    _uiaBlockedPids.Remove(releaseClient);
+                }
 
                 if (keepDisplayEffective)
                 {
@@ -1664,7 +1951,65 @@ internal sealed partial class SessionManager : IDisposable
     private void ForgetDisplay()
     {
         _displayIndex = -1;
+        _displayDevice = string.Empty;
         _virtualDisplay = null;
+    }
+
+    private DisplayInfo? OwnDisplay()
+    {
+        DisplayInfo? byDevice = DisplayTopology.FindParsecDisplayByDevice(_displayDevice);
+
+        if (byDevice is not null)
+        {
+            return byDevice;
+        }
+
+        return _virtualDisplay is { Attached: true }
+            ? DisplayTopology.FindParsecDisplayByDevice(_virtualDisplay.DeviceName)
+            : null;
+    }
+
+    private static bool HasOtherLiveProfile() =>
+        InstanceRegistry.ListAll().Any(entry => entry.Pid != Environment.ProcessId);
+
+    private static bool IsDisplayOwnedByOther(string? deviceName)
+    {
+        if (string.IsNullOrWhiteSpace(deviceName))
+        {
+            return false;
+        }
+
+        return InstanceRegistry.ListAll()
+            .Concat(InstanceRegistry.ListStateEntries())
+            .Any(entry =>
+                entry.Pid != Environment.ProcessId &&
+                string.Equals(entry.DisplayDevice, deviceName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// EnsureEnvironment 失败时：若是本次刚 ADD 的屏，index 一定属于本会话，可直接回收；
+    /// 否则走带 device 校验的 TryRemoveDisplay，避免误摘其他 profile。
+    /// </summary>
+    private void RemoveDisplayAfterEnsureFailure(bool displayAdded)
+    {
+        if (displayAdded && _displayIndex >= 0)
+        {
+            try
+            {
+                _vdd.RemoveDisplay(_displayIndex);
+            }
+            catch (Exception exception)
+            {
+                _log.Warn($"回收本次新建虚拟屏失败: {exception.Message}");
+            }
+
+            _displayIndex = -1;
+            _displayDevice = string.Empty;
+            _virtualDisplay = null;
+            return;
+        }
+
+        TryRemoveDisplay();
     }
 
     private bool TryRemoveDisplay()
@@ -1673,19 +2018,38 @@ internal sealed partial class SessionManager : IDisposable
         _cursorGuard = null;
 
         bool removed = false;
+        string device = _displayDevice;
 
         if (_displayIndex >= 0 && _vdd.IsOpen)
         {
-            removed = _vdd.RemoveDisplay(_displayIndex);
-            if (!removed)
-            {
-                _log.Warn($"摘除虚拟屏失败 (index={_displayIndex})，等待驱动回收");
-            }
+            // index 可能被驱动复用；摘除前必须确认它仍对应本会话的 device。
+            DisplayInfo? own = string.IsNullOrWhiteSpace(device)
+                ? null
+                : DisplayTopology.FindParsecDisplayByDevice(device);
 
-            DisplayTopology.WaitForNoParsecDisplay(TimeSpan.FromSeconds(3));
+            if (string.IsNullOrWhiteSpace(device))
+            {
+                // 没有 device 身份时不能按 index 猜；否则可能摘掉其他 profile 的屏。
+                _log.Warn($"没有本会话 device 记录，跳过按 index={_displayIndex} 摘除");
+            }
+            else if (own is null)
+            {
+                _log.Warn($"虚拟屏 {device} 已不在拓扑中，跳过按 index 摘除");
+            }
+            else
+            {
+                removed = _vdd.RemoveDisplay(_displayIndex);
+                if (!removed)
+                {
+                    _log.Warn($"摘除虚拟屏失败 (index={_displayIndex})，等待驱动回收");
+                }
+
+                DisplayTopology.WaitForDisplayGone(device, TimeSpan.FromSeconds(3));
+            }
         }
 
         _displayIndex = -1;
+        _displayDevice = string.Empty;
         _virtualDisplay = null;
         return removed;
     }
@@ -1699,7 +2063,7 @@ internal sealed partial class SessionManager : IDisposable
                 Pid = Environment.ProcessId,
                 StartedAt = ProcessStartTime(),
                 DisplayIndex = _displayIndex,
-                DisplayDevice = _virtualDisplay?.DeviceName ?? string.Empty,
+                DisplayDevice = _virtualDisplay?.DeviceName ?? _displayDevice,
                 X = _virtualDisplay?.X ?? 0,
                 Y = _virtualDisplay?.Y ?? 0,
                 Width = _virtualDisplay?.Width ?? 0,
@@ -1750,13 +2114,14 @@ internal sealed partial class SessionManager : IDisposable
                 $"device={state.DisplayDevice}, apps={state.Apps.Count}");
         }
 
-        // 互斥体保证不会有两个 VScreenPilot；若旧 pid 仍对应同名进程，
-        // 说明它还没退干净，此时不冒险接管它的屏。
-        if (state.Pid > 0 && IsVScreenPilotProcess(state.Pid))
+        // 互斥体保证不会有两个 VScreenPilot；若旧 pid 仍对应同名且启动时间匹配的进程，
+        // 说明它还没退干净，此时不冒险接管它的屏，也不恢复/清空 state。
+        if (state.Pid > 0 && IsVScreenPilotProcess(state.Pid, state.StartedAt))
         {
-            _log.Warn($"上次会话进程仍在运行 (pid={state.Pid})，跳过孤儿屏接管");
+            _log.Warn($"上次会话进程仍在运行 (pid={state.Pid})，跳过全部恢复");
             _recoveredDisplayIndex = -1;
             _recoveredDisplayDevice = string.Empty;
+            return;
         }
 
         foreach (AppState app in state.Apps)
@@ -1833,7 +2198,16 @@ internal sealed partial class SessionManager : IDisposable
 
     private void EnsureAppAllowed(string? path)
     {
-        if (_appAllowlist.Length == 0 || string.IsNullOrWhiteSpace(path))
+        string[] clientAllowlist = CurrentClient?.AppAllowlist ?? Array.Empty<string>();
+        bool hasClientRule = CurrentClient is not null && clientAllowlist.Length > 0;
+        bool hasGlobalRule = _appAllowlist.Length > 0;
+
+        if (!hasClientRule && !hasGlobalRule)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(path))
         {
             return;
         }
@@ -1842,7 +2216,7 @@ internal sealed partial class SessionManager : IDisposable
 
         try
         {
-            fullPath = Path.GetFullPath(path);
+            fullPath = ResolvePath(path);
         }
         catch (Exception exception) when (
             exception is ArgumentException or NotSupportedException or PathTooLongException)
@@ -1850,13 +2224,18 @@ internal sealed partial class SessionManager : IDisposable
             throw new ToolException("E_INVALID_ARG", $"应用路径无效: {exception.Message}");
         }
 
-        if (_appAllowlist.Any(root => IsUnder(fullPath, root)))
+        bool clientOk = !hasClientRule || clientAllowlist.Any(root => IsUnder(fullPath, root));
+        bool globalOk = !hasGlobalRule || _appAllowlist.Any(root => IsUnder(fullPath, root));
+
+        if (clientOk && globalOk)
         {
             return;
         }
 
+        // 两层规则取交集：客户端自己的白名单只能收紧 daemon 的全局白名单，不能绕过它。
+        string[] failedRoots = !clientOk ? clientAllowlist : _appAllowlist;
         var allowedRoots = new JsonArray();
-        foreach (string root in _appAllowlist)
+        foreach (string root in failedRoots)
         {
             allowedRoots.Add(root);
         }
@@ -1867,6 +2246,7 @@ internal sealed partial class SessionManager : IDisposable
             new JsonObject
             {
                 ["path"] = fullPath,
+                ["scope"] = !clientOk ? "client" : "global",
                 ["allowed_roots"] = allowedRoots,
             });
     }
@@ -1884,12 +2264,23 @@ internal sealed partial class SessionManager : IDisposable
         }
     }
 
-    private static bool IsVScreenPilotProcess(int pid)
+    private static bool IsVScreenPilotProcess(int pid, string startedAt)
     {
         try
         {
             using var process = System.Diagnostics.Process.GetProcessById(pid);
-            return string.Equals(process.ProcessName, "VScreenPilot", StringComparison.OrdinalIgnoreCase);
+            bool nameMatches = string.Equals(
+                process.ProcessName, "VScreenPilot", StringComparison.OrdinalIgnoreCase);
+
+            if (string.IsNullOrWhiteSpace(startedAt) ||
+                !DateTimeOffset.TryParse(startedAt, out DateTimeOffset expected))
+            {
+                return nameMatches;
+            }
+
+            // 以启动时间为准：dotnet 运行、改名 exe 也能识别；避免 PID 复用误判。
+            return Math.Abs(
+                (process.StartTime.ToUniversalTime() - expected.UtcDateTime).TotalSeconds) <= 5;
         }
         catch
         {
@@ -1935,6 +2326,8 @@ internal sealed partial class SessionManager : IDisposable
             return;
         }
 
+        _maintenanceTimer?.Dispose();
+        _maintenanceTimer = null;
         StopFocusGuard();
 
         // 清理不能无限等：如果某个 handler 卡在 UIA COM 里并持有 _gate，
@@ -1948,7 +2341,9 @@ internal sealed partial class SessionManager : IDisposable
                 ReleaseEnvironment(
                     keepDisplay: false,
                     onDirty: "force",
-                    allowDataLoss: true);
+                    allowDataLoss: true,
+                    forceRemoveDisplay: true,
+                    forceAllClients: true);
             }
             catch (Exception exception)
             {
@@ -1962,7 +2357,10 @@ internal sealed partial class SessionManager : IDisposable
 
             try
             {
-                if (_displayIndex >= 0)
+                // 超时兜底也只能摘“自己的 device”，不能按可能被复用的 index 盲摘。
+                if (_displayIndex >= 0 &&
+                    !string.IsNullOrWhiteSpace(_displayDevice) &&
+                    DisplayTopology.FindParsecDisplayByDevice(_displayDevice) is not null)
                 {
                     _vdd.RemoveDisplay(_displayIndex);
                 }

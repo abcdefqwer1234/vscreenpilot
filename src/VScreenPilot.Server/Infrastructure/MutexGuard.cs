@@ -40,7 +40,14 @@ public sealed class MutexGuard : IDisposable
             }
             catch (UnauthorizedAccessException)
             {
-                // Global\ 权限不足时尝试 Local\。
+                // default profile 不再回退 Local：否则会出现两个 daemon/两块屏。
+                if (string.Equals(name, Profile.MutexName("default"), StringComparison.OrdinalIgnoreCase))
+                {
+                    error = $"无法访问全局互斥体 {candidate}（权限不足；可能由另一个用户/会话持有）";
+                    return false;
+                }
+
+                // 非默认 profile 仍保留 Global 权限不足时尝试 Local 的兼容行为。
                 continue;
             }
             catch (Exception exception)

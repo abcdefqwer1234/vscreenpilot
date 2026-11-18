@@ -26,8 +26,6 @@ internal sealed partial class SessionManager
         string? role = null,
         string prefer = "auto")
     {
-        DisplayInfo display = EnsureEnvironment();
-
         IntPtr hwnd = FindLiveTrackedApp(pid)?.Hwnd ?? IntPtr.Zero;
 
         if (hwnd == IntPtr.Zero)
@@ -39,6 +37,8 @@ internal sealed partial class SessionManager
                     : $"pid={pid} 不是本会话中存活的应用",
                 new JsonObject { ["pid"] = pid });
         }
+
+        DisplayInfo display = EnsureEnvironment();
 
         RequireWindowOnDisplay(display, hwnd, "find_element");
 
@@ -538,7 +538,9 @@ internal sealed partial class SessionManager
 
                 lock (_gate)
                 {
-                    candidates = _apps.Where(IsLiveTrackedApp).ToList();
+                    candidates = _apps
+                        .Where(app => IsOwned(app) && IsLiveTrackedApp(app))
+                        .ToList();
                 }
 
                 int? requestedPid = GetInt(condition, "pid", -1) is var pidValue && pidValue >= 0
@@ -1036,7 +1038,7 @@ internal sealed partial class SessionManager
     {
         lock (_gate)
         {
-            return _apps.Select(app => app.Pid).ToHashSet();
+            return _apps.Where(IsOwned).Select(app => app.Pid).ToHashSet();
         }
     }
 

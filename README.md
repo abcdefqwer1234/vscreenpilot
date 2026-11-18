@@ -6,11 +6,11 @@
 - 对内：自动挂载 1280×720 虚拟屏、启动/接管应用、归位、清理、记日志。
 - 运行期不需要管理员权限；首次安装一次 Parsec VDD 即可。
 - 语义后端：UIA 为主，MSAA 兜底（Office 旧对话框），OCR 兜底（画布型应用）；支持 UWP `ApplicationFrameWindow`。
-- 重构后的行为变化、错误目录与架构见 [`docs/changes-2026-11.md`](docs/changes-2026-11.md)、[`docs/errors.md`](docs/errors.md)、[`docs/architecture.md`](docs/architecture.md)。
+- 共享实例与 as-built 细节见 [`docs/多客户端共享实例方案.md`](docs/多客户端共享实例方案.md)、[`docs/architecture.md`](docs/architecture.md)；行为变化与错误目录见 [`docs/changes-2026-11.md`](docs/changes-2026-11.md)、[`docs/errors.md`](docs/errors.md)。
 - 测试与复现见 [`docs/audit/第一轮测试报告.md`](docs/audit/第一轮测试报告.md)（Word/CCW 与重构）与 [`docs/audit/第二轮测试报告.md`](docs/audit/第二轮测试报告.md)（PPT 与修复）；原始记录已汇总进这两份报告。
 
-> 版本 0.1.0（M4.1）。这是 **0.x 技术预览**：工具名与参数已按契约冻结，但 0.x 阶段仍可能做不兼容调整；升级前请看 [CHANGELOG](CHANGELOG.md)。
-> 实现细节见 [技术文档.md](技术文档.md)，需求契约见 [需求文件.md](需求文件.md)。
+> 版本 0.2.0（多客户端共享实例）。这是 **0.x 技术预览**：工具名与参数已按契约冻结，但 0.x 阶段仍可能做不兼容调整；升级前请看 [CHANGELOG](CHANGELOG.md)。
+> 0.2.0 的 as-built 以 [共享实例方案 §9.10](docs/多客户端共享实例方案.md) 和 [architecture](docs/architecture.md) 为准；[技术文档.md](技术文档.md) 是 0.1.0 的历史快照。需求契约见 [需求文件.md](需求文件.md)。
 
 ---
 
@@ -129,7 +129,7 @@ winget install --id Parsec.ParsecVDD -e --accept-package-agreements --accept-sou
 
 ### 方式 A：安装版（推荐）
 
-从 Releases 下载 `VScreenPilot-Setup-0.1.0.exe` 并双击安装：
+从 Releases 下载 `VScreenPilot-Setup-0.2.0.exe` 并双击安装：
 
 - 安装到 `%LOCALAPPDATA%\Programs\VScreenPilot`，**per-user，不需要管理员**；
 - 可选加入当前用户 `PATH`（默认勾选），之后可直接运行 `vscreenpilot --doctor`；
@@ -140,9 +140,9 @@ winget install --id Parsec.ParsecVDD -e --accept-package-agreements --accept-sou
 
 ### 方式 B：绿色版
 
-下载 `VScreenPilot-win-x64-v0.1.0.zip`，解压到固定目录（如 `C:\Tools\VScreenPilot`），直接运行 `VScreenPilot.exe`。
+下载 `VScreenPilot-win-x64-v0.2.0.zip`，解压到固定目录（如 `C:\Tools\VScreenPilot`），直接运行 `VScreenPilot.exe`。
 
-zip 内含 exe、`LICENSE`、`THIRD-PARTY-NOTICES.md`、`README.md`；`.pdb` 在单独的 `VScreenPilot-symbols-v0.1.0.zip`，普通用户不需要。
+zip 内含 exe、`LICENSE`、`THIRD-PARTY-NOTICES.md`、`README.md`；`.pdb` 在单独的 `VScreenPilot-symbols-v0.2.0.zip`，普通用户不需要。
 
 ### 方式 C：winget（提交审核通过后可用）
 
@@ -155,7 +155,7 @@ winget install --id VScreenPilot.VScreenPilot -e
 ### 从源码构建
 
 ```powershell
-.\scripts\release.ps1 -Version 0.1.0
+.\scripts\release.ps1 -Version 0.2.0
 ```
 
 一次生成绿色 zip、安装包和 symbols zip。
@@ -205,9 +205,15 @@ VScreenPilot.exe --doctor
 说明：
 
 - `codemode: false`：让 `capture_screen` 返回的图片直接进入模型上下文。
+- **多工作目录/多客户端**：第一个 MCP 进程会优先启动独立 `--daemon`（带 Job breakaway；失败回退进程内 daemon），后续目录的进程自动成为瘦代理；不需要为每个目录配置 `--profile`。客户端断开后会释放屏幕租约并在空闲后清理自己的窗口，daemon 在 `VSP_DAEMON_IDLE_MS` 后退出。旧 0.1.0 实例没有共享管道，升级后先关闭旧实例一次。
+- `get_environment.session.clients[]` 只返回 id/name/connected_at/holds_lease；`session.screen_lease` 给出当前租约。`get_log` 默认只返回本客户端日志，`include_other_clients=true` 可查看全部。
 - `--allow-script` 或 `VSP_ALLOW_SCRIPT=1`：启用 `run_script`。默认关闭，避免任意 PowerShell。
 - `VSP_APP_ALLOWLIST`：可选，用分号分隔目录，限制 `launch_or_place_app` 通过 `path` 能启动哪些 exe；按 `window` 标题接管不受此限制。
 - `VSP_DISPLAY_WIDTH` / `VSP_DISPLAY_HEIGHT` / `VSP_DISPLAY_REFRESH`：可选，修改虚拟屏分辨率与刷新率，默认 1280×720@60。
+- `VSP_CLIENT_CWD`：可选，覆盖客户端路径基准（`save_path`/`target_path`/相对 exe）；默认使用 proxy 的 cwd。
+- `VSP_DAEMON_IDLE_MS`：最后一个客户端断开后的空闲宽限，默认 5000；`0` 立即退出。`VSP_SCREEN_LEASE_WAIT_MS`、`VSP_TOTAL_BUFFER_MB`、`VSP_CLIENT_LIMIT` 分别控制租约等待、总缓冲和客户端上限。
+- `--cli env|snapshot|screen|status|stop`：`env/snapshot/screen` 在实例存在时通过只读控制管道查询；`stop` 有活跃客户端时需 `--force`。`snapshot` 返回管理员 `apps[]` 视图（同时保留旧顶层字段）。
+- `--daemon`：高级用法，手动启动独立共享实例；通常不需要使用，首个 MCP 客户端会自动 spawn。
 - 完整示例见 [docs/mcp-config.example.jsonc](docs/mcp-config.example.jsonc)。
 
 ---
@@ -420,8 +426,12 @@ packaging/                      Inno Setup 与 winget 清单
 tools/                          VddProbe、AotSmokeTest、TestTool 回归套件
 artifacts/server/               发布 exe
 artifacts/release/              绿色 zip、安装包、symbols
-技术文档.md                     代码级实现说明
+技术文档.md                     0.1.0 历史快照（as-built 见方案文档）
 需求文件.md                     需求契约
+docs/多客户端共享实例方案.md   共享实例 as-built（§9.10 为最新修复）
+docs/architecture.md           分层与数据流
+docs/changes-2026-11.md        重构变更摘要
+docs/errors.md                 错误目录
 docs/mcp-config.example.jsonc  OpenCode 接入示例
 docs/releasing.md              发布手册（GitHub Release + winget）
 ```
@@ -431,6 +441,8 @@ docs/releasing.md              发布手册（GitHub Release + winget）
 ```powershell
 dotnet publish src\VScreenPilot.Server\VScreenPilot.Server.csproj -c Release -o artifacts\server
 node tools\TestTool\smoke-v2.mjs
+node tools\TestTool\share-smoke.mjs
+node tools\TestTool\daemon-smoke.mjs
 node tools\TestTool\run-all.mjs --arm A --task all --runs 3
 node tools\TestTool\run-all.mjs --stability --sessions 50
 node tools\TestTool\run-all.mjs --report

@@ -1,11 +1,14 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using VScreenPilot.Cli;
 using VScreenPilot.Core.Displays;
 using VScreenPilot.Core.Interop;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
+using VScreenPilot.Ipc;
 using VScreenPilot.Mcp;
 using VScreenPilot.Session;
 
@@ -21,6 +24,9 @@ internal static class Program
         ConsoleCtrlHandler handler, [MarshalAs(UnmanagedType.Bool)] bool add);
 
     private static SessionManager? _session;
+    private static ControlServer? _control;
+    private static PipeHost? _pipeHost;
+    private static InstanceRegistry? _registry;
     private static ConsoleCtrlHandler? _ctrlHandler;
 
     private static int Main(string[] args)
@@ -62,6 +68,41 @@ internal static class Program
 
         string profile = Profile.Resolve();
         var log = new LogRing();
+        TraceLog? trace = null;
+
+        // 日志/环境摘要里的租约与客户端归属由 MCP 层提供。
+        LogRing.ClientIdProvider = static () => SessionManager.CurrentClientId;
+        SessionManager.LeaseHolderProvider = static () => McpServer.SharedScreenLease.HolderId;
+        SessionManager.ScreenLeaseProvider = static () => McpServer.SharedScreenLease.Describe();
+        ScreenLease.LogSink = log.Info;
+        ScreenLease.ClientCwdProvider = static id => SessionManager.FindClientCwd(id);
+
+        string? cliCommand = GetOption(args, "--cli");
+        bool cliNeedsLocalSession = false;
+        bool cliRequested = args.Any(arg =>
+            string.Equals(arg, "--cli", StringComparison.OrdinalIgnoreCase) ||
+            arg.StartsWith("--cli=", StringComparison.OrdinalIgnoreCase));
+
+        if (cliRequested &&
+            (string.IsNullOrWhiteSpace(cliCommand) || cliCommand.StartsWith("--", StringComparison.Ordinal)))
+        {
+            Console.Error.WriteLine("--cli 需要一个命令：env|snapshot|screen|status|stop");
+            log.Dispose();
+            return 2;
+        }
+
+        if (!string.IsNullOrWhiteSpace(cliCommand))
+        {
+            int cliExit = RunCliBeforeLock(
+                cliCommand, profile, log, HasFlag(args, "--force"),
+                HasFlag(args, "--ensure"), HasFlag(args, "--all"), out cliNeedsLocalSession);
+
+            if (cliExit >= 0)
+            {
+                log.Dispose();
+                return cliExit;
+            }
+        }
 
         if (HasFlag(args, "--doctor"))
         {
@@ -70,39 +111,113 @@ internal static class Program
             return doctorExit;
         }
 
+        if (HasFlag(args, "--daemon"))
+        {
+            int daemonExit = DaemonHost.RunStandalone(profile, log, allowScript);
+            log.Dispose();
+            return daemonExit;
+        }
+
+        // 已有实例：直接做瘦代理，不构造 SessionManager。
+        int? proxyExit = RunProxy(profile, allowScript);
+        if (proxyExit is not null)
+        {
+            log.Dispose();
+            return proxyExit.Value;
+        }
+
+        // 没有 daemon 时优先启动独立 daemon；--cli snapshot/screen 的本地会话不能触发 spawn。
+        if (!cliNeedsLocalSession && !IsMutexHeld(profile))
+        {
+            using Process? spawned = DaemonSpawner.TryStart(profile, log);
+
+            if (spawned is not null)
+            {
+                int? attached = AttachToSpawnedDaemon(profile, log, allowScript, spawned);
+                if (attached is not null)
+                {
+                    log.Dispose();
+                    return attached.Value;
+                }
+
+                try
+                {
+                    if (!spawned.HasExited)
+                    {
+                        spawned.Kill(entireProcessTree: true);
+                    }
+                }
+                catch
+                {
+                    // 子进程可能已自行退出。
+                }
+            }
+        }
+
         var mutex = new MutexGuard();
 
         if (!mutex.TryAcquire(Profile.MutexName(profile), out string? error))
         {
-            try
+            // 第一个连接与 daemon 启动有竞态：先看 registry 判断是新实例启动还是旧实例。
+            int attempts = 5;
+            InstanceRegistry.Entry? known = new InstanceRegistry(profile).Read();
+
+            if (known is not null &&
+                string.Equals(known.Version, BuildInfo.Version, StringComparison.Ordinal))
             {
-                Console.Error.WriteLine($"VScreenPilot: {error}");
-            }
-            catch
-            {
-                // 无控制台时忽略。
+                attempts = 60;
             }
 
+            for (int attempt = 0; attempt < attempts; attempt++)
+            {
+                Thread.Sleep(200);
+                proxyExit = RunProxy(profile, allowScript);
+
+                if (proxyExit is not null)
+                {
+                    mutex.Dispose();
+                    log.Dispose();
+                    return proxyExit.Value;
+                }
+            }
+
+            ReportInstanceBusy(profile, error, log);
             mutex.Dispose();
             log.Dispose();
             return 3;
         }
 
-        var stateStore = new StateStore(log);
-        var job = new JobObject();
-        _session = new SessionManager(log, stateStore, job, allowScript);
+        if (cliNeedsLocalSession)
+        {
+            var stateStore = new StateStore(log);
+            var job = new JobObject();
+            _session = new SessionManager(log, stateStore, job, allowScript);
+            return RunCli(cliCommand!, args, _session, log, job, mutex);
+        }
+
+        _registry = new InstanceRegistry(profile);
+        InstanceRegistry.Entry entry = InstanceRegistry.Create(profile, ready: false);
+        _registry.Write(entry);
+
+        var appStateStore = new StateStore(log);
+        var appJob = new JobObject();
+        _session = new SessionManager(log, appStateStore, appJob, allowScript);
+        trace = new TraceLog();
 
         if (allowScript)
         {
             log.Warn("run_script 已启用（--allow-script/VSP_ALLOW_SCRIPT），该工具可执行任意 PowerShell");
         }
 
-        string? cliCommand = GetOption(args, "--cli");
+        _control = new ControlServer(_session, log, _registry, profile, ShutdownFromControl);
+        _control.Start();
 
-        if (!string.IsNullOrWhiteSpace(cliCommand))
-        {
-            return RunCli(cliCommand, args, _session, log, job, mutex);
-        }
+        _pipeHost = new PipeHost(_session, log, trace, profile);
+        _pipeHost.Start();
+
+        entry.Ready = true;
+        entry.DisplayDevice = _session.VirtualDisplay?.DeviceName ?? string.Empty;
+        _registry.Write(entry);
 
         int? parentPid = GetParentPid(args);
         if (parentPid is not null)
@@ -121,6 +236,8 @@ internal static class Program
                 {
                     _session.EnsureEnvironment();
                     _session.TrimIdleMemory("startup_warm");
+                    entry.DisplayDevice = _session.VirtualDisplay?.DeviceName ?? string.Empty;
+                    _registry?.Write(entry);
                     log.Info("虚拟屏预热完成");
                 }
                 catch (Exception exception)
@@ -132,20 +249,29 @@ internal static class Program
 
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
+            _pipeHost?.Dispose();
+            _control?.Dispose();
             _session?.Dispose();
+            _registry?.Delete();
             log.Dispose();
         };
 
         Console.CancelKeyPress += (_, eventArgs) =>
         {
             eventArgs.Cancel = true;
+            _pipeHost?.Dispose();
+            _control?.Dispose();
             _session?.Dispose();
+            _registry?.Delete();
             Environment.Exit(0);
         };
 
         _ctrlHandler = _ =>
         {
+            _pipeHost?.Dispose();
+            _control?.Dispose();
             _session?.Dispose();
+            _registry?.Delete();
             return false;
         };
         SetConsoleCtrlHandler(_ctrlHandler, true);
@@ -156,7 +282,10 @@ internal static class Program
             sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
             {
                 context.Cancel = true;
+                _pipeHost?.Dispose();
+                _control?.Dispose();
                 _session?.Dispose();
+                _registry?.Delete();
                 Environment.Exit(0);
             });
         }
@@ -167,15 +296,50 @@ internal static class Program
 
         try
         {
-            var server = new McpServer(_session, log);
-            return server.RunAsync().GetAwaiter().GetResult();
+            var server = new McpServer(_session, log, trace!);
+            int exitCode = server.RunAsync().GetAwaiter().GetResult();
+
+            // 首个 MCP 客户端断开后，先等共享客户端；最后一个客户端断开后再进入空闲宽限。
+            int idleMs = ResolveDaemonIdleMs();
+            DateTime? idleSince = null;
+
+            while (true)
+            {
+                int active = _pipeHost?.ActiveClients ?? 0;
+
+                if (active > 0)
+                {
+                    idleSince = null;
+                }
+                else if (idleMs == 0)
+                {
+                    break;
+                }
+                else
+                {
+                    idleSince ??= DateTime.UtcNow;
+
+                    if (DateTime.UtcNow - idleSince.Value >= TimeSpan.FromMilliseconds(idleMs))
+                    {
+                        break;
+                    }
+                }
+
+                Thread.Sleep(100);
+            }
+
+            return exitCode;
         }
         finally
         {
             sigterm?.Dispose();
+            _pipeHost?.Dispose();
+            _control?.Dispose();
             _session?.Dispose();
-            job.Dispose();
+            _registry?.Delete();
+            appJob.Dispose();
             mutex.Dispose();
+            trace?.Dispose();
             log.Dispose();
         }
     }
@@ -187,7 +351,8 @@ internal static class Program
 
             用法:
               VScreenPilot [--allow-script] [--parent-pid <pid>] [--profile <name>]
-              VScreenPilot --cli env|snapshot|screen [--profile <name>]   输出纯 JSON（CLI 伴生入口）
+              VScreenPilot --daemon [--profile <name>]
+              VScreenPilot --cli env|snapshot|screen|status|stop [--force] [--profile <name>]
               VScreenPilot --doctor                                输出 JSON 诊断
               VScreenPilot --version                               输出版本
               VScreenPilot --help                                  输出本帮助
@@ -196,11 +361,352 @@ internal static class Program
               --allow-script            启用 run_script（默认关闭）
               --parent-pid <pid>        父进程退出时自动清理
               --profile <name>          多会话隔离：独立互斥体、状态文件、追踪与 artifact 目录
+              --force                   配合 --cli stop：有活跃客户端时强制停止
 
             环境变量:
               VSP_ALLOW_SCRIPT=1        等价于 --allow-script
+              VSP_ALLOW_UNSAFE_SCRIPT=1 绕过 run_script 危险命令黑名单（不是沙箱）
               VSP_APP_ALLOWLIST=dir1;dir2  仅允许启动这些目录下的 exe（默认允许全部）
+              VSP_CLIENT_CWD=<dir>      覆盖客户端路径基准（默认 proxy cwd）
+              VSP_SCREEN_LEASE_IDLE_MS  屏幕租约空闲毫秒数（默认 60000）
+              VSP_DAEMON_IDLE_MS        最后一个客户端断开后的空闲宽限（默认 5000，0=立即退出）
+              VSP_CLIENT_LIMIT          共享客户端上限（默认 16）
+              VSP_SCREEN_LEASE_WAIT_MS  租约被占用时最多等待毫秒数（默认 0）
+              VSP_TOTAL_BUFFER_MB       所有 MCP 连接输入总缓冲上限（默认 64）
+              VSP_MAX_MESSAGE_MB        单条 MCP 消息上限（默认 16）
             """);
+    }
+
+    /// <summary>
+    /// CLI 在抢锁/构造 SessionManager 之前分流：
+    /// - 有 ctl：直接查询活跃实例；
+    /// - 无 ctl 且互斥体空闲：env 走只读 helper，snapshot/screen 返回 -1 交给本地临时会话；
+    /// - 无 ctl 且互斥体被占用：旧实例/异常实例，明确报错。
+    /// </summary>
+    private static int RunCliBeforeLock(
+        string command, string profile, LogRing log, bool forceStop, bool ensure, bool includeAll,
+        out bool needsLocalSession)
+    {
+        needsLocalSession = false;
+        string op = command.Trim().ToLowerInvariant();
+
+        // 有实例时多试几次，覆盖 daemon 刚启动/ctl 刚处理完上一个请求的窗口；
+        // daemon 还在 ready=false 时按方案等待约 10s，避免启动竞态误报 E_INSTANCE_BUSY。
+        InstanceRegistry.Entry? known = IsMutexHeld(profile)
+            ? new InstanceRegistry(profile).Read()
+            : null;
+        bool starting = known is { Ready: false } &&
+                        string.Equals(known.Version, BuildInfo.Version, StringComparison.Ordinal);
+        int retries = starting ? 25 : IsMutexHeld(profile) ? 5 : 1;
+
+        JsonObject? Invoke(JsonObject request, int timeoutMs = 5000) =>
+            ControlClient.TryInvoke(
+                profile, request, timeoutMs: timeoutMs, retries: retries);
+
+        switch (op)
+        {
+            case "env":
+            {
+                JsonObject? response = Invoke(new JsonObject
+                {
+                    ["vsp"] = 1,
+                    ["op"] = "env",
+                    ["ensure"] = ensure,
+                });
+
+                if (response is not null)
+                {
+                    return PrintControlResponse(response);
+                }
+
+                if (IsMutexHeld(profile))
+                {
+                    ReportInstanceBusy(profile, "已有活跃实例，但没有可用的控制管道（可能是旧版本）", log);
+                    return 3;
+                }
+
+                PrintJson(CliEnvironment.ReadOnly(ensure));
+                return 0;
+            }
+
+            case "snapshot":
+            case "screen":
+            {
+                JsonObject? response = Invoke(new JsonObject
+                {
+                    ["vsp"] = 1,
+                    ["op"] = op,
+                    ["interactive_only"] = !includeAll,
+                }, timeoutMs: 30000);
+
+                if (response is not null)
+                {
+                    return PrintControlResponse(response);
+                }
+
+                if (IsMutexHeld(profile))
+                {
+                    ReportInstanceBusy(profile, "已有活跃实例，但没有可用的控制管道（可能是旧版本）", log);
+                    return 3;
+                }
+
+                needsLocalSession = true;
+                return -1;
+            }
+
+            case "status":
+            {
+                JsonObject? response = Invoke(new JsonObject
+                {
+                    ["vsp"] = 1,
+                    ["op"] = "status",
+                });
+
+                if (response is not null)
+                {
+                    return PrintControlResponse(response);
+                }
+
+                if (IsMutexHeld(profile))
+                {
+                    ReportInstanceBusy(profile, "实例存在，但没有可用的控制管道（可能是旧版本）", log);
+                    return 3;
+                }
+
+                PrintJson(new JsonObject
+                {
+                    ["ok"] = false,
+                    ["code"] = "E_NO_INSTANCE",
+                    ["message"] = "当前 profile 没有活跃实例",
+                });
+                return 3;
+            }
+
+            case "stop":
+            {
+                JsonObject? response = Invoke(new JsonObject
+                {
+                    ["vsp"] = 1,
+                    ["op"] = "stop",
+                    ["force"] = forceStop,
+                });
+
+                if (response is not null)
+                {
+                    return PrintControlResponse(response);
+                }
+
+                if (forceStop)
+                {
+                    InstanceRegistry.Entry? owner = new InstanceRegistry(profile).Read();
+
+                    if (owner is not null && owner.Pid > 0 && owner.Pid != Environment.ProcessId)
+                    {
+                        try
+                        {
+                            using System.Diagnostics.Process process =
+                                System.Diagnostics.Process.GetProcessById(owner.Pid);
+                            process.Kill();
+                            PrintJson(new JsonObject
+                            {
+                                ["ok"] = true,
+                                ["stopped"] = true,
+                                ["forced"] = true,
+                                ["pid"] = owner.Pid,
+                            });
+                            return 0;
+                        }
+                        catch (Exception exception)
+                        {
+                            Console.Error.WriteLine($"强制结束 pid={owner.Pid} 失败: {exception.Message}");
+                        }
+                    }
+                }
+
+                if (IsMutexHeld(profile))
+                {
+                    ReportInstanceBusy(profile, "实例存在，但控制管道不可用（可能是旧版本）", log);
+                    return 3;
+                }
+
+                PrintJson(new JsonObject
+                {
+                    ["ok"] = false,
+                    ["code"] = "E_NO_INSTANCE",
+                    ["message"] = "当前 profile 没有活跃实例",
+                });
+                return 3;
+            }
+
+            default:
+                Console.Error.WriteLine($"未知 --cli 命令: {command}（可选 env|snapshot|screen|status|stop）");
+                return 2;
+        }
+    }
+
+    private static int? RunProxy(string profile, bool allowScript)
+    {
+        // proxy 用独立文件，避免和 daemon 的 server-*.log 混在一起。
+        using var proxyLog = new LogRing(clientLog: true);
+        return StdioProxy.TryRun(profile, proxyLog, allowScript);
+    }
+
+    private static int? AttachToSpawnedDaemon(
+        string profile, LogRing log, bool allowScript, Process child)
+    {
+        // 复用同一个 proxy LogRing：每次重试都新建会反复打开同一个文件、开新线程。
+        using var proxyLog = new LogRing(clientLog: true);
+        DateTime deadline = DateTime.UtcNow.AddSeconds(15);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (child.HasExited)
+            {
+                return null;
+            }
+
+            int? exit = StdioProxy.TryRun(profile, proxyLog, allowScript);
+
+            if (exit is not null)
+            {
+                return exit;
+            }
+
+            Thread.Sleep(150);
+        }
+
+        log.Warn("独立 daemon 启动后未能在 15s 内连接");
+        return null;
+    }
+
+    private static int PrintControlResponse(JsonObject response)
+    {
+        if (response["ok"]?.GetValue<bool>() == true && response["result"] is JsonNode result)
+        {
+            // 与无实例时的本地 CLI 输出保持同一形状：所有成功结果都带 ok=true。
+            JsonObject payload = result.DeepClone() as JsonObject ?? new JsonObject
+            {
+                ["result"] = result.DeepClone(),
+            };
+
+            payload["ok"] = true;
+            PrintJson(payload);
+            return 0;
+        }
+
+        PrintJson(response);
+        return 1;
+    }
+
+    private static void PrintJson(JsonNode node)
+    {
+        Console.Out.WriteLine(node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private static bool IsMutexHeld(string profile)
+    {
+        string name = Profile.MutexName(profile);
+        string[] candidates = string.Equals(profile, "default", StringComparison.Ordinal)
+            ? new[] { $@"Global\{name}" }
+            : new[] { $@"Global\{name}", $@"Local\{name}" };
+        bool inaccessible = false;
+
+        foreach (string candidate in candidates)
+        {
+            try
+            {
+                using var mutex = new Mutex(false, candidate);
+
+                try
+                {
+                    if (mutex.WaitOne(0))
+                    {
+                        mutex.ReleaseMutex();
+                        return false;
+                    }
+                }
+                catch (AbandonedMutexException)
+                {
+                    try
+                    {
+                        mutex.ReleaseMutex();
+                    }
+                    catch
+                    {
+                        // 忽略。
+                    }
+
+                    return false;
+                }
+
+                return true;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                inaccessible = true;
+            }
+            catch
+            {
+                // 继续尝试下一个命名空间。
+            }
+        }
+
+        return inaccessible;
+    }
+
+    private static void ReportInstanceBusy(string profile, string? error, LogRing log)
+    {
+        var registry = new InstanceRegistry(profile);
+        InstanceRegistry.Entry? entry = registry.Read();
+
+        var payload = new JsonObject
+        {
+            ["code"] = "E_INSTANCE_BUSY",
+            ["profile"] = profile,
+            ["mutex"] = $@"Global\{Profile.MutexName(profile)}",
+            ["owner"] = entry?.ToJson(),
+            ["error"] = error,
+            ["hint"] = "关闭占用实例的 MCP 客户端；旧版本可能需要关闭其父进程或用任务管理器结束 owner.pid",
+        };
+
+        try
+        {
+            Console.Error.WriteLine("VScreenPilot: 实例已被占用 (E_INSTANCE_BUSY)");
+            Console.Error.WriteLine($"  profile: {profile}");
+            Console.Error.WriteLine($"  mutex: Global\\{Profile.MutexName(profile)}");
+
+            if (entry is not null)
+            {
+                Console.Error.WriteLine(
+                    $"  owner: pid={entry.Pid}, started={entry.StartedAt}, " +
+                    $"cwd={(string.IsNullOrWhiteSpace(entry.Cwd) ? "unknown" : entry.Cwd)}, " +
+                    $"version={entry.Version}, elevated={entry.Elevated}");
+            }
+            else
+            {
+                Console.Error.WriteLine("  owner: unknown（可能是旧版本/其他用户）");
+            }
+
+            Console.Error.WriteLine("  解法:");
+            Console.Error.WriteLine("    1) 关闭占用实例的 MCP 客户端（旧版本需要关闭其父进程）");
+            Console.Error.WriteLine("    2) 任务管理器结束 owner.pid（需相同权限）");
+            Console.Error.WriteLine(payload.ToJsonString());
+        }
+        catch
+        {
+            // 无控制台时忽略。
+        }
+
+        log.Warn($"实例已被占用: {error}");
+    }
+
+    private static void ShutdownFromControl()
+    {
+        _pipeHost?.Dispose();
+        _control?.Dispose();
+        _registry?.Delete();
+        _session?.Dispose();
+        Environment.Exit(0);
     }
 
     /// <summary>
@@ -304,6 +810,18 @@ internal static class Program
          value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
          value.Equals("yes", StringComparison.OrdinalIgnoreCase));
 
+    private static int ResolveDaemonIdleMs()
+    {
+        string? raw = Environment.GetEnvironmentVariable("VSP_DAEMON_IDLE_MS");
+
+        if (int.TryParse(raw, out int value))
+        {
+            return Math.Clamp(value, 0, 600_000);
+        }
+
+        return 5000;
+    }
+
     private static int? GetParentPid(string[] args)
     {
         for (int index = 0; index < args.Length; index++)
@@ -351,6 +869,13 @@ internal static class Program
             }
 
             log.Info($"父进程已退出 (pid={parentPid})，开始清理");
+
+            if (_pipeHost is { ActiveClients: > 0 })
+            {
+                log.Warn("父进程退出但仍有共享客户端，继续作为 daemon 运行");
+                return;
+            }
+
             try
             {
                 session.Dispose();
@@ -387,6 +912,44 @@ internal static class Program
             ["app_allowlist"] = ReadAppAllowlistForDoctor(),
             ["log_file"] = log.FilePath,
         };
+
+        var registry = new InstanceRegistry(profile);
+        result["registry"] = registry.Read()?.ToJson();
+
+        JsonObject? ctlStatus = ControlClient.TryInvoke(
+            profile,
+            new JsonObject { ["vsp"] = 1, ["op"] = "status" },
+            timeoutMs: 800,
+            connectTimeoutMs: 150,
+            retries: 1);
+
+        if (ctlStatus?["ok"]?.GetValue<bool>() == true && ctlStatus["result"] is JsonObject status)
+        {
+            result["daemon"] = status.DeepClone();
+        }
+
+        var instances = new JsonArray();
+        var seenPids = new HashSet<int>();
+
+        void AddInstance(InstanceRegistry.Entry instance)
+        {
+            if (seenPids.Add(instance.Pid))
+            {
+                instances.Add((JsonNode)instance.ToJson());
+            }
+        }
+
+        foreach (InstanceRegistry.Entry instance in InstanceRegistry.ListAll())
+        {
+            AddInstance(instance);
+        }
+
+        foreach (InstanceRegistry.Entry instance in InstanceRegistry.ListStateEntries())
+        {
+            AddInstance(instance);
+        }
+
+        result["instances"] = instances;
 
         try
         {
@@ -502,7 +1065,12 @@ internal static class Program
             ["detail"] = artifactsDetail,
         });
 
-        DisplayInfo? parsec = DisplayTopology.FindParsecDisplay();
+        string? ownDevice = new StateStore(log).Load()?.DisplayDevice;
+        DisplayInfo? parsec = !string.IsNullOrWhiteSpace(ownDevice)
+            ? DisplayTopology.FindParsecDisplayByDevice(ownDevice)
+            : string.Equals(profile, "default", StringComparison.Ordinal)
+                ? DisplayTopology.FindParsecDisplay()
+                : null;
         result["virtual_display"] = parsec is null
             ? new JsonObject { ["enabled"] = false }
             : new JsonObject

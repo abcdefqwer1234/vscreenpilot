@@ -27,14 +27,19 @@ internal sealed class McpServer
 
     private readonly SessionManager _session;
     private readonly LogRing _log;
-    private readonly TraceLog _trace = new();
+    private readonly ClientContext? _client;
+    private readonly TraceLog? _trace;
+    private readonly bool _ownsTrace;
     private readonly Dictionary<string, ToolDefinition> _tools;
-    private readonly WriteScheduler _scheduler = new();
+    private int _inflightHandlers;
+    private static readonly WriteScheduler SharedScheduler = new();
+    internal static readonly ScreenLease SharedScreenLease = new();
+    private readonly WriteScheduler _scheduler = SharedScheduler;
 
-    // 令牌桶限流：防止失控客户端把 UIA/截图打满。容量/速率远高于正常 agent 使用。
-    private readonly object _rateGate = new();
-    private double _rateTokens = 300;
-    private long _rateLastTicks = Environment.TickCount64;
+    // 令牌桶限流：daemon 内所有连接共享，避免 N 个客户端把限制放大 N 倍。
+    private static readonly object RateGate = new();
+    private static double _rateTokens = 300;
+    private static long _rateLastTicks = Environment.TickCount64;
     private const double RateCapacity = 300;
     private const double RateRefillPerSecond = 100;
 
@@ -49,18 +54,39 @@ internal sealed class McpServer
         int TimeoutMs,
         Func<JsonElement, ToolResponse> Handler);
 
-    public McpServer(SessionManager session, LogRing log) : this(session, log, trace: true)
+    public McpServer(SessionManager session, LogRing log)
+        : this(session, log, trace: true, client: null, sharedTrace: null)
+    {
+    }
+
+    internal McpServer(SessionManager session, LogRing log, TraceLog sharedTrace)
+        : this(session, log, trace: true, client: null, sharedTrace: sharedTrace)
+    {
+    }
+
+    internal McpServer(
+        SessionManager session, LogRing log, ClientContext client, TraceLog sharedTrace)
+        : this(session, log, trace: true, client: client, sharedTrace: sharedTrace)
     {
     }
 
     /// <summary>trace=false 供单测检查工具目录；此时不读取会话，也不写 trace 文件。</summary>
     internal McpServer(SessionManager session, LogRing log, bool trace)
+        : this(session, log, trace, client: null, sharedTrace: null)
+    {
+    }
+
+    private McpServer(
+        SessionManager session, LogRing log, bool trace, ClientContext? client, TraceLog? sharedTrace)
     {
         _session = session;
         _log = log;
+        _client = client;
         _tools = BuildTools();
+        _trace = sharedTrace ?? (trace ? new TraceLog() : null);
+        _ownsTrace = sharedTrace is null && _trace is not null;
 
-        if (!trace)
+        if (_trace is null)
         {
             return;
         }
@@ -71,19 +97,27 @@ internal sealed class McpServer
             ["pid"] = Environment.ProcessId,
             ["tools"] = _tools.Count,
             ["profile"] = _session.ProfileName,
+            ["client"] = client?.Id,
         });
     }
 
-    public string TracePath => _trace.FilePath;
+    public string TracePath => _trace?.FilePath ?? string.Empty;
 
-    public async Task<int> RunAsync(CancellationToken cancellationToken = default)
+    public Task<int> RunAsync(CancellationToken cancellationToken = default) =>
+        RunHostAsync(null, null, cancellationToken);
+
+    public Task<int> RunAsync(Stream input, Stream output, CancellationToken cancellationToken = default) =>
+        RunHostAsync(input, output, cancellationToken);
+
+    private async Task<int> RunHostAsync(
+        Stream? input, Stream? output, CancellationToken cancellationToken)
     {
         var builder = Host.CreateApplicationBuilder();
 
         // 宿主默认日志会写 stderr；stdio 传输下保持安静，日志仍走 LogRing/文件。
         builder.Logging.ClearProviders();
 
-        builder.Services
+        IMcpServerBuilder mcp = builder.Services
             .AddMcpServer(options =>
             {
                 options.ServerInfo = new Implementation
@@ -97,24 +131,108 @@ internal sealed class McpServer
                     Tools = new ToolsCapability { ListChanged = false },
                     Resources = new ResourcesCapability { ListChanged = false, Subscribe = false },
                 };
-            })
-            .WithStdioServerTransport()
-            .WithListToolsHandler(HandleListToolsAsync)
+            });
+
+        if (input is null || output is null)
+        {
+            mcp.WithStdioServerTransport();
+        }
+        else
+        {
+            mcp.WithStreamServerTransport(input, output);
+        }
+
+        mcp.WithListToolsHandler(HandleListToolsAsync)
             .WithListResourcesHandler(HandleListResourcesAsync)
             .WithReadResourceHandler(HandleReadResourceAsync)
             .WithCallToolHandler(HandleCallToolAsync);
 
+        ClientContext effectiveClient = _client ?? new ClientContext
+        {
+            Id = "c0",
+            Name = "stdio",
+            Cwd = Environment.CurrentDirectory,
+        };
+
         try
         {
+            SessionManager.ClientEntered(effectiveClient);
             await builder.Build().RunAsync(cancellationToken).ConfigureAwait(false);
             return 0;
         }
         finally
         {
-            _trace.Write("session_end");
-            _trace.Dispose();
-            _scheduler.Dispose();
+            string clientId = effectiveClient.Id;
+
+            // 连接结束：先释放租约（若自己的 handler 仍在跑或别人持有，返回 false）。
+            // refs/artifacts 可以立即清；apps/窗口必须等租约和 handler 都空闲后再按 force 清理。
+            bool leaseFree = SharedScreenLease.ReleaseHolderIfIdle(clientId);
+            bool handlersIdle = Volatile.Read(ref _inflightHandlers) == 0;
+
+            try
+            {
+                _session.DropClientRefs(clientId);
+
+                if (leaseFree && handlersIdle &&
+                    _session.ReleaseClient(_client, includeApps: true))
+                {
+                    // 已立即完成清理。
+                }
+                else
+                {
+                    ScheduleClientCleanup(_client, clientId);
+                }
+            }
+            catch (Exception exception)
+            {
+                // 清理失败不能影响连接计数/trace 释放；稍后由 daemon 维护或重试兜底。
+                _log.Warn($"客户端 {clientId} 清理失败: {exception.Message}");
+                ScheduleClientCleanup(_client, clientId);
+            }
+
+            SessionManager.ClientLeft(clientId);
+            _trace?.Write("session_end", new JsonObject { ["client_id"] = clientId });
+
+            if (_ownsTrace)
+            {
+                _trace?.Dispose();
+            }
         }
+    }
+
+    /// <summary>
+    /// 客户端已断开但仍有在途 handler/租约时，等真正空闲后再按 force 清理窗口。
+    /// daemon 退出时会做全量清理，这里是长期运行 daemon 的补充。
+    /// </summary>
+    private void ScheduleClientCleanup(ClientContext? client, string clientId)
+    {
+        _ = Task.Run(async () =>
+        {
+            DateTime deadline = DateTime.UtcNow.AddMinutes(30);
+
+            while (DateTime.UtcNow < deadline)
+            {
+                if (Volatile.Read(ref _inflightHandlers) == 0 &&
+                    SharedScreenLease.ReleaseHolderIfIdle(clientId))
+                {
+                    try
+                    {
+                        if (_session.ReleaseClient(client, includeApps: true))
+                        {
+                            return;
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        _log.Warn($"客户端 {clientId} 延后清理失败: {exception.Message}");
+                    }
+                }
+
+                await Task.Delay(250).ConfigureAwait(false);
+            }
+
+            _log.Warn($"客户端 {clientId} 的延后清理超过 30 分钟，留待 daemon 退出处理");
+        });
     }
 
     private const string Instructions =
@@ -162,6 +280,9 @@ internal sealed class McpServer
     private ValueTask<ListResourcesResult> HandleListResourcesAsync(
         RequestContext<ListResourcesRequestParams> context, CancellationToken cancellationToken)
     {
+        using IDisposable? clientScope = _client is null
+            ? null
+            : SessionManager.UseClient(_client);
         var resources = new List<Resource>();
         int offset = 0;
         string? cursor = context.Params?.Cursor;
@@ -217,6 +338,9 @@ internal sealed class McpServer
     private ValueTask<ReadResourceResult> HandleReadResourceAsync(
         RequestContext<ReadResourceRequestParams> context, CancellationToken cancellationToken)
     {
+        using IDisposable? clientScope = _client is null
+            ? null
+            : SessionManager.UseClient(_client);
         string uri = context.Params?.Uri ?? string.Empty;
 
         if (!uri.StartsWith(ArtifactPrefix, StringComparison.Ordinal))
@@ -375,6 +499,9 @@ internal sealed class McpServer
         string? argumentSummary,
         CancellationToken cancellationToken)
     {
+        using IDisposable? clientScope = _client is null
+            ? null
+            : SessionManager.UseClient(_client);
         long epoch = _session.Epoch;
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         WriteScheduler.Lease? lease = null;
@@ -382,9 +509,24 @@ internal sealed class McpServer
         bool callCtsTransferred = false;
         Task<ToolResponse>? handlerTask = null;
         bool mutating = MutatingTools.Contains(tool.Name);
+        IDisposable? screenLease = null;
+        bool releaseSucceeded = false;
 
         try
         {
+            string clientId = _client?.Id ?? "c0";
+
+            if (RequiresScreenLease(tool.Name, arguments))
+            {
+                screenLease = SharedScreenLease.Acquire(clientId, tool.Name);
+
+                if (KeepsForeground(arguments))
+                {
+                    SharedScreenLease.Extend(clientId, 30_000);
+                    _session.PauseFocusGuard(30_000);
+                }
+            }
+
             if (mutating)
             {
                 // release 等 6s：正常写操作应在这之前结束；只有锁定超过 5s 的卡死 handler 才旁路。
@@ -472,6 +614,13 @@ internal sealed class McpServer
                 }
             }, CancellationToken.None);
 
+            Interlocked.Increment(ref _inflightHandlers);
+            _ = handlerTask.ContinueWith(
+                _ => Interlocked.Decrement(ref _inflightHandlers),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+
             ToolResponse response;
 
             try
@@ -503,6 +652,14 @@ internal sealed class McpServer
                     _ => callCts?.Dispose(), TaskScheduler.Default);
                 callCtsTransferred = true;
 
+                if (screenLease is not null)
+                {
+                    IDisposable pendingLease = screenLease;
+                    screenLease = null;
+                    _ = handlerTask!.ContinueWith(
+                        _ => pendingLease.Dispose(), TaskScheduler.Default);
+                }
+
                 _log.Warn($"工具 {tool.Name} 超过 {tool.TimeoutMs}ms 未完成，已请求取消");
                 response = ToolResponse.Error(
                     "E_TIMEOUT",
@@ -526,6 +683,12 @@ internal sealed class McpServer
 
             stopwatch.Stop();
             response.SetRequestId(requestId);
+
+            if (tool.Name == "release_environment" && !response.IsError)
+            {
+                releaseSucceeded = true;
+            }
+
             ReportProgress(context, 1, 1, "completed");
             Trace(tool.Name, requestId, argumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
             return ToResult(response);
@@ -536,8 +699,32 @@ internal sealed class McpServer
             // 避免 “已取消但仍在点击” 与新写操作并发（S5 的另一半）。
             if (lease is not null)
             {
-                WriteScheduler.ReleaseWhen(handlerTask!, lease);
+                if (handlerTask is not null)
+                {
+                    WriteScheduler.ReleaseWhen(handlerTask, lease);
+                }
+                else
+                {
+                    lease.Dispose();
+                }
+
                 lease = null;
+            }
+
+            if (screenLease is not null)
+            {
+                IDisposable pendingLease = screenLease;
+                screenLease = null;
+
+                if (handlerTask is not null)
+                {
+                    _ = handlerTask.ContinueWith(
+                        _ => pendingLease.Dispose(), TaskScheduler.Default);
+                }
+                else
+                {
+                    pendingLease.Dispose();
+                }
             }
 
             try
@@ -549,9 +736,9 @@ internal sealed class McpServer
                 // 已经结束。
             }
 
-            if (callCts is not null && !handlerTask!.IsCompleted)
+            if (callCts is not null && handlerTask is not null && !handlerTask.IsCompleted)
             {
-                _ = handlerTask!.ContinueWith(_ => callCts?.Dispose(), TaskScheduler.Default);
+                _ = handlerTask.ContinueWith(_ => callCts?.Dispose(), TaskScheduler.Default);
                 callCtsTransferred = true;
             }
 
@@ -581,15 +768,82 @@ internal sealed class McpServer
                 callCts?.Dispose();
             }
 
+            if (tool.Name == "release_environment")
+            {
+                string releaseClientId = _client?.Id ?? "c0";
+
+                if (releaseSucceeded)
+                {
+                    // 只有真正清理成功才把屏幕交给下一个客户端；失败时仍保留租约。
+                    // 这里不能用 ReleaseHolderIfIdle：本工具自己还持有一个租约（active_calls>=1）。
+                    SharedScreenLease.ForceRelease(releaseClientId);
+                }
+                else if (handlerTask is { IsCompleted: false })
+                {
+                    // 超时/取消时 handler 可能仍在关闭窗口：等它真正结束再释放租约。
+                    _ = handlerTask.ContinueWith(
+                        _ => SharedScreenLease.ForceRelease(releaseClientId),
+                        CancellationToken.None,
+                        TaskContinuationOptions.ExecuteSynchronously,
+                        TaskScheduler.Default);
+                }
+            }
+
+            // 释放顺序与获取相反：先写锁，后屏幕租约。
             lease?.Dispose();
+            screenLease?.Dispose();
         }
     }
 
-    private bool TryAcquireRateLimit(out int retryAfterMs)
+    private static bool KeepsForeground(JsonElement arguments) =>
+        arguments.ValueKind == JsonValueKind.Object &&
+        arguments.TryGetProperty("keep_foreground", out JsonElement value) &&
+        value.ValueKind == JsonValueKind.True;
+
+    private bool RequiresScreenLease(string tool, JsonElement arguments)
+    {
+        // 只清 refs/租约的 release 不需要租约；有 live apps 时要和 GUI 操作互斥。
+        if (tool == "release_environment")
+        {
+            return _session.HasLiveOwnedApps();
+        }
+
+        if (tool == "get_environment")
+        {
+            // 只读元数据不需要租约；ensure=true 会挂载/修复显示，必须和 GUI 串行。
+            return OptionalBool(arguments, "ensure", false);
+        }
+
+        if (tool is "get_log" or "find_element" or "get_ui_tree" or "get_element_text")
+        {
+            return false;
+        }
+
+        if (tool == "snapshot")
+        {
+            bool screenshot = arguments.TryGetProperty("include_screenshot", out JsonElement value) &&
+                              value.ValueKind == JsonValueKind.True;
+            bool annotate = arguments.TryGetProperty("annotate", out JsonElement annotateValue) &&
+                            annotateValue.ValueKind == JsonValueKind.True;
+            return screenshot || annotate;
+        }
+
+        if (tool == "wait_for")
+        {
+            return arguments.TryGetProperty("condition", out JsonElement condition) &&
+                   condition.TryGetProperty("type", out JsonElement type) &&
+                   type.ValueKind == JsonValueKind.String &&
+                   type.GetString() is "color" or "pixel_diff" or "visual";
+        }
+
+        return true;
+    }
+
+    private static bool TryAcquireRateLimit(out int retryAfterMs)
     {
         retryAfterMs = 0;
 
-        lock (_rateGate)
+        lock (RateGate)
         {
             long now = Environment.TickCount64;
             double elapsed = Math.Max(0, now - _rateLastTicks) / 1000.0;
@@ -710,8 +964,8 @@ internal sealed class McpServer
         MetricsRegistry.RecordTool(
             tool, milliseconds, code, response.IsError, textBytes, imageBytes);
 
-        _trace.ToolCall(tool, requestId, arguments, milliseconds, code, response.IsError,
-            textBytes, imageBytes, channel: null, stage: stage);
+        _trace?.ToolCall(tool, requestId, arguments, milliseconds, code, response.IsError,
+            textBytes, imageBytes, channel: null, stage: stage, clientId: _client?.Id ?? "c0");
     }
 
     private static JsonElement ToArguments(IDictionary<string, JsonElement>? arguments)
@@ -794,7 +1048,8 @@ internal sealed class McpServer
             {"type":"object","additionalProperties":false,"properties":{
               "ensure":{"type":"boolean","description":"Mount or heal the virtual display before reading state."}}}
             """,
-            Out("virtual_display:object", "session:object", "foreground:object", "primary:object", "virtual_screen:object"),
+            Out("virtual_display:object", "session:object", "foreground:object", "primary:object", "virtual_screen:object",
+                "client_id:string", "screen_lease:object"),
             readOnly: false, destructive: false, timeoutMs: 20000, GetEnvironment);
 
         Add(tools, "launch_or_place_app", "Launch or attach app",
@@ -1039,7 +1294,7 @@ internal sealed class McpServer
               "text":{"type":"string"},
               "pid":{"type":"integer","minimum":1},
               "verify":{"type":"boolean"},
-              "chunk_chars":{"type":"integer","minimum":1,"maximum":256},
+              "chunk_chars":{"type":"integer","minimum":1,"maximum":256,"description":"Chunk size in characters; default 32."},
               "channel":{"type":"string","enum":["auto","pattern","clipboard","keys"]}},
               "required":["text"]}
             """,
@@ -1142,7 +1397,8 @@ internal sealed class McpServer
               "tail":{"type":"integer","minimum":1,"maximum":500},
               "source":{"type":"string","enum":["memory","file","both"]},
               "level":{"type":"string","enum":["DEBUG","INFO","WARN","ERROR"]},
-              "contains":{"type":"string"}}}
+              "contains":{"type":"string"},
+              "include_other_clients":{"type":"boolean","description":"Include entries owned by other MCP clients. Default false."}}}
             """,
             Out("source:string", "entries:array", "file_entries:array", "last_error:object"),
             readOnly: true, destructive: false, timeoutMs: 15000, GetLog);
@@ -1225,8 +1481,13 @@ internal sealed class McpServer
         _ => new JsonObject { ["type"] = new JsonArray(type, "null") },
     };
 
-    private ToolResponse GetEnvironment(JsonElement arguments) =>
-        ToolResponse.Text(_session.GetEnvironment(OptionalBool(arguments, "ensure", false)));
+    private ToolResponse GetEnvironment(JsonElement arguments)
+    {
+        JsonObject data = _session.GetEnvironment(OptionalBool(arguments, "ensure", false));
+        data["client_id"] = _client?.Id ?? "c0";
+        data["screen_lease"] = SharedScreenLease.Describe();
+        return ToolResponse.Text(data);
+    }
 
     private ToolResponse LaunchOrPlace(JsonElement arguments)
     {
@@ -1702,8 +1963,28 @@ internal sealed class McpServer
         bool keepDisplay = OptionalBool(arguments, "keep_display", true);
         string onDirty = OptionalString(arguments, "on_dirty") ?? "abort";
         bool allowDataLoss = OptionalBool(arguments, "allow_data_loss", false);
-        return ToolResponse.Text(
-            _session.ReleaseEnvironment(keepDisplay, onDirty, allowDataLoss));
+        string clientId = _client?.Id ?? "c0";
+        JsonObject data = _session.ReleaseEnvironment(keepDisplay, onDirty, allowDataLoss);
+        data["client_id"] = clientId;
+
+        if (data["display_kept"]?.GetValue<bool>() == true)
+        {
+            data["display_kept_reason"] = SessionManager.ActiveClientCount > 1
+                ? "other_clients"
+                : onDirty == "abort" ? "on_dirty_abort" : "requested";
+        }
+
+        // 成功释放后立即把屏幕让给下一个客户端；finally 会再次调用（幂等）。
+        // 用 ForceRelease：当前工具自己持有一个租约，IfIdle 会因 active_calls>0 拒绝。
+        SharedScreenLease.ForceRelease(clientId);
+        JsonObject lease = SharedScreenLease.Describe();
+        bool leaseHeld = lease["held"]?.GetValue<bool>() == true;
+        string? holder = lease["holder_client_id"]?.GetValue<string>();
+        int activeCalls = lease["active_calls"]?.GetValue<int>() ?? 0;
+        data["screen_lease_released"] =
+            !leaseHeld ||
+            (string.Equals(holder, clientId, StringComparison.Ordinal) && activeCalls <= 1);
+        return ToolResponse.Text(data);
     }
 
     private ToolResponse GetLog(JsonElement arguments)
@@ -1733,7 +2014,16 @@ internal sealed class McpServer
         }
 
         string? contains = OptionalString(arguments, "contains");
+        bool includeOther = OptionalBool(arguments, "include_other_clients", false);
+        string currentClient = _client?.Id ?? "c0";
+
+        bool Visible(LogEntry entry) =>
+            includeOther ||
+            entry.ClientId is null ||
+            string.Equals(entry.ClientId, currentClient, StringComparison.Ordinal);
+
         bool Matches(LogEntry entry) =>
+            Visible(entry) &&
             (string.IsNullOrWhiteSpace(level) ||
              entry.Level.Equals(level.Trim(), StringComparison.OrdinalIgnoreCase)) &&
             (string.IsNullOrWhiteSpace(contains) ||
@@ -1792,11 +2082,15 @@ internal sealed class McpServer
             }
         }
 
-        LogEntry? lastError = _log.LastErrorEntry() ?? lastFileError;
+        LogEntry? lastError = _log.Tail(500)
+            .Where(Visible)
+            .LastOrDefault(entry => string.Equals(entry.Level, "ERROR", StringComparison.Ordinal))
+            ?? lastFileError;
 
         var result = new JsonObject
         {
             ["source"] = source,
+            ["include_other_clients"] = includeOther,
             ["entries"] = source == "file"
                 ? (JsonNode)fileEntries.DeepClone()
                 : (JsonNode)memoryEntries,

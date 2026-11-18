@@ -11,7 +11,7 @@ internal sealed partial class SessionManager
 
     public JsonObject RunScript(string code, int timeoutMs)
     {
-        if (!_allowScript)
+        if (!(CurrentClient?.AllowScript ?? _allowScript))
         {
             throw new ToolException(
                 "E_DISABLED",
@@ -176,7 +176,11 @@ internal sealed partial class SessionManager
     /// </summary>
     private static void EnsureScriptSafe(string code)
     {
-        if (IsTruthy(Environment.GetEnvironmentVariable("VSP_ALLOW_UNSAFE_SCRIPT")))
+        bool unsafeAllowed = CurrentClient is null
+            ? IsTruthy(Environment.GetEnvironmentVariable("VSP_ALLOW_UNSAFE_SCRIPT"))
+            : CurrentClient.AllowUnsafeScript;
+
+        if (unsafeAllowed)
         {
             return;
         }

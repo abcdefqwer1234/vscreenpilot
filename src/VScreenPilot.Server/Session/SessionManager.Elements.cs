@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using VScreenPilot.Apps;
@@ -13,6 +14,7 @@ internal sealed class ElementRefEntry
 {
     public required string Ref { get; init; }
     public required string Key { get; init; }
+    public string OwnerClientId { get; init; } = "c0";
 
     /// <summary>创建该 ref 时的快照代际；跨代使用返回 E_STALE_SNAPSHOT。</summary>
     public long Generation { get; set; }
@@ -57,11 +59,16 @@ internal sealed partial class SessionManager
     private readonly SemaphoreSlim _snapshotGate = new(1, 1);
     private long _elementSeq;
     private long _snapshotSeq;
-    private long _snapshotGeneration;
-    private string _snapshotId = string.Empty;
+    // 这两个字典会在不持 _refGate 的路径被读取（SnapshotId/RequireElementEntry），
+    // 而写入发生在 _refGate + _gate 或 release 的 _gate 下；用并发字典避免跨客户端读写撕裂。
+    private readonly ConcurrentDictionary<string, long> _snapshotGenerationByClient =
+        new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, string> _snapshotIdByClient =
+        new(StringComparer.Ordinal);
 
     /// <summary>最近一次 snapshot 的 id；ref 只在该快照内有效。</summary>
-    public string SnapshotId => _snapshotId;
+    public string SnapshotId =>
+        _snapshotIdByClient.TryGetValue(CurrentClientId, out string? id) ? id : string.Empty;
 
     /// <summary>
     /// 当前快照 id；若还没有任何快照则创建第一个。
@@ -71,28 +78,61 @@ internal sealed partial class SessionManager
     {
         lock (_refGate)
         {
-            return Volatile.Read(ref _snapshotGeneration) > 0
-                ? _snapshotId
-                : BeginSnapshot();
+            string clientId = CurrentClientId;
+
+            if (_snapshotGenerationByClient.TryGetValue(clientId, out long generation) &&
+                generation > 0 &&
+                _snapshotIdByClient.TryGetValue(clientId, out string? id))
+            {
+                return id;
+            }
+
+            return BeginSnapshot();
         }
     }
 
-    /// <summary>开始新快照：清空旧 ref，让跨快照使用返回 E_ELEMENT_STALE 而不是“碰巧还能用”。</summary>
+    /// <summary>清空指定客户端的快照代际；clientId 为空表示全量（daemon 退出）。</summary>
+    private void ClearSnapshotState(string? clientId)
+    {
+        if (clientId is not null)
+        {
+            _snapshotGenerationByClient.TryRemove(clientId, out _);
+            _snapshotIdByClient.TryRemove(clientId, out _);
+            return;
+        }
+
+        foreach (string key in _snapshotGenerationByClient.Keys)
+        {
+            _snapshotGenerationByClient.TryRemove(key, out _);
+        }
+
+        foreach (string key in _snapshotIdByClient.Keys)
+        {
+            _snapshotIdByClient.TryRemove(key, out _);
+        }
+    }
+
+    /// <summary>开始新快照：清空当前客户端的旧 ref，让跨快照使用返回 E_ELEMENT_STALE。</summary>
     public string BeginSnapshot()
     {
         lock (_refGate)
         {
             lock (_gate)
             {
-                long generation = Interlocked.Increment(ref _snapshotGeneration);
+                string clientId = CurrentClientId;
+                long generation = _snapshotGenerationByClient.TryGetValue(clientId, out long current)
+                    ? current + 1
+                    : 1;
+                _snapshotGenerationByClient[clientId] = generation;
 
                 // 保留上一代 ref，才能对“旧快照 ref”返回 E_STALE_SNAPSHOT 而不是“未知 ref”。
-                // 更老的代际直接淘汰，避免容量被历史快照占满。
+                // 只淘汰当前客户端的更老代际，不能影响其他客户端。
                 List<string>? expired = null;
 
                 foreach ((string key, ElementRefEntry value) in _elements)
                 {
-                    if (value.Generation < generation - 1)
+                    if (string.Equals(value.OwnerClientId, clientId, StringComparison.Ordinal) &&
+                        value.Generation < generation - 1)
                     {
                         (expired ??= new List<string>()).Add(key);
                     }
@@ -106,8 +146,9 @@ internal sealed partial class SessionManager
                     }
                 }
 
-                _snapshotId = "s" + Interlocked.Increment(ref _snapshotSeq);
-                return _snapshotId;
+                string snapshotId = "s" + Interlocked.Increment(ref _snapshotSeq);
+                _snapshotIdByClient[clientId] = snapshotId;
+                return snapshotId;
             }
         }
     }
@@ -120,8 +161,11 @@ internal sealed partial class SessionManager
         {
             PruneExpiredElements();
 
-            string key = ElementKey(info, hwnd);
-            long generation = Volatile.Read(ref _snapshotGeneration);
+            string clientId = CurrentClientId;
+            string key = clientId + "\u0000" + ElementKey(info, hwnd);
+            long generation = _snapshotGenerationByClient.TryGetValue(clientId, out long current)
+                ? current
+                : 0;
 
             if (_elementKeys.TryGetValue(key, out string? existingRef) &&
                 _elements.TryGetValue(existingRef, out ElementRefEntry? existing) &&
@@ -144,6 +188,7 @@ internal sealed partial class SessionManager
             {
                 Ref = reference,
                 Key = key,
+                OwnerClientId = clientId,
                 Pid = ownerPid > 0 ? ownerPid : info.ProcessId,
                 Hwnd = hwnd,
                 Generation = generation,
@@ -240,6 +285,10 @@ internal sealed partial class SessionManager
 
         ElementRefEntry? entry;
         bool staleSnapshot = false;
+        string clientId = CurrentClientId;
+        long generation = _snapshotGenerationByClient.TryGetValue(clientId, out long current)
+            ? current
+            : 0;
 
         lock (_refGate)
         lock (_gate)
@@ -248,14 +297,18 @@ internal sealed partial class SessionManager
             {
                 entry = null;
             }
+            else if (!string.Equals(entry.OwnerClientId, clientId, StringComparison.Ordinal))
+            {
+                // 其他客户端的 ref 对当前客户端等同未知，避免跨会话读取元素。
+                entry = null;
+            }
             else if (Environment.TickCount64 - entry.LastUsedTicks > ElementRefTtlMs)
             {
                 // 过期条目直接移除，避免后续按旧 runtime_id 误命中。
                 RemoveElement(key);
                 entry = null;
             }
-            else if (Volatile.Read(ref _snapshotGeneration) > 0 &&
-                     entry.Generation != Volatile.Read(ref _snapshotGeneration))
+            else if (generation > 0 && entry.Generation != generation)
             {
                 // ref 只对创建它的快照有效：跨快照使用是明确错误，而不是“碰巧还能用”。
                 entry = null;
@@ -328,7 +381,7 @@ internal sealed partial class SessionManager
 
         lock (_gate)
         {
-            tracked = _apps.Any(app => app.Pid == entryPid && IsLiveTrackedApp(app));
+            tracked = _apps.Any(app => IsOwned(app) && app.Pid == entryPid && IsLiveTrackedApp(app));
         }
 
         if (!tracked)
@@ -408,8 +461,6 @@ internal sealed partial class SessionManager
         int? maxDepth, bool? interactiveOnly, int? maxNodes, string? root, int? pid,
         string? format = null, bool newSnapshot = false)
     {
-        DisplayInfo display = EnsureEnvironmentFast();
-
         int depth = Math.Clamp(maxDepth ?? 3, 1, 10);
         // 树节点上限不能超过 ref 容量，否则返回的早期 ref 已被淘汰（E5）。
         int nodes = Math.Clamp(maxNodes ?? 300, 1, Math.Min(1024, ElementRefCapacity));
@@ -430,6 +481,7 @@ internal sealed partial class SessionManager
             }
 
             // 走完整的 ref 校验：pid 仍在会话、窗口在虚拟屏、runtime_id 失效时按指纹重定位。
+            DisplayInfo display = EnsureEnvironmentFast();
             using (UiaElementHandle handle = ResolveElementHandle(
                        root, display, out ElementRefEntry entry, out bool refreshed))
             {
@@ -465,6 +517,7 @@ internal sealed partial class SessionManager
             }
 
             hwnd = WindowManager.GetActivePopup(app.Hwnd);
+            DisplayInfo display = EnsureEnvironmentFast();
             RequireWindowOnDisplay(display, hwnd, "get_ui_tree");
             rootRuntimeId = string.Empty;
         }
@@ -882,7 +935,7 @@ internal sealed partial class SessionManager
         lock (_gate)
         {
             app = _apps.FirstOrDefault(
-                item => item.Pid == entry.Pid && IsLiveTrackedApp(item));
+                item => IsOwned(item) && item.Pid == entry.Pid && IsLiveTrackedApp(item));
         }
 
         if (app is null)
@@ -1202,7 +1255,7 @@ internal sealed partial class SessionManager
         lock (_gate)
         {
             app = _apps.FirstOrDefault(
-                item => item.Pid == entry.Pid && IsLiveTrackedApp(item));
+                item => IsOwned(item) && item.Pid == entry.Pid && IsLiveTrackedApp(item));
         }
 
         if (app is null)

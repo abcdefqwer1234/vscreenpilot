@@ -109,18 +109,22 @@ internal sealed partial class SessionManager
         }
         else if (!string.IsNullOrWhiteSpace(path))
         {
-            EnsureAppAllowed(path);
+            bool hasDirectory = Path.IsPathRooted(path) ||
+                                path.Contains('\\') ||
+                                path.Contains('/');
+            string launchPath = hasDirectory ? ResolvePath(path) : path;
+            EnsureAppAllowed(launchPath);
 
-            if (Path.IsPathRooted(path) && !File.Exists(path))
+            if (File.Exists(launchPath) == false && hasDirectory)
             {
-                throw new ToolException("E_APP_START", $"应用不存在: {path}");
+                throw new ToolException("E_APP_START", $"应用不存在: {launchPath}");
             }
 
-            exeName = Path.GetFileNameWithoutExtension(path);
+            exeName = Path.GetFileNameWithoutExtension(launchPath);
 
             if (newInstance)
             {
-                using (Process? probe = FindRunningProcess(path))
+                using (Process? probe = FindRunningProcess(launchPath))
                 {
                     hadRunningInstance = probe is not null;
                 }
@@ -128,17 +132,20 @@ internal sealed partial class SessionManager
                 var before = new HashSet<IntPtr>(
                     WindowManager.ListTopLevel().Select(item => item.Hwnd));
 
+                string? workingDirectory = Path.GetDirectoryName(launchPath);
                 var startInfo = new ProcessStartInfo
                 {
-                    FileName = path,
+                    FileName = launchPath,
                     UseShellExecute = false,
-                    WorkingDirectory = Path.GetDirectoryName(path) ?? Environment.CurrentDirectory,
+                    WorkingDirectory = string.IsNullOrEmpty(workingDirectory)
+                        ? CurrentCwd
+                        : workingDirectory,
                 };
 
                 startInfo.Arguments = BuildNewInstanceArguments(exeName, arguments, out tempProfile);
 
                 Process process = Process.Start(startInfo)
-                    ?? throw new ToolException("E_APP_START", $"无法启动应用: {path}");
+                    ?? throw new ToolException("E_APP_START", $"无法启动应用: {launchPath}");
 
                 int processId = process.Id;
                 started = true;
@@ -210,7 +217,7 @@ internal sealed partial class SessionManager
             }
             else
             {
-                Process? running = FindRunningProcess(path);
+                Process? running = FindRunningProcess(launchPath);
                 hadRunningInstance = running is not null;
 
                 if (running is not null)
@@ -227,11 +234,14 @@ internal sealed partial class SessionManager
                     var before = new HashSet<IntPtr>(
                         WindowManager.ListTopLevel().Select(item => item.Hwnd));
 
+                    string? workingDirectory = Path.GetDirectoryName(launchPath);
                     var startInfo = new ProcessStartInfo
                     {
-                        FileName = path,
+                        FileName = launchPath,
                         UseShellExecute = false,
-                        WorkingDirectory = Path.GetDirectoryName(path) ?? Environment.CurrentDirectory,
+                        WorkingDirectory = string.IsNullOrEmpty(workingDirectory)
+                            ? CurrentCwd
+                            : workingDirectory,
                     };
 
                     if (!string.IsNullOrWhiteSpace(arguments))
@@ -240,7 +250,7 @@ internal sealed partial class SessionManager
                     }
 
                     Process process = Process.Start(startInfo)
-                        ?? throw new ToolException("E_APP_START", $"无法启动应用: {path}");
+                        ?? throw new ToolException("E_APP_START", $"无法启动应用: {launchPath}");
 
                     int processId = process.Id;
                     started = true;
@@ -297,13 +307,35 @@ internal sealed partial class SessionManager
         TrackedApp? tracked;
         lock (_gate)
         {
-            tracked = _apps.FirstOrDefault(app => app.Hwnd == window.Hwnd)
-                ?? _apps.FirstOrDefault(app => app.Pid == window.Pid);
+            tracked = _apps.FirstOrDefault(app => IsOwned(app) && app.Hwnd == window.Hwnd)
+                ?? _apps.FirstOrDefault(app => IsOwned(app) && app.Pid == window.Pid);
+
+            TrackedApp? foreign = _apps.FirstOrDefault(app =>
+                !IsOwned(app) && (app.Hwnd == window.Hwnd || app.Pid == window.Pid));
+
+            if (tracked is null && foreign is not null)
+            {
+                throw new ToolException(
+                    "E_APP_OWNED",
+                    $"窗口属于另一个客户端（client={foreign.OwnerClientId}）",
+                    new JsonObject
+                    {
+                        ["hwnd"] = window.Hwnd.ToInt64(),
+                        ["pid"] = window.Pid,
+                        ["owner_client_id"] = foreign.OwnerClientId,
+                        ["owner_cwd"] = FindClientCwd(foreign.OwnerClientId),
+                    },
+                    retryable: true,
+                    hint: "让该客户端 release_environment，或为当前客户端启动一个独立实例",
+                    stage: "app");
+            }
+
             if (tracked is null)
             {
                 tracked = new TrackedApp
                 {
                     Pid = window.Pid,
+                    OwnerClientId = CurrentClientId,
                     ExePath = WindowManager.GetProcessPath(window.Pid),
                     ContentPid = contentPid,
                     ContentExePath = contentPath,
@@ -653,7 +685,7 @@ internal sealed partial class SessionManager
         string fullPath;
         try
         {
-            fullPath = Path.GetFullPath(path);
+            fullPath = ResolvePath(path);
         }
         catch
         {

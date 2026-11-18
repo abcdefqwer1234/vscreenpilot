@@ -247,8 +247,8 @@ def single_instance(exe: str, cases: list[dict]) -> None:
     first = new_client(exe).start()
     second = subprocess.run([exe], input=b"", capture_output=True, timeout=60)
     stderr = second.stderr.decode("utf-8", errors="replace").strip()
-    cases.append(case("PRT-12", "第二实例因互斥体退出（exit=3）",
-                      second.returncode == 3,
+    cases.append(case("PRT-12", "第二实例作为共享客户端接入（exit=0）",
+                      second.returncode == 0,
                       exit=second.returncode, stderr=stderr[:160]))
     first.stop()
 

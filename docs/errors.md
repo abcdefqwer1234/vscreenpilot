@@ -41,6 +41,8 @@
 | --- | --- | --- |
 | `E_NO_INTERACTIVE_DESKTOP` | 锁屏/UAC 安全桌面 | 等待用户返回普通桌面后重试；服务端会探测 |
 | `E_APP_GONE` | 目标进程已退出 | 重新 `launch_or_place_app` |
+| `E_APP_OWNED` | 窗口属于另一个 MCP 客户端 | 让该客户端 release，或为当前客户端启动独立实例 |
+| `E_SCREEN_LEASED` | 另一个客户端持有屏幕租约 | 等待其 release_environment 或空闲超时后重试 |
 | `E_DRIVER` | VDD IOCTL 失败 | `--doctor` 查看；必要时重启服务端 |
 | `E_DRIVER_OPEN` | VDD 设备打不开 | 查看 `driver.open_error`；驱动可能被其他进程占用 |
 | `E_DISPLAY` | 显示拓扑操作失败 | 检查是否有其他显示管理软件占用 |
@@ -49,6 +51,21 @@
 | `E_BUSY` | 另一个写操作正在执行，或 release 等不到只读观察结束 | 按 `details.retry_after_ms` 重试；release 请等 snapshot/capture 返回后再试 |
 | `E_RATE_LIMITED` | 请求速率超过令牌桶（默认 300 突发 / 100 每秒） | 按 `details.retry_after_ms` 退避；合并批量调用 |
 | `E_CANCELLED` | 请求被取消或会话被重置 | 不要自动重试；重新观察后再操作 |
+
+## 共享实例与 CLI（连接级）
+
+这些错误不进入 MCP 工具错误目录，通常在 proxy 握手、控制管道或连接关闭时返回。
+
+| 错误码 | 含义 | 下一步 |
+| --- | --- | --- |
+| `E_CLIENT_LIMIT` | 共享实例客户端达到 `VSP_CLIENT_LIMIT` | 关闭空闲 MCP 客户端，或提高上限 |
+| `E_INTEGRITY_MISMATCH` | 管道客户端与 daemon 完整性不一致，或完整性查询失败 | 用相同权限启动；仅测试/排障可设 `VSP_ALLOW_INTEGRITY_MISMATCH=1` |
+| `E_HANDSHAKE` | 缺少/非法 VSP/1 握手 | 升级客户端与服务端到同一版本 |
+| `E_VERSION_MISMATCH` | proxy 与 daemon 版本不一致 | 关闭旧实例后重试 |
+| `E_NO_INSTANCE` | `--cli` 查询时没有活跃实例 | 先启动 MCP 客户端；`--cli snapshot/screen` 会自动走本地会话 |
+| `E_INSTANCE_BUSY` | 实例存在但控制管道不可用（多为旧版本） | 关闭旧实例后重试，或 `--cli stop --force` |
+| `E_RESPONSE_TOO_LARGE` | 控制响应超过 4MB | 减小 `max_nodes` 或 `--all` 范围 |
+| `E_MESSAGE_TOO_LARGE` | 单条 MCP 消息或总输入预算超限 | 拆分请求；调整 `VSP_MAX_MESSAGE_MB` / `VSP_TOTAL_BUFFER_MB` |
 
 ## 感知、文件与脚本
 
@@ -208,6 +225,18 @@
 ### E_APP_GONE
 
 目标进程已退出（stage: `app`）
+
+<a id="e_app_owned"></a>
+
+### E_APP_OWNED
+
+窗口属于另一个 MCP 客户端（stage: `app`）。多客户端共享实例时，窗口按客户端归属；让持有者 `release_environment`，或为当前客户端启动独立实例。
+
+<a id="e_screen_leased"></a>
+
+### E_SCREEN_LEASED
+
+另一个客户端持有屏幕租约（stage: `lease`）。同一时刻只允许一个客户端执行 GUI/视觉操作；等待对方 `release_environment` 或租约空闲超时（默认 60s）后重试。
 
 <a id="e_driver_open"></a>
 

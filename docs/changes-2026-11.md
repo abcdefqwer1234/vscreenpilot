@@ -19,9 +19,19 @@
 - **安装版**：Inno Setup per-user 安装包，默认装到 `%LOCALAPPDATA%\Programs\VScreenPilot`，
   可选加入用户 PATH；同时保留绿色 zip。
 
+## 0.2.0 多客户端共享实例
+
+- **共享实例**：首个 MCP 进程优先 spawn 独立 `--daemon`（`CREATE_BREAKAWAY_FROM_JOB`，失败回退普通启动/进程内 daemon）；后续进程通过 `mcp` 命名管道做瘦代理。第二个工作目录不再因全局互斥体退出 3。
+- **per-client 上下文**：每个连接有独立 refs/apps/epoch/帧/artifacts/cwd/脚本能力；`get_log`、`snapshot.windows`、`wait_for` 文本候选按客户端过滤。
+- **屏幕租约**：`ScreenLease` 串行化 GUI/视觉操作；`VSP_SCREEN_LEASE_IDLE_MS` TTL 抢占、`VSP_SCREEN_LEASE_WAIT_MS` 等待、`keep_foreground` 延长 30s；`release_environment` 成功即归还。
+- **生命周期与资源**：`VSP_DAEMON_IDLE_MS` 空闲退出（首次 10s 连接窗口）；共享 TraceLog、`VSP_TOTAL_BUFFER_MB` 总输入预算、daemon 级共享限流。
+- **CLI 管理视图**：`--cli env|snapshot|screen|status|stop`；`snapshot` 返回 `apps[]`；`status` 含 `client_list`/`screen_lease`；`stop` 有活跃客户端时需 `--force`。
+- **诊断**：`InstanceRegistry`、`--doctor`、`--cli env` 无实例只读；`E_CLIENT_LIMIT`/`E_INTEGRITY_MISMATCH`/`E_HANDSHAKE` 等连接级错误；控制响应 4MB 上限。
+
 ## 行为变化（可能影响旧调用）
 
-- `save_path` 必须是**绝对路径**；指定后就是唯一正式产物，不再额外写 artifact。
+- **第二个实例不再 exit 3**：现在作为共享客户端接入；需要独立会话时用不同 `--profile`。
+- `save_path` 绝对路径或相对调用方 cwd 的路径；指定后就是唯一正式产物，不再额外写 artifact。
 - 参数校验递归到嵌套对象：类型/范围/枚举/oneOf/unknown field 全部返回 `E_INVALID_ARG`，
   错误带 `path`。
 - `click` 的 `mode` 仍兼容，但推荐 `channel=auto|uia|message|input`。

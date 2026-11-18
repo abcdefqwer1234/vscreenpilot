@@ -69,6 +69,33 @@ internal sealed partial class SessionManager
 
         _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
 
+        // 只有当前屏幕租约持有者的 apps 算“本会话应用”；没有租约时
+        // 不把其他客户端的窗口误当成本会话窗口。
+        string? holder = LeaseHolderProvider?.Invoke();
+
+        if (string.IsNullOrWhiteSpace(holder))
+        {
+            return false;
+        }
+
+        lock (_gate)
+        {
+            return _apps.Any(app =>
+                string.Equals(app.OwnerClientId, holder, StringComparison.Ordinal) &&
+                app.Pid == (int)pid &&
+                IsLiveTrackedApp(app));
+        }
+    }
+
+    private bool IsAnyClientWindow(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
+
         lock (_gate)
         {
             return _apps.Any(app => app.Pid == (int)pid && IsLiveTrackedApp(app));
@@ -91,8 +118,13 @@ internal sealed partial class SessionManager
 
                 if (!IsTrackedWindow(foreground))
                 {
-                    // 用户主动切换的非本会话窗口：记住它，作为归还目标。
-                    _lastUserForeground = foreground;
+                    // 用户主动切换的非本会话窗口才作为归还目标；
+                    // 其他客户端的 app 不算用户窗口，否则会在租约切换时抢前台。
+                    if (!IsAnyClientWindow(foreground))
+                    {
+                        _lastUserForeground = foreground;
+                    }
+
                     continue;
                 }
 

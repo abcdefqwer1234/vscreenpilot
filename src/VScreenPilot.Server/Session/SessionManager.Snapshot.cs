@@ -299,7 +299,7 @@ internal sealed partial class SessionManager
 
         lock (_gate)
         {
-            foreach (TrackedApp tracked in _apps)
+            foreach (TrackedApp tracked in _apps.Where(IsOwned))
             {
                 windows.Add((JsonNode)new JsonObject
                 {
@@ -324,7 +324,7 @@ internal sealed partial class SessionManager
         {
             lock (_gate)
             {
-                foregroundTracked = _apps.Any(item => item.Pid == foregroundInfo.Pid);
+                foregroundTracked = _apps.Any(item => IsOwned(item) && item.Pid == foregroundInfo.Pid);
             }
         }
 

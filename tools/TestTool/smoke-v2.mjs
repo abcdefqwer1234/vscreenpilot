@@ -17,14 +17,16 @@ function check(name, condition, detail = '') {
   }
 }
 
-const env = { VSP_NO_WARMUP: '1' };
+// 独立 profile：避免共享实例上线后把协议冒烟挂到用户真实的 default 实例上。
+const profile = process.env.VSP_PROFILE ?? `smoke-v2-${process.pid}`;
+const env = { VSP_NO_WARMUP: '1', VSP_PROFILE: profile, VSP_DAEMON_IDLE_MS: '1000' };
 
 const client = new McpClient(EXE, { env });
 await client.start();
 
 const list = await client.request('tools/list', {});
 const tools = list.result?.tools ?? [];
-check('工具数量为 18', tools.length === 18, String(tools.length));
+check('工具数量为 22', tools.length === 22, String(tools.length));
 
 const names = tools.map((tool) => tool.name);
 const sorted = [...names].sort((a, b) => a.localeCompare(b, 'en'));
@@ -101,11 +103,19 @@ check('release 后仍可继续调用', afterRelease.ok, afterRelease.code ?? '')
 
 await client.stop();
 
-const fallback = new McpClient(EXE, { env, protocolVersion: '2099-01-01' });
+const fallback = new McpClient(EXE, {
+  env: { ...env, VSP_PROFILE: `${env.VSP_PROFILE ?? 'default'}-fallback-${process.pid}` },
+  protocolVersion: '2099-01-01',
+});
 await fallback.start();
 const init = fallback.lastInitialize ?? null;
-const negotiated = fallback.negotiatedVersion ?? null;
-check('未知协议版本回退到最新支持版本', negotiated === '2025-06-18', String(negotiated));
+const initError = init?.error;
+const supportedVersions = initError?.data?.supported ?? [];
+check(
+  '未知协议版本被明确拒绝并列出支持版本',
+  initError?.code === -32022 && supportedVersions.includes('2025-06-18'),
+  JSON.stringify(init ?? {}),
+);
 await fallback.stop();
 
 if (failed > 0) {

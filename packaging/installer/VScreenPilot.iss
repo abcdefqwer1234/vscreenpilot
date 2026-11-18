@@ -1,15 +1,15 @@
 ; VScreenPilot per-user installer (Inno Setup 6.3+).
-; Build with: powershell -File scripts/build-installer.ps1 -Version 0.1.0
+; Build with: powershell -File scripts/build-installer.ps1 -Version 0.2.0
 ; The installer copies the self-contained exe and docs into
 ; %LOCALAPPDATA%\Programs\VScreenPilot and optionally adds that folder to the
 ; current user's PATH. It never requires administrator rights.
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.0"
+  #define MyAppVersion "0.2.0"
 #endif
 
 #ifndef SourceDir
-  #define SourceDir "..\..\artifacts\release\v0.1.0\server"
+  #define SourceDir "..\..\artifacts\release\v0.2.0\server"
 #endif
 
 #ifndef RepoRoot

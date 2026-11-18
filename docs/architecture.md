@@ -6,10 +6,11 @@
 
 ```
 MCP 传输层   官方 ModelContextProtocol SDK（stdio；协议协商/分帧/取消/进度由 SDK 负责）
-工具层       McpServer：工具目录、严格参数校验、写操作调度、进度、JSONL 追踪
-会话层       SessionManager：虚拟屏、应用接管、快照、UIA、输入、断言、脚本
+             多客户端：首个进程优先 spawn 独立 daemon（PipeHost），失败回退进程内 daemon；后续进程用 StdioProxy 转发
+工具层       McpServer：工具目录、严格参数校验、写操作调度、进度、JSONL 追踪、屏幕租约
+会话层       SessionManager：虚拟屏、应用接管、快照、UIA、输入、断言、脚本、per-client 上下文
 感知层       ScreenCapture（复用 GDI 资源）/ PngWriter（池化 + Up 过滤）/ PngReader / TemplateMatcher
-平台层       Interop（Win32/COM）、DisplayTopology、VddDevice、JobObject、CursorGuard
+平台层       Interop（Win32/COM）、DisplayTopology、VddDevice、JobObject、CursorGuard、InstanceRegistry
 ```
 
 ## 2. 并发模型
@@ -30,6 +31,10 @@ MCP 传输层   官方 ModelContextProtocol SDK（stdio；协议协商/分帧/�
   Word `bosa_sdm_msword` 对话框走这条路径。
 - **UWP**：顶层类是 `ApplicationFrameWindow`，内容进程没有独立 HWND；UIA 从 frame 取树，
   ref 归属按 HWND 的进程校验，避免跨进程误判。
+- **多客户端共享**：首个 MCP 进程优先 spawn 独立 `--daemon`（Job breakaway，失败回退进程内 daemon），
+  由它启动 `PipeHost`/`ctl`；后续进程只做 `StdioProxy`。每个连接有独立 `ClientContext`
+  （refs/apps/epoch/帧/artifacts/路径基准）；`ScreenLease` 保证同一时刻只有一个客户端执行 GUI/视觉操作，
+  其他客户端得到 `E_SCREEN_LEASED`，空闲后 daemon 按 `VSP_DAEMON_IDLE_MS` 退出。
 
 ## 3. 快照模型
 

@@ -111,6 +111,7 @@ public sealed class WriteSchedulerTests
     }
 }
 
+[Collection("ProfileEnvironment")]
 public sealed class ProfileTests
 {
     [Fact]

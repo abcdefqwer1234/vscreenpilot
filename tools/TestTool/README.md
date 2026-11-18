@@ -29,6 +29,8 @@ tools/TestTool/
 ```powershell
 dotnet publish src/VScreenPilot.Server/VScreenPilot.Server.csproj -c Release -o artifacts/server
 node tools/TestTool/smoke-v2.mjs
+node tools/TestTool/share-smoke.mjs
+node tools/TestTool/daemon-smoke.mjs
 node tools/TestTool/run-all.mjs --arm A --task all --runs 3
 node tools/TestTool/run-all.mjs --arm B --task t1,t4 --runs 3
 node tools/TestTool/run-all.mjs --stability --sessions 50

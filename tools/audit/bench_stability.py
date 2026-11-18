@@ -235,11 +235,12 @@ def faults(exe: str, cases: list[dict]) -> None:
     code = interrupt.wait(30)
     cases.append(case("FAULT-08", "调用中 EOF 能退出", code is not None, exit=code))
 
-    # 9 重复实例（需要一个活跃实例）
+    # 9 重复实例（共享到同一个 daemon，空 stdin 应正常退出 0）
     holder_client = McpClient(exe).start()
     second = subprocess.run([exe], input=b"", capture_output=True, timeout=60)
     holder_client.stop()
-    cases.append(case("FAULT-09", "重复实例被拒绝", second.returncode == 3, exit=second.returncode))
+    cases.append(case("FAULT-09", "重复实例作为共享客户端接入（exit=0）",
+                      second.returncode == 0, exit=second.returncode))
 
     # 10-12 新会话
     client = McpClient(exe).start()

@@ -969,11 +969,28 @@ internal sealed partial class SessionManager
         }
     }
 
+    private void BlockUiaPid(int pid)
+    {
+        lock (_gate)
+        {
+            string clientId = CurrentClientId;
+
+            if (!_uiaBlockedPids.TryGetValue(clientId, out HashSet<int>? blocked))
+            {
+                blocked = new HashSet<int>();
+                _uiaBlockedPids[clientId] = blocked;
+            }
+
+            blocked.Add(pid);
+        }
+    }
+
     private bool TryUiaInvoke(int x, int y, int pid)
     {
         lock (_gate)
         {
-            if (_uiaBlockedPids.Contains(pid))
+            if (_uiaBlockedPids.TryGetValue(CurrentClientId, out HashSet<int>? blocked) &&
+                blocked.Contains(pid))
             {
                 return false;
             }
@@ -993,11 +1010,7 @@ internal sealed partial class SessionManager
             if (!invokeTask.Wait(3000))
             {
                 ResetUia();
-                lock (_gate)
-                {
-                    _uiaBlockedPids.Add(pid);
-                }
-
+                BlockUiaPid(pid);
                 _log.Warn($"UIA 坐标触发超时，已熔断 pid={pid}");
                 return false;
             }
@@ -1008,21 +1021,14 @@ internal sealed partial class SessionManager
             // 本会话内对该 pid 熔断，后续 auto 直接走 message，避免反复挂起。
             if (!result && stopwatch.ElapsedMilliseconds >= 800)
             {
-                lock (_gate)
-                {
-                    _uiaBlockedPids.Add(pid);
-                }
+                BlockUiaPid(pid);
             }
 
             return result;
         }
         catch
         {
-            lock (_gate)
-            {
-                _uiaBlockedPids.Add(pid);
-            }
-
+            BlockUiaPid(pid);
             return false;
         }
     }
@@ -1577,7 +1583,8 @@ internal sealed partial class SessionManager
             // 命中窗口或其顶层根窗口属于本会话应用即可（兼容 UWP/宿主窗口）。
             // 同时校验窗口仍属于登记时的进程，避免 PID 复用后误判为可操作目标。
             tracked = _apps.FirstOrDefault(
-                app => (app.Pid == (int)targetPid || app.Pid == (int)rootPid) &&
+                app => IsOwned(app) &&
+                       (app.Pid == (int)targetPid || app.Pid == (int)rootPid) &&
                        IsLiveTrackedApp(app));
         }
 

@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.2.0 — 2026-11-18（多客户端共享实例）
+
+### Added
+
+- **多客户端共享实例**：首个 MCP 进程优先 spawn 独立 `--daemon`（`CREATE_BREAKAWAY_FROM_JOB`，Job 不允许时回退普通启动，spawn 失败再回退进程内 daemon）；后续进程作为瘦代理通过命名管道接入，第二个工作目录不再因全局互斥体 exit 3。
+- **daemon 生命周期**：`VSP_DAEMON_IDLE_MS`（默认 5000，`0` 立即退出）在最后一个客户端断开后退出；首次启动保留 10s 连接窗口。
+- **屏幕租约**：`VSP_SCREEN_LEASE_IDLE_MS` / `VSP_SCREEN_LEASE_WAIT_MS`；TTL 抢占写 `screen_lease_stolen`；`keep_foreground` 延长 30s 并暂停 FocusGuard。
+- **per-client 隔离**：refs/apps/epoch/帧/artifacts/日志归属按客户端隔离；断开时释放租约并清理自己的窗口。
+- **CLI 管理视图**：`--cli env|snapshot|screen|status|stop`；`snapshot` 返回管理员 `apps[]`（保留旧顶层字段）；`stop` 有活跃客户端时需 `--force`；`env --ensure` 明确提示只读忽略。
+- **资源与观测**：共享 TraceLog、`VSP_TOTAL_BUFFER_MB` 跨连接输入预算、daemon 级共享限流、`session.clients[]` / `client_list` / `get_log` 按客户端过滤。
+- **路径基准**：`save_path`/`target_path`/相对 exe 按调用方 cwd 解析，`VSP_CLIENT_CWD` 可覆盖。
+- **测试**：`share-smoke.mjs`（共享/CLI/空闲退出）、`daemon-smoke.mjs`（daemon 崩溃/首个 proxy 崩溃）、租约与消息预算单测。
+
+### Fixed
+
+- `release_environment` 成功后真正归还屏幕租约（`ForceRelease`，此前 holder 会残留到 TTL）；手动 `--daemon` 首次连接窗口恢复为 10s。
+- daemon/进程内 daemon 退出顺序改为停管道 → 清理 session → 删 registry → 放互斥体；`InstanceRegistry.Delete` 校验 pid，避免删掉新实例登记。
+- `AttachToSpawnedDaemon` 使用单一 15s deadline 并复用 proxy 日志；握手改缓冲读；`MessageLimiter` 批量预留预算；`PipeHost` accept 不再被握手阻塞。
+- `StdioProxy` 在 daemon 主动断开/崩溃时退出 3 并输出明确错误，不再伪装成正常退出 0。
+- `get_environment` 增加 `session.role/daemon_pid/client_id/client_cwd/client_roots/clients[]/other_clients/screen_lease`；`release_environment` 增加 `client_id/display_kept_reason/screen_lease_released`；`--cli status` 增加 `client_list`。
+- `get_log` 按 `client_id` 过滤并支持 `include_other_clients`；proxy 日志改为 `client-<pid>.log`。
+- `save_path`/`target_path` 的相对路径按调用方 cwd 解析；补相对路径单测。
+- `Profile` 超长名称截断+哈希；握手拒绝缺失/相对 cwd；完整性查询失败按拒绝处理。
+- 显示 ADD 串行化并只认本次新出现的 device；`RemoveDisplay`/Dispose 兜底校验 device；控制管道请求限长；`stop` 先响应再退出。
+- `FocusGuard` 只认租约持有者 apps；`focused_element` 校验 PID 归属；`_uiaBlockedPids` 按客户端隔离。
+- 日志文件按进程 pid 分离，proxy/daemon 不再混写；trace 文件名加随机后缀。
+- 默认 profile 不再静默回退 `Local\` 互斥体。
+- MCP 管道单条消息上限（`VSP_MAX_MESSAGE_MB`，默认 16），超限关闭连接。
+- 命名管道客户端完整性校验；默认拒绝 elevated/普通双向不一致。
+- `find_element`/`get_ui_tree` 无目标时先返回 `E_NO_TARGET`，不再为了报错而挂屏。
+- `get_environment` 增加 `client_id`/`screen_lease`；`snapshot` 的 windows/foreground、`wait_for` 文本候选、`read_screen_text` tracked 范围按客户端过滤。
+- 修复 `snapshot`/`release_environment` 并发时快照字典的读写竞争。
+- 修复 per-client artifacts 导致保留策略失效；daemon 运行期间每小时补扫一次旧目录。
+- 修复 `launch_or_place_app{new_instance:false}` 仍按 daemon cwd 解析相对路径。
+- 修复 proxy 在已连接后遇到 IO 失败时回退成新 daemon、丢失已消费的 `initialize`。
+- 修复日志清理按旧文件名解析导致新日志永不清理；`get_log(source=file)` 不再跨 profile 读取。
+- 修复 `InstanceRegistry` 在 `dotnet` 运行/改名 exe 下把存活实例判成 stale。
+- 应用白名单改为客户端与全局取交集，空客户端白名单不再绕过全局限制。
+- `release_environment` 失败时不再丢弃屏幕租约；释放顺序改为先写锁后屏幕租约。
+
 ## 0.1.0 — 2026-11-18（首次公开发布）
 
 ### Added

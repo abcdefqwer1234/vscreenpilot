@@ -179,6 +179,9 @@ class McpClient:
         env = dict(self.env)
         if not warmup:
             env.setdefault("VSP_NO_WARMUP", "1")
+        # 审计脚本每个 client 都当作独立会话：最后一个 client 断开后让 daemon 立即退出，
+        # 避免下一个 McpClient 连到残留 daemon、复用上一阶段的窗口/租约。
+        env.setdefault("VSP_DAEMON_IDLE_MS", "0")
         self.start_monotonic = time.perf_counter()
         self.proc = subprocess.Popen(
             [self.exe, *args],
@@ -317,7 +320,25 @@ class McpClient:
         if code is None:
             kill_tree(self.proc.pid)
             code = self.proc.poll()
+        # daemon 会在最后一个客户端断开后删 registry；等它删完再让下一阶段启动，
+        # 否则下一个 client 会连到旧会话。
+        self.wait_daemon_exit(6.0)
         return {"exit_code": code, "cleanup_ms": elapsed, "stderr": self.stderr[-4000:]}
+
+    def daemon_registry_path(self) -> str:
+        profile = self.env.get("VSP_PROFILE") or "default"
+        base = self.env.get("LOCALAPPDATA") or os.path.expanduser("~")
+        return os.path.join(base, "VScreenPilot", "instances", f"{profile}.json")
+
+    def wait_daemon_exit(self, timeout: float = 6.0) -> bool:
+        path = self.daemon_registry_path()
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not os.path.exists(path):
+                time.sleep(0.15)
+                return True
+            time.sleep(0.05)
+        return False
 
     def kill(self) -> None:
         if self.proc:

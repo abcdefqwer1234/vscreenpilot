@@ -55,6 +55,13 @@ jobs:
         # 不挂虚拟屏：只验证 initialize / tools/list / schema / 错误形状 / resources。
         run: python tools/audit/smoke_no_display.py --exe artifacts/server/VScreenPilot.exe
 
+      - name: Shared-instance smoke (no display)
+        # 共享实例/独立 daemon/CLI：脚本自带随机 profile 与 VSP_NO_WARMUP。
+        run: |
+          node tools/TestTool/smoke-v2.mjs
+          node tools/TestTool/share-smoke.mjs
+          node tools/TestTool/daemon-smoke.mjs
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:

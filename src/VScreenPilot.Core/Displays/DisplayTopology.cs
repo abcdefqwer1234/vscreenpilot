@@ -79,6 +79,28 @@ public static class DisplayTopology
         return List().FirstOrDefault(d => d.IsParsec && d.Attached);
     }
 
+    public static DisplayInfo? FindParsecDisplayByDevice(string? deviceName)
+    {
+        if (string.IsNullOrWhiteSpace(deviceName))
+        {
+            return null;
+        }
+
+        return List().FirstOrDefault(d =>
+            d.IsParsec && d.Attached &&
+            string.Equals(d.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static bool WaitForDisplayGone(string? deviceName, TimeSpan timeout)
+    {
+        if (string.IsNullOrWhiteSpace(deviceName))
+        {
+            return true;
+        }
+
+        return WaitUntil(() => FindParsecDisplayByDevice(deviceName) is null, timeout);
+    }
+
     public static DisplayInfo? FindParsecAdapter()
     {
         return List().FirstOrDefault(d => d.IsParsec);
@@ -94,6 +116,28 @@ public static class DisplayTopology
             {
                 found = FindParsecAdapter();
                 return found is not null && (found.Attached || found.Width > 0);
+            },
+            timeout);
+
+        display = found;
+        return ok;
+    }
+
+    /// <summary>
+    /// 等待“本次新出现的”Parsec 屏；不能直接取第一个，否则多个 profile 会配错屏。
+    /// </summary>
+    public static bool WaitForNewParsecDisplay(
+        IReadOnlySet<string> existingDevices, TimeSpan timeout, out DisplayInfo? display)
+    {
+        DisplayInfo? found = null;
+
+        bool ok = WaitUntil(
+            () =>
+            {
+                found = List().FirstOrDefault(item =>
+                    item.IsParsec &&
+                    !existingDevices.Contains(item.DeviceName));
+                return found is not null;
             },
             timeout);
 

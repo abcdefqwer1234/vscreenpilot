@@ -19,18 +19,16 @@ internal sealed class TraceLog : IDisposable
     {
         try
         {
-            string root = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "VScreenPilot",
-                "sessions");
+            string root = SessionRoot();
             Directory.CreateDirectory(root);
             CleanupOldSessions(root);
 
             string profile = Profile.Resolve();
             string profilePart = profile == "default" ? string.Empty : $"{profile}-";
+            string nonce = Guid.NewGuid().ToString("N")[..6];
             FilePath = Path.Combine(
                 root,
-                $"session-{profilePart}{DateTime.Now:yyyyMMdd-HHmmss}-{Environment.ProcessId}.jsonl");
+                $"session-{profilePart}{DateTime.Now:yyyyMMdd-HHmmss}-{Environment.ProcessId}-{nonce}.jsonl");
             _writer = new StreamWriter(
                 new FileStream(FilePath, FileMode.CreateNew, FileAccess.Write, FileShare.Read),
                 new UTF8Encoding(false))
@@ -45,12 +43,29 @@ internal sealed class TraceLog : IDisposable
         }
     }
 
-    /// <summary>会话追踪不无限增长：删除 7 天前的文件，并最多保留 50 份。</summary>
+    private static string SessionRoot() => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "VScreenPilot",
+        "sessions");
+
+    /// <summary>daemon 周期维护入口；目录不存在时静默跳过。</summary>
+    internal static void CleanupSessions()
+    {
+        string root = SessionRoot();
+
+        if (Directory.Exists(root))
+        {
+            CleanupOldSessions(root);
+        }
+    }
+
+    /// <summary>会话追踪不无限增长：删除 7 天前的文件，并最多保留 50 份（不动最近 1 小时内仍在写的）。</summary>
     private static void CleanupOldSessions(string root)
     {
         try
         {
             DateTime cutoff = DateTime.UtcNow.AddDays(-7);
+            DateTime activeCutoff = DateTime.UtcNow.AddHours(-1);
             List<FileInfo> files = new DirectoryInfo(root)
                 .EnumerateFiles("session-*.jsonl")
                 .OrderByDescending(file => file.LastWriteTimeUtc)
@@ -58,16 +73,21 @@ internal sealed class TraceLog : IDisposable
 
             for (int index = 0; index < files.Count; index++)
             {
-                if (index >= 50 || files[index].LastWriteTimeUtc < cutoff)
+                bool expired = files[index].LastWriteTimeUtc < cutoff;
+                bool overLimit = index >= 50 && files[index].LastWriteTimeUtc < activeCutoff;
+
+                if (!expired && !overLimit)
                 {
-                    try
-                    {
-                        files[index].Delete();
-                    }
-                    catch
-                    {
-                        // 正在写入的文件删不掉，下一轮再试。
-                    }
+                    continue;
+                }
+
+                try
+                {
+                    files[index].Delete();
+                }
+                catch
+                {
+                    // 正在写入的文件删不掉，下一轮再试。
                 }
             }
         }
@@ -113,11 +133,13 @@ internal sealed class TraceLog : IDisposable
         int textBytes,
         int imageBytes,
         string? channel,
-        string? stage)
+        string? stage,
+        string? clientId = null)
     {
         Write("tool_call", new JsonObject
         {
             ["request_id"] = requestId,
+            ["client_id"] = clientId,
             ["tool"] = tool,
             ["args"] = arguments,
             ["ms"] = Math.Round(milliseconds, 2),

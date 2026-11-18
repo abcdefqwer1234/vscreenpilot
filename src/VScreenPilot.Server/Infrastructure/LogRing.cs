@@ -4,7 +4,8 @@ using System.Text.Json.Nodes;
 
 namespace VScreenPilot.Infrastructure;
 
-public sealed record LogEntry(DateTimeOffset Time, string Level, string Message);
+public sealed record LogEntry(
+    DateTimeOffset Time, string Level, string Message, string? ClientId = null);
 
 /// <summary>内存环形日志 + 按天/按大小轮转的文件日志（文件用于崩溃后取证）。</summary>
 public sealed class LogRing : IDisposable
@@ -17,6 +18,7 @@ public sealed class LogRing : IDisposable
     private readonly object _gate = new();
     private readonly Queue<LogEntry> _entries = new();
     private readonly int _capacity;
+    private readonly bool _clientLog;
     private readonly string? _directory;
     private readonly BlockingCollection<string>? _pending;
     private readonly Thread? _writerThread;
@@ -25,9 +27,13 @@ public sealed class LogRing : IDisposable
     private DateTime _fileDate;
     private LogEntry? _lastError;
 
-    public LogRing(int capacity = 500, bool fileEnabled = true)
+    /// <summary>由 SessionManager 注入；用于把日志归到当前 MCP 客户端。</summary>
+    public static Func<string?>? ClientIdProvider { get; set; }
+
+    public LogRing(int capacity = 500, bool fileEnabled = true, bool clientLog = false)
     {
         _capacity = capacity;
+        _clientLog = clientLog;
 
         if (!fileEnabled)
         {
@@ -84,7 +90,18 @@ public sealed class LogRing : IDisposable
 
     public void Add(string level, string message)
     {
-        var entry = new LogEntry(DateTimeOffset.Now, level, message);
+        string? clientId = null;
+
+        try
+        {
+            clientId = ClientIdProvider?.Invoke();
+        }
+        catch
+        {
+            // 归属解析失败不影响日志。
+        }
+
+        var entry = new LogEntry(DateTimeOffset.Now, level, message, clientId);
 
         lock (_gate)
         {
@@ -107,7 +124,8 @@ public sealed class LogRing : IDisposable
 
         try
         {
-            _pending.TryAdd($"{entry.Time:O} [{level}] {message}");
+            string clientPart = string.IsNullOrWhiteSpace(clientId) ? string.Empty : $" [client={clientId}]";
+            _pending.TryAdd($"{entry.Time:O} [{level}]{clientPart} {message}");
         }
         catch (InvalidOperationException)
         {
@@ -117,13 +135,23 @@ public sealed class LogRing : IDisposable
 
     private string BuildPath(DateTime date)
     {
-        // 多 profile 并行时日志必须能按 profile 归因；default 保持旧文件名。
+        // profile + pid：共享实例里 daemon 和 proxy 是不同进程，不能写同一个文件；
+        // proxy 用 client-*，避免 daemon 的 get_log(source=file) 在回退时读到它。
+        if (_clientLog)
+        {
+            return Path.Combine(
+                _directory!,
+                $"client-{Environment.ProcessId}-{date:yyyyMMdd}.log");
+        }
+
         string profile = Profile.Resolve();
         string suffix = profile == "default" ? string.Empty : $".{profile}";
-        return Path.Combine(_directory!, $"server{suffix}-{date:yyyyMMdd}.log");
+        return Path.Combine(
+            _directory!,
+            $"server{suffix}-{Environment.ProcessId}-{date:yyyyMMdd}.log");
     }
 
-    private void CleanupOldLogs()
+    internal void CleanupOldLogs()
     {
         if (_directory is null)
         {
@@ -134,10 +162,31 @@ public sealed class LogRing : IDisposable
 
         try
         {
-            foreach (string file in Directory.EnumerateFiles(_directory, "server*.log*"))
+            IEnumerable<string> files = Directory.EnumerateFiles(_directory, "server*.log*")
+                .Concat(Directory.EnumerateFiles(_directory, "client*.log*"));
+
+            foreach (string file in files)
             {
                 string name = Path.GetFileName(file);
-                string stamp = name.Length >= 14 ? name.Substring(7, 8) : string.Empty;
+
+                // 文件名可能是：
+                //   server-20261118.log                  （旧默认 profile）
+                //   server.<profile>-20261118.log         （旧 profile）
+                //   server-<pid>-20261118.log             （新默认 profile）
+                //   server.<profile>-<pid>-20261118.log   （新 profile）
+                // 统一取 ".log" 前最后一个 '-' 后面的 8 位日期。
+                int logIndex = name.IndexOf(".log", StringComparison.OrdinalIgnoreCase);
+
+                if (logIndex < 0)
+                {
+                    continue;
+                }
+
+                string stem = name[..logIndex];
+                int dash = stem.LastIndexOf('-');
+                string stamp = dash >= 0 && stem.Length - dash - 1 == 8
+                    ? stem[(dash + 1)..]
+                    : string.Empty;
 
                 if (DateTime.TryParseExact(
                         stamp, "yyyyMMdd", null,
@@ -177,6 +226,7 @@ public sealed class LogRing : IDisposable
                         _fileDate = DateTime.Today;
                         _filePath = BuildPath(_fileDate);
                         CloseWriter(ref stream, ref writer);
+                        CleanupOldLogs();
                         OpenWriter(ref stream, ref writer);
                     }
 
@@ -285,7 +335,7 @@ public sealed class LogRing : IDisposable
         }
     }
 
-    /// <summary>读取日志文件尾部；重启后仍可取证。优先读最新文件。</summary>
+    /// <summary>读取日志文件尾部；重启后仍可取证。优先读本进程文件，其次同 profile 的最新文件。</summary>
     public IReadOnlyList<string> ReadFileTail(int count)
     {
         if (_directory is null)
@@ -295,13 +345,27 @@ public sealed class LogRing : IDisposable
 
         try
         {
-            string? newest = Directory.EnumerateFiles(_directory, "server*.log*")
-                .Select(path => new FileInfo(path))
-                .Where(file => file.Length > 0)
-                .OrderByDescending(file => file.LastWriteTimeUtc)
-                .ThenByDescending(file => file.Name, StringComparer.Ordinal)
-                .Select(file => file.FullName)
-                .FirstOrDefault();
+            string? newest = null;
+
+            if (_filePath is not null && File.Exists(_filePath) && new FileInfo(_filePath).Length > 0)
+            {
+                newest = _filePath;
+            }
+            else
+            {
+                // 按角色 + profile 过滤，避免 get_log(source=file) 读到 proxy/其他 profile 的日志。
+                string profile = Profile.Resolve();
+                string prefix = _clientLog
+                    ? "client-"
+                    : profile == "default" ? "server-" : $"server.{profile}-";
+                newest = Directory.EnumerateFiles(_directory, prefix + "*.log*")
+                    .Select(path => new FileInfo(path))
+                    .Where(file => file.Length > 0)
+                    .OrderByDescending(file => file.LastWriteTimeUtc)
+                    .ThenByDescending(file => file.Name, StringComparer.Ordinal)
+                    .Select(file => file.FullName)
+                    .FirstOrDefault();
+            }
 
             if (newest is null)
             {
@@ -346,17 +410,27 @@ public sealed class LogRing : IDisposable
         return array;
     }
 
-    public static JsonObject ToJson(LogEntry entry) =>
-        new()
+    public static JsonObject ToJson(LogEntry entry)
+    {
+        var json = new JsonObject
         {
             ["time"] = entry.Time.ToString("O"),
             ["level"] = entry.Level,
             ["message"] = entry.Message,
         };
 
+        if (!string.IsNullOrWhiteSpace(entry.ClientId))
+        {
+            json["client_id"] = entry.ClientId;
+        }
+
+        return json;
+    }
+
     public static LogEntry? Parse(string line)
     {
-        // 格式: 2026-11-09T13:12:19.0000000+08:00 [INFO] message
+        // 格式: 2026-11-09T13:12:19.0000000+08:00 [INFO] [client=c1] message
+        // 旧文件没有 [client=...]，按“服务端日志”处理。
         int levelStart = line.IndexOf(" [", StringComparison.Ordinal);
         int levelEnd = levelStart < 0 ? -1 : line.IndexOf("] ", levelStart, StringComparison.Ordinal);
 
@@ -364,10 +438,21 @@ public sealed class LogRing : IDisposable
             levelEnd > levelStart &&
             DateTimeOffset.TryParse(line[..levelStart], out DateTimeOffset time))
         {
-            return new LogEntry(
-                time,
-                line[(levelStart + 2)..levelEnd],
-                line[(levelEnd + 2)..]);
+            string message = line[(levelEnd + 2)..];
+            string? clientId = null;
+
+            if (message.StartsWith("[client=", StringComparison.Ordinal))
+            {
+                int clientEnd = message.IndexOf("] ", StringComparison.Ordinal);
+
+                if (clientEnd > "[client=".Length)
+                {
+                    clientId = message["[client=".Length..clientEnd];
+                    message = message[(clientEnd + 2)..];
+                }
+            }
+
+            return new LogEntry(time, line[(levelStart + 2)..levelEnd], message, clientId);
         }
 
         return null;
