@@ -14,7 +14,16 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import vsp_client  # noqa: E402
 from vsp_client import McpClient, write_json  # noqa: E402
+
+EXPECTED_TOOLS = {
+    "assert_region", "capture_screen", "click", "click_ref", "click_text",
+    "find_element", "gesture", "get_element_text", "get_environment", "get_log",
+    "get_ui_tree", "invoke_element", "launch_or_place_app", "match_visual",
+    "press_keys", "read_screen_text", "release_environment", "run_script",
+    "set_element_value", "snapshot", "type_text", "wait_for",
+}
 
 
 def main() -> int:
@@ -36,13 +45,19 @@ def main() -> int:
             if not ok:
                 failures.append(name)
 
-        check("tools>=19", len(tools) >= 19, len(tools))
+        check("tools==22", len(tools) == 22, len(tools))
+        check("tool_set_matches", names == EXPECTED_TOOLS,
+              sorted(names ^ EXPECTED_TOOLS))
         check("has_snapshot", "snapshot" in names)
         check("has_click_ref", "click_ref" in names)
 
         vacuous = [tool["name"] for tool in tools
                    if not (tool.get("outputSchema") or {}).get("properties")]
         check("output_schema_non_vacuous", not vacuous, vacuous)
+
+        no_annotations = [tool["name"] for tool in tools
+                          if not tool.get("annotations")]
+        check("annotations_present", not no_annotations, no_annotations)
 
         snapshot = next(tool for tool in tools if tool["name"] == "snapshot")
         tree_schema = ((snapshot.get("outputSchema") or {}).get("properties") or {}).get("tree") or {}
@@ -55,18 +70,32 @@ def main() -> int:
         unknown_arg = client.call("capture_screen", {"timeout": 1}, 30)
         check("unknown_argument", unknown_arg.code == "E_INVALID_ARG", unknown_arg.code)
 
+        docs = (unknown_arg.data or {}).get("docs") if isinstance(unknown_arg.data, dict) else None
+        check("error_docs_url", isinstance(docs, str) and docs.startswith("https://"), docs)
+
         script = client.call("run_script", {"code": "Write-Output hi"}, 30)
         check("script_disabled", script.code == "E_DISABLED", script.code)
 
+        missing = client.call("no_such_tool", {}, 30)
+        check("unknown_tool_structured", missing.code == "E_UNKNOWN_TOOL", missing.code)
+
         resources = client.request("resources/list", {}, 30)
-        check("resources_list", "result" in resources, resources.get("error"))
+        result = resources.get("result") or {}
+        check("resources_list", isinstance(result.get("resources"), list), resources.get("error"))
+        cursor = result.get("nextCursor")
+        check("resources_cursor_shape", cursor is None or isinstance(cursor, str), cursor)
 
         env = client.call("get_environment", {}, 30)
         check("environment_read", env.ok, env.code)
     finally:
         client.stop()
 
-    write_json(os.path.join(args.out, "summary.json"), {"failures": failures})
+    # write_json 会补 binary_sha256。
+    summary = {
+        "failures": failures,
+        "tools": len(tools) if "tools" in locals() else 0,
+    }
+    write_json(os.path.join(args.out, "summary.json"), summary)
     print("failures:", failures)
     return 1 if failures else 0
 

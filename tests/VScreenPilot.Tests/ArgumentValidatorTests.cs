@@ -81,4 +81,50 @@ public sealed class ArgumentValidatorTests
         ToolException error = Invalid(schema, """{"expectation":{"color":1}}""");
         Assert.Equal("E_INVALID_ARG", error.Code);
     }
+
+    [Fact]
+    public void RejectsAmbiguousOneOf()
+    {
+        JsonNode schema = Schema(
+            """
+            {"type":"object","properties":{"value":{"oneOf":[
+              {"type":"object"},
+              {"type":"object"}]}}}
+            """);
+
+        ToolException error = Invalid(schema, """{"value":{}}""");
+        Assert.Equal("E_INVALID_ARG", error.Code);
+        Assert.Contains("matches", error.Details!.ToJsonString());
+    }
+
+    [Fact]
+    public void RejectsInvalidArrayItemPath()
+    {
+        JsonNode schema = Schema(
+            """{"type":"object","properties":{"scales":{"type":"array","items":{"type":"number","maximum":2}}}}""");
+
+        ToolException error = Invalid(schema, """{"scales":[1,2,3]}""");
+        Assert.Equal("E_INVALID_ARG", error.Code);
+        Assert.Equal("scales[2]", ((JsonObject)error.Details!)["path"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void RejectsShortString()
+    {
+        JsonNode schema = Schema(
+            """{"type":"object","properties":{"text":{"type":"string","minLength":2}}}""");
+
+        Assert.Equal("E_INVALID_ARG", Invalid(schema, """{"text":"a"}""").Code);
+    }
+
+    [Fact]
+    public void MissingRequiredFieldIsReported()
+    {
+        JsonNode schema = Schema(
+            """{"type":"object","required":["code"],"properties":{"code":{"type":"string"}}}""");
+
+        ToolException error = Invalid(schema, "{}");
+        Assert.Equal("E_INVALID_ARG", error.Code);
+        Assert.Equal("code", ((JsonObject)error.Details!)["path"]!.GetValue<string>());
+    }
 }
