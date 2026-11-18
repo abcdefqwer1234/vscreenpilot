@@ -1,33 +1,6 @@
-# winget manifest锛堟湰鍦版彁浜ょ敤锛涘彂甯冨墠鐢?scripts/update-winget.ps1 濉湡瀹?SHA锛?# 瀹夎鍣細Inno Setup锛宲er-user锛屾棤闇€绠＄悊鍛樸€?PackageIdentifier: VScreenPilot.VScreenPilot
+# winget version manifest. Fill the real SHA with scripts/update-winget.ps1 after release.
+PackageIdentifier: VScreenPilot.VScreenPilot
 PackageVersion: 0.1.0
-PackageLocale: en-US
-Publisher: VScreenPilot
-PublisherUrl: https://github.com/abcdefqwer1234
-PublisherSupportUrl: https://github.com/abcdefqwer1234/vscreenpilot/issues
-PackageName: VScreenPilot
-PackageUrl: https://github.com/abcdefqwer1234/vscreenpilot
-License: MIT
-LicenseUrl: https://github.com/abcdefqwer1234/vscreenpilot/blob/main/LICENSE
-ShortDescription: Virtual-display MCP server for Windows desktop automation.
-Description: Runs Windows desktop apps on an on-demand virtual display and exposes 22 MCP tools for screenshots, semantic element refs, input, OCR and verification without stealing the main desktop.
-Tags:
-  - mcp
-  - automation
-  - virtual-display
-  - windows
-  - uia
-Installers:
-  - Architecture: x64
-    InstallerType: inno
-    Scope: user
-    InstallerUrl: https://github.com/abcdefqwer1234/vscreenpilot/releases/download/v0.1.0/VScreenPilot-Setup-0.1.0.exe
-    InstallerSha256: 89A15A753184D0BB59171313431245420021CB743593CBCAB36E902C188D807F
-    InstallerSwitches:
-      Silent: /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-
-      SilentWithProgress: /SILENT /SUPPRESSMSGBOXES /NORESTART /SP-
-    AppsAndFeaturesEntries:
-      - DisplayName: VScreenPilot
-        DisplayVersion: 0.1.0
-        Publisher: VScreenPilot
-ManifestType: singleton
+DefaultLocale: en-US
+ManifestType: version
 ManifestVersion: 1.6.0
