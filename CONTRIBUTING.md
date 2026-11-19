@@ -1,44 +1,76 @@
-# Contributing
+# 贡献指南
 
-## Build and test
+## 1. 本地构建
+
+需要 Windows 10 2004+ / Windows 11 x64 与 .NET SDK 10.0.403（`global.json` 已固定）。
 
 ```powershell
 dotnet build VScreenPilot.slnx -c Release
-dotnet test tests/VScreenPilot.Tests/VScreenPilot.Tests.csproj -c Release
+dotnet test tests/VScreenPilot.Tests.Unit/VScreenPilot.Tests.Unit.csproj -c Release
+dotnet test tests/VScreenPilot.Tests.Contract/VScreenPilot.Tests.Contract.csproj -c Release
 ```
 
-Publish a self-contained binary:
+程序集边界由 `VScreenPilot.Tests.Contract/ArchitectureTests.cs` 断言，编译通过不代表边界正确，契约测试必须一起跑。
+
+## 2. 改代码前的红线
+
+外特性冻结清单在 `docs/refactor-invariants.md`，任何时候都必须零 diff。提交前至少跑：
 
 ```powershell
+# 发布被测二进制
 dotnet publish src/VScreenPilot.Server/VScreenPilot.Server.csproj -c Release -r win-x64 -o artifacts/server
+
+# 无显示审计 + 与基线对比
+pwsh tools/audit/run_all.ps1 -Exe artifacts/server/VScreenPilot.exe -Out tools/audit/results/current -SkipDisplay
+python tools/audit/compare_baseline.py tools/audit/baseline/3ddb85b tools/audit/results/current
 ```
 
-## Audit suites
+对比规则见 `docs/全局重构方案.md` 附录 D：根目录文件逐字段比较，子目录只比较“用例通过集”，且仅把“通过 → 失败”判定为回归。
 
-Runtime suites require an interactive desktop and Parsec VDD:
+需要 VDD/Office 的场景（GUI、并发、PPT/Word）优先在自托管 runner 上跑完整套件：
 
 ```powershell
-python tools/audit/bench_protocol.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/local
-python tools/audit/ppt/bench_ppt_fixes.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/ppt-run/ppt-fixes
+pwsh tools/audit/run_all.ps1 -Exe artifacts/server/VScreenPilot.exe -Out tools/audit/results/current
 ```
 
-Every `summary.json` must include `binary_sha256`. Reports in `docs/audit/` must reference that hash.
+`run_all.ps1` 默认使用独立 profile（`vspaudit`），不会打扰用户正在使用的 `default` 会话。
 
-## Code guidelines
+## 3. 新增一个工具
 
-- Keep tool contracts honest: if a parameter or a `wait_for` condition is declared, it must work.
-- New error codes go into `Mcp/ErrorCatalog.cs` **and** `docs/errors.md` (with an anchor).
-- Read-only annotations must match side effects; anything that mounts a display, advances refs, or writes artifacts is not read-only.
-- Prefer semantic actions (UIA/MSAA) over coordinates; use `channel=input` only when explicitly needed.
-- Comments in Chinese are fine; identifiers and API names stay in English.
+当前（P5 之前）工具仍定义在 `src/VScreenPilot.Server/Mcp/McpServer.cs` 的 `BuildTools`：
 
-## Releases
+1. 在 `BuildTools` 里加 `Add(...)`：名称、标题、描述、`inputSchema`/`outputSchema`、`readOnly`/`destructive`、超时、handler。
+2. 若会改变会话状态，把名称加入 `MutatingTools`；若需要屏幕，更新 `RequiresScreenLease` 与 `ExecuteToolAsync` 的读/写锁判断。
+3. 在 `tests/VScreenPilot.Tests.Unit/ReleaseReadinessTests.cs` 的 `Expected` 数组补名称。
+4. 错误码如为新增，补 `docs/errors.md` 与 `ErrorCatalog`。
+5. 运行第 2 节的审计命令，并用 `python tools/audit/capture_baseline.py` 重抓基线后提交。
 
-Only two channels are supported: GitHub Releases and winget. See
-[`docs/releasing.md`](docs/releasing.md) for the version, tag, asset and winget submission steps.
+P5 之后改为：`Server/Tools/Definitions/<name>.json` + `Server/Tools/<Name>Tool.cs` + `ToolRegistry` 注册一行。
 
-## Pull requests
+## 4. 修改 schema 或输出字段
 
-- Include the failing case and the fix in the description.
-- Run unit tests and the relevant audit suite; attach the `summary.json`.
-- Do not loosen SLO thresholds to make a run pass.
+1. 先读 `docs/refactor-invariants.md` 第 1 节，确认该字段是否属于冻结清单。
+2. 属于冻结清单的字段：必须同时更新 `tools/audit/baseline/<commit>/` 基线，并在 PR 说明里写“为什么这是有意的契约变更”。
+3. 更新 `tests/VScreenPilot.Tests.Contract/ToolSchemaSnapshotTests.cs` 期望（基线文件本身）。
+4. 输出视图（`Abstractions/Views/*`）字段顺序要与现有 JSON 拼装顺序一致，golden 才稳定。
+
+## 5. 代码风格
+
+- 异步方法一律带 `CancellationToken`，不要 `.Result`/`.Wait()`。
+- 禁止新增无类型空捕获 `catch { }`：要么收窄异常类型并注释，要么记日志。
+- 平台原语只放 `Platform`，领域编排放 `Automation`，协议/工具/CLI 放 `Server`。
+- 日志文案是对外可观测行为，改动前确认审计脚本是否依赖。
+
+## 6. 提交与回滚
+
+- 每个提交必须能编译、单测通过、阶段契约零 diff。
+- 结构性与行为性改动分开提交，便于单独 revert。
+- 阶段结束打 tag（如 `refactor-p4`），保留 `tools/audit/baseline/*` 作为后续对比基准。
+
+## 7. 文档
+
+改动架构或新增工具后同步更新：
+
+- `docs/architecture.md`：分层、并发模型、已知未完成项。
+- `docs/refactor-invariants.md`：不变量清单。
+- `docs/errors.md`：错误码与 `docs` 锚点。

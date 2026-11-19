@@ -1,8 +1,27 @@
-# 架构说明（重构后）
+# 架构说明
 
 > 目标：把“能跑”变成“可探测、可归因、可验证”。本文描述当前实现与后续替换点。
 
-## 1. 分层
+## 1. 分层与程序集
+
+重构后按编译期边界拆成 4 个程序集，引用方向只能自上而下：
+
+```
+Server ──────> Automation ──────> Platform ──────> Abstractions
+   │                │                  │
+   └────────────────┴──────────────────┴──────────> Abstractions
+```
+
+| 程序集 | 目标框架 | 职责 |
+|---|---|---|
+| `VScreenPilot.Abstractions` | `net10.0` | 错误模型（`ErrorCatalog`/`ToolException`）、JSON 参数读取、序列化口径（`VspJson`）、输出视图（`Views/*`）、版本信息、进程内指标 |
+| `VScreenPilot.Platform` | `net10.0-windows` | Win32/COM 原语、显示拓扑与 VDD、窗口枚举、输入注入/消息输入/键位/剪贴板、Job 对象、管道完整性校验 |
+| `VScreenPilot.Automation` | `net10.0-windows10.0.19041.0` | UIA/MSAA、屏幕捕获与 PNG、OCR、模板匹配（会话组件正在从 Server 迁入） |
+| `VScreenPilot.Server` | 可执行 | MCP 传输与工具层、会话编排、CLI、IPC、组合根 |
+
+约束由 `tests/VScreenPilot.Tests.Contract/ArchitectureTests.cs` 断言：`Abstractions` 不引用任何内部工程，`Platform` 只引用 `Abstractions`，`Automation` 不引用 `Server` 与 MCP SDK。
+
+层内分工：
 
 ```
 MCP 传输层   官方 ModelContextProtocol SDK（stdio；协议协商/分帧/取消/进度由 SDK 负责）
@@ -12,6 +31,9 @@ MCP 传输层   官方 ModelContextProtocol SDK（stdio；协议协商/分帧/�
 感知层       ScreenCapture（复用 GDI 资源）/ PngWriter（池化 + Up 过滤）/ PngReader / TemplateMatcher
 平台层       Interop（Win32/COM）、DisplayTopology、VddDevice、JobObject、CursorGuard、InstanceRegistry
 ```
+
+> 过渡状态：`Session/*` 仍留在 `Server`，因为它依赖 `LogRing`/`InstanceRegistry`/`StateStore`/`TraceLog`，而 `Automation` 不能反向引用 `Server`。P4 拆成组件、P6 注入接口后再迁入 `Automation`。不变量清单见 `docs/refactor-invariants.md`。
+
 
 ## 2. 并发模型
 
@@ -26,7 +48,8 @@ MCP 传输层   官方 ModelContextProtocol SDK（stdio；协议协商/分帧/�
   返回 `E_CANCELLED`，避免“清空集合后旧 handler 继续写”。
 - **每调用取消**：`AsyncLocal<CancellationTokenSource>`，并发工具不会互相清取消。
 - **UIA 串行**：`UiaService` 内所有 COM 访问（含建树、写值、读文本）统一进 `_sync`；
-  超时后 `ResetUia` 把旧实例放进有界退休队列，后台释放；后续替换为专用 MTA worker。
+  超时后 `ResetUia` 把旧实例放进退休列表，会话结束时统一释放（不再中途丢弃实例）；
+  后续替换为专用 MTA worker。
 - **MSAA 回退**：单个窗口 UIA 完全不可见时，`MsaaService` 用 `IAccessible` 枚举子控件；
   Word `bosa_sdm_msword` 对话框走这条路径。
 - **UWP**：顶层类是 `ApplicationFrameWindow`，内容进程没有独立 HWND；UIA 从 frame 取树，
@@ -73,6 +96,10 @@ ref 只在该代内有效；跨代使用返回 `E_STALE_SNAPSHOT`，未知/被�
 
 ## 6. 已知未完成（下一阶段）
 
+- **会话组件化**：`SessionManager` 尚未按组件拆分（P4），因此它仍在 `Server`。
+- **工具层重写**：22 个工具仍是 `McpServer` 内的方法，尚未迁移到 `ToolDescriptor`（P5）。
+- **组合根**：`Program` 仍有内联分支，静态 provider 尚未移除（P6）。
+- **UIA 单线程宿主**：`UiaService` 已按职责拆成 7 个文件，但仍用锁串行化，未改为 MTA worker（P7）。
 - **全屏截图**：复用资源 + 去 `CAPTUREBLT` + 大图不内联后，服务端 P95 已降至 ~56ms；
   早期“1.2–1.4s”是内联大 PNG 的回传成本，已由 preview/artifact 方案消除。
   Windows.Graphics.Capture（`CreateForMonitor` + D3D11 staging readback）仍是后续后端优化。
