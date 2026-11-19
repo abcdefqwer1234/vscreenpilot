@@ -224,6 +224,12 @@ internal sealed partial class SessionManager : IDisposable
     /// <summary>多会话 profile 名（--profile / VSP_PROFILE）；默认 default。</summary>
     public string ProfileName { get; } = Profile.Resolve();
 
+    /// <summary>进程内唯一的写调度器（daemon 内所有连接共享）。</summary>
+    internal WriteScheduler Scheduler { get; } = new();
+
+    /// <summary>进程内唯一的屏幕租约（daemon 内所有连接共享）。</summary>
+    internal ScreenLease Lease { get; } = new();
+
     private readonly object _artifactGate = new();
     private readonly Dictionary<string, string> _artifactDirectories = new(StringComparer.Ordinal);
     private ArtifactStore? _artifacts;
@@ -276,7 +282,7 @@ internal sealed partial class SessionManager : IDisposable
         _job = job;
         _allowScript = allowScript;
         _appAllowlist = ReadAppAllowlist();
-        LogRing.ClientIdProvider = static () => CurrentClientId;
+        _log.ClientIdProvider = static () => CurrentClientId;
         CleanupStaleProfiles();
         SweepOldArtifacts();
         RecoverFromPreviousCrash();

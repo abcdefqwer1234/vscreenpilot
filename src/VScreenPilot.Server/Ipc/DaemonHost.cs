@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Mcp;
 using VScreenPilot.Session;
 
 namespace VScreenPilot.Ipc;
@@ -58,6 +59,7 @@ internal sealed class DaemonHost : IDisposable
         var job = new JobObject();
         var stateStore = new StateStore(log);
         var session = new SessionManager(log, stateStore, job, allowScript);
+        McpServer.WireProviders(session, log);
         var trace = new TraceLog();
         var registry = new InstanceRegistry(profile);
         InstanceRegistry.Entry entry = InstanceRegistry.Create(profile, ready: false);

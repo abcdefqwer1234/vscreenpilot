@@ -84,12 +84,11 @@ public sealed class ScreenLeaseTests
     public void IdleStealIsLogged()
     {
         var messages = new List<string>();
-        Action<string>? previous = ScreenLease.LogSink;
-        ScreenLease.LogSink = messages.Add;
+        var lease = new ScreenLease(1_000, 0);
+        lease.LogSink = messages.Add;
 
         try
         {
-            var lease = new ScreenLease(1_000, 0);
 
             using (IDisposable first = lease.Acquire("c1", "type_text"))
             {
@@ -103,7 +102,7 @@ public sealed class ScreenLeaseTests
         }
         finally
         {
-            ScreenLease.LogSink = previous;
+            lease.LogSink = null;
         }
     }
 

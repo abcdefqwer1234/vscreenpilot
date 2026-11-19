@@ -72,13 +72,6 @@ internal static class Program
         var log = new LogRing();
         TraceLog? trace = null;
 
-        // 日志/环境摘要里的租约与客户端归属由 MCP 层提供。
-        LogRing.ClientIdProvider = static () => SessionManager.CurrentClientId;
-        SessionManager.LeaseHolderProvider = static () => McpServer.SharedScreenLease.HolderId;
-        SessionManager.ScreenLeaseProvider = static () => McpServer.SharedScreenLease.Describe();
-        ScreenLease.LogSink = log.Info;
-        ScreenLease.ClientCwdProvider = static id => SessionManager.FindClientCwd(id);
-
         string? cliCommand = GetOption(args, "--cli");
         bool cliNeedsLocalSession = false;
         bool cliRequested = args.Any(arg =>
@@ -194,6 +187,7 @@ internal static class Program
             var stateStore = new StateStore(log);
             var job = new JobObject();
             _session = new SessionManager(log, stateStore, job, allowScript);
+            McpServer.WireProviders(_session, log);
             return RunCli(cliCommand!, args, _session, log, job, mutex);
         }
 
@@ -204,6 +198,7 @@ internal static class Program
         var appStateStore = new StateStore(log);
         var appJob = new JobObject();
         _session = new SessionManager(log, appStateStore, appJob, allowScript);
+        McpServer.WireProviders(_session, log);
         trace = new TraceLog();
 
         if (allowScript)

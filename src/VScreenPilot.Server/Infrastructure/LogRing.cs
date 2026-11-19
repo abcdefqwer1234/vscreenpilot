@@ -27,7 +27,8 @@ public sealed class LogRing : IDisposable
     private DateTime _fileDate;
 
     /// <summary>由 SessionManager 注入；用于把日志归到当前 MCP 客户端。</summary>
-    public static Func<string?>? ClientIdProvider { get; set; }
+    /// <summary>由会话注入：把日志归到当前 MCP 客户端。实例级，避免静态服务定位器。</summary>
+    public Func<string?>? ClientIdProvider { get; set; }
 
     public LogRing(int capacity = 500, bool fileEnabled = true, bool clientLog = false)
     {

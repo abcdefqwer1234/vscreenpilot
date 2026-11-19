@@ -33,9 +33,9 @@ internal sealed partial class SessionManager
     public static int ActiveClientCount => Volatile.Read(ref _activeClients);
 
     /// <summary>租约/状态由 McpServer 提供，避免 SessionManager 反向依赖 MCP 层。</summary>
-    internal static Func<string?>? LeaseHolderProvider { get; set; }
+    internal Func<string?>? LeaseHolderProvider { get; set; }
 
-    internal static Func<JsonObject>? ScreenLeaseProvider { get; set; }
+    internal Func<JsonObject>? ScreenLeaseProvider { get; set; }
 
     internal static void ClientEntered(ClientContext client)
     {
@@ -56,7 +56,7 @@ internal sealed partial class SessionManager
     internal static string? FindClientCwd(string clientId) =>
         ClientsById.TryGetValue(clientId, out ClientContext? client) ? client.Cwd : null;
 
-    internal static JsonArray ClientSummariesJson(bool includeCwd = false)
+    internal JsonArray ClientSummariesJson(bool includeCwd = false)
     {
         var array = new JsonArray();
         string? holder = LeaseHolderProvider?.Invoke();

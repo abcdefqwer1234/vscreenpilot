@@ -35,9 +35,19 @@ internal sealed class McpServer
     private readonly bool _ownsTrace;
     private readonly Dictionary<string, ToolDefinition> _tools;
     private int _inflightHandlers;
-    private static readonly WriteScheduler SharedScheduler = new();
-    internal static readonly ScreenLease SharedScreenLease = new();
-    private readonly WriteScheduler _scheduler = SharedScheduler;
+    /// <summary>
+    /// 组合根接线：把会话需要的租约/日志提供者指向本进程的唯一实例。
+    /// 必须在 SessionManager 构造完成后调用（提供者是懒加载，但语义上属于宿主装配）。
+    /// </summary>
+    internal static void WireProviders(SessionManager session, LogRing log)
+    {
+        session.LeaseHolderProvider = () => session.Lease.HolderId;
+        session.ScreenLeaseProvider = () => session.Lease.Describe();
+        session.Lease.LogSink = log.Info;
+        session.Lease.ClientCwdProvider = static id => SessionManager.FindClientCwd(id);
+    }
+
+    private readonly WriteScheduler _scheduler;
 
     // 令牌桶限流：daemon 内所有连接共享，避免 N 个客户端把限制放大 N 倍。
     private static readonly object RateGate = new();
@@ -84,6 +94,8 @@ internal sealed class McpServer
     {
         _session = session;
         _log = log;
+        // 单测只构造目录（session/log 传 null!），此时给一个独立调度器即可。
+        _scheduler = session is null ? new WriteScheduler() : session.Scheduler;
         _client = client;
         _tools = BuildTools();
         _trace = sharedTrace ?? (trace ? new TraceLog() : null);
@@ -169,7 +181,7 @@ internal sealed class McpServer
 
             // 连接结束：先释放租约（若自己的 handler 仍在跑或别人持有，返回 false）。
             // refs/artifacts 可以立即清；apps/窗口必须等租约和 handler 都空闲后再按 force 清理。
-            bool leaseFree = SharedScreenLease.ReleaseHolderIfIdle(clientId);
+            bool leaseFree = _session.Lease.ReleaseHolderIfIdle(clientId);
             bool handlersIdle = Volatile.Read(ref _inflightHandlers) == 0;
 
             try
@@ -216,7 +228,7 @@ internal sealed class McpServer
             while (DateTime.UtcNow < deadline)
             {
                 if (Volatile.Read(ref _inflightHandlers) == 0 &&
-                    SharedScreenLease.ReleaseHolderIfIdle(clientId))
+                    _session.Lease.ReleaseHolderIfIdle(clientId))
                 {
                     try
                     {
@@ -523,11 +535,11 @@ internal sealed class McpServer
 
             if (RequiresScreenLease(tool.Name, arguments))
             {
-                screenLease = SharedScreenLease.Acquire(clientId, tool.Name);
+                screenLease = _session.Lease.Acquire(clientId, tool.Name);
 
                 if (KeepsForeground(arguments))
                 {
-                    SharedScreenLease.Extend(clientId, 30_000);
+                    _session.Lease.Extend(clientId, 30_000);
                     _session.PauseFocusGuard(30_000);
                 }
             }
@@ -781,13 +793,13 @@ internal sealed class McpServer
                 {
                     // 只有真正清理成功才把屏幕交给下一个客户端；失败时仍保留租约。
                     // 这里不能用 ReleaseHolderIfIdle：本工具自己还持有一个租约（active_calls>=1）。
-                    SharedScreenLease.ForceRelease(releaseClientId);
+                    _session.Lease.ForceRelease(releaseClientId);
                 }
                 else if (handlerTask is { IsCompleted: false })
                 {
                     // 超时/取消时 handler 可能仍在关闭窗口：等它真正结束再释放租约。
                     _ = handlerTask.ContinueWith(
-                        _ => SharedScreenLease.ForceRelease(releaseClientId),
+                        _ => _session.Lease.ForceRelease(releaseClientId),
                         CancellationToken.None,
                         TaskContinuationOptions.ExecuteSynchronously,
                         TaskScheduler.Default);
@@ -1501,7 +1513,7 @@ internal sealed class McpServer
         EnvironmentView environment = _session.GetEnvironment(OptionalBool(arguments, "ensure", false));
         JsonObject data = VspJson.ToNode(environment).AsObject();
         data["client_id"] = _client?.Id ?? "c0";
-        data["screen_lease"] = SharedScreenLease.Describe();
+        data["screen_lease"] = _session.Lease.Describe();
         return ToolResponse.Text(data);
     }
 
@@ -1995,8 +2007,8 @@ internal sealed class McpServer
 
         // 成功释放后立即把屏幕让给下一个客户端；finally 会再次调用（幂等）。
         // 用 ForceRelease：当前工具自己持有一个租约，IfIdle 会因 active_calls>0 拒绝。
-        SharedScreenLease.ForceRelease(clientId);
-        JsonObject lease = SharedScreenLease.Describe();
+        _session.Lease.ForceRelease(clientId);
+        JsonObject lease = _session.Lease.Describe();
         bool leaseHeld = lease["held"]?.GetValue<bool>() == true;
         string? holder = lease["holder_client_id"]?.GetValue<string>();
         int activeCalls = lease["active_calls"]?.GetValue<int>() ?? 0;

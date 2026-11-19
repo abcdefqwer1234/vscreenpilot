@@ -364,8 +364,8 @@ internal sealed class ControlServer : IDisposable
             ["initialized"] = _session.Initialized,
             ["apps"] = _session.Apps.Count,
             ["clients"] = SessionManager.ActiveClientCount,
-            ["client_list"] = SessionManager.ClientSummariesJson(includeCwd: true),
-            ["screen_lease"] = McpServer.SharedScreenLease.Describe(),
+            ["client_list"] = _session.ClientSummariesJson(includeCwd: true),
+            ["screen_lease"] = _session.Lease.Describe(),
             ["working_set_mb"] = CurrentWorkingSetMb(),
             ["handles"] = CurrentHandleCount(),
         };

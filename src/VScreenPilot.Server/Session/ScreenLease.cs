@@ -21,10 +21,12 @@ internal sealed class ScreenLease
     private long _generation;
 
     /// <summary>由 daemon 注入，用于记录 TTL 抢占。</summary>
-    public static Action<string>? LogSink { get; set; }
+    /// <summary>租约日志出口。实例级：由组合根注入。</summary>
+    public Action<string>? LogSink { get; set; }
 
     /// <summary>由 daemon 注入，用于在 E_SCREEN_LEASED 中给出 holder 的 cwd。</summary>
-    public static Func<string, string?>? ClientCwdProvider { get; set; }
+    /// <summary>按 client id 查 cwd；用于 E_SCREEN_LEASED 的 holder_cwd。</summary>
+    public Func<string, string?>? ClientCwdProvider { get; set; }
 
     public ScreenLease() : this(ResolveTtl(), ResolveWait())
     {
