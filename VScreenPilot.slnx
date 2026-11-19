@@ -1,11 +1,16 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/VScreenPilot.Abstractions/VScreenPilot.Abstractions.csproj" />
+    <Project Path="src/VScreenPilot.Automation/VScreenPilot.Automation.csproj" />
     <Project Path="src/VScreenPilot.Platform/VScreenPilot.Platform.csproj" />
     <Project Path="src/VScreenPilot.Server/VScreenPilot.Server.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/AotSmokeTest/AotSmokeTest.csproj" />
     <Project Path="tools/VddProbe/VddProbe.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/VScreenPilot.Tests.Unit/VScreenPilot.Tests.Unit.csproj" />
+    <Project Path="tests/VScreenPilot.Tests.Contract/VScreenPilot.Tests.Contract.csproj" />
   </Folder>
 </Solution>

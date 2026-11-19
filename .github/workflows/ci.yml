@@ -30,7 +30,9 @@ jobs:
         run: node scripts/check-version.mjs
 
       - name: Unit tests
-        run: dotnet test tests/VScreenPilot.Tests/VScreenPilot.Tests.csproj -c Release --logger "trx;LogFileName=unit.trx"
+        run: |
+          dotnet test tests/VScreenPilot.Tests.Unit/VScreenPilot.Tests.Unit.csproj -c Release --logger "trx;LogFileName=unit.trx"
+          dotnet test tests/VScreenPilot.Tests.Contract/VScreenPilot.Tests.Contract.csproj -c Release --logger "trx;LogFileName=contract.trx"
 
       - uses: actions/upload-artifact@v4
         if: always()

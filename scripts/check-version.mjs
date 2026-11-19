@@ -12,7 +12,7 @@ const read = (relative) => readFileSync(path.join(root, relative), 'utf8');
 
 const csproj = /<Version>([^<]+)<\/Version>/.exec(read('src/VScreenPilot.Server/VScreenPilot.Server.csproj'))?.[1];
 const buildInfo = /Version\s*=\s*"([^"]+)"/.exec(
-  read('src/VScreenPilot.Server/Infrastructure/BuildInfo.cs'))?.[1];
+  read('src/VScreenPilot.Abstractions/BuildInfo.cs'))?.[1];
 const installer = /#define\s+MyAppVersion\s+"([^"]+)"/.exec(
   read('packaging/installer/VScreenPilot.iss'))?.[1];
 

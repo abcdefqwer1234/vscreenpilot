@@ -39,7 +39,7 @@ jobs:
         run: dotnet build VScreenPilot.slnx -c Release
 
       - name: Unit tests
-        run: dotnet test tests/VScreenPilot.Tests/VScreenPilot.Tests.csproj -c Release
+        run: dotnet test tests/VScreenPilot.Tests.Unit/VScreenPilot.Tests.Unit.csproj -c Release
 
       - name: 生成 zip + SHA256
         shell: pwsh
