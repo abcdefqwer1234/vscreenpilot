@@ -733,7 +733,7 @@ internal static class Program
             switch (command.Trim().ToLowerInvariant())
             {
                 case "env":
-                    result = session.GetEnvironment(HasFlag(args, "--ensure"));
+                    result = VspJson.ToNode(session.GetEnvironment(HasFlag(args, "--ensure"))).AsObject();
                     break;
 
                 case "snapshot":

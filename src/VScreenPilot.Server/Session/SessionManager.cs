@@ -1055,7 +1055,7 @@ internal sealed partial class SessionManager : IDisposable
         return settled;
     }
 
-    public JsonObject GetEnvironment(bool ensure = false)
+    public EnvironmentView GetEnvironment(bool ensure = false)
     {
         if (ensure)
         {
@@ -1065,29 +1065,26 @@ internal sealed partial class SessionManager : IDisposable
         PruneDeadApps();
 
         int? focusedPid = null;
-        JsonObject result;
+        EnvironmentView? view = null;
 
         // 锁外做可能慢的驱动/显示枚举：launch/release 持 _gate 时 get_environment 不应被拖住。
         string driverStatus = VddDevice.QueryStatus().ToString();
         DisplayInfo? parsecDisplay = OwnDisplay();
-        (int vx, int vy, int vw, int vh) virtualBounds = DisplayTopology.VirtualScreenBounds();
+        (int vx, int vy, int vw, int vh) = DisplayTopology.VirtualScreenBounds();
         DisplayInfo? primaryDisplay = DisplayTopology.FindPrimary();
         int monitorCount = GetMonitorCount();
         IntPtr foregroundWindow = WindowManager.GetForegroundWindow();
 
         lock (_gate)
         {
-            var driver = new JsonObject
-            {
-                ["status"] = driverStatus,
-            };
+            string? driverVersion = null;
 
             if (_vdd.IsOpen)
             {
                 int version = _vdd.GetVersion();
                 if (version >= 0)
                 {
-                    driver["version"] = $"{((version >> 16) & 0xFFFF)}.{version & 0xFFFF}";
+                    driverVersion = $"{((version >> 16) & 0xFFFF)}.{version & 0xFFFF}";
                 }
             }
 
@@ -1098,28 +1095,7 @@ internal sealed partial class SessionManager : IDisposable
                 sessionId = currentProcess.SessionId;
             }
 
-            var session = new JsonObject
-            {
-                ["pid"] = Environment.ProcessId,
-                ["initialized"] = _initialized,
-                ["mutexHost"] = Profile.MutexName(ProfileName),
-                ["startedAt"] = ProcessStartTime(),
-                ["session_id"] = sessionId,
-                ["interactive"] = Environment.UserInteractive,
-                ["remote_session"] = NativeMethods.GetSystemMetrics(0x1000) != 0,
-                ["input_desktop"] = IsInputDesktopAvailable(),
-                ["elevated"] = Elevation.IsProcessElevated(),
-                ["isolation"] = "shared_desktop",
-                ["profile"] = ProfileName,
-                ["epoch"] = Epoch,
-                ["job_object"] = _job.Status,
-                ["role"] = "daemon",
-                ["daemon_pid"] = Environment.ProcessId,
-                ["client_id"] = CurrentClientId,
-                ["client_cwd"] = CurrentCwd,
-            };
-
-            var clientRoots = new JsonArray();
+            var clientRoots = new List<string>();
 
             foreach (string root in CurrentRoots)
             {
@@ -1129,20 +1105,7 @@ internal sealed partial class SessionManager : IDisposable
                 }
             }
 
-            session["client_roots"] = clientRoots;
-
-            if (CurrentClient is { ProxyPid: > 0 } currentClient)
-            {
-                session["proxy_pid"] = currentClient.ProxyPid;
-
-                if (!string.IsNullOrWhiteSpace(currentClient.Version))
-                {
-                    session["client_version"] = currentClient.Version;
-                }
-            }
-
             JsonArray clientList = ClientSummariesJson();
-            session["clients"] = clientList;
             int otherClients = clientList.Count;
 
             if (CurrentClient is null || !CurrentClient.IncludeAllApps)
@@ -1150,87 +1113,130 @@ internal sealed partial class SessionManager : IDisposable
                 otherClients = Math.Max(0, otherClients - 1);
             }
 
-            session["other_clients"] = otherClients;
+            int? proxyPid = null;
+            string? clientVersion = null;
 
-            if (ScreenLeaseProvider?.Invoke() is { } screenLease)
+            if (CurrentClient is { ProxyPid: > 0 } currentClient)
             {
-                session["screen_lease"] = screenLease;
+                proxyPid = currentClient.ProxyPid;
+
+                if (!string.IsNullOrWhiteSpace(currentClient.Version))
+                {
+                    clientVersion = currentClient.Version;
+                }
             }
+
+            double? workingSetMb = null;
+            int? handles = null;
 
             try
             {
                 using var process = System.Diagnostics.Process.GetCurrentProcess();
-                session["working_set_mb"] = Math.Round(process.WorkingSet64 / 1048576.0, 1);
-                session["handles"] = process.HandleCount;
+                workingSetMb = Math.Round(process.WorkingSet64 / 1048576.0, 1);
+                handles = process.HandleCount;
             }
             catch
             {
-                // 忽略。
+                // 进程句柄被回收时忽略；字段保持缺省，不影响诊断的其他部分。
             }
 
-            var virtualDisplay = new JsonObject();
+            var session = new SessionView
+            {
+                Pid = Environment.ProcessId,
+                Initialized = _initialized,
+                MutexHost = Profile.MutexName(ProfileName),
+                StartedAt = ProcessStartTime(),
+                SessionId = sessionId,
+                Interactive = Environment.UserInteractive,
+                RemoteSession = NativeMethods.GetSystemMetrics(0x1000) != 0,
+                InputDesktop = IsInputDesktopAvailable(),
+                Elevated = Elevation.IsProcessElevated(),
+                Isolation = "shared_desktop",
+                Profile = ProfileName,
+                Epoch = Epoch,
+                JobObject = _job.Status,
+                Role = "daemon",
+                DaemonPid = Environment.ProcessId,
+                ClientId = CurrentClientId,
+                ClientCwd = CurrentCwd,
+                ClientRoots = clientRoots,
+                ProxyPid = proxyPid,
+                ClientVersion = clientVersion,
+                Clients = clientList,
+                OtherClients = otherClients,
+                ScreenLease = ScreenLeaseProvider?.Invoke(),
+                WorkingSetMb = workingSetMb,
+                Handles = handles,
+            };
+
             DisplayInfo? display = parsecDisplay;
+            VirtualDisplayView virtualDisplay;
+
             if (display is null)
             {
-                virtualDisplay["enabled"] = false;
-                virtualDisplay["owned"] = false;
-                virtualDisplay["self_healed"] = _selfHealed;
-                virtualDisplay["self_heal_count"] = _selfHealCount;
-                virtualDisplay["last_self_heal_reason"] = _lastSelfHealReason;
-                virtualDisplay["adopted_orphan"] = _adoptedOrphan;
-                virtualDisplay["display_recreate_count"] = _displayRecreateCount;
-                virtualDisplay["vdd_reopen_count"] = _vddReopenCount;
-                virtualDisplay["position_enforced"] = true;
+                virtualDisplay = new VirtualDisplayView
+                {
+                    Enabled = false,
+                    Owned = false,
+                    SelfHealed = _selfHealed,
+                    SelfHealCount = _selfHealCount,
+                    LastSelfHealReason = _lastSelfHealReason,
+                    AdoptedOrphan = _adoptedOrphan,
+                    DisplayRecreateCount = _displayRecreateCount,
+                    VddReopenCount = _vddReopenCount,
+                    PositionEnforced = true,
+                };
             }
             else
             {
-                virtualDisplay["enabled"] = true;
-                virtualDisplay["owned"] =
-                    _displayIndex >= 0 &&
-                    !string.IsNullOrWhiteSpace(_displayDevice) &&
-                    string.Equals(display.DeviceName, _displayDevice, StringComparison.OrdinalIgnoreCase);
-                virtualDisplay["device"] = display.DeviceName;
-                virtualDisplay["x"] = display.X;
-                virtualDisplay["y"] = display.Y;
-                virtualDisplay["width"] = display.Width;
-                virtualDisplay["height"] = display.Height;
-                virtualDisplay["dpi"] = display.Dpi;
-                virtualDisplay["scale_percent"] = display.Dpi == 0 ? 0 : (int)Math.Round(display.Dpi / 96.0 * 100);
-                virtualDisplay["self_healed"] = _selfHealed;
-                virtualDisplay["self_heal_count"] = _selfHealCount;
-                virtualDisplay["last_self_heal_reason"] = _lastSelfHealReason;
-                virtualDisplay["adopted_orphan"] = _adoptedOrphan;
-                virtualDisplay["display_recreate_count"] = _displayRecreateCount;
-                virtualDisplay["vdd_reopen_count"] = _vddReopenCount;
-                virtualDisplay["position_enforced"] = !_displayPositionFallback;
-                virtualDisplay["lifetime"] = "host_session";
+                virtualDisplay = new VirtualDisplayView
+                {
+                    Enabled = true,
+                    Owned = _displayIndex >= 0 &&
+                            !string.IsNullOrWhiteSpace(_displayDevice) &&
+                            string.Equals(display.DeviceName, _displayDevice, StringComparison.OrdinalIgnoreCase),
+                    Device = display.DeviceName,
+                    X = display.X,
+                    Y = display.Y,
+                    Width = display.Width,
+                    Height = display.Height,
+                    Dpi = (int)display.Dpi,
+                    ScalePercent = display.Dpi == 0 ? 0 : (int)Math.Round(display.Dpi / 96.0 * 100),
+                    SelfHealed = _selfHealed,
+                    SelfHealCount = _selfHealCount,
+                    LastSelfHealReason = _lastSelfHealReason,
+                    AdoptedOrphan = _adoptedOrphan,
+                    DisplayRecreateCount = _displayRecreateCount,
+                    VddReopenCount = _vddReopenCount,
+                    PositionEnforced = !_displayPositionFallback,
+                    Lifetime = "host_session",
+                };
             }
 
-            (int vx, int vy, int vw, int vh) = virtualBounds;
-            var virtualScreen = new JsonObject
+            var virtualScreen = new VirtualScreenView
             {
-                ["x"] = vx,
-                ["y"] = vy,
-                ["width"] = vw,
-                ["height"] = vh,
-                ["monitors"] = monitorCount,
+                X = vx,
+                Y = vy,
+                Width = vw,
+                Height = vh,
+                Monitors = monitorCount,
             };
 
             DisplayInfo? primary = primaryDisplay;
-            var primaryJson = primary is null
-                ? new JsonObject()
-                : new JsonObject
+            var primaryView = primary is null
+                ? new PrimaryView()
+                : new PrimaryView
                 {
-                    ["device"] = primary.DeviceName,
-                    ["x"] = primary.X,
-                    ["y"] = primary.Y,
-                    ["width"] = primary.Width,
-                    ["height"] = primary.Height,
-                    ["dpi"] = primary.Dpi,
+                    Device = primary.DeviceName,
+                    X = primary.X,
+                    Y = primary.Y,
+                    Width = primary.Width,
+                    Height = primary.Height,
+                    Dpi = (int)primary.Dpi,
                 };
 
             IntPtr foreground = foregroundWindow;
-            var foregroundJson = new JsonObject();
+            var foregroundView = new ForegroundView();
             TrackedApp? foregroundApp = null;
 
             if (foreground != IntPtr.Zero)
@@ -1241,24 +1247,23 @@ internal sealed partial class SessionManager : IDisposable
 
                 // 只暴露本会话窗口的标题/PID。用户主屏上的窗口标题常含邮件主题、
                 // 文档名等隐私信息，不应交给模型。
-                foregroundJson["tracked"] = foregroundApp is not null;
-
-                if (foregroundApp is not null)
+                foregroundView = new ForegroundView
                 {
-                    foregroundJson["hwnd"] = foreground.ToInt64();
-                    foregroundJson["pid"] = (int)foregroundPid;
-                    foregroundJson["title"] = WindowManager.GetTitle(foreground);
-                }
+                    Tracked = foregroundApp is not null,
+                    Hwnd = foregroundApp is null ? null : foreground.ToInt64(),
+                    Pid = foregroundApp is null ? null : (int)foregroundPid,
+                    Title = foregroundApp is null ? null : WindowManager.GetTitle(foreground),
+                };
             }
 
-            var cursorJson = new JsonObject();
+            var cursorView = new CursorView();
+
             if (NativeMethods.GetCursorPos(out NativeMethods.POINT cursor))
             {
-                cursorJson["x"] = cursor.X;
-                cursorJson["y"] = cursor.Y;
+                cursorView = new CursorView { X = cursor.X, Y = cursor.Y };
             }
 
-            var apps = new JsonArray();
+            var apps = new List<AppView>();
             bool includeOwner = CurrentClient?.IncludeAllApps == true;
 
             foreach (TrackedApp app in _apps.Where(IsOwned))
@@ -1267,40 +1272,34 @@ internal sealed partial class SessionManager : IDisposable
                     ? null
                     : WindowManager.FromHandle(app.Hwnd);
 
-                var appJson = new JsonObject
+                apps.Add(new AppView
                 {
-                    ["pid"] = app.Pid,
-                    ["hwnd"] = app.Hwnd.ToInt64(),
-                    ["title"] = liveWindow?.Title ?? app.Title,
-                    ["exe"] = app.ExePath,
-                    ["alive"] = IsLiveTrackedApp(app),
-                    ["launched_by_us"] = app.StartedProcess,
-                    ["owned"] = app.Owned,
-                    ["close_on_release"] = app.CloseWindowOnRelease,
-                    ["dedicated"] = app.DedicatedProcess,
-                };
-
-                if (includeOwner)
-                {
-                    appJson["client_id"] = app.OwnerClientId;
-                }
-
-                apps.Add((JsonNode)appJson);
+                    Pid = app.Pid,
+                    Hwnd = app.Hwnd.ToInt64(),
+                    Title = liveWindow?.Title ?? app.Title,
+                    Exe = app.ExePath,
+                    Alive = IsLiveTrackedApp(app),
+                    LaunchedByUs = app.StartedProcess,
+                    Owned = app.Owned,
+                    CloseOnRelease = app.CloseWindowOnRelease,
+                    Dedicated = app.DedicatedProcess,
+                    ClientId = includeOwner ? app.OwnerClientId : null,
+                });
             }
 
             focusedPid = foregroundApp?.Pid;
 
-            result = new JsonObject
+            view = new EnvironmentView
             {
-                ["driver"] = driver,
-                ["session"] = session,
-                ["virtual_display"] = virtualDisplay,
-                ["virtual_screen"] = virtualScreen,
-                ["primary"] = primaryJson,
-                ["foreground"] = foregroundJson,
-                ["cursor"] = cursorJson,
-                ["apps"] = apps,
-                ["metrics"] = MetricsRegistry.ToJson(),
+                Driver = new DriverView { Status = driverStatus, Version = driverVersion },
+                Session = session,
+                VirtualDisplay = virtualDisplay,
+                VirtualScreen = virtualScreen,
+                Primary = primaryView,
+                Foreground = foregroundView,
+                Cursor = cursorView,
+                Apps = apps,
+                Metrics = MetricsRegistry.ToView(),
             };
         }
 
@@ -1342,13 +1341,11 @@ internal sealed partial class SessionManager : IDisposable
         int focusRedactions = 0;
         RedactJsonStrings(focusedElement, ref focusRedactions);
 
-        if (focusRedactions > 0)
+        return view! with
         {
-            result["privacy_redactions"] = focusRedactions;
-        }
-
-        result["focused_element"] = focusedElement;
-        return result;
+            PrivacyRedactions = focusRedactions > 0 ? focusRedactions : null,
+            FocusedElement = focusedElement,
+        };
     }
 
     public ReleaseReport ReleaseEnvironment(

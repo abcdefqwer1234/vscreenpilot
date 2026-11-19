@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
+using VScreenPilot.Views;
 
 namespace VScreenPilot.Infrastructure;
 
@@ -83,8 +84,42 @@ internal static class MetricsRegistry
         };
     }
 
-    private static void InterlockedMax(ref long target, long value)
+    /// <summary>快照为强类型视图；by_tool/by_code 按 Ordinal 排序，保证输出稳定。</summary>
+    public static MetricsView ToView()
     {
+        long calls = Interlocked.Read(ref _calls);
+        long totalMs = Interlocked.Read(ref _totalMs);
+        long errors = Interlocked.Read(ref _errors);
+
+        var tools = new SortedDictionary<string, long>(StringComparer.Ordinal);
+        foreach ((string name, long count) in ByTool)
+        {
+            tools[name] = count;
+        }
+
+        var codes = new SortedDictionary<string, long>(StringComparer.Ordinal);
+        foreach ((string name, long count) in ByCode)
+        {
+            codes[name] = count;
+        }
+
+        return new MetricsView
+        {
+            Calls = calls,
+            Errors = errors,
+            ErrorRate = calls == 0 ? 0 : Math.Round((double)errors / calls, 4),
+            AvgMs = calls == 0 ? 0 : Math.Round((double)totalMs / calls, 1),
+            MaxMs = Interlocked.Read(ref _maxMs),
+            TextBytes = Interlocked.Read(ref _textBytes),
+            ImageBytes = Interlocked.Read(ref _imageBytes),
+            SnapshotNodes = Interlocked.Read(ref _snapshotNodes),
+            OcrCalls = Interlocked.Read(ref _ocrCalls),
+            ByTool = tools,
+            ByCode = codes,
+        };
+    }
+
+    private static void InterlockedMax(ref long target, long value)    {
         long current = Interlocked.Read(ref target);
 
         while (value > current)

@@ -1498,7 +1498,8 @@ internal sealed class McpServer
 
     private ToolResponse GetEnvironment(JsonElement arguments)
     {
-        JsonObject data = _session.GetEnvironment(OptionalBool(arguments, "ensure", false));
+        EnvironmentView environment = _session.GetEnvironment(OptionalBool(arguments, "ensure", false));
+        JsonObject data = VspJson.ToNode(environment).AsObject();
         data["client_id"] = _client?.Id ?? "c0";
         data["screen_lease"] = SharedScreenLease.Describe();
         return ToolResponse.Text(data);

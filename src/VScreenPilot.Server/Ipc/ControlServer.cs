@@ -327,7 +327,7 @@ internal sealed class ControlServer : IDisposable
 
     private JsonObject EnvironmentResult(JsonObject request)
     {
-        JsonObject result = _session.GetEnvironment(ensure: false);
+        JsonObject result = VspJson.ToNode(_session.GetEnvironment(ensure: false)).AsObject();
 
         if (GetBool(request, "ensure", false))
         {
