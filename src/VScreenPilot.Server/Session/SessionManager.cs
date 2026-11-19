@@ -66,9 +66,7 @@ internal sealed partial class SessionManager : IDisposable
 
     private readonly object _gate = new();
 
-    // 只读观察与 release 的读写闸：release 摘屏/清应用时先等观察者排空。
-    private readonly ReaderWriterLockSlim _sessionLock =
-        new(LockRecursionPolicy.NoRecursion);
+    private readonly SessionGuard _guard = new();
     private readonly LogRing _log;
     private readonly StateStore _stateStore;
     private readonly JobObject _job;
@@ -214,26 +212,14 @@ internal sealed partial class SessionManager : IDisposable
         }
     }
 
-    public void EnterRead() => _sessionLock.EnterReadLock();
+    public void EnterRead() => _guard.EnterRead();
 
-    public void ExitRead()
-    {
-        if (_sessionLock.IsReadLockHeld)
-        {
-            _sessionLock.ExitReadLock();
-        }
-    }
+    public void ExitRead() => _guard.ExitRead();
 
     public bool TryEnterExclusive(int milliseconds) =>
-        _sessionLock.TryEnterWriteLock(Math.Max(0, milliseconds));
+        _guard.TryEnterExclusive(milliseconds);
 
-    public void ExitExclusive()
-    {
-        if (_sessionLock.IsWriteLockHeld)
-        {
-            _sessionLock.ExitWriteLock();
-        }
-    }
+    public void ExitExclusive() => _guard.ExitExclusive();
 
     /// <summary>多会话 profile 名（--profile / VSP_PROFILE）；默认 default。</summary>
     public string ProfileName { get; } = Profile.Resolve();
