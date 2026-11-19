@@ -1,5 +1,5 @@
 using System.Text.Json.Nodes;
-using VScreenPilot.Core.Displays;
+using VScreenPilot.Platform.Displays;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Session;

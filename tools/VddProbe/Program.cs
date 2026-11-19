@@ -4,8 +4,8 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
-using VScreenPilot.Core.Displays;
-using VScreenPilot.Core.Interop;
+using VScreenPilot.Platform.Displays;
+using VScreenPilot.Platform.Interop;
 
 namespace VddProbe;
 

@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using VScreenPilot.Apps;
-using VScreenPilot.Core.Displays;
+using VScreenPilot.Platform.Displays;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;

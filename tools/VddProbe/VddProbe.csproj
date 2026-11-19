@@ -14,7 +14,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\VScreenPilot.Core\VScreenPilot.Core.csproj" />
+    <ProjectReference Include="..\..\src\VScreenPilot.Platform\VScreenPilot.Platform.csproj" />
   </ItemGroup>
 
 </Project>

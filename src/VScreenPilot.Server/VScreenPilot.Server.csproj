@@ -36,7 +36,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\VScreenPilot.Abstractions\VScreenPilot.Abstractions.csproj" />
-    <ProjectReference Include="..\VScreenPilot.Core\VScreenPilot.Core.csproj" />
+    <ProjectReference Include="..\VScreenPilot.Platform\VScreenPilot.Platform.csproj" />
   </ItemGroup>
 
   <ItemGroup>

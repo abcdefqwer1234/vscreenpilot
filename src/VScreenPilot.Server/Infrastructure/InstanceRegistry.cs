@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using VScreenPilot.Core.Security;
+using VScreenPilot.Platform.Security;
 using VScreenPilot.Ipc;
 
 namespace VScreenPilot.Infrastructure;

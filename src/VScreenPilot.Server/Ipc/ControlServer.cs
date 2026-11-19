@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using VScreenPilot.Apps;
-using VScreenPilot.Core.Displays;
+using VScreenPilot.Platform.Displays;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Mcp;
 using VScreenPilot.Session;

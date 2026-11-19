@@ -2,7 +2,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using VScreenPilot.Core.Displays;
+using VScreenPilot.Platform.Displays;
 using VScreenPilot.Mcp;
 using VScreenPilot.Perception;
 using static VScreenPilot.Mcp.JsonArgReader;

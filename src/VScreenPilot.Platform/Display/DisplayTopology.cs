@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
-using VScreenPilot.Core.Interop;
+using VScreenPilot.Platform.Interop;
 
-namespace VScreenPilot.Core.Displays;
+namespace VScreenPilot.Platform.Displays;
 
 public sealed record DisplayInfo(
     string DeviceName,

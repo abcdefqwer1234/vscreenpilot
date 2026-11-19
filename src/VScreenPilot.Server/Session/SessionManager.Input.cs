@@ -4,7 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Interop.UIAutomationClient;
 using VScreenPilot.Apps;
-using VScreenPilot.Core.Displays;
+using VScreenPilot.Platform.Displays;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Input;
 using VScreenPilot.Interop;

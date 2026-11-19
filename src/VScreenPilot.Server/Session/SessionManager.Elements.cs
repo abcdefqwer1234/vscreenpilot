@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using VScreenPilot.Apps;
-using VScreenPilot.Core.Displays;
+using VScreenPilot.Platform.Displays;
 using VScreenPilot.Input;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;

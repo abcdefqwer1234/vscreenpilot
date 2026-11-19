@@ -1,4 +1,4 @@
-namespace VScreenPilot.Core.Security;
+namespace VScreenPilot.Platform.Security;
 
 /// <summary>
 /// 进程是否以管理员身份运行。取不到身份（受限令牌、异常）时一律按未提权处理。

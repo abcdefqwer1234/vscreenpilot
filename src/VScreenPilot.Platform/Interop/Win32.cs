@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace VScreenPilot.Core.Interop;
+namespace VScreenPilot.Platform.Interop;
 
 /// <summary>
 /// Win32 / SetupAPI / 显示配置相关 P/Invoke。

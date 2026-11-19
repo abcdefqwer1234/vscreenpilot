@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json.Nodes;
-using VScreenPilot.Core.Displays;
+using VScreenPilot.Platform.Displays;
 using VScreenPilot.Mcp;
 using VScreenPilot.Perception;
 

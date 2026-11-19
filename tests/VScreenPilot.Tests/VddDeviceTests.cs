@@ -1,4 +1,4 @@
-using VScreenPilot.Core.Displays;
+using VScreenPilot.Platform.Displays;
 using Xunit;
 
 namespace VScreenPilot.Tests;

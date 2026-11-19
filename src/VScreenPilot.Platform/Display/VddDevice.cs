@@ -1,9 +1,9 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
-using VScreenPilot.Core.Interop;
+using VScreenPilot.Platform.Interop;
 
-namespace VScreenPilot.Core.Displays;
+namespace VScreenPilot.Platform.Displays;
 
 public enum VddDeviceStatus
 {
