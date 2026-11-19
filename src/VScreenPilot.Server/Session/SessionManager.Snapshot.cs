@@ -4,6 +4,7 @@ using VScreenPilot.Apps;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
+using VScreenPilot.Json;
 using VScreenPilot.Mcp;
 using VScreenPilot.Perception;
 using VScreenPilot.Uia;
@@ -424,8 +425,10 @@ internal sealed partial class SessionManager
 
                 png = capture.Png;
                 previewPng = capture.PreviewPng;
-                previewMeta = capture.PreviewMeta;
-                data["screenshot"] = capture.Meta;
+                previewMeta = capture.PreviewMeta is null
+                    ? null
+                    : VspJson.ToNode(capture.PreviewMeta).AsObject();
+                data["screenshot"] = VspJson.ToNode(capture.Meta);
             }
         }
 

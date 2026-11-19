@@ -1657,7 +1657,7 @@ internal sealed class McpServer
             previewScale: inline ? Math.Max(Limits.MinScale, scale * Limits.PreviewScale) : null);
 
         byte[] png = capture.Png;
-        JsonObject meta = capture.Meta;
+        JsonObject meta = VspJson.ToNode(capture.Meta).AsObject();
 
         if (inline && png.Length <= InlineLimit)
         {
@@ -1693,7 +1693,7 @@ internal sealed class McpServer
 
         if (hasPreview)
         {
-            meta["preview"] = capture.PreviewMeta;
+            meta["preview"] = VspJson.ToNode(capture.PreviewMeta);
         }
 
         ToolResponse response = ToolResponse.Text(meta);

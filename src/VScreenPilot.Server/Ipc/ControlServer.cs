@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using VScreenPilot.Apps;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Json;
 using VScreenPilot.Mcp;
 using VScreenPilot.Session;
 using static VScreenPilot.Mcp.JsonArgReader;
@@ -345,8 +346,9 @@ internal sealed class ControlServer : IDisposable
             _session.ArtifactDirectory,
             $"cli-{DateTime.Now:HHmmss-fff}.png");
         File.WriteAllBytes(path, capture.Png);
-        capture.Meta["path"] = path;
-        return capture.Meta;
+        JsonObject meta = VspJson.ToNode(capture.Meta).AsObject();
+        meta["path"] = path;
+        return meta;
     }
 
     private JsonObject Status()

@@ -10,6 +10,7 @@ using VScreenPilot.Platform.Security;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Ipc;
+using VScreenPilot.Json;
 using VScreenPilot.Mcp;
 using VScreenPilot.Session;
 
@@ -755,8 +756,9 @@ internal static class Program
                         session.ArtifactDirectory,
                         $"cli-{DateTime.Now:HHmmss-fff}.png");
                     File.WriteAllBytes(path, capture.Png);
-                    capture.Meta["path"] = path;
-                    result = capture.Meta;
+                    JsonObject meta = VspJson.ToNode(capture.Meta).AsObject();
+                    meta["path"] = path;
+                    result = meta;
                     break;
 
                 default:

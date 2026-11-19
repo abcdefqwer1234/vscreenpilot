@@ -4,15 +4,16 @@ using VScreenPilot.Platform.Displays;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
 using VScreenPilot.Perception;
+using VScreenPilot.Views;
 
 namespace VScreenPilot.Session;
 
 internal sealed partial class SessionManager
 {
     internal sealed record CaptureResult(
-        byte[] Png, JsonObject Meta, byte[]? PreviewPng, JsonObject? PreviewMeta);
+        byte[] Png, CaptureView Meta, byte[]? PreviewPng, PreviewView? PreviewMeta);
 
-    public (byte[] Png, JsonObject Meta) CaptureScreen(
+    public (byte[] Png, CaptureView Meta) CaptureScreen(
         int? x, int? y, int? width, int? height, double scale, string? savePath)
     {
         CaptureResult result = CaptureScreenEx(
@@ -59,7 +60,7 @@ internal sealed partial class SessionManager
         double encodeMs = encodeWatch.Elapsed.TotalMilliseconds;
 
         byte[]? previewPng = null;
-        JsonObject? previewMeta = null;
+        PreviewView? previewMeta = null;
 
         if (previewScale is double requestedPreview)
         {
@@ -67,14 +68,8 @@ internal sealed partial class SessionManager
             previewPng = PngWriter.Encode(
                 bgra, capturedWidth, capturedHeight, previewEffective,
                 out int previewWidth, out int previewHeight);
-            previewMeta = new JsonObject
-            {
-                ["scale"] = previewEffective,
-                ["width"] = previewWidth,
-                ["height"] = previewHeight,
-                ["png_bytes"] = previewPng.Length,
-                ["source_frame_id"] = frameId,
-            };
+            previewMeta = new PreviewView(
+                previewEffective, previewWidth, previewHeight, previewPng.Length, frameId);
         }
 
         if (!string.IsNullOrWhiteSpace(savePath))
@@ -110,36 +105,24 @@ internal sealed partial class SessionManager
             }
         }
 
-        var meta = new JsonObject
-        {
-            ["frame_id"] = frameId,
-            ["x"] = left,
-            ["y"] = top,
-            ["width"] = outputWidth,
-            ["height"] = outputHeight,
-            ["source_width"] = capturedWidth,
-            ["source_height"] = capturedHeight,
-            ["scale"] = effectiveScale,
-            ["png_bytes"] = png.Length,
-            ["duration_ms"] = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
-            ["encode_ms"] = Math.Round(encodeMs, 2),
-            ["backend"] = "gdi",
-            // 超过 500ms 明确标记：客户端不要误以为工具挂死。
-            ["slow_capture"] = stopwatch.Elapsed.TotalMilliseconds > 500,
-            // assert_region 的 baseline 使用未缩放的源帧尺寸，和这里的输出尺寸可能不同。
-            ["baseline"] = new JsonObject
-            {
-                ["x"] = left,
-                ["y"] = top,
-                ["width"] = capturedWidth,
-                ["height"] = capturedHeight,
-            },
-        };
-
-        if (!string.IsNullOrWhiteSpace(savePath))
-        {
-            meta["path"] = ValidateSavePath(savePath);
-        }
+        // 超过 500ms 明确标记：客户端不要误以为工具挂死。
+        // assert_region 的 baseline 使用未缩放的源帧尺寸，和这里的输出尺寸可能不同。
+        var meta = new CaptureView(
+            FrameId: frameId,
+            X: left,
+            Y: top,
+            Width: outputWidth,
+            Height: outputHeight,
+            SourceWidth: capturedWidth,
+            SourceHeight: capturedHeight,
+            Scale: effectiveScale,
+            PngBytes: png.Length,
+            DurationMs: Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
+            EncodeMs: Math.Round(encodeMs, 2),
+            Backend: "gdi",
+            SlowCapture: stopwatch.Elapsed.TotalMilliseconds > 500,
+            Baseline: new BaselineView(left, top, capturedWidth, capturedHeight),
+            Path: string.IsNullOrWhiteSpace(savePath) ? null : ValidateSavePath(savePath));
 
         return new CaptureResult(png, meta, previewPng, previewMeta);
     }
