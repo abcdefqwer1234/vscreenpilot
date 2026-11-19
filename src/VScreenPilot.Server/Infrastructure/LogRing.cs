@@ -25,7 +25,6 @@ public sealed class LogRing : IDisposable
 
     private string? _filePath;
     private DateTime _fileDate;
-    private LogEntry? _lastError;
 
     /// <summary>由 SessionManager 注入；用于把日志归到当前 MCP 客户端。</summary>
     public static Func<string?>? ClientIdProvider { get; set; }
@@ -80,14 +79,6 @@ public sealed class LogRing : IDisposable
     public void Error(string message, Exception? exception = null) =>
         Add("ERROR", exception is null ? message : $"{message}: {exception.GetType().Name}: {exception.Message}");
 
-    public LogEntry? LastErrorEntry()
-    {
-        lock (_gate)
-        {
-            return _lastError;
-        }
-    }
-
     public void Add(string level, string message)
     {
         string? clientId = null;
@@ -109,11 +100,6 @@ public sealed class LogRing : IDisposable
             while (_entries.Count > _capacity)
             {
                 _entries.Dequeue();
-            }
-
-            if (string.Equals(level, "ERROR", StringComparison.Ordinal))
-            {
-                _lastError = entry;
             }
         }
 
@@ -397,17 +383,6 @@ public sealed class LogRing : IDisposable
         {
             return Array.Empty<string>();
         }
-    }
-
-    public JsonArray TailAsJson(int count)
-    {
-        var array = new JsonArray();
-        foreach (var entry in Tail(count))
-        {
-            array.Add(ToJson(entry));
-        }
-
-        return array;
     }
 
     public static JsonObject ToJson(LogEntry entry)

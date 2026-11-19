@@ -275,19 +275,6 @@ internal sealed partial class SessionManager
         return array;
     }
 
-    private static bool IsAscii(string value)
-    {
-        foreach (char ch in value)
-        {
-            if (ch > 127)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     /// <summary>
     /// 中文 OCR 引擎会把英文短横线识别成“һ/一”等字符，并插入空格。
     /// 精确匹配失败后，用“只保留字母数字”的归一化再比一次。

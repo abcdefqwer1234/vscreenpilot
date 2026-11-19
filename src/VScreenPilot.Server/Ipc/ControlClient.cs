@@ -76,16 +76,4 @@ internal static class ControlClient
 
         return null;
     }
-
-    public static bool TryStop(string profile, bool force)
-    {
-        JsonObject? response = TryInvoke(profile, new JsonObject
-        {
-            ["vsp"] = 1,
-            ["op"] = "stop",
-            ["force"] = force,
-        });
-
-        return response?["ok"]?.GetValue<bool>() == true;
-    }
 }

@@ -1467,28 +1467,4 @@ internal sealed partial class SessionManager
                string.Equals(focused.Info.ControlTypeName, expected.Info.ControlTypeName, StringComparison.OrdinalIgnoreCase) &&
                string.Equals(focused.Info.Name, expected.Info.Name, StringComparison.Ordinal);
     }
-
-    /// <summary>写值后回读：runtime_id 可能已变化，失败时按指纹重定位再读。</summary>
-    private string? ReadElementValue(ElementRefEntry entry)
-    {
-        UiaElementHandle? handle = null;
-
-        try
-        {
-            if (!string.IsNullOrEmpty(entry.RuntimeId))
-            {
-                handle = Uia.FindByRuntimeId(entry.Hwnd, entry.RuntimeId);
-            }
-
-            handle ??= Uia.FindByFingerprint(
-                entry.Hwnd, entry.Name, entry.AutomationId, entry.ControlTypeName,
-                entry.Left, entry.Top, entry.Right, entry.Bottom);
-
-            return handle is null ? null : handle.GetValue();
-        }
-        finally
-        {
-            handle?.Dispose();
-        }
-    }
 }

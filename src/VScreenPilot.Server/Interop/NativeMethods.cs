@@ -40,12 +40,6 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    internal static extern int GetWindowTextW(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    internal static extern int GetWindowTextLengthW(IntPtr hWnd);
-
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool IsWindowVisible(IntPtr hWnd);
@@ -126,17 +120,10 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool ScreenToClient(IntPtr hWnd, ref POINT lpPoint);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
-
     /// <summary>把物理屏幕坐标转换为目标 DPI-unaware 窗口使用的逻辑坐标。</summary>
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool PhysicalToLogicalPointForPerMonitorDPI(IntPtr hWnd, ref POINT lpPoint);
-
-    [DllImport("user32.dll")]
-    internal static extern uint GetDpiForWindow(IntPtr hWnd);
 
     /// <summary>探测目标 UI 线程是否响应：AttachThreadInput 到挂起线程会把调用方一起拖住。</summary>
     [DllImport("user32.dll", SetLastError = true)]
@@ -148,24 +135,6 @@ internal static class NativeMethods
     internal static extern IntPtr SendMessageTimeoutW(
         IntPtr hWnd, uint Msg, IntPtr wParam, StringBuilder lParam, uint fuFlags, uint uTimeout,
         out IntPtr lpdwResult);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct GUITHREADINFO
-    {
-        public int cbSize;
-        public uint flags;
-        public IntPtr hwndActive;
-        public IntPtr hwndFocus;
-        public IntPtr hwndCapture;
-        public IntPtr hwndMenuOwner;
-        public IntPtr hwndMoveSize;
-        public IntPtr hwndCaret;
-        public RECT rcCaret;
-    }
 
     internal const uint SmtoAbortIfHung = 0x0002;
     internal const uint WmNull = 0x0000;

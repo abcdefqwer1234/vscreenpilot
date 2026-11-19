@@ -20,9 +20,6 @@ internal static class ScreenCapture
     private static readonly Dictionary<(int Width, int Height), Surface> Surfaces = new();
     private static IntPtr _screenDc;
     private static IntPtr _pixelDc;
-    private static long _captureCount;
-    private static long _slowCount;
-    private static double _lastMs;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct BITMAPINFOHEADER
@@ -115,8 +112,6 @@ internal static class ScreenCapture
             throw new ArgumentOutOfRangeException(nameof(width));
         }
 
-        long started = Environment.TickCount64;
-
         lock (Sync)
         {
             Surface surface = RentSurface(width, height);
@@ -139,14 +134,6 @@ internal static class ScreenCapture
             int size = width * height * 4;
             var buffer = new byte[size];
             Marshal.Copy(surface.Bits, buffer, 0, size);
-
-            _captureCount++;
-            _lastMs = Environment.TickCount64 - started;
-
-            if (_lastMs > 500)
-            {
-                _slowCount++;
-            }
 
             return (buffer, width, height);
         }
@@ -181,15 +168,6 @@ internal static class ScreenCapture
                 (byte)(color & 0xFF),
                 (byte)255,
             };
-        }
-    }
-
-    public static string Diagnostics()
-    {
-        lock (Sync)
-        {
-            return $"captures={_captureCount},slow={_slowCount},last_ms={_lastMs:F0}," +
-                   $"surfaces={Surfaces.Count},layered={IncludeLayered}";
         }
     }
 

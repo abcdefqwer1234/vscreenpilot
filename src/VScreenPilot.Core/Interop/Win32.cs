@@ -319,6 +319,4 @@ internal static class Win32
     internal static extern int GetDpiForMonitor(IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY);
 
     internal const int MdtEffectiveDpi = 0;
-
-    internal static int GetLastError() => Marshal.GetLastWin32Error();
 }

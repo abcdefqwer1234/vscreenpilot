@@ -60,23 +60,6 @@ internal static class WindowManager
         return result;
     }
 
-    public static WindowInfo? FindByTitle(
-        string titleSubstring, bool exact = false, Func<WindowInfo, bool>? filter = null)
-    {
-        var candidates = FindByTitleCandidates(titleSubstring, filter);
-
-        if (exact)
-        {
-            return candidates.FirstOrDefault(
-                item => item.Title.Equals(titleSubstring, StringComparison.OrdinalIgnoreCase));
-        }
-
-        return candidates
-            .OrderByDescending(item => item.Title.Equals(titleSubstring, StringComparison.OrdinalIgnoreCase))
-            .ThenByDescending(item => item.Area)
-            .FirstOrDefault();
-    }
-
     /// <summary>
     /// 返回所有标题匹配的顶层窗口，按“完全相等优先、面积降序”排序。
     /// 调用方在多候选时应报歧义，而不是随手接管第一个。
@@ -229,9 +212,6 @@ internal static class WindowManager
         _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
         return (int)pid;
     }
-
-    public static bool IsForegroundOfProcess(int pid) =>
-        GetProcessId(NativeMethods.GetForegroundWindow()) == pid;
 
     public static IReadOnlyList<WindowInfo> ListForProcess(int pid) =>
         ListTopLevel().Where(window => window.Pid == pid).ToList();

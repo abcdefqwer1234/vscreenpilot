@@ -150,16 +150,6 @@ public sealed class ToolResponse
         return this;
     }
 
-    public ToolResponse AddText(JsonNode payload)
-    {
-        Content.Add((JsonNode)new JsonObject
-        {
-            ["type"] = "text",
-            ["text"] = payload.ToJsonString(Compact),
-        });
-        return this;
-    }
-
     /// <summary>标准 resource_link 内容块：大图/artifact 让客户端自己按 URI 读取。</summary>
     public ToolResponse AddResourceLink(
         string uri, string name, string? mimeType = null, long? size = null)
