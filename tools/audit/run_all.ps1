@@ -75,6 +75,7 @@ Add-Step "bench_protocol" "bench_protocol.py" @{ fuzz = $Fuzz } -NeedsUiTarget
 
 if (-not $SkipDisplay) {
     # ---- 性能与并发（需要 VDD） ----
+    Add-Step "bench_baseline" "bench_baseline.py" @{} -Display
     Add-Step "bench_perf" "bench_perf.py" @{} -Display
     Add-Step "bench_capture_soak" "bench_capture_soak.py" @{} -Display
     Add-Step "bench_concurrency" "bench_concurrency.py" @{} -Display

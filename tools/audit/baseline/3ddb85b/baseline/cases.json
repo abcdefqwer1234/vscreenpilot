@@ -1,0 +1,44 @@
+[
+  {
+    "id": "BL-01",
+    "purpose": "握手 P95 ≤ 300ms",
+    "ok": false,
+    "observed": 1466.11,
+    "threshold": 300.0
+  },
+  {
+    "id": "BL-02",
+    "purpose": "首次挂屏 P95 ≤ 3000ms",
+    "ok": false,
+    "observed": 8058.01,
+    "threshold": 3000.0
+  },
+  {
+    "id": "BL-03",
+    "purpose": "全屏截图 P95 ≤ 50ms",
+    "ok": false,
+    "observed": 56.48,
+    "threshold": 50.0
+  },
+  {
+    "id": "BL-04",
+    "purpose": "区域截图 P95 ≤ 50ms",
+    "ok": true,
+    "observed": 22.85,
+    "threshold": 50.0
+  },
+  {
+    "id": "BL-05",
+    "purpose": "get_environment（已挂屏）P95 ≤ 200ms",
+    "ok": true,
+    "observed": 16.93,
+    "threshold": 200.0
+  },
+  {
+    "id": "BL-06",
+    "purpose": "空闲 RSS ≤ 400MB",
+    "ok": true,
+    "observed": 133.39,
+    "threshold": 400.0
+  }
+]

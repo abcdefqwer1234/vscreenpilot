@@ -193,11 +193,12 @@ def diff_cases(base: Any, cur: Any, relative: str, out: list[dict], max_diffs: i
             out.append({"file": relative, "path": case_id, "kind": "case_removed",
                         "baseline": base_cases[case_id], "current": None})
         elif case_id not in base_cases:
-            out.append({"file": relative, "path": case_id, "kind": "case_added",
-                        "baseline": None, "current": cur_cases[case_id]})
-        elif base_cases[case_id] != cur_cases[case_id]:
-            out.append({"file": relative, "path": case_id, "kind": "case_flipped",
-                        "baseline": base_cases[case_id], "current": cur_cases[case_id]})
+            # 新增用例是覆盖面变好，不算回归。
+            continue
+        elif base_cases[case_id] and not cur_cases[case_id]:
+            # 只把“通过 → 失败”当回归；失败 → 通过是改进，不阻塞。
+            out.append({"file": relative, "path": case_id, "kind": "case_regressed",
+                        "baseline": True, "current": False})
     return True
 
 
@@ -259,7 +260,9 @@ def main() -> int:
             continue
         checked += 1
         # 子目录里是审计运行记录：只对比"用例通过集"，不对比耗时/字节/临时路径。
-        if "/" in relative and diff_cases(base, cur, relative, diffs, args.max_diffs):
+        # 没有用例集的文件（原始指标）直接忽略，避免把噪声当契约。
+        if "/" in relative:
+            diff_cases(base, cur, relative, diffs, args.max_diffs)
             continue
         local: list[dict] = []
         diff_value(base, cur, "", local, args.max_diffs - len(diffs), roots)
