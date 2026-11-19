@@ -1981,7 +1981,8 @@ internal sealed class McpServer
         string onDirty = OptionalString(arguments, "on_dirty") ?? "abort";
         bool allowDataLoss = OptionalBool(arguments, "allow_data_loss", false);
         string clientId = _client?.Id ?? "c0";
-        JsonObject data = _session.ReleaseEnvironment(keepDisplay, onDirty, allowDataLoss);
+        ReleaseReport report = _session.ReleaseEnvironment(keepDisplay, onDirty, allowDataLoss);
+        JsonObject data = VspJson.ToNode(report).AsObject();
         data["client_id"] = clientId;
 
         if (data["display_kept"]?.GetValue<bool>() == true)

@@ -8,6 +8,7 @@ using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
 using VScreenPilot.Uia;
+using VScreenPilot.Views;
 
 namespace VScreenPilot.Session;
 
@@ -830,7 +831,7 @@ internal sealed partial class SessionManager : IDisposable
     /// <summary>
     /// 在释放/预热等低负载节点裁剪工作集。不是定时看门狗，只按事件触发。
     /// </summary>
-    public JsonObject TrimIdleMemory(string reason)
+    public MemoryView TrimIdleMemory(string reason)
     {
         long before = 0;
         long afterGc = 0;
@@ -844,15 +845,13 @@ internal sealed partial class SessionManager : IDisposable
 
             if (before < 36L * 1024 * 1024)
             {
-                return new JsonObject
-                {
-                    ["before_mb"] = Math.Round(before / 1048576.0, 1),
-                    ["after_gc_mb"] = Math.Round(before / 1048576.0, 1),
-                    ["after_mb"] = Math.Round(before / 1048576.0, 1),
-                    ["trimmed"] = false,
-                    ["emptied"] = false,
-                    ["private_mb"] = Math.Round(process.PrivateMemorySize64 / 1048576.0, 1),
-                };
+                return new MemoryView(
+                    Math.Round(before / 1048576.0, 1),
+                    Math.Round(before / 1048576.0, 1),
+                    Math.Round(before / 1048576.0, 1),
+                    Trimmed: false,
+                    Emptied: false,
+                    PrivateMb: Math.Round(process.PrivateMemorySize64 / 1048576.0, 1));
             }
 
             // 不阻塞等待终结器：UIA COM 释放期强制 GC + WaitForPendingFinalizers
@@ -886,14 +885,12 @@ internal sealed partial class SessionManager : IDisposable
             afterGc = before;
         }
 
-        return new JsonObject
-        {
-            ["before_mb"] = Math.Round(before / 1048576.0, 1),
-            ["after_gc_mb"] = Math.Round(afterGc / 1048576.0, 1),
-            ["after_mb"] = Math.Round(after / 1048576.0, 1),
-            ["trimmed"] = after > 0 && after < before,
-            ["emptied"] = emptied,
-        };
+        return new MemoryView(
+            Math.Round(before / 1048576.0, 1),
+            Math.Round(afterGc / 1048576.0, 1),
+            Math.Round(after / 1048576.0, 1),
+            Trimmed: after > 0 && after < before,
+            Emptied: emptied);
     }
 
     private bool GeometryStillValid(DisplayInfo current)
@@ -1351,7 +1348,7 @@ internal sealed partial class SessionManager : IDisposable
         return result;
     }
 
-    public JsonObject ReleaseEnvironment(
+    public ReleaseReport ReleaseEnvironment(
         bool keepDisplay, string onDirty = "abort", bool allowDataLoss = false,
         bool forceRemoveDisplay = false, bool forceAllClients = false)
     {
@@ -1576,25 +1573,23 @@ internal sealed partial class SessionManager : IDisposable
                     $"环境已释放 (displayRemoved={removed}, kept={keepDisplayEffective})");
             }
 
-            JsonObject memory = TrimIdleMemory("release");
+            MemoryView memory = TrimIdleMemory("release");
 
             var closedSet = closed.ToHashSet();
 
-            return new JsonObject
-            {
-                ["released"] = true,
-                ["display_removed"] = removed,
-                ["display_kept"] = keepDisplayEffective,
-                ["on_dirty"] = onDirty,
-                ["restored_pids"] = ToJsonArray(restored),
-                ["closed_pids"] = ToJsonArray(closed),
-                ["forced_pids"] = ToJsonArray(forced),
-                ["kept_pids"] = ToJsonArray(kept.Where(pid => !closedSet.Contains(pid))),
-                ["saved_pids"] = ToJsonArray(saved),
-                ["discarded_pids"] = ToJsonArray(discarded),
-                ["memory"] = memory,
-                ["warnings"] = warnings,
-            };
+            return new ReleaseReport(
+                Released: true,
+                DisplayRemoved: removed,
+                DisplayKept: keepDisplayEffective,
+                OnDirty: onDirty,
+                RestoredPids: restored.Distinct().ToArray(),
+                ClosedPids: closed.Distinct().ToArray(),
+                ForcedPids: forced.Distinct().ToArray(),
+                KeptPids: kept.Where(pid => !closedSet.Contains(pid)).Distinct().ToArray(),
+                SavedPids: saved.Distinct().ToArray(),
+                DiscardedPids: discarded.Distinct().ToArray(),
+                Memory: memory,
+                Warnings: warnings.Select(item => item!.GetValue<string>()).ToArray());
         }
     }
 
