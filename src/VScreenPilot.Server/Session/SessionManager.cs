@@ -162,9 +162,12 @@ internal sealed partial class SessionManager : IDisposable
         {
             _retiredUia.Add(old);
 
-            while (_retiredUia.Count > 4)
+            // 不能在这里 Dispose：退休实例可能仍有 COM 调用在飞（Reset 通常由超时触发），
+            // 立刻释放会造成 use-after-free。改为全部保留到会话 Dispose 时统一释放；
+            // 之前“超过 4 个直接丢弃”会让这些 RCW 只能等终结器，长会话下持续泄漏。
+            if (_retiredUia.Count > 8)
             {
-                _retiredUia.RemoveAt(0);
+                _log.Warn($"UIA 退休实例已累积 {_retiredUia.Count} 个，将在会话结束时统一释放");
             }
         }
     }

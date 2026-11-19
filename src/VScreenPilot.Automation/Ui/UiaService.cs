@@ -253,12 +253,6 @@ internal sealed partial class UiaService : IDisposable
     private int _disposed;
 
     // 线程本地：调用方拿到结果后立刻读，避免其它线程的下一次查询把标志覆盖。
-    [ThreadStatic]
-    private static bool _lastFindTruncated;
-
-    /// <summary>最近一次 FindElements 是否因为 maxResults/5000 上限被截断。</summary>
-    public bool LastFindTruncated => _lastFindTruncated;
-
     /// <summary>
     /// 释放 COM 引用。卡死的 provider 可能让调用阻塞，因此 ResetUia 只在后台线程调用，
     /// 并且超过保留上限的旧实例直接交给 GC。

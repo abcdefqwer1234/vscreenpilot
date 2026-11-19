@@ -241,8 +241,10 @@ internal sealed partial class SessionManager
 
             try
             {
-                found = Uia.FindElements(window, name, mode, controlType, automationId, limit);
-                truncated |= Uia.LastFindTruncated;
+                UiaFindResult uia = Uia.FindElementsDetailed(
+                    window, name, mode, controlType, automationId, limit);
+                found = uia.Items;
+                truncated |= uia.Truncated;
 
                 // 单个窗口 UIA 完全不可见时，就地回退 MSAA。
                 // 不能等全局 0 结果再回退：主窗口有控件会掩盖掉 bosa_sdm_msword 对话框。

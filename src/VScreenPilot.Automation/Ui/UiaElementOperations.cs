@@ -225,12 +225,25 @@ internal sealed partial class UiaService
         UiaNameMatch nameMatch,
         string? controlType,
         string? automationId,
+        int maxResults) =>
+        FindElementsDetailed(hwnd, name, nameMatch, controlType, automationId, maxResults).Items;
+
+    /// <summary>
+    /// 同 <see cref="FindElements"/>，但把“是否因上限/隐藏候选被截断”作为返回值携带，
+    /// 不再依赖 [ThreadStatic] 之类的跨调用隐藏通道。
+    /// </summary>
+    public UiaFindResult FindElementsDetailed(
+        IntPtr hwnd,
+        string? name,
+        UiaNameMatch nameMatch,
+        string? controlType,
+        string? automationId,
         int maxResults)
     {
         lock (_sync)
         {
         var results = new List<UiaElementInfo>();
-        _lastFindTruncated = false;
+        bool truncated = false;
         // prefer=largest/focused 需要完整候选集；其余调用仍按较小的上限快速返回。
         maxResults = Math.Clamp(maxResults, 1, 2000);
 
@@ -249,7 +262,7 @@ internal sealed partial class UiaService
 
             if (root is null)
             {
-                return results;
+                return new UiaFindResult(results, truncated);
             }
 
             IUIAutomationElementArray? all = root.FindAllBuildCache(
@@ -257,7 +270,7 @@ internal sealed partial class UiaService
 
             if (all is null)
             {
-                return results;
+                return new UiaFindResult(results, truncated);
             }
 
             try
@@ -265,7 +278,7 @@ internal sealed partial class UiaService
                 var usable = new List<UiaElementInfo>();
                 var hidden = new List<UiaElementInfo>();
                 int count = Math.Min(all.Length, 5000);
-                _lastFindTruncated = all.Length > count;
+                truncated = all.Length > count;
 
                 for (int i = 0; i < count; i++)
                 {
@@ -289,7 +302,7 @@ internal sealed partial class UiaService
                             if (usable.Count >= maxResults)
                             {
                                 // 后面还有候选（或已有 hidden）说明结果被截断。
-                                _lastFindTruncated |= i + 1 < count || hidden.Count > 0;
+                                truncated |= i + 1 < count || hidden.Count > 0;
                                 break;
                             }
                         }
@@ -312,7 +325,7 @@ internal sealed partial class UiaService
                     results = results.Take(maxResults).ToList();
                 }
 
-                return results;
+                return new UiaFindResult(results, truncated);
             }
             finally
             {
