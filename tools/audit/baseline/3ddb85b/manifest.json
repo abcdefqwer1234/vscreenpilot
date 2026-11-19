@@ -1,0 +1,18 @@
+{
+  "tag": "3ddb85b",
+  "note": "prebuilt 0.2.2 binary under artifacts/server",
+  "commit": "3ddb85b74622790d14becc62f9e4ab5592c07049",
+  "exe": "C:\\Users\\31746\\Desktop\\VScreenPilot\\artifacts\\server\\VScreenPilot.exe",
+  "exe_sha256": "8CE10F3BD66D2399E10B8AEE1CFAA62A0EF9D91330DD654055DDEC62B3CCAF56",
+  "exe_bytes": 64865616,
+  "captured_at": "2026-11-19T14:02:16+0800",
+  "os": "Windows 11 10.0.26300",
+  "python": "3.13.13",
+  "profile": "baseline-probe",
+  "tool_count": 22,
+  "protocol_version": "2025-06-18",
+  "server_info": {
+    "name": "vscreenpilot",
+    "version": "0.2.2"
+  }
+}

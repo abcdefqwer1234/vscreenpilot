@@ -1,0 +1,202 @@
+{
+  "unknown_tool": {
+    "is_error": true,
+    "payload": {
+      "code": "E_UNKNOWN_TOOL",
+      "message": "Unknown tool: no_such_tool",
+      "details": {
+        "tool": "no_such_tool"
+      },
+      "retryable": false,
+      "hint": "调用 tools/list 查看可用工具名；工具名区分大小写",
+      "stage": "validate",
+      "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_unknown_tool",
+      "request_id": "89afc89c9d85"
+    },
+    "structured_content": {
+      "code": "E_UNKNOWN_TOOL",
+      "message": "Unknown tool: no_such_tool",
+      "details": {
+        "tool": "no_such_tool"
+      },
+      "retryable": false,
+      "hint": "调用 tools/list 查看可用工具名；工具名区分大小写",
+      "stage": "validate",
+      "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_unknown_tool",
+      "request_id": "89afc89c9d85"
+    }
+  },
+  "invalid_control_type": {
+    "is_error": true,
+    "payload": {
+      "code": "E_INVALID_ARG",
+      "message": "control_type 无效: NotAControlType",
+      "details": {
+        "field": "control_type",
+        "supported": [
+          "AppBar",
+          "Button",
+          "Calendar",
+          "CheckBox",
+          "ComboBox",
+          "Custom",
+          "DataGrid",
+          "DataItem",
+          "Document",
+          "Edit",
+          "Group",
+          "Header",
+          "HeaderItem",
+          "Hyperlink",
+          "Image",
+          "List",
+          "ListItem",
+          "Menu",
+          "MenuBar",
+          "MenuItem",
+          "Pane",
+          "ProgressBar",
+          "RadioButton",
+          "ScrollBar",
+          "SemanticZoom",
+          "Separator",
+          "Slider",
+          "Spinner",
+          "SplitButton",
+          "StatusBar",
+          "Tab",
+          "TabItem",
+          "Table",
+          "Text",
+          "Thumb",
+          "TitleBar",
+          "ToolBar",
+          "ToolTip",
+          "Tree",
+          "TreeItem",
+          "Window"
+        ]
+      },
+      "retryable": false,
+      "hint": "使用 UIA 控件类型英文名，例如 Button、Edit、Document",
+      "stage": "validate",
+      "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_invalid_arg",
+      "request_id": "d7bf139b5f89"
+    },
+    "structured_content": {
+      "code": "E_INVALID_ARG",
+      "message": "control_type 无效: NotAControlType",
+      "details": {
+        "field": "control_type",
+        "supported": [
+          "AppBar",
+          "Button",
+          "Calendar",
+          "CheckBox",
+          "ComboBox",
+          "Custom",
+          "DataGrid",
+          "DataItem",
+          "Document",
+          "Edit",
+          "Group",
+          "Header",
+          "HeaderItem",
+          "Hyperlink",
+          "Image",
+          "List",
+          "ListItem",
+          "Menu",
+          "MenuBar",
+          "MenuItem",
+          "Pane",
+          "ProgressBar",
+          "RadioButton",
+          "ScrollBar",
+          "SemanticZoom",
+          "Separator",
+          "Slider",
+          "Spinner",
+          "SplitButton",
+          "StatusBar",
+          "Tab",
+          "TabItem",
+          "Table",
+          "Text",
+          "Thumb",
+          "TitleBar",
+          "ToolBar",
+          "ToolTip",
+          "Tree",
+          "TreeItem",
+          "Window"
+        ]
+      },
+      "retryable": false,
+      "hint": "使用 UIA 控件类型英文名，例如 Button、Edit、Document",
+      "stage": "validate",
+      "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_invalid_arg",
+      "request_id": "d7bf139b5f89"
+    }
+  },
+  "unknown_argument": {
+    "is_error": true,
+    "payload": {
+      "code": "E_INVALID_ARG",
+      "message": "未知参数 timeout",
+      "details": {
+        "path": "timeout",
+        "allowed": [
+          "region",
+          "scale",
+          "inline",
+          "save_path"
+        ]
+      },
+      "retryable": false,
+      "hint": "检查字段名拼写；allowed 列出了该层接受的字段",
+      "stage": "validate",
+      "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_invalid_arg",
+      "request_id": "cb422bb68b88"
+    },
+    "structured_content": {
+      "code": "E_INVALID_ARG",
+      "message": "未知参数 timeout",
+      "details": {
+        "path": "timeout",
+        "allowed": [
+          "region",
+          "scale",
+          "inline",
+          "save_path"
+        ]
+      },
+      "retryable": false,
+      "hint": "检查字段名拼写；allowed 列出了该层接受的字段",
+      "stage": "validate",
+      "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_invalid_arg",
+      "request_id": "cb422bb68b88"
+    }
+  },
+  "script_disabled": {
+    "is_error": true,
+    "payload": {
+      "code": "E_DISABLED",
+      "message": "run_script 默认关闭；请以 --allow-script 或环境变量 VSP_ALLOW_SCRIPT=1 启动 VScreenPilot",
+      "retryable": false,
+      "hint": "该能力默认关闭；需要显式 --allow-script 或对应 capability",
+      "stage": "script",
+      "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_disabled",
+      "request_id": "ea87b718362e"
+    },
+    "structured_content": {
+      "code": "E_DISABLED",
+      "message": "run_script 默认关闭；请以 --allow-script 或环境变量 VSP_ALLOW_SCRIPT=1 启动 VScreenPilot",
+      "retryable": false,
+      "hint": "该能力默认关闭；需要显式 --allow-script 或对应 capability",
+      "stage": "script",
+      "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_disabled",
+      "request_id": "ea87b718362e"
+    }
+  }
+}

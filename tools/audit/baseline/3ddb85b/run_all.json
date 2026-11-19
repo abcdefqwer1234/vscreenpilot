@@ -1,0 +1,31 @@
+﻿{
+    "exe":  "C:\\Users\\31746\\Desktop\\VScreenPilot\\artifacts\\server\\VScreenPilot.exe",
+    "exe_sha256":  "8CE10F3BD66D2399E10B8AEE1CFAA62A0EF9D91330DD654055DDEC62B3CCAF56",
+    "out":  "C:\\Users\\31746\\Desktop\\VScreenPilot\\tools\\audit\\baseline\\3ddb85b",
+    "profile":  "vspaudit",
+    "skip_display":  true,
+    "started":  "2026-11-19T14:11:34.2330491+08:00",
+    "steps":  [
+                  {
+                      "name":  "smoke_no_display",
+                      "exit_code":  0,
+                      "duration_s":  3.88,
+                      "log":  "C:\\Users\\31746\\Desktop\\VScreenPilot\\tools\\audit\\baseline\\3ddb85b\\logs\\smoke_no_display.log",
+                      "display":  false
+                  },
+                  {
+                      "name":  "bench_contract",
+                      "exit_code":  0,
+                      "duration_s":  30.31,
+                      "log":  "C:\\Users\\31746\\Desktop\\VScreenPilot\\tools\\audit\\baseline\\3ddb85b\\logs\\bench_contract.log",
+                      "display":  false
+                  }
+              ],
+    "skipped":  [
+                    "bench_protocol"
+                ],
+    "record_only":  true,
+    "failures":  [
+
+                 ]
+}
