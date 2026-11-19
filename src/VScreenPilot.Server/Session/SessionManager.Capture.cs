@@ -153,65 +153,14 @@ internal sealed partial class SessionManager
     }
 
     /// <summary>保存最近几帧，供 assert_region/pixel_diff 按区域或 frame_id 引用。</summary>
-    internal string StoreFrame(byte[] bgra, int width, int height, int x, int y)
-    {
-        string id = $"f{Interlocked.Increment(ref _nextFrameId)}";
+    internal string StoreFrame(byte[] bgra, int width, int height, int x, int y) =>
+        _frames.Store(bgra, width, height, x, y, CurrentClientId);
 
-        lock (_frameLock)
-        {
-            _frames.Add(new FrameSnapshot
-            {
-                Id = id,
-                ClientId = CurrentClientId,
-                Bgra = bgra,
-                Width = width,
-                Height = height,
-                X = x,
-                Y = y,
-            });
+    internal FrameSnapshot? FindFrame(string frameId) =>
+        _frames.FindById(CurrentClientId, frameId);
 
-            // 16 张 1280×720 BGRA ≈ 59MB；改成 32MB/8 张，配合 PNG 池化把稳态内存压下来。
-            const long maxBytes = 32L * 1024 * 1024;
-
-            while (_frames.Count > MaxFrames ||
-                   _frames.Sum(frame => (long)frame.Bgra.Length) > maxBytes)
-            {
-                if (_frames.Count == 1)
-                {
-                    break;
-                }
-
-                _frames.RemoveAt(0);
-            }
-        }
-
-        return id;
-    }
-
-    internal FrameSnapshot? FindFrame(string frameId)
-    {
-        string clientId = CurrentClientId;
-
-        lock (_frameLock)
-        {
-            return _frames.LastOrDefault(frame =>
-                string.Equals(frame.ClientId, clientId, StringComparison.Ordinal) &&
-                string.Equals(frame.Id, frameId, StringComparison.OrdinalIgnoreCase));
-        }
-    }
-
-    internal FrameSnapshot? FindLatestFrame(int x, int y, int width, int height)
-    {
-        string clientId = CurrentClientId;
-
-        lock (_frameLock)
-        {
-            return _frames.LastOrDefault(frame =>
-                string.Equals(frame.ClientId, clientId, StringComparison.Ordinal) &&
-                frame.X == x && frame.Y == y &&
-                frame.Width == width && frame.Height == height);
-        }
-    }
+    internal FrameSnapshot? FindLatestFrame(int x, int y, int width, int height) =>
+        _frames.FindLatest(CurrentClientId, x, y, width, height);
 
     /// <summary>
     /// 截图/模板落盘只允许当前工作目录或系统临时目录下的 .png，

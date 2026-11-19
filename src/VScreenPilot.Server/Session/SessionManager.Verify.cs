@@ -932,7 +932,7 @@ internal sealed partial class SessionManager
 
         if (mode is "last" or "latest")
         {
-            FrameSnapshot? latest = _frames.LastOrDefault();
+            FrameSnapshot? latest = _frames.Latest();
             return latest is not null &&
                    latest.Width == width &&
                    latest.Height == height
@@ -947,7 +947,7 @@ internal sealed partial class SessionManager
     {
         var array = new JsonArray();
 
-        foreach (FrameSnapshot frame in _frames)
+        foreach (FrameSnapshot frame in _frames.Snapshot())
         {
             array.Add(new JsonObject
             {

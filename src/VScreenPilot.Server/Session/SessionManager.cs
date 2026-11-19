@@ -37,17 +37,6 @@ internal sealed class TrackedApp
     public DateTime? DeadSince { get; set; }
 }
 
-internal sealed class FrameSnapshot
-{
-    public required string Id { get; init; }
-    public string ClientId { get; init; } = "c0";
-    public required byte[] Bgra { get; init; }
-    public required int Width { get; init; }
-    public required int Height { get; init; }
-    public required int X { get; init; }
-    public required int Y { get; init; }
-}
-
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
@@ -76,9 +65,7 @@ internal sealed partial class SessionManager : IDisposable
     private bool _initialized;
     private int _disposed;
 
-    private readonly List<FrameSnapshot> _frames = new();
-    private readonly object _frameLock = new();
-    private long _nextFrameId;
+    private readonly FrameStore _frames = new();
     // 按区域保留更多基线，避免只截另一区域就把当前区域基线挤掉。
     private const int MaxFrames = 8;
     private readonly Dictionary<string, HashSet<int>> _uiaBlockedPids =
@@ -1520,22 +1507,18 @@ internal sealed partial class SessionManager : IDisposable
                 }
 
                 // 基线帧是整屏 BGRA（约 3.7MB）；只清当前客户端的帧，避免 A release 清掉 B 的基线。
-                lock (_frameLock)
+                                if (forceAllClients)
                 {
-                    if (forceAllClients)
-                    {
-                        _frames.Clear();
-                    }
-                    else
-                    {
-                        _frames.RemoveAll(frame =>
-                            string.Equals(frame.ClientId, releaseClient, StringComparison.Ordinal));
-                    }
+                    _frames.Clear();
                 }
+                else
+                {
+                    _frames.RemoveClient(releaseClient);
+                }
+            
                 if (forceAllClients)
                 {
                     _uiaBlockedPids.Clear();
-                    _nextFrameId = 0;
                     _selfHealed = false;
                 }
                 else

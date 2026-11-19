@@ -145,11 +145,7 @@ internal sealed partial class SessionManager
             ClearSnapshotState(clientId);
             _uiaBlockedPids.Remove(clientId);
 
-            lock (_frameLock)
-            {
-                _frames.RemoveAll(frame =>
-                    string.Equals(frame.ClientId, clientId, StringComparison.Ordinal));
-            }
+            _frames.RemoveClient(clientId);
 
             lock (_artifactGate)
             {
