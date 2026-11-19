@@ -7,8 +7,10 @@ using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Json;
 using VScreenPilot.Perception;
 using VScreenPilot.Session;
+using VScreenPilot.Views;
 using static VScreenPilot.Mcp.JsonArgReader;
 
 namespace VScreenPilot.Mcp;
@@ -2044,13 +2046,13 @@ internal sealed class McpServer
             (string.IsNullOrWhiteSpace(contains) ||
              entry.Message.Contains(contains, StringComparison.OrdinalIgnoreCase));
 
-        var memoryEntries = new JsonArray();
+        var memoryEntries = new List<LogEntryView>();
 
         foreach (LogEntry entry in _log.Tail(Math.Min(500, Math.Max(tail, tail * 4))))
         {
             if (Matches(entry))
             {
-                memoryEntries.Add((JsonNode)LogRing.ToJson(entry));
+                memoryEntries.Add(ToLogView(entry));
             }
         }
 
@@ -2063,7 +2065,7 @@ internal sealed class McpServer
             ? _log.ReadFileTail(tail)
             : Array.Empty<string>();
 
-        var fileEntries = new JsonArray();
+        var fileEntries = new List<LogEntryView>();
         LogEntry? lastFileError = null;
 
         foreach (string line in fileLines)
@@ -2074,12 +2076,7 @@ internal sealed class McpServer
             {
                 if (string.IsNullOrWhiteSpace(level) && string.IsNullOrWhiteSpace(contains))
                 {
-                    fileEntries.Add((JsonNode)new JsonObject
-                    {
-                        ["time"] = null,
-                        ["level"] = "RAW",
-                        ["message"] = line,
-                    });
+                    fileEntries.Add(new LogEntryView(null, "RAW", line, null));
                 }
                 continue;
             }
@@ -2089,7 +2086,7 @@ internal sealed class McpServer
                 continue;
             }
 
-            fileEntries.Add((JsonNode)LogRing.ToJson(parsed));
+            fileEntries.Add(ToLogView(parsed));
 
             if (string.Equals(parsed.Level, "ERROR", StringComparison.Ordinal))
             {
@@ -2102,24 +2099,25 @@ internal sealed class McpServer
             .LastOrDefault(entry => string.Equals(entry.Level, "ERROR", StringComparison.Ordinal))
             ?? lastFileError;
 
-        var result = new JsonObject
-        {
-            ["source"] = source,
-            ["include_other_clients"] = includeOther,
-            ["entries"] = source == "file"
-                ? (JsonNode)fileEntries.DeepClone()
-                : (JsonNode)memoryEntries,
-            ["file"] = _log.FilePath,
-            ["last_error"] = lastError is null ? null : (JsonNode)LogRing.ToJson(lastError),
-        };
+        var view = new LogView(
+            source,
+            includeOther,
+            source == "file" ? fileEntries : memoryEntries,
+            _log.FilePath,
+            lastError is null ? null : ToLogView(lastError),
+            source is "file" or "both" ? fileEntries : null);
 
-        if (source is "file" or "both")
-        {
-            result["file_entries"] = fileEntries;
-        }
-
-        return ToolResponse.Text(result);
+        return ToolResponse.Text(VspJson.ToNode(view));
     }
+
+
+    /// <summary>日志条目 → 视图。time 统一用往返格式（O），与旧输出一致。</summary>
+    private static LogEntryView ToLogView(LogEntry entry) =>
+        new(
+            entry.Time.ToString("O"),
+            entry.Level,
+            entry.Message,
+            string.IsNullOrWhiteSpace(entry.ClientId) ? null : entry.ClientId);
 
     private ToolResponse RunScript(JsonElement arguments)
     {
