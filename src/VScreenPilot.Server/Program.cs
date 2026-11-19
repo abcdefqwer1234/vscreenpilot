@@ -1117,7 +1117,7 @@ internal static class Program
         result["artifacts"] = new JsonObject
         {
             ["root"] = SessionManager.ArtifactRootFor(profile),
-            ["retention_days"] = SessionManager.ResolveArtifactRetentionDays(
+            ["retention_days"] = ArtifactStore.ResolveRetentionDays(
                 Environment.GetEnvironmentVariable(SessionManager.ArtifactRetentionEnv)),
         };
 

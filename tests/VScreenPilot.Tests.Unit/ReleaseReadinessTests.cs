@@ -114,7 +114,7 @@ public sealed class ArtifactRetentionTests
     [InlineData("abc", 7)]
     public void RetentionDaysFallBackSafely(string? raw, int expected)
     {
-        Assert.Equal(expected, VScreenPilot.Session.SessionManager.ResolveArtifactRetentionDays(raw));
+        Assert.Equal(expected, VScreenPilot.Session.ArtifactStore.ResolveRetentionDays(raw));
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public sealed class ArtifactRetentionTests
     }
 
     private static bool ShouldDelete(string name, DateTime lastWrite, int days, bool current) =>
-        VScreenPilot.Session.SessionManager.ShouldDeleteArtifactDirectory(
+        VScreenPilot.Session.ArtifactStore.ShouldDeleteDirectory(
             name, lastWrite, Now, days, current);
 }
 

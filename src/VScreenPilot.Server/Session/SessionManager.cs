@@ -239,6 +239,7 @@ internal sealed partial class SessionManager : IDisposable
 
     private readonly object _artifactGate = new();
     private readonly Dictionary<string, string> _artifactDirectories = new(StringComparer.Ordinal);
+    private ArtifactStore? _artifacts;
 
     /// <summary>大截图/快照的落盘目录；按客户端隔离，通过 vsp://artifacts/ 资源 URI 暴露。</summary>
     public string ArtifactDirectory
