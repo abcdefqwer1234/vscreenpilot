@@ -6,6 +6,7 @@ using VScreenPilot.Platform.Displays;
 using VScreenPilot.Platform.Security;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
+using VScreenPilot.Diagnostics;
 using VScreenPilot.Mcp;
 using VScreenPilot.Uia;
 using VScreenPilot.Views;
@@ -1340,7 +1341,7 @@ internal sealed partial class SessionManager : IDisposable
         }
 
         int focusRedactions = 0;
-        RedactJsonStrings(focusedElement, ref focusRedactions);
+        PrivacyRedactor.RedactJsonStrings(focusedElement, ref focusRedactions);
 
         return view! with
         {

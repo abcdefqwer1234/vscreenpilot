@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using ModelContextProtocol.Protocol;
 using VScreenPilot.Mcp;
 using VScreenPilot.Perception;
+using VScreenPilot.Diagnostics;
 using VScreenPilot.Session;
 using Xunit;
 
@@ -56,7 +57,7 @@ public sealed class ProtocolContractTests
     public void EmailRedactionKeepsDomainAndCounts()
     {
         int count = 0;
-        string redacted = SessionManager.RedactEmails(
+        string redacted = PrivacyRedactor.RedactEmails(
             "联系 alice@example.com 或 bob@corp.cn", ref count);
 
         Assert.Equal(2, count);
@@ -70,7 +71,7 @@ public sealed class ProtocolContractTests
     public void EmailRedactionLeavesPlainTextAlone()
     {
         int count = 0;
-        string value = SessionManager.RedactEmails("没有邮箱 @ 只有符号", ref count);
+        string value = PrivacyRedactor.RedactEmails("没有邮箱 @ 只有符号", ref count);
 
         Assert.Equal(0, count);
         Assert.Equal("没有邮箱 @ 只有符号", value);
@@ -132,7 +133,7 @@ public sealed class ProtocolContractTests
         };
 
         int count = 0;
-        SessionManager.RedactJsonStrings(tree, ref count);
+        PrivacyRedactor.RedactJsonStrings(tree, ref count);
 
         Assert.Equal(2, count);
         Assert.DoesNotContain("alice@", tree.ToJsonString());

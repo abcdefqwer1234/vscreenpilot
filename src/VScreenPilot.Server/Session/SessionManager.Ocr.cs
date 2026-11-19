@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json.Nodes;
 using VScreenPilot.Platform.Displays;
+using VScreenPilot.Diagnostics;
 using VScreenPilot.Mcp;
 using VScreenPilot.Perception;
 
@@ -87,7 +88,7 @@ internal sealed partial class SessionManager
 
         foreach (ScreenTextLine line in lines)
         {
-            string redacted = RedactEmails(line.Text, ref redactions);
+            string redacted = PrivacyRedactor.RedactEmails(line.Text, ref redactions);
 
             var item = new JsonObject
             {
@@ -239,7 +240,7 @@ internal sealed partial class SessionManager
             clickX, clickY, "left", 1, channel, keepForeground, observe, fallbackInput);
 
         int clickRedactions = 0;
-        string clickedText = RedactEmails(match.Text, ref clickRedactions);
+        string clickedText = PrivacyRedactor.RedactEmails(match.Text, ref clickRedactions);
 
         return new JsonObject
         {
@@ -266,7 +267,7 @@ internal sealed partial class SessionManager
         {
             array.Add((JsonNode)new JsonObject
             {
-                ["text"] = RedactEmails(line.Text, ref redactions),
+                ["text"] = PrivacyRedactor.RedactEmails(line.Text, ref redactions),
                 ["bounds"] = RegionJson(
                     originX + line.Left, originY + line.Top, line.Width, line.Height),
             });

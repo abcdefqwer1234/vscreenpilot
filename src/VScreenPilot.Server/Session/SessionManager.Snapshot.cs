@@ -5,6 +5,7 @@ using VScreenPilot.Platform.Displays;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Json;
+using VScreenPilot.Diagnostics;
 using VScreenPilot.Mcp;
 using VScreenPilot.Perception;
 using VScreenPilot.Uia;
@@ -137,7 +138,7 @@ internal sealed partial class SessionManager
 
         string text = SnapshotFormat.Render(tree, includeValues);
         int redactions = 0;
-        text = RedactEmails(text, ref redactions);
+        text = PrivacyRedactor.RedactEmails(text, ref redactions);
 
         var data = new JsonObject
         {
@@ -158,7 +159,7 @@ internal sealed partial class SessionManager
             {
                 ["hwnd"] = hwnd.ToInt64(),
                 ["pid"] = app.Pid,
-                ["title"] = RedactEmails(WindowManager.GetTitle(hwnd), ref redactions),
+                ["title"] = PrivacyRedactor.RedactEmails(WindowManager.GetTitle(hwnd), ref redactions),
                 ["exe"] = app.ExePath,
             },
         };
@@ -206,7 +207,7 @@ internal sealed partial class SessionManager
             var dialogJson = new JsonObject
             {
                 ["hwnd"] = dialog.Hwnd.ToInt64(),
-                ["title"] = RedactEmails(dialog.Title, ref redactions),
+                ["title"] = PrivacyRedactor.RedactEmails(dialog.Title, ref redactions),
                 ["class"] = dialog.ClassName,
                 ["bounds"] = new JsonObject
                 {
@@ -280,7 +281,7 @@ internal sealed partial class SessionManager
                 dialogs.Insert(0, (JsonNode)new JsonObject
                 {
                     ["hwnd"] = hwnd.ToInt64(),
-                    ["title"] = RedactEmails(info.Title, ref redactions),
+                    ["title"] = PrivacyRedactor.RedactEmails(info.Title, ref redactions),
                     ["class"] = info.ClassName,
                     ["is_root"] = true,
                     ["bounds"] = new JsonObject
@@ -437,7 +438,7 @@ internal sealed partial class SessionManager
             data["privacy_redactions"] = redactions;
         }
 
-        RedactJsonStrings(data, ref redactions);
+        PrivacyRedactor.RedactJsonStrings(data, ref redactions);
 
         if (redactions > 0)
         {
@@ -495,86 +496,6 @@ internal sealed partial class SessionManager
                 {
                     CollectAnnotations(childObject, display, target, maxCount);
                 }
-            }
-        }
-    }
-
-    private static readonly Regex EmailPattern = new(
-        @"[A-Za-z0-9._%+\-]+@([A-Za-z0-9.\-]+\.[A-Za-z]{2,})",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    internal static string RedactEmails(string input, ref int count)
-    {
-        if (string.IsNullOrEmpty(input) || !input.Contains('@'))
-        {
-            return input;
-        }
-
-        int matches = 0;
-        string result = EmailPattern.Replace(input, match =>
-        {
-            matches++;
-            return $"***@{match.Groups[1].Value}";
-        });
-
-        count += matches;
-        return result;
-    }
-
-    /// <summary>递归脱敏 Json 树里的所有字符串（tree/windows/foreground/annotations/text）。</summary>
-    internal static void RedactJsonStrings(JsonNode? node, ref int count)
-    {
-        switch (node)
-        {
-            case JsonObject obj:
-            {
-                foreach (string key in obj.Select(pair => pair.Key).ToList())
-                {
-                    JsonNode? value = obj[key];
-
-                    if (value is JsonValue scalar && scalar.TryGetValue(out string? text) &&
-                        text is not null)
-                    {
-                        string redacted = RedactEmails(text, ref count);
-
-                        if (!ReferenceEquals(redacted, text) &&
-                            !string.Equals(redacted, text, StringComparison.Ordinal))
-                        {
-                            obj[key] = redacted;
-                        }
-                    }
-                    else
-                    {
-                        RedactJsonStrings(value, ref count);
-                    }
-                }
-
-                break;
-            }
-
-            case JsonArray array:
-            {
-                for (int index = 0; index < array.Count; index++)
-                {
-                    JsonNode? value = array[index];
-
-                    if (value is JsonValue scalar && scalar.TryGetValue(out string? text) &&
-                        text is not null)
-                    {
-                        string redacted = RedactEmails(text, ref count);
-
-                        if (!string.Equals(redacted, text, StringComparison.Ordinal))
-                        {
-                            array[index] = redacted;
-                        }
-                    }
-                    else
-                    {
-                        RedactJsonStrings(value, ref count);
-                    }
-                }
-
-                break;
             }
         }
     }
