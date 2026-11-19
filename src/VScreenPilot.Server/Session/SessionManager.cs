@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using VScreenPilot.Apps;
 using VScreenPilot.Core.Displays;
+using VScreenPilot.Core.Security;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
@@ -1107,7 +1108,7 @@ internal sealed partial class SessionManager : IDisposable
                 ["interactive"] = Environment.UserInteractive,
                 ["remote_session"] = NativeMethods.GetSystemMetrics(0x1000) != 0,
                 ["input_desktop"] = IsInputDesktopAvailable(),
-                ["elevated"] = IsElevatedSession(),
+                ["elevated"] = Elevation.IsProcessElevated(),
                 ["isolation"] = "shared_desktop",
                 ["profile"] = ProfileName,
                 ["epoch"] = Epoch,
@@ -2354,20 +2355,6 @@ internal sealed partial class SessionManager : IDisposable
 
         NativeMethods.CloseDesktop(desktop);
         return true;
-    }
-
-    private static bool IsElevatedSession()
-    {
-        try
-        {
-            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
-            var principal = new System.Security.Principal.WindowsPrincipal(identity);
-            return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     private static int GetMonitorCount()

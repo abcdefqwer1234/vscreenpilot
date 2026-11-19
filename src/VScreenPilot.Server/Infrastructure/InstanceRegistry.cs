@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using VScreenPilot.Core.Security;
 using VScreenPilot.Ipc;
 
 namespace VScreenPilot.Infrastructure;
@@ -165,7 +166,7 @@ internal sealed class InstanceRegistry
             StartedAt = started,
             Cwd = Environment.CurrentDirectory,
             Version = BuildInfo.Version,
-            Elevated = IsElevated(),
+            Elevated = Elevation.IsProcessElevated(),
             Profile = profile,
             Mutex = $@"Global\{Profile.MutexName(profile)}",
             McpPipe = PipeNames.Mcp(profile),
@@ -359,21 +360,6 @@ internal sealed class InstanceRegistry
             // 以启动时间为准，同时覆盖 dotnet 运行、改名 exe，避免 PID 复用后误认。
             return Math.Abs(
                 (process.StartTime.ToUniversalTime() - expected.UtcDateTime).TotalSeconds) <= 5;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static bool IsElevated()
-    {
-        try
-        {
-            using System.Security.Principal.WindowsIdentity identity =
-                System.Security.Principal.WindowsIdentity.GetCurrent();
-            var principal = new System.Security.Principal.WindowsPrincipal(identity);
-            return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
         }
         catch
         {

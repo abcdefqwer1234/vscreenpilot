@@ -55,7 +55,7 @@ internal static class StdioProxy
                 ["capabilities"] = new JsonObject
                 {
                     ["allow_script"] = allowScript,
-                    ["allow_unsafe_script"] = IsTruthy(
+                    ["allow_unsafe_script"] = EnvFlags.IsTruthy(
                         Environment.GetEnvironmentVariable("VSP_ALLOW_UNSAFE_SCRIPT")),
                     ["app_allowlist"] = allowlist,
                 },
@@ -171,10 +171,4 @@ internal static class StdioProxy
 
         return 3;
     }
-
-    private static bool IsTruthy(string? value) =>
-        value is not null &&
-        (value.Equals("1", StringComparison.OrdinalIgnoreCase) ||
-         value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
-         value.Equals("yes", StringComparison.OrdinalIgnoreCase));
 }

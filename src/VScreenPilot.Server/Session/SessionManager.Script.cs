@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json.Nodes;
+using VScreenPilot.Infrastructure;
 using VScreenPilot.Mcp;
 
 namespace VScreenPilot.Session;
@@ -177,7 +178,7 @@ internal sealed partial class SessionManager
     private static void EnsureScriptSafe(string code)
     {
         bool unsafeAllowed = CurrentClient is null
-            ? IsTruthy(Environment.GetEnvironmentVariable("VSP_ALLOW_UNSAFE_SCRIPT"))
+            ? EnvFlags.IsTruthyLoose(Environment.GetEnvironmentVariable("VSP_ALLOW_UNSAFE_SCRIPT"))
             : CurrentClient.AllowUnsafeScript;
 
         if (unsafeAllowed)
@@ -199,10 +200,6 @@ internal sealed partial class SessionManager
             }
         }
     }
-
-    private static bool IsTruthy(string? value) =>
-        !string.IsNullOrWhiteSpace(value) &&
-        value.Trim().ToLowerInvariant() is "1" or "true" or "yes" or "on";
 
     private static string ReadTask(Task<string> task)
     {

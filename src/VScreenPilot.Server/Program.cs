@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using VScreenPilot.Cli;
 using VScreenPilot.Core.Displays;
 using VScreenPilot.Core.Interop;
+using VScreenPilot.Core.Security;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Ipc;
@@ -55,7 +56,7 @@ internal static class Program
         }
 
         bool allowScript = HasFlag(args, "--allow-script") ||
-                           IsTruthy(Environment.GetEnvironmentVariable("VSP_ALLOW_SCRIPT"));
+                           EnvFlags.IsTruthy(Environment.GetEnvironmentVariable("VSP_ALLOW_SCRIPT"));
 
         // 多会话 profile：每个 profile 独立互斥体/状态/日志/追踪目录；输入所有权仍由前台决定。
         // profile 必须先解析，日志文件名才能带上 profile。
@@ -811,12 +812,6 @@ internal static class Program
     private static bool HasFlag(string[] args, string flag) =>
         args.Any(arg => string.Equals(arg, flag, StringComparison.OrdinalIgnoreCase));
 
-    private static bool IsTruthy(string? value) =>
-        value is not null &&
-        (value.Equals("1", StringComparison.OrdinalIgnoreCase) ||
-         value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
-         value.Equals("yes", StringComparison.OrdinalIgnoreCase));
-
     private static int ResolveDaemonIdleMs()
     {
         string? raw = Environment.GetEnvironmentVariable("VSP_DAEMON_IDLE_MS");
@@ -913,7 +908,7 @@ internal static class Program
             ["platform"] = Environment.OSVersion.Platform.ToString(),
             ["os"] = RuntimeInformation.OSDescription,
             ["arch"] = RuntimeInformation.ProcessArchitecture.ToString(),
-            ["elevated"] = IsElevated(),
+            ["elevated"] = Elevation.IsProcessElevated(),
             ["interactive"] = Environment.UserInteractive,
             ["run_script_enabled"] = allowScript,
             ["app_allowlist"] = ReadAppAllowlistForDoctor(),
@@ -1165,19 +1160,5 @@ internal static class Program
         }
 
         return array;
-    }
-
-    private static bool IsElevated()
-    {
-        try
-        {
-            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
-            var principal = new System.Security.Principal.WindowsPrincipal(identity);
-            return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
-        }
-        catch
-        {
-            return false;
-        }
     }
 }
