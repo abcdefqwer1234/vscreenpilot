@@ -53,16 +53,11 @@ internal sealed class FrameSnapshot
 /// </summary>
 internal sealed partial class SessionManager : IDisposable
 {
-    public static readonly int VirtualWidth = ReadDisplaySetting("VSP_DISPLAY_WIDTH", 1280, 800, 3840);
-    public static readonly int VirtualHeight = ReadDisplaySetting("VSP_DISPLAY_HEIGHT", 720, 600, 2160);
-    public static readonly int VirtualRefresh = ReadDisplaySetting("VSP_DISPLAY_REFRESH", 60, 30, 240);
+    private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
-    private static int ReadDisplaySetting(string name, int fallback, int min, int max)
-    {
-        string? raw = Environment.GetEnvironmentVariable(name);
-
-        return int.TryParse(raw, out int value) ? Math.Clamp(value, min, max) : fallback;
-    }
+    public static readonly int VirtualWidth = HostOptions.DisplayWidth;
+    public static readonly int VirtualHeight = HostOptions.DisplayHeight;
+    public static readonly int VirtualRefresh = HostOptions.DisplayRefresh;
 
     private readonly object _gate = new();
 
