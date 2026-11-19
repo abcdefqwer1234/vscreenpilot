@@ -212,7 +212,9 @@ internal static class ClipboardText
 
             if (memory == IntPtr.Zero)
             {
+#pragma warning disable CA2201 // 分配失败用 OutOfMemoryException 表达，调用方按“内存不足”统一处理
                 throw new OutOfMemoryException("GlobalAlloc 失败");
+#pragma warning restore CA2201
             }
 
             IntPtr pointer = GlobalLock(memory);
@@ -254,6 +256,7 @@ internal static class ClipboardText
         return false;
     }
 
+#pragma warning disable CA1001 // 队列随进程结束释放；Worker 与 AppDomain 同生命周期，无需独立 Dispose
     private sealed class Worker
     {
         private readonly BlockingCollection<Action> _queue = new();

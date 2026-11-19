@@ -8,12 +8,13 @@
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
-    <!-- minimum 只保留高置信度规则，避免历史代码一次性冒出上百条噪声；后续逐条提升。 -->
-    <AnalysisLevel>latest-minimum</AnalysisLevel>
-    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <!-- latest-recommended 比 minimum 多出的规则已逐条处理（CA1305/CA1001/CA2201/CA1711）；
+         CA1838 是 P/Invoke 使用 StringBuilder 的既定签名，保留并在此说明理由。 -->
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <!-- CA1822/CA1859 是风格建议；CA1806 不再整体关闭，P/Invoke 返回值必须显式检查。 -->
-    <NoWarn>$(NoWarn);CA1822;CA1859</NoWarn>
+    <!-- CA1822/CA1859 是风格建议；CA1838 见上。CA1806 不再整体关闭，P/Invoke 返回值必须显式检查。 -->
+    <NoWarn>$(NoWarn);CA1822;CA1859;CA1838</NoWarn>
   </PropertyGroup>
 
 </Project>

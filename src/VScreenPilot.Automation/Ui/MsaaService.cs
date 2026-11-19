@@ -341,7 +341,7 @@ internal static class MsaaService
                 try
                 {
                     bool self = child is IAccessible;
-                    int childId = self ? 0 : Convert.ToInt32(child);
+                    int childId = self ? 0 : Convert.ToInt32(child, System.Globalization.CultureInfo.InvariantCulture);
                     int ordinal = nodes.Count;
                     nodes.Add(new Node(parent, child, self, childId, ordinal));
 

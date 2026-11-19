@@ -86,7 +86,7 @@ internal static class PngOverlay
     public static void DrawNumber(
         byte[] bgra, int width, int height, int x, int y, int value, int scale = 2)
     {
-        string digits = Math.Clamp(value, 0, 99).ToString();
+        string digits = Math.Clamp(value, 0, 99).ToString(System.Globalization.CultureInfo.InvariantCulture);
         int glyphWidth = 3 * scale;
         int glyphHeight = 5 * scale;
         int spacing = scale;

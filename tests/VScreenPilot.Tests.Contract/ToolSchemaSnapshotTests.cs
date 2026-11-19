@@ -48,7 +48,7 @@ public sealed class ToolSchemaSnapshotTests
     public void BaselineIsComplete()
     {
         JsonArray tools = BaselineTools();
-        Assert.Equal(int.Parse(BaselineToolCount), tools.Count);
+        Assert.Equal(int.Parse(BaselineToolCount, System.Globalization.CultureInfo.InvariantCulture), tools.Count);
         Assert.All(tools, tool => Assert.False(string.IsNullOrWhiteSpace(tool!["name"]?.GetValue<string>())));
     }
 

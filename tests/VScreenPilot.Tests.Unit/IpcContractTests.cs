@@ -51,7 +51,7 @@ public sealed class LogEntryParseTests
 }
 
 [CollectionDefinition("ProfileEnvironment", DisableParallelization = true)]
-public sealed class ProfileEnvironmentCollection
+public sealed class ProfileEnvironmentSet
 {
 }
 

@@ -307,7 +307,9 @@ internal sealed partial class UiaService : IDisposable
 
         if (hr != 0)
         {
+#pragma warning disable CA2201 // 保留 COMException：调用方按 HRESULT 判定（ErrorCatalog 也按它映射）
             throw new COMException($"CoCreateInstance(IUIAutomation) 失败: 0x{hr:X8}", hr);
+#pragma warning restore CA2201
         }
 
         try

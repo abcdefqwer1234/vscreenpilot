@@ -33,7 +33,10 @@ public sealed class ErrorCatalogTests
     [Fact]
     public void MissingPathComBecomesAppGone()
     {
+        // 测试必须构造真实的 COMException，才能验证 ErrorCatalog 的 HRESULT 映射。
+#pragma warning disable CA2201
         var com = new COMException("gone", unchecked((int)0x80070003));
+#pragma warning restore CA2201
         ToolException normalized = ErrorCatalog.Normalize(com);
         Assert.Equal("E_APP_GONE", normalized.Code);
     }
