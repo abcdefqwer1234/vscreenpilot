@@ -11,7 +11,11 @@ using VScreenPilot.Platform.Interop;
 using VScreenPilot.Platform.Security;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
+using VScreenPilot.Composition;
 using VScreenPilot.Ipc;
+using static VScreenPilot.Cli.ControlOutput;
+using static VScreenPilot.Composition.InstanceGuard;
+using static VScreenPilot.Ipc.ProxyRunner;
 using VScreenPilot.Json;
 using VScreenPilot.Mcp;
 using VScreenPilot.Session;
@@ -221,7 +225,7 @@ internal static class Program
         int? parentPid = GetParentPid(args);
         if (parentPid is not null)
         {
-            StartParentWatcher(parentPid.Value, _session, log);
+            ParentProcessWatcher.Start(parentPid.Value, _session, log, () => _pipeHost is { ActiveClients: > 0 });
         }
 
         // 启动时后台预热虚拟屏：把不可避免的第一次黑屏挪到 OpenCode 启动阶段，
@@ -550,162 +554,6 @@ internal static class Program
         }
     }
 
-    private static int? RunProxy(string profile, bool allowScript)
-    {
-        // proxy 用独立文件，避免和 daemon 的 server-*.log 混在一起。
-        using var proxyLog = new LogRing(clientLog: true);
-        return StdioProxy.TryRun(profile, proxyLog, allowScript);
-    }
-
-    private static int? AttachToSpawnedDaemon(
-        string profile, LogRing log, bool allowScript, Process child)
-    {
-        // 复用同一个 proxy LogRing：每次重试都新建会反复打开同一个文件、开新线程。
-        using var proxyLog = new LogRing(clientLog: true);
-        DateTime deadline = DateTime.UtcNow.AddSeconds(15);
-
-        while (DateTime.UtcNow < deadline)
-        {
-            if (child.HasExited)
-            {
-                return null;
-            }
-
-            int? exit = StdioProxy.TryRun(profile, proxyLog, allowScript);
-
-            if (exit is not null)
-            {
-                return exit;
-            }
-
-            Thread.Sleep(150);
-        }
-
-        log.Warn("独立 daemon 启动后未能在 15s 内连接");
-        return null;
-    }
-
-    private static int PrintControlResponse(JsonObject response)
-    {
-        if (response["ok"]?.GetValue<bool>() == true && response["result"] is JsonNode result)
-        {
-            // 与无实例时的本地 CLI 输出保持同一形状：所有成功结果都带 ok=true。
-            JsonObject payload = result.DeepClone() as JsonObject ?? new JsonObject
-            {
-                ["result"] = result.DeepClone(),
-            };
-
-            payload["ok"] = true;
-            PrintJson(payload);
-            return 0;
-        }
-
-        PrintJson(response);
-        return 1;
-    }
-
-    private static void PrintJson(JsonNode node)
-    {
-        Console.Out.WriteLine(node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-    }
-
-    private static bool IsMutexHeld(string profile)
-    {
-        string name = Profile.MutexName(profile);
-        string[] candidates = string.Equals(profile, "default", StringComparison.Ordinal)
-            ? new[] { $@"Global\{name}" }
-            : new[] { $@"Global\{name}", $@"Local\{name}" };
-        bool inaccessible = false;
-
-        foreach (string candidate in candidates)
-        {
-            try
-            {
-                using var mutex = new Mutex(false, candidate);
-
-                try
-                {
-                    if (mutex.WaitOne(0))
-                    {
-                        mutex.ReleaseMutex();
-                        return false;
-                    }
-                }
-                catch (AbandonedMutexException)
-                {
-                    try
-                    {
-                        mutex.ReleaseMutex();
-                    }
-                    catch
-                    {
-                        // 忽略。
-                    }
-
-                    return false;
-                }
-
-                return true;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                inaccessible = true;
-            }
-            catch
-            {
-                // 继续尝试下一个命名空间。
-            }
-        }
-
-        return inaccessible;
-    }
-
-    private static void ReportInstanceBusy(string profile, string? error, LogRing log)
-    {
-        var registry = new InstanceRegistry(profile);
-        InstanceRegistry.Entry? entry = registry.Read();
-
-        var payload = new JsonObject
-        {
-            ["code"] = "E_INSTANCE_BUSY",
-            ["profile"] = profile,
-            ["mutex"] = $@"Global\{Profile.MutexName(profile)}",
-            ["owner"] = entry?.ToJson(),
-            ["error"] = error,
-            ["hint"] = "关闭占用实例的 MCP 客户端；旧版本可能需要关闭其父进程或用任务管理器结束 owner.pid",
-        };
-
-        try
-        {
-            Console.Error.WriteLine("VScreenPilot: 实例已被占用 (E_INSTANCE_BUSY)");
-            Console.Error.WriteLine($"  profile: {profile}");
-            Console.Error.WriteLine($"  mutex: Global\\{Profile.MutexName(profile)}");
-
-            if (entry is not null)
-            {
-                Console.Error.WriteLine(
-                    $"  owner: pid={entry.Pid}, started={entry.StartedAt}, " +
-                    $"cwd={(string.IsNullOrWhiteSpace(entry.Cwd) ? "unknown" : entry.Cwd)}, " +
-                    $"version={entry.Version}, elevated={entry.Elevated}");
-            }
-            else
-            {
-                Console.Error.WriteLine("  owner: unknown（可能是旧版本/其他用户）");
-            }
-
-            Console.Error.WriteLine("  解法:");
-            Console.Error.WriteLine("    1) 关闭占用实例的 MCP 客户端（旧版本需要关闭其父进程）");
-            Console.Error.WriteLine("    2) 任务管理器结束 owner.pid（需相同权限）");
-            Console.Error.WriteLine(payload.ToJsonString());
-        }
-        catch
-        {
-            // 无控制台时忽略。
-        }
-
-        log.Warn($"实例已被占用: {error}");
-    }
-
     private static void ShutdownFromControl()
     {
         _pipeHost?.Dispose();
@@ -748,55 +596,5 @@ internal static class Program
         }
 
         return null;
-    }
-
-    /// <summary>
-    /// 启动器被杀时也要走统一清理，避免虚拟屏和子进程残留。
-    /// 这是进程事件监听，不是超时看门狗。
-    /// </summary>
-    private static void StartParentWatcher(int parentPid, SessionManager session, LogRing log)
-    {
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                using var parent = System.Diagnostics.Process.GetProcessById(parentPid);
-                parent.WaitForExit();
-            }
-            catch (ArgumentException)
-            {
-                // 父进程在进入监听前已经退出。
-            }
-            catch (Exception exception)
-            {
-                log.Warn($"父进程监听失败 (pid={parentPid}): {exception.Message}");
-                return;
-            }
-
-            log.Info($"父进程已退出 (pid={parentPid})，开始清理");
-
-            if (_pipeHost is { ActiveClients: > 0 })
-            {
-                log.Warn("父进程退出但仍有共享客户端，继续作为 daemon 运行");
-                return;
-            }
-
-            try
-            {
-                session.Dispose();
-            }
-            catch (Exception exception)
-            {
-                log.Error("父进程退出后的清理失败", exception);
-            }
-
-            Environment.Exit(0);
-        })
-        {
-            IsBackground = true,
-            Name = "ParentWatcher",
-        };
-
-        thread.Start();
     }
 }
