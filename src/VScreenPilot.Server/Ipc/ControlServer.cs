@@ -7,6 +7,7 @@ using VScreenPilot.Core.Displays;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Mcp;
 using VScreenPilot.Session;
+using static VScreenPilot.Mcp.JsonArgReader;
 
 namespace VScreenPilot.Ipc;
 
@@ -335,15 +336,6 @@ internal sealed class ControlServer : IDisposable
 
         return result;
     }
-
-    private static int GetInt(JsonObject request, string name, int fallback) =>
-        request[name] is JsonValue value && value.TryGetValue(out int parsed) ? parsed : fallback;
-
-    private static int? GetNullableInt(JsonObject request, string name) =>
-        request[name] is JsonValue value && value.TryGetValue(out int parsed) ? parsed : null;
-
-    private static bool GetBool(JsonObject request, string name, bool fallback) =>
-        request[name] is JsonValue value && value.TryGetValue(out bool parsed) ? parsed : fallback;
 
     private JsonObject Capture()
     {

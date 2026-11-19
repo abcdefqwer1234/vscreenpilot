@@ -1,0 +1,18 @@
+{
+  "tag": "baseline",
+  "note": "",
+  "commit": "a08ef6b543ce870072ab15b489a4e668e703aca4",
+  "exe": "C:\\Users\\31746\\Desktop\\VScreenPilot\\artifacts\\server-p1c\\VScreenPilot.exe",
+  "exe_sha256": "8A4500AA9D44AE2F07BBEFFA55FCF9709744AB16772619D9AD233ED630B3090F",
+  "exe_bytes": 64862974,
+  "captured_at": "2026-11-19T14:56:40+0800",
+  "os": "Windows 11 10.0.26300",
+  "python": "3.13.13",
+  "profile": "baseline-probe",
+  "tool_count": 22,
+  "protocol_version": "2025-06-18",
+  "server_info": {
+    "name": "vscreenpilot",
+    "version": "0.2.2"
+  }
+}

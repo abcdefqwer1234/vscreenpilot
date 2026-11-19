@@ -10,6 +10,7 @@ using VScreenPilot.Input;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
 using VScreenPilot.Uia;
+using static VScreenPilot.Mcp.JsonArgReader;
 
 namespace VScreenPilot.Session;
 
@@ -1706,39 +1707,4 @@ internal sealed partial class SessionManager
         }
     }
 
-    private static string? GetString(JsonElement element, string property) =>
-        element.TryGetProperty(property, out JsonElement value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
-
-    private static int GetInt(JsonElement element, string property, int fallback)
-    {
-        if (element.ValueKind != JsonValueKind.Object ||
-            !element.TryGetProperty(property, out JsonElement value) ||
-            value.ValueKind != JsonValueKind.Number)
-        {
-            return fallback;
-        }
-
-        // TryGetInt32 在非 Number 上可能抛 InvalidOperationException；上面已先判定 ValueKind。
-        return value.TryGetInt32(out int result) ? result : fallback;
-    }
-
-    private static double GetDouble(JsonElement element, string property, double fallback)
-    {
-        if (element.ValueKind != JsonValueKind.Object ||
-            !element.TryGetProperty(property, out JsonElement value) ||
-            value.ValueKind != JsonValueKind.Number)
-        {
-            return fallback;
-        }
-
-        return value.TryGetDouble(out double result) ? result : fallback;
-    }
-
-    private static bool GetBool(JsonElement element, string property, bool fallback) =>
-        element.TryGetProperty(property, out JsonElement value) &&
-        (value.ValueKind is JsonValueKind.True or JsonValueKind.False)
-            ? value.GetBoolean()
-            : fallback;
 }

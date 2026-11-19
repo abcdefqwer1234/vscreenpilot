@@ -8,6 +8,7 @@ using VScreenPilot.Core.Displays;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
 using VScreenPilot.Uia;
+using static VScreenPilot.Mcp.JsonArgReader;
 
 namespace VScreenPilot.Session;
 
