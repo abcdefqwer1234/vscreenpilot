@@ -4,6 +4,7 @@ using VScreenPilot.Composition;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Ipc;
 using VScreenPilot.Mcp;
+using VScreenPilot.Options;
 using VScreenPilot.Session;
 
 namespace VScreenPilot.Composition;
@@ -31,11 +32,14 @@ internal sealed class ServerHost : IDisposable
     private readonly ControlServer _control;
     private readonly PipeHost _pipeHost;
     private ConsoleCtrlHandler? _ctrlHandler;
+    private readonly ManualResetEventSlim? _stop;
 
     public ServerHost(
         SessionManager session, LogRing log, TraceLog? trace, InstanceRegistry registry,
-        JobObject job, MutexGuard mutex, bool allowScript)
+        JobObject job, MutexGuard mutex, bool allowScript,
+        ManualResetEventSlim? stop = null)
     {
+        _stop = stop;
         _session = session;
         _log = log;
         _trace = trace;
@@ -187,6 +191,134 @@ internal sealed class ServerHost : IDisposable
             _trace?.Dispose();
             _log.Dispose();
         }
+    }
+
+    /// <summary>
+    /// 独立 daemon 模式：acquire 互斥体 → 建会话/注册表 → 起控制与 MCP 管道 →
+    /// 按 VSP_DAEMON_IDLE_MS（首次 10s 宽限）退出。由 `--daemon` 与自动 spawn 共用。
+    /// </summary>
+    public static int RunDaemon(string profile, LogRing log, bool allowScript)
+    {
+        var mutex = new MutexGuard();
+
+        if (!mutex.TryAcquire(Profile.MutexName(profile), out string? error))
+        {
+            log.Warn($"独立 daemon 无法启动: {error}");
+            Console.Error.WriteLine($"VScreenPilot: 独立 daemon 无法启动 ({error})");
+            mutex.Dispose();
+            return 3;
+        }
+
+        var job = new JobObject();
+        var stateStore = new StateStore(log);
+        var session = new SessionManager(log, stateStore, job, allowScript);
+        McpServer.WireProviders(session, log);
+        var trace = new TraceLog();
+        var registry = new InstanceRegistry(profile);
+        InstanceRegistry.Entry entry = InstanceRegistry.Create(profile, ready: false);
+        registry.Write(entry);
+
+        // daemon 不占用 stdio，用一个停止信号驱动退出。
+        var stop = new ManualResetEventSlim(false);
+
+        try
+        {
+            using var host = new ServerHost(
+                session, log, trace, registry, job, mutex, allowScript, stop);
+
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => stop.Set();
+            Console.CancelKeyPress += (_, eventArgs) =>
+            {
+                eventArgs.Cancel = true;
+                stop.Set();
+            };
+
+            if (allowScript)
+            {
+                log.Warn("独立 daemon 已启用 run_script（--allow-script/VSP_ALLOW_SCRIPT）");
+            }
+
+            host.StartDaemonPipes(entry, profile);
+            host.WarmUp(entry, "daemon_warm", "独立 daemon ");
+
+            log.Info($"独立 daemon 已启动 profile={profile} clients={SessionManager.ActiveClientCount}");
+
+            int idleMs = VspOptions.FromEnvironment().DaemonIdleMs;
+            bool hadClient = false;
+            DateTime? idleSince = DateTime.UtcNow;
+
+            while (!stop.Wait(100))
+            {
+                int active = host.ActiveClients;
+
+                if (active > 0)
+                {
+                    hadClient = true;
+                    idleSince = null;
+                    continue;
+                }
+
+                idleSince ??= DateTime.UtcNow;
+
+                // 首次启动给客户端留 10s 连接窗口；有过客户端后严格按配置退出。
+                int graceMs = hadClient ? idleMs : Math.Max(idleMs, 10_000);
+
+                if (graceMs == 0 ||
+                    DateTime.UtcNow - idleSince.Value >= TimeSpan.FromMilliseconds(graceMs))
+                {
+                    break;
+                }
+            }
+
+            log.Info("独立 daemon 进入退出流程");
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            log.Warn($"独立 daemon 清理失败: {exception.Message}");
+            return 1;
+        }
+        finally
+        {
+            trace.Dispose();
+            job.Dispose();
+            mutex.Dispose();
+        }
+    }
+
+    private void StartDaemonPipes(InstanceRegistry.Entry entry, string profile)
+    {
+        _control.Start();
+        _pipeHost.Start();
+        entry.Ready = true;
+        entry.DisplayDevice = _session.VirtualDisplay?.DeviceName ?? string.Empty;
+        _registry.Write(entry);
+    }
+
+    internal int ActiveClients => _pipeHost.ActiveClients;
+
+    internal void WarmUp(InstanceRegistry.Entry entry, string reason, string prefix)
+    {
+        if (Environment.GetEnvironmentVariable("VSP_NO_WARMUP") == "1")
+        {
+            return;
+        }
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                _session.EnsureEnvironment();
+                _session.TrimIdleMemory(reason);
+                entry.DisplayDevice = _session.VirtualDisplay?.DeviceName ?? string.Empty;
+                _registry.Write(entry);
+                _log.Info($"{prefix}虚拟屏预热完成");
+            }
+            catch (Exception exception)
+            {
+                _log.Warn($"{prefix}预热失败，将在首次使用时重试: {exception.Message}");
+            }
+        });
     }
 
     private static int? GetParentPid(string[] args)
