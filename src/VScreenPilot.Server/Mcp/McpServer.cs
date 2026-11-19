@@ -375,7 +375,7 @@ internal sealed class McpServer
         // 大图默认返回 preview：避免资源读取又把 300KB+ 原图塞回客户端。
         if (!preview && !forceFull && File.Exists(path))
         {
-            preview = new FileInfo(path).Length > 512 * 1024;
+            preview = new FileInfo(path).Length > Limits.ResourcePreviewBytes;
         }
 
         if (preview)
@@ -430,7 +430,7 @@ internal sealed class McpServer
             }
 
             byte[] preview = PngWriter.Encode(
-                bgra, image.Width, image.Height, 0.25, out _, out _);
+                bgra, image.Width, image.Height, Limits.PreviewScale, out _, out _);
             File.WriteAllBytes(previewPath, preview);
         }
         catch
@@ -1549,7 +1549,7 @@ internal sealed class McpServer
             return ToolResponse.Text(result.Data);
         }
 
-        if (result.Png.Length <= 128 * 1024)
+        if (result.Png.Length <= Limits.InlineLimitBytes)
         {
             return ToolResponse.Text(result.Data).AddImage(result.Png);
         }
@@ -1645,14 +1645,14 @@ internal sealed class McpServer
         // 关键发现：全屏“悬崖”主要不是 GDI 采集，而是大 PNG 的 Base64/JSON/stdio 回传。
         // 366KB PNG 内联 → 客户端约 1.2s；落盘 + 200B 元数据 → 约 35ms。
         // 因此超过 128KB 的图默认落 artifact，并额外内联一张 0.25× 预览。
-        const int InlineLimit = 128 * 1024;
+        const int InlineLimit = Limits.InlineLimitBytes;
         bool hasSavePath = !string.IsNullOrWhiteSpace(savePath);
 
         // preview 与主图同帧；small 图会多编码一次缩略图，但省掉了第二次截屏。
         SessionManager.CaptureResult capture = _session.CaptureScreenEx(
             x, y, width, height, scale, savePath,
             storeFrame: true,
-            previewScale: inline ? Math.Max(0.1, scale * 0.25) : null);
+            previewScale: inline ? Math.Max(Limits.MinScale, scale * Limits.PreviewScale) : null);
 
         byte[] png = capture.Png;
         JsonObject meta = capture.Meta;

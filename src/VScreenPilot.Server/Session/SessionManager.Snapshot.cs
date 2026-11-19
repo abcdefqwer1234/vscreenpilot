@@ -385,7 +385,7 @@ internal sealed partial class SessionManager
                     bgra, captureWidth, captureHeight, effectiveScale,
                     out int outputWidth, out int outputHeight);
                 previewPng = PngWriter.Encode(
-                    bgra, captureWidth, captureHeight, Math.Max(0.1, effectiveScale * 0.25),
+                    bgra, captureWidth, captureHeight, Math.Max(Limits.MinScale, effectiveScale * Limits.PreviewScale),
                     out int previewWidth, out int previewHeight);
 
                 data["screenshot"] = new JsonObject
@@ -411,7 +411,7 @@ internal sealed partial class SessionManager
                 {
                     ["width"] = previewWidth,
                     ["height"] = previewHeight,
-                    ["scale"] = Math.Max(0.1, effectiveScale * 0.25),
+                    ["scale"] = Math.Max(Limits.MinScale, effectiveScale * Limits.PreviewScale),
                     ["png_bytes"] = previewPng.Length,
                 };
             }
@@ -420,7 +420,7 @@ internal sealed partial class SessionManager
                 // 快照截图不写帧缓存；preview 与主图同帧，且不阻塞 _refGate（已在锁外）。
                 CaptureResult capture = CaptureScreenEx(
                     null, null, null, null, Math.Clamp(scale, 0.1, 1.0), savePath: null,
-                    storeFrame: false, previewScale: Math.Max(0.1, scale * 0.25));
+                    storeFrame: false, previewScale: Math.Max(Limits.MinScale, scale * Limits.PreviewScale));
 
                 png = capture.Png;
                 previewPng = capture.PreviewPng;
