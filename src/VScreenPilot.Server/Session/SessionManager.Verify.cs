@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using VScreenPilot.Apps;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Interop;
+using VScreenPilot.Json;
 using VScreenPilot.Mcp;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
@@ -320,7 +321,7 @@ internal sealed partial class SessionManager
                 .ToList(),
         };
 
-    public JsonObject WaitFor(JsonElement condition, int timeoutMs, int? intervalMs = null)
+    public WaitForView WaitFor(JsonElement condition, int timeoutMs, int? intervalMs = null)
     {
         DisplayInfo display = EnsureEnvironmentFast();
         timeoutMs = Math.Clamp(timeoutMs, 0, 120_000);
@@ -389,15 +390,10 @@ internal sealed partial class SessionManager
 
         bool satisfied = last["satisfied"]?.GetValue<bool>() ?? false;
 
-        return new JsonObject
-        {
-            ["satisfied"] = satisfied,
-            ["elapsed_ms"] = stopwatch.ElapsedMilliseconds,
-            ["last"] = last,
-        };
+        return new WaitForView(satisfied, stopwatch.ElapsedMilliseconds, last);
     }
 
-    public JsonObject AssertRegion(JsonElement region, JsonElement expectation)
+    public AssertRegionView AssertRegion(JsonElement region, JsonElement expectation)
     {
         DisplayInfo display = EnsureEnvironmentFast();
         (int x, int y, int width, int height) = ParseRegion(region);
@@ -734,14 +730,15 @@ internal sealed partial class SessionManager
                 // 直接复用 match_visual：condition 与 match_visual 参数同构（type 字段会被忽略）。
                 try
                 {
-                    JsonObject match = MatchVisual(condition);
-                    JsonArray? matches = match["matches"] as JsonArray;
+                    MatchVisualView match = MatchVisual(condition);
 
                     return new JsonObject
                     {
                         ["satisfied"] = true,
-                        ["count"] = match["count"]?.DeepClone(),
-                        ["first"] = matches is { Count: > 0 } ? matches[0]?.DeepClone() : null,
+                        ["count"] = match.Count,
+                        ["first"] = match.Matches is { Count: > 0 }
+                            ? VspJson.ToNode(match.Matches[0])
+                            : null,
                     };
                 }
                 catch (ToolException exception) when (exception.Code == "E_NO_MATCH")
@@ -759,7 +756,7 @@ internal sealed partial class SessionManager
         }
     }
 
-    private JsonObject AssertColor(
+    private AssertRegionView AssertColor(
         byte[] bgra, int width, int height, string hex, JsonElement expectation)
     {
         if (!TryParseHex(hex, out byte r, out byte g, out byte b))
@@ -816,20 +813,20 @@ internal sealed partial class SessionManager
         double ratio = total == 0 ? 0 : (double)matched / total;
         bool passed = ratio >= coverage;
 
-        return new JsonObject
-        {
-            ["passed"] = passed,
-            ["matched_ratio"] = Math.Round(ratio, 4),
-            ["actual_coverage"] = Math.Round(ratio, 4),
-            ["coverage"] = coverage,
-            ["coverage_semantics"] = "coverage 是请求阈值；actual_coverage/matched_ratio 是实际覆盖率",
-            ["tolerance"] = tolerance,
-            ["expected"] = hex,
-            ["average"] = total == 0
+        return new AssertRegionView(
+            passed,
+            Math.Round(ratio, 4),
+            Math.Round(ratio, 4),
+            coverage,
+            "coverage 是请求阈值；actual_coverage/matched_ratio 是实际覆盖率",
+            tolerance,
+            hex,
+            total == 0
                 ? "#000000"
                 : $"#{sumR / total:X2}{sumG / total:X2}{sumB / total:X2}",
-            ["region"] = new JsonObject { ["width"] = width, ["height"] = height },
-        };
+            new SizeView(width, height),
+            ChangedRatio: null, Threshold: null, ExpectChanged: null,
+            BaselineFrameId: null, Baseline: null);
     }
 
     private static void ValidateChangedExpectation(JsonElement expectation)
@@ -860,7 +857,7 @@ internal sealed partial class SessionManager
         }
     }
 
-    private JsonObject AssertChanged(
+    private AssertRegionView AssertChanged(
         byte[] bgra, int width, int height, bool expectChanged, JsonElement expectation, int x, int y)
     {
         // 先校验阈值：非法阈值应在“找基线之前”就返回 E_INVALID_ARG，
@@ -892,21 +889,15 @@ internal sealed partial class SessionManager
         double ratio = ChangedRatio(bgra, baseline.Bgra, tolerance);
         bool passed = expectChanged ? ratio >= threshold : ratio <= threshold;
 
-        return new JsonObject
-        {
-            ["passed"] = passed,
-            ["changed_ratio"] = Math.Round(ratio, 4),
-            ["threshold"] = threshold,
-            ["expect_changed"] = expectChanged,
-            ["baseline_frame_id"] = baseline.Id,
-            ["baseline"] = new JsonObject
-            {
-                ["x"] = baseline.X,
-                ["y"] = baseline.Y,
-                ["width"] = baseline.Width,
-                ["height"] = baseline.Height,
-            },
-        };
+        return new AssertRegionView(
+            passed,
+            MatchedRatio: null, ActualCoverage: null, Coverage: null, CoverageSemantics: null,
+            Tolerance: null, Expected: null, Average: null, Region: null,
+            Math.Round(ratio, 4),
+            threshold,
+            expectChanged,
+            baseline.Id,
+            new BoundsView(baseline.X, baseline.Y, baseline.Width, baseline.Height));
     }
 
     private FrameSnapshot? ResolveBaselineFrame(

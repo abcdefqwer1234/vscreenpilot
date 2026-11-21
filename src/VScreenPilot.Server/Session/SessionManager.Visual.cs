@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Mcp;
 using VScreenPilot.Perception;
+using VScreenPilot.Views;
 using static VScreenPilot.Mcp.JsonArgReader;
 
 namespace VScreenPilot.Session;
@@ -17,7 +18,7 @@ internal sealed partial class SessionManager
     /* 工具：match_visual                                                  */
     /* ------------------------------------------------------------------ */
 
-    public JsonObject MatchVisual(JsonElement arguments)
+    public MatchVisualView MatchVisual(JsonElement arguments)
     {
         DisplayInfo display = EnsureEnvironment();
         string mode = (GetString(arguments, "mode") ?? "color").ToLowerInvariant();
@@ -41,7 +42,7 @@ internal sealed partial class SessionManager
 
         var stopwatch = Stopwatch.StartNew();
 
-        JsonObject result = mode switch
+        MatchVisualView result = mode switch
         {
             "pixel" => MatchPixel(arguments, x, y, width, height),
             "color" => MatchColor(arguments, x, y, width, height),
@@ -50,12 +51,14 @@ internal sealed partial class SessionManager
                 "E_INVALID_ARG", $"未知 match_visual mode: {mode}（可选 template/color/pixel）"),
         };
 
-        result["mode"] = mode;
-        result["elapsed_ms"] = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2);
-        return result;
+        return result with
+        {
+            Mode = mode,
+            ElapsedMs = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
+        };
     }
 
-    private JsonObject MatchPixel(
+    private MatchVisualView MatchPixel(
         JsonElement arguments, int regionX, int regionY, int regionWidth, int regionHeight)
     {
         if (!arguments.TryGetProperty("target", out JsonElement target) ||
@@ -87,16 +90,19 @@ internal sealed partial class SessionManager
 
         byte[] bgra = ScreenCapture.CapturePixel(px, py);
 
-        return new JsonObject
-        {
-            ["point"] = new JsonObject { ["x"] = px, ["y"] = py },
-            ["color"] = ToHex(bgra, 0),
-            ["rgb"] = new JsonArray(bgra[2], bgra[1], bgra[0]),
-            ["region"] = new JsonObject { ["x"] = regionX, ["y"] = regionY },
-        };
+        return new MatchVisualView(
+            Mode: string.Empty,
+            ElapsedMs: 0,
+            new PointView(px, py),
+            ToHex(bgra, 0),
+            new int[] { bgra[2], bgra[1], bgra[0] },
+            new OptionalBoundsView(regionX, regionY, null, null),
+            Target: null, Tolerance: null, MinPixels: null, MaxAreaRatio: null,
+            ExcludeBorder: null, MatchedPixels: null, Count: null, Matches: null,
+            Threshold: null, Template: null, Ambiguous: null, ScoreMargin: null);
     }
 
-    private JsonObject MatchColor(
+    private MatchVisualView MatchColor(
         JsonElement arguments, int regionX, int regionY, int width, int height)
     {
         string target = GetString(arguments, "target")
@@ -192,7 +198,7 @@ internal sealed partial class SessionManager
                     });
             }
 
-            var matches = new JsonArray();
+            var matches = new List<VisualMatchView>();
 
             foreach (ColorComponent component in selected)
             {
@@ -200,35 +206,35 @@ internal sealed partial class SessionManager
                 int h = component.Bottom - component.Top + 1;
                 int area = w * h;
 
-                matches.Add(new JsonObject
-                {
-                    ["x"] = regionX + component.Left,
-                    ["y"] = regionY + component.Top,
-                    ["width"] = w,
-                    ["height"] = h,
-                    ["center"] = new JsonObject
-                    {
-                        ["x"] = regionX + component.Left + w / 2,
-                        ["y"] = regionY + component.Top + h / 2,
-                    },
-                    ["pixels"] = component.Pixels,
-                    ["coverage"] = Math.Round(area == 0 ? 0 : (double)component.Pixels / area, 4),
-                    ["confidence"] = 1.0,
-                });
+                matches.Add(new VisualMatchView(
+                    regionX + component.Left,
+                    regionY + component.Top,
+                    w,
+                    h,
+                    new PointView(
+                        regionX + component.Left + w / 2,
+                        regionY + component.Top + h / 2),
+                    component.Pixels,
+                    Math.Round(area == 0 ? 0 : (double)component.Pixels / area, 4),
+                    Score: null,
+                    Confidence: 1.0,
+                    Scale: null));
             }
 
-            return new JsonObject
-            {
-                ["target"] = target,
-                ["tolerance"] = tolerance,
-                ["min_pixels"] = minPixels,
-                ["max_area_ratio"] = maxAreaRatio,
-                ["exclude_border"] = excludeBorder,
-                ["matched_pixels"] = matched,
-                ["region"] = RegionJson(regionX, regionY, width, height),
-                ["count"] = matches.Count,
-                ["matches"] = matches,
-            };
+            return new MatchVisualView(
+                Mode: string.Empty,
+                ElapsedMs: 0,
+                Point: null, Color: null, Rgb: null,
+                new OptionalBoundsView(regionX, regionY, width, height),
+                target,
+                tolerance,
+                minPixels,
+                maxAreaRatio,
+                excludeBorder,
+                matched,
+                matches.Count,
+                matches,
+                Threshold: null, Template: null, Ambiguous: null, ScoreMargin: null);
         }
         finally
         {
@@ -236,7 +242,7 @@ internal sealed partial class SessionManager
         }
     }
 
-    private JsonObject MatchTemplate(
+    private MatchVisualView MatchTemplate(
         JsonElement arguments, int regionX, int regionY, int width, int height)
     {
         byte[] png;
@@ -409,41 +415,37 @@ internal sealed partial class SessionManager
             ? Math.Round(found[0].Score - found[1].Score, 4)
             : 1.0;
 
-        var matches = new JsonArray();
+        var matches = new List<VisualMatchView>();
 
         foreach (VisualMatch match in found)
         {
-            matches.Add(new JsonObject
-            {
-                ["x"] = regionX + match.X,
-                ["y"] = regionY + match.Y,
-                ["width"] = match.Width,
-                ["height"] = match.Height,
-                ["center"] = new JsonObject
-                {
-                    ["x"] = regionX + match.X + match.Width / 2,
-                    ["y"] = regionY + match.Y + match.Height / 2,
-                },
-                ["score"] = match.Score,
-                ["confidence"] = match.Score,
-                ["scale"] = match.Scale,
-            });
+            matches.Add(new VisualMatchView(
+                regionX + match.X,
+                regionY + match.Y,
+                match.Width,
+                match.Height,
+                new PointView(
+                    regionX + match.X + match.Width / 2,
+                    regionY + match.Y + match.Height / 2),
+                Pixels: null, Coverage: null,
+                match.Score,
+                match.Score,
+                match.Scale));
         }
 
-        return new JsonObject
-        {
-            ["threshold"] = threshold,
-            ["template"] = new JsonObject
-            {
-                ["width"] = image.Width,
-                ["height"] = image.Height,
-            },
-            ["region"] = RegionJson(regionX, regionY, width, height),
-            ["count"] = matches.Count,
-            ["ambiguous"] = found.Count > 1,
-            ["score_margin"] = scoreMargin,
-            ["matches"] = matches,
-        };
+        return new MatchVisualView(
+            Mode: string.Empty,
+            ElapsedMs: 0,
+            Point: null, Color: null, Rgb: null,
+            new OptionalBoundsView(regionX, regionY, width, height),
+            Target: null, Tolerance: null, MinPixels: null, MaxAreaRatio: null,
+            ExcludeBorder: null, MatchedPixels: null,
+            matches.Count,
+            matches,
+            threshold,
+            new TemplateSizeView(image.Width, image.Height),
+            found.Count > 1,
+            scoreMargin);
     }
 
     private static JsonObject RegionJson(int x, int y, int width, int height) => new()

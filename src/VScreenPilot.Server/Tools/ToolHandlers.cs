@@ -475,7 +475,7 @@ internal sealed partial class McpTransport
 
         int timeoutMs = OptionalInt(arguments, "timeout_ms", 5000);
         int? intervalMs = OptionalNullableInt(arguments, "interval_ms");
-        return ToolResponse.Text(_session.WaitFor(condition, timeoutMs, intervalMs));
+        return ToolResponseWriter.FromView(_session.WaitFor(condition, timeoutMs, intervalMs));
     }
 
     private ToolResponse AssertRegion(JsonElement arguments)
@@ -492,11 +492,11 @@ internal sealed partial class McpTransport
             throw new ToolException("E_INVALID_ARG", "assert_region 需要 expectation");
         }
 
-        return ToolResponse.Text(_session.AssertRegion(region, expectation));
+        return ToolResponseWriter.FromView(_session.AssertRegion(region, expectation));
     }
 
     private ToolResponse MatchVisual(JsonElement arguments) =>
-        ToolResponse.Text(_session.MatchVisual(arguments));
+        ToolResponseWriter.FromView(_session.MatchVisual(arguments));
 
     private ToolResponse ReleaseEnvironment(JsonElement arguments)
     {
