@@ -6,6 +6,8 @@ namespace VScreenPilot.Tests;
 
 public sealed class LaunchViewSerializationTests
 {
+    private static readonly string[] Warnings = { "w1", "w2" };
+
     [Fact]
     public void LaunchViewKeepsOptionalFieldsAndEmptyBounds()
     {
