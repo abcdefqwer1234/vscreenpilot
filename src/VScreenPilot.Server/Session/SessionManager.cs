@@ -18,7 +18,7 @@ namespace VScreenPilot.Session;
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
-internal sealed partial class SessionManager : IDisposable, IElementFinderHost, IRegionVerifierHost
+internal sealed partial class SessionManager : IDisposable, IElementFinderHost, IRegionVerifierHost, IWaitHost
 {
     private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
@@ -54,6 +54,7 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
     private readonly InputRouter _input;
     private readonly ElementFinder _finder;
     private readonly RegionVerifier _regionVerifier;
+    private readonly WaitService _waits;
     private CursorGuard? _cursorGuard;
     // 每调用一个异步流：并发工具不会互相清掉取消令牌（旧实现是单个字段）。
     private readonly AsyncLocal<CancellationTokenSource?> _cancellation = new();
@@ -264,6 +265,7 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
         _visual = new VisualMatchService(this);
         _finder = new ElementFinder(this);
         _regionVerifier = new RegionVerifier(this);
+        _waits = new WaitService(this);
         _log.ClientIdProvider = () => Clients.CurrentId;
         AppLauncher.CleanupStaleProfiles();
         SweepOldArtifacts();
@@ -1078,4 +1080,39 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
         _frames.Snapshot();
 
     FrameSnapshot? IRegionVerifierHost.LatestFrame() => _frames.Latest();
+
+    DisplayInfo IWaitHost.EnsureDisplay() => EnsureEnvironmentFast();
+
+    void IWaitHost.EnterRead() => EnterRead();
+
+    void IWaitHost.ExitRead() => ExitRead();
+
+    bool IWaitHost.IsCancelled() => Cancellation.IsCancellationRequested;
+
+    TrackedApp? IWaitHost.FindApp(int? pid) => FindLiveTrackedApp(pid);
+
+    UiaHost IWaitHost.Uia => Uia;
+
+    List<TrackedApp> IWaitHost.OwnedAppsSnapshot()
+    {
+        lock (_gate)
+        {
+            return _apps.Where(app => IsOwned(app) && IsLiveTrackedApp(app)).ToList();
+        }
+    }
+
+    HashSet<int> IWaitHost.TrackedPids() => TrackedPids();
+
+    (byte[] Bgra, int Width, int Height) IWaitHost.CaptureRegion(
+        int x, int y, int width, int height) => CaptureRegion(x, y, width, height);
+
+    FrameSnapshot? IWaitHost.ResolveBaselineFrame(JsonElement source, int x, int y, int width, int height) =>
+        _regionVerifier.ResolveBaselineFrame(source, x, y, width, height);
+
+    JsonArray IWaitHost.Frames() => _regionVerifier.FramesJson();
+
+    MatchVisualView IWaitHost.MatchVisual(JsonElement arguments) => MatchVisual(arguments);
+
+    void IWaitHost.ReportProgress(int done, int total, string message) =>
+        ToolProgress.Report(done, total, message);
 }
