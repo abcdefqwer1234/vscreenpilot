@@ -2350,6 +2350,7 @@ internal sealed partial class SessionManager : IDisposable
         try
         {
             _uiaHost.Dispose();
+            _snapshots.Dispose();
         }
         catch (Exception exception)
         {

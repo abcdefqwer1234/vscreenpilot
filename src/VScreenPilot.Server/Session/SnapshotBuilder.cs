@@ -36,12 +36,14 @@ internal interface ISnapshotHost
 }
 
 /// <summary>快照：环境确认、语义树、弹窗、前台、可选截图与脱敏。</summary>
-internal sealed class SnapshotBuilder
+internal sealed class SnapshotBuilder : IDisposable
 {
     private readonly ISnapshotHost _host;
     private readonly SemaphoreSlim _snapshotGate = new(1, 1);
 
     public SnapshotBuilder(ISnapshotHost host) => _host = host;
+
+    public void Dispose() => _snapshotGate.Dispose();
 
     /// <summary>
     /// 一次调用完成“环境 + 语义树 + 弹窗 + 前台 + 可选截图”。
