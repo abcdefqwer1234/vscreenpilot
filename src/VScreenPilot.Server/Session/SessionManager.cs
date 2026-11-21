@@ -37,7 +37,7 @@ internal sealed partial class SessionManager : IDisposable
     private readonly StateStore _stateStore;
     private readonly JobObject _job;
     private readonly VddDevice _vdd = new();
-    private readonly List<TrackedApp> _apps = new();
+    private readonly TrackedAppRegistry _apps;
     private readonly bool _allowScript;
     private readonly string[] _appAllowlist;
 
@@ -217,6 +217,7 @@ internal sealed partial class SessionManager : IDisposable
         LogRing log, StateStore stateStore, JobObject job, bool allowScript = false)
     {
         _paths = new ClientPathPolicy(Clients);
+        _apps = new TrackedAppRegistry(_gate);
         _log = log;
         _stateStore = stateStore;
         _job = job;
@@ -237,14 +238,14 @@ internal sealed partial class SessionManager : IDisposable
 
     public DisplayInfo? VirtualDisplay => _virtualDisplay;
 
-    public IReadOnlyList<TrackedApp> Apps => _apps;
+    public IReadOnlyList<TrackedApp> Apps => _apps.Snapshot();
 
     /// <summary>控制管道遍历 apps 时使用的稳定快照，避免与 launch/release 并发修改冲突。</summary>
     internal IReadOnlyList<TrackedApp> GetAppsSnapshot()
     {
         lock (_gate)
         {
-            return _apps.ToArray();
+            return _apps.Snapshot();
         }
     }
 
@@ -326,7 +327,7 @@ internal sealed partial class SessionManager : IDisposable
     /// </summary>
     private TrackedApp? TryRelocateLastApp()
     {
-        foreach (TrackedApp app in _apps.AsEnumerable().Reverse().Where(IsOwned))
+        foreach (TrackedApp app in _apps.Snapshot().AsEnumerable().Reverse().Where(IsOwned))
         {
             if (TryRelocateApp(app))
             {
@@ -1341,7 +1342,7 @@ internal sealed partial class SessionManager : IDisposable
             try
             {
                 IEnumerable<TrackedApp> releaseApps = forceAllClients
-                    ? _apps
+                    ? _apps.Snapshot()
                     : _apps.Where(IsOwned);
 
                 foreach (TrackedApp app in releaseApps.Reverse().ToList())
@@ -2046,7 +2047,7 @@ internal sealed partial class SessionManager : IDisposable
                 Height = _virtualDisplay?.Height ?? 0,
             };
 
-            foreach (TrackedApp app in _apps)
+            foreach (TrackedApp app in _apps.Snapshot())
             {
                 state.Apps.Add(new AppState
                 {
