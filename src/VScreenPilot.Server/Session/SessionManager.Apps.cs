@@ -165,10 +165,10 @@ internal sealed partial class SessionManager
 
                 if (window is null)
                 {
-                    KillProcessTree(processId);
+                    AppReleaser.KillProcessTree(processId);
                     if (tempProfile is not null)
                     {
-                        TryDeleteDirectory(tempProfile);
+                        AppReleaser.TryDeleteDirectory(tempProfile);
                     }
 
                     if (hadRunningInstance)
@@ -284,7 +284,7 @@ internal sealed partial class SessionManager
 
                     if (window is null)
                     {
-                        KillProcessTree(processId);
+                        AppReleaser.KillProcessTree(processId);
                         throw new ToolException("E_WINDOW_TIMEOUT", "等待新窗口超时");
                     }
 
@@ -840,7 +840,7 @@ internal sealed partial class SessionManager
         }
     }
 
-    private static bool IsSameExecutable(Process process, string fullPath)
+    internal static bool IsSameExecutable(Process process, string fullPath)
     {
         try
         {
@@ -1163,7 +1163,7 @@ internal sealed partial class SessionManager
             {
                 // 启动 splash 关闭后到主窗口出现之间可能没有可见窗口；
                 // 只要进程还活着就继续等，别把已失效的 splash 当成主窗口返回。
-                if (!IsProcessAlive(window.Pid))
+                if (!AppReleaser.IsProcessAlive(window.Pid))
                 {
                     break;
                 }
@@ -1216,7 +1216,7 @@ internal sealed partial class SessionManager
             {
                 if (Directory.GetCreationTimeUtc(directory) < DateTime.UtcNow.AddDays(-1))
                 {
-                    TryDeleteDirectory(directory);
+                    AppReleaser.TryDeleteDirectory(directory);
                 }
             }
         }
