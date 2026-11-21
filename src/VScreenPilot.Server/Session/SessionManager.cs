@@ -18,7 +18,7 @@ namespace VScreenPilot.Session;
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
-internal sealed partial class SessionManager : IDisposable, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, IFocusHost
+internal sealed partial class SessionManager : IDisposable, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, IFocusHost, ITrackedAppHost
 {
     private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
@@ -53,6 +53,7 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
     private readonly AppLauncher _launcher;
     private readonly InputRouter _input;
     private readonly ElementFinder _finder;
+    private readonly TrackedAppTracker _tracker;
     private readonly RegionVerifier _regionVerifier;
     private readonly WaitService _waits;
     private readonly ElementResolver _resolver;
@@ -269,6 +270,7 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
         _screenText = new ScreenTextService(this);
         _capture = new ScreenCaptureService(this);
         _focus = new FocusGuard(this);
+        _tracker = new TrackedAppTracker(this);
         _log.ClientIdProvider = () => Clients.CurrentId;
         AppLauncher.CleanupStaleProfiles();
         SweepOldArtifacts();
@@ -299,138 +301,15 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
     /// 条目仍可用：窗口存在且仍属于登记时的进程。
     /// 窗口关闭后 PID 可能被系统复用，只比较 PID 会把外来窗口误判成本会话应用。
     /// </summary>
-    internal static bool IsLiveTrackedApp(TrackedApp app)
-    {
-        if (app.Hwnd == IntPtr.Zero || !NativeMethods.IsWindow(app.Hwnd))
-        {
-            return false;
-        }
+    internal static bool IsLiveTrackedApp(TrackedApp app) => TrackedAppTracker.IsLive(app);
 
-        _ = NativeMethods.GetWindowThreadProcessId(app.Hwnd, out uint ownerPid);
-        return ownerPid == (uint)app.Pid;
-    }
+    private TrackedApp? LastLiveTrackedApp() => _tracker.LastLive();
 
-    private TrackedApp? LastLiveTrackedApp()
-    {
-        lock (_gate)
-        {
-            return _apps.LastOrDefault(app => IsOwned(app) && IsLiveTrackedApp(app))
-                   ?? TryRelocateLastApp();
-        }
-    }
+    private void PruneDeadApps() => _tracker.Prune();
 
-    /// <summary>清理已死超过 3s 的条目，避免 apps[] 长期残留（N5）。</summary>
-    private void PruneDeadApps()
-    {
-        lock (_gate)
-        {
-            DateTime now = DateTime.UtcNow;
+    private TrackedApp? FindLiveTrackedApp(int? pid) => _tracker.FindLive(pid);
 
-            for (int index = _apps.Count - 1; index >= 0; index--)
-            {
-                TrackedApp app = _apps[index];
 
-                if (IsLiveTrackedApp(app))
-                {
-                    app.DeadSince = null;
-                    continue;
-                }
-
-                app.DeadSince ??= now;
-
-                if ((now - app.DeadSince.Value).TotalSeconds >= 3)
-                {
-                    _apps.RemoveAt(index);
-                }
-            }
-        }
-    }
-
-    private TrackedApp? FindLiveTrackedApp(int? pid)
-    {
-        if (pid is null)
-        {
-            return LastLiveTrackedApp();
-        }
-
-        lock (_gate)
-        {
-            TrackedApp? live = _apps.LastOrDefault(
-                app => app.Pid == pid.Value && IsOwned(app) && IsLiveTrackedApp(app));
-            if (live is not null)
-            {
-                return live;
-            }
-
-            TrackedApp? dead = _apps.LastOrDefault(app => app.Pid == pid.Value && IsOwned(app));
-            return dead is not null && TryRelocateApp(dead) ? dead : null;
-        }
-    }
-
-    /// <summary>
-    /// Office 等应用会由启动壳进程交接给新进程，原 pid/hwnd 随即失效。
-    /// 按 exe 路径 + 启动时间把死条目重定位到新的顶层窗口，避免成功启动后立即 E_NO_TARGET。
-    /// </summary>
-    private TrackedApp? TryRelocateLastApp()
-    {
-        foreach (TrackedApp app in _apps.Snapshot().AsEnumerable().Reverse().Where(IsOwned))
-        {
-            if (TryRelocateApp(app))
-            {
-                return app;
-            }
-        }
-
-        return null;
-    }
-
-    private bool TryRelocateApp(TrackedApp app)
-    {
-        if (!IsOwned(app) || string.IsNullOrWhiteSpace(app.ExePath))
-        {
-            return false;
-        }
-
-        WindowInfo? candidate = WindowManager.ListTopLevel()
-            .Where(window => !_apps.Any(other => other.Hwnd == window.Hwnd))
-            .Where(window => string.Equals(
-                WindowManager.GetProcessPath(window.Pid), app.ExePath, StringComparison.OrdinalIgnoreCase))
-            .Where(window => ProcessStartedAfter(window.Pid, app.StartedAt))
-            .OrderByDescending(window => window.Area)
-            .FirstOrDefault();
-
-        if (candidate is null)
-        {
-            return false;
-        }
-
-        _log.Warn(
-            $"应用 pid={app.Pid} 已退出，按 exe 重定位到 pid={candidate.Pid}");
-        app.Pid = candidate.Pid;
-        app.Hwnd = candidate.Hwnd;
-        app.Title = candidate.Title;
-        app.Placement = WindowManager.GetPlacement(candidate.Hwnd);
-        app.PlacementSaved = true;
-        return true;
-    }
-
-    private static bool ProcessStartedAfter(int pid, DateTime startedAt)
-    {
-        try
-        {
-            using Process process = Process.GetProcessById(pid);
-            return process.StartTime.ToUniversalTime() >= startedAt.ToUniversalTime().AddSeconds(-2);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// 读路径的快速入口：已挂载就直接返回，不拿 _gate，也不重算拓扑。
-    /// 真正失效时再回落到 EnsureEnvironment 自愈。
-    /// </summary>
     public DisplayInfo EnsureEnvironmentFast() => _display.EnsureFast();
 
     public DisplayInfo EnsureEnvironment() => _display.Ensure();
@@ -1222,4 +1101,12 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
         StoreFrame(bgra, width, height, x, y);
 
     string IScreenCaptureHost.ValidateSavePath(string path) => _paths.ValidateSavePath(path);
+
+    TrackedAppRegistry ITrackedAppHost.Apps => _apps;
+
+    object ITrackedAppHost.Gate => _gate;
+
+    bool ITrackedAppHost.IsOwned(TrackedApp app) => IsOwned(app);
+
+    LogRing ITrackedAppHost.Log => _log;
 }
