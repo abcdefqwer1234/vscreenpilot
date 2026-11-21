@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json.Nodes;
 using VScreenPilot.Platform.Displays;
+using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
 using VScreenPilot.Perception;
@@ -136,7 +137,7 @@ internal sealed partial class SessionManager
         catch (InvalidOperationException exception)
         {
             // 显示被摘除/安全桌面/DC 失效：给出可操作错误，而不是 E_INTERNAL。
-            bool interactive = IsInputDesktopAvailable();
+            bool interactive = EnvironmentProbe.IsInputDesktopAvailable();
 
             throw new ToolException(
                 interactive ? "E_DISPLAY" : "E_NO_INTERACTIVE_DESKTOP",

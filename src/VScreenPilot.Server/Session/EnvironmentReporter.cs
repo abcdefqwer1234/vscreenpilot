@@ -67,7 +67,7 @@ internal sealed class EnvironmentReporter
         DisplayInfo? parsecDisplay = _host.OwnDisplay();
         (int vx, int vy, int vw, int vh) = DisplayTopology.VirtualScreenBounds();
         DisplayInfo? primaryDisplay = DisplayTopology.FindPrimary();
-        int monitorCount = GetMonitorCount();
+        int monitorCount = EnvironmentProbe.GetMonitorCount();
         IntPtr foregroundWindow = WindowManager.GetForegroundWindow();
 
         lock (_host.Gate)
@@ -141,11 +141,11 @@ internal sealed class EnvironmentReporter
                 Pid = Environment.ProcessId,
                 Initialized = _host.Initialized,
                 MutexHost = Profile.MutexName(_host.ProfileName),
-                StartedAt = ProcessStartTime(),
+                StartedAt = EnvironmentProbe.ProcessStartTime(),
                 SessionId = sessionId,
                 Interactive = Environment.UserInteractive,
                 RemoteSession = NativeMethods.GetSystemMetrics(0x1000) != 0,
-                InputDesktop = IsInputDesktopAvailable(),
+                InputDesktop = EnvironmentProbe.IsInputDesktopAvailable(),
                 Elevated = Elevation.IsProcessElevated(),
                 Isolation = "shared_desktop",
                 Profile = _host.ProfileName,
@@ -343,30 +343,4 @@ internal sealed class EnvironmentReporter
             FocusedElement = focusedElement,
         };
     }
-    private static string ProcessStartTime()
-    {
-        try
-        {
-            using var process = System.Diagnostics.Process.GetCurrentProcess();
-            return process.StartTime.ToString("O");
-        }
-        catch
-        {
-            return DateTimeOffset.Now.ToString("O");
-        }
-    }
-
-    private static bool IsInputDesktopAvailable()
-    {
-        IntPtr desktop = NativeMethods.OpenInputDesktop(0, false, 0x0100);
-        if (desktop == IntPtr.Zero)
-        {
-            return false;
-        }
-
-        NativeMethods.CloseDesktop(desktop);
-        return true;
-    }
-
-    private static int GetMonitorCount() => NativeMethods.GetSystemMetrics(80);
 }

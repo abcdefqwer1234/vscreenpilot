@@ -116,8 +116,8 @@ internal sealed partial class SessionManager
 
             foreach (WindowInfo window in WindowManager.ListForProcess(pidForMsaa))
             {
-                MsaaFindResult msaa = MsaaService.FindElements(
-                    window.Hwnd, name, mode, controlType, limit);
+                MsaaFindResult msaa = Uia.InvokeMsaa(() => MsaaService.FindElements(
+                    window.Hwnd, name, mode, controlType, limit));
                 fallback.AddRange(msaa.Items.Select(info => (info, window.Hwnd)));
                 findTruncated |= msaa.Truncated;
 
@@ -251,8 +251,8 @@ internal sealed partial class SessionManager
                 // 不能等全局 0 结果再回退：主窗口有控件会掩盖掉 bosa_sdm_msword 对话框。
                 if (found.Count == 0)
                 {
-                    MsaaFindResult msaa = MsaaService.FindElements(
-                        window, name, mode, controlType, limit);
+                    MsaaFindResult msaa = Uia.InvokeMsaa(() => MsaaService.FindElements(
+                        window, name, mode, controlType, limit));
                     found = msaa.Items;
                     truncated |= msaa.Truncated;
                 }

@@ -250,8 +250,8 @@ internal sealed class SnapshotBuilder : IDisposable
             // 把控件直接放进 snapshot.dialogs[].controls，模型不需要再猜 find_element。
             if (dialog.ClassName.Contains("bosa", StringComparison.OrdinalIgnoreCase))
             {
-                MsaaFindResult msaa = MsaaService.FindElements(
-                    dialog.Hwnd, null, UiaNameMatch.Exact, null, 100);
+                MsaaFindResult msaa = _host.Uia.InvokeMsaa(() => MsaaService.FindElements(
+                    dialog.Hwnd, null, UiaNameMatch.Exact, null, 100));
 
                 if (msaa.Items.Count > 0)
                 {

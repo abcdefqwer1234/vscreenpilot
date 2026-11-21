@@ -58,7 +58,7 @@ internal sealed partial class SessionManager : IInputHost
     void IInputHost.RestoreForeground(IntPtr previous, bool logFailure) =>
         RestoreForeground(previous, logFailure);
 
-    bool IInputHost.IsInputDesktopAvailable() => IsInputDesktopAvailable();
+    bool IInputHost.IsInputDesktopAvailable() => EnvironmentProbe.IsInputDesktopAvailable();
 
     ObserveSignature IInputHost.CaptureSignature(
         DisplayInfo display, int x, int y, int width, int height) =>

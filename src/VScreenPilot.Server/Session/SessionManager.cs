@@ -727,7 +727,7 @@ internal sealed partial class SessionManager : IDisposable
             var state = new SessionState
             {
                 Pid = Environment.ProcessId,
-                StartedAt = ProcessStartTime(),
+                StartedAt = EnvironmentProbe.ProcessStartTime(),
                 DisplayIndex = _display.State.Index,
                 DisplayDevice = _display.State.VirtualDisplay?.DeviceName ?? _display.State.DeviceName,
                 X = _display.State.VirtualDisplay?.X ?? 0,
@@ -918,19 +918,6 @@ internal sealed partial class SessionManager : IDisposable
             });
     }
 
-    private static string ProcessStartTime()
-    {
-        try
-        {
-            using var process = System.Diagnostics.Process.GetCurrentProcess();
-            return process.StartTime.ToString("O");
-        }
-        catch
-        {
-            return DateTimeOffset.Now.ToString("O");
-        }
-    }
-
     private static bool IsVScreenPilotProcess(int pid, string startedAt)
     {
         try
@@ -955,18 +942,6 @@ internal sealed partial class SessionManager : IDisposable
         }
     }
 
-    private static bool IsInputDesktopAvailable()
-    {
-        IntPtr desktop = NativeMethods.OpenInputDesktop(0, false, 0x0100);
-        if (desktop == IntPtr.Zero)
-        {
-            return false;
-        }
-
-        NativeMethods.CloseDesktop(desktop);
-        return true;
-    }
-
     /// <summary>路径是否位于根目录下（大小写不敏感，供应用白名单使用）。</summary>
     private static bool IsUnder(string path, string root)
     {
@@ -975,11 +950,6 @@ internal sealed partial class SessionManager : IDisposable
 
         return path.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase) ||
                path.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static int GetMonitorCount()
-    {
-        return NativeMethods.GetSystemMetrics(80);
     }
 
     public void Dispose()

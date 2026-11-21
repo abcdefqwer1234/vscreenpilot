@@ -108,8 +108,8 @@ internal sealed class InputRouter
         if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaOrdinal))
         {
             bool acted = mode is "auto" or "uia" &&
-                         MsaaService.DoDefaultAction(msaaHwnd, msaaOrdinal);
-            var bounds = MsaaService.GetBounds(msaaHwnd, msaaOrdinal);
+                         _host.Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaOrdinal));
+            var bounds = _host.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaOrdinal));
             string resultChannel = acted ? "msaa" : string.Empty;
 
             if (!acted && mode != "uia" && bounds is not null)

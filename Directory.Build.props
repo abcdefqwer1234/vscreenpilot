@@ -14,6 +14,7 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <!-- CA1822/CA1859 是风格建议；CA1838 见上。CA1806 不再整体关闭，P/Invoke 返回值必须显式检查。 -->
+    <!-- CA1822/CA1859：现有实例方法与具体返回类型是公开行为的一部分，暂不批量改签名；CA1838 见上。 -->
     <NoWarn>$(NoWarn);CA1822;CA1859;CA1838</NoWarn>
   </PropertyGroup>
 

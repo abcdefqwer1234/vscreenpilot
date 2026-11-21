@@ -134,6 +134,17 @@ internal sealed class UiaHost : IDisposable
             return true;
         });
 
+    /// <summary>MSAA 与服务级 UIA 共用同一 MTA worker，保证 COM 串行。</summary>
+    public T InvokeMsaa<T>(Func<T> action) => Invoke(_ => action());
+
+    /// <summary>MSAA 与服务级 UIA 共用同一 MTA worker，保证 COM 串行。</summary>
+    public void InvokeMsaa(Action action) =>
+        Invoke(service =>
+        {
+            action();
+            return true;
+        });
+
     public UiaElementInfo? FindTextElement(IntPtr hwnd, string needle, int maxChars = 65536) =>
         Invoke(service => service.FindTextElement(hwnd, needle, maxChars));
 

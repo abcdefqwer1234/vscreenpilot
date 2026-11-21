@@ -332,8 +332,8 @@ internal sealed partial class SessionManager
     private JsonObject BuildMsaaTree(
         ElementRefEntry rootEntry, IntPtr hwnd, int ordinal, int maxNodes, string? format)
     {
-        MsaaFindResult found = MsaaService.FindElements(
-            hwnd, null, UiaNameMatch.Exact, null, maxNodes);
+        MsaaFindResult found = Uia.InvokeMsaa(() => MsaaService.FindElements(
+            hwnd, null, UiaNameMatch.Exact, null, maxNodes));
 
         var children = new JsonArray();
         string snapshotId;
@@ -414,11 +414,11 @@ internal sealed partial class SessionManager
 
         if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaChildId))
         {
-            bool invoked = MsaaService.DoDefaultAction(msaaHwnd, msaaChildId);
+            bool invoked = Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaChildId));
 
             if (!invoked && allowClick)
             {
-                var bounds = MsaaService.GetBounds(msaaHwnd, msaaChildId);
+                var bounds = Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaChildId));
 
                 if (bounds is not null)
                 {
@@ -667,7 +667,7 @@ internal sealed partial class SessionManager
 
         if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaChildId))
         {
-            string? existing = MsaaService.GetValue(msaaHwnd, msaaChildId);
+            string? existing = Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
 
             if (!string.IsNullOrEmpty(existing) &&
                 !string.Equals(existing, value, StringComparison.Ordinal) &&
@@ -679,7 +679,7 @@ internal sealed partial class SessionManager
                     new JsonObject { ["ref"] = probe.Ref, ["existing_length"] = existing.Length });
             }
 
-            if (!MsaaService.SetValue(msaaHwnd, msaaChildId, value))
+            if (!Uia.InvokeMsaa(() => MsaaService.SetValue(msaaHwnd, msaaChildId, value)))
             {
                 if (!allowKeyboard)
                 {
@@ -689,7 +689,7 @@ internal sealed partial class SessionManager
                         new JsonObject { ["ref"] = probe.Ref });
                 }
 
-                var bounds = MsaaService.GetBounds(msaaHwnd, msaaChildId);
+                var bounds = Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaChildId));
 
                 if (bounds is null)
                 {
@@ -717,7 +717,7 @@ internal sealed partial class SessionManager
                 };
             }
 
-            string? observed = MsaaService.GetValue(msaaHwnd, msaaChildId);
+            string? observed = Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
             return new JsonObject
             {
                 ["ref"] = probe.Ref,
@@ -858,7 +858,7 @@ internal sealed partial class SessionManager
 
         if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaChildId))
         {
-            string msaaText = MsaaService.GetValue(msaaHwnd, msaaChildId) ?? string.Empty;
+            string msaaText = Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId)) ?? string.Empty;
             return new JsonObject
             {
                 ["ref"] = probe.Ref,
