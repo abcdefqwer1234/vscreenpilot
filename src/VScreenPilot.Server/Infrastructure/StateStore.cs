@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using VScreenPilot.Session;
 
 namespace VScreenPilot.Infrastructure;
 
@@ -38,7 +39,7 @@ public sealed class SessionState
 /// 会话状态持久化（%LOCALAPPDATA%\VScreenPilot\state.json）。
 /// 用于崩溃后恢复窗口位置与识别遗留的虚拟屏归属。
 /// </summary>
-public sealed class StateStore
+public sealed class StateStore : ISessionStateStore
 {
     private readonly LogRing _log;
     private readonly string? _path;

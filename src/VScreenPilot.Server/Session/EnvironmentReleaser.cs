@@ -202,35 +202,16 @@ internal sealed class EnvironmentReleaser
 
                 // 注意：这里已持 _gate；不要再拿 _refGate（Ref 路径的锁顺序是 _refGate -> _gate）。
                 // MCP 层用 session 读写锁保证 release 不与 find/tree 并发。
-                string releaseClient = _host.CurrentClientId;
-
-                if (forceAllClients)
-                {
-                    _host.ClearElementRefs(forceAllClients);
-                }
-                else
-                {
-                    _host.ClearElementRefs(forceAllClients);
-                }
+                _host.ClearElementRefs(forceAllClients);
 
                 // 基线帧是整屏 BGRA（约 3.7MB）；只清当前客户端的帧，避免 A release 清掉 B 的基线。
-                                if (forceAllClients)
-                {
-                    _host.ClearFrames(true);
-                }
-                else
-                {
-                    _host.ClearFrames(false);
-                }
-            
+                _host.ClearFrames(forceAllClients);
+
+                _host.ClearInputBlock(forceAllClients);
+
                 if (forceAllClients)
                 {
-                    _host.ClearInputBlock(true);
                     _host.MarkDisplaySelfHealedFalse();
-                }
-                else
-                {
-                    _host.ClearInputBlock(false);
                 }
 
                 if (keepDisplayEffective)
@@ -270,17 +251,5 @@ internal sealed class EnvironmentReleaser
                 Memory: memory,
                 Warnings: warnings.Select(item => item!.GetValue<string>()).ToArray());
         }
-    }
-
-    private static JsonArray ToJsonArray(IEnumerable<int> values)
-    {
-        var array = new JsonArray();
-        foreach (int value in values.Distinct())
-        {
-            // 避免 JsonArray.Add<T> 在 AOT 下触发 int 的反射元数据。
-            array.Add(JsonNode.Parse(value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
-        }
-
-        return array;
     }
 }

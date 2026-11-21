@@ -10,9 +10,6 @@ namespace VScreenPilot.Session;
 
 internal sealed partial class SessionManager
 {
-    internal sealed record CaptureResult(
-        byte[] Png, CaptureView Meta, byte[]? PreviewPng, PreviewView? PreviewMeta);
-
     public (byte[] Png, CaptureView Meta) CaptureScreen(
         int? x, int? y, int? width, int? height, double scale, string? savePath) =>
         _capture.CaptureScreen(x, y, width, height, scale, savePath);

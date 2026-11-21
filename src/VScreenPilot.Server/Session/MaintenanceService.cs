@@ -71,12 +71,8 @@ internal sealed class MaintenanceService : IDisposable
     {
         Interlocked.Exchange(ref _lastSweepTicks, Environment.TickCount64);
 
-        string[] current;
-
-        current = _host.ArtifactDirectories;
-
         _artifacts ??= new ArtifactStore(_host.ArtifactRoot, _host.Log.Info, _host.Log.Warn);
-        _artifacts.Sweep(current);
+        _artifacts.Sweep(_host.ArtifactDirectories);
     }
 
     /// <summary>daemon 长期运行时也要清理；最多每小时扫一次，避免每个连接都遍历目录。</summary>

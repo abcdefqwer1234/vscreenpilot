@@ -178,7 +178,7 @@ internal sealed partial class McpTransport
         bool hasSavePath = !string.IsNullOrWhiteSpace(savePath);
 
         // preview 与主图同帧；small 图会多编码一次缩略图，但省掉了第二次截屏。
-        SessionManager.CaptureResult capture = _session.CaptureScreenEx(
+        CaptureResult capture = _session.CaptureScreenEx(
             x, y, width, height, scale, savePath,
             storeFrame: true,
             previewScale: inline ? Math.Max(Limits.MinScale, scale * Limits.PreviewScale) : null);

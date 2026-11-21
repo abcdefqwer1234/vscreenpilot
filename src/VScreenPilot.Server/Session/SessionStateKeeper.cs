@@ -5,11 +5,19 @@ using VScreenPilot.Interop;
 
 namespace VScreenPilot.Session;
 
+/// <summary>会话状态持久化的最小存储抽象，便于单测替换。</summary>
+internal interface ISessionStateStore
+{
+    SessionState? Load();
+    void Save(SessionState state);
+    void Clear();
+}
+
 /// <summary>会话状态持久化所需的最小宿主接口。</summary>
 internal interface ISessionStateHost
 {
     object Gate { get; }
-    StateStore Store { get; }
+    ISessionStateStore Store { get; }
     DisplayStateStore DisplayState { get; }
     TrackedAppRegistry Apps { get; }
     LogRing Log { get; }

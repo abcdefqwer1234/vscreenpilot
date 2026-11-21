@@ -344,7 +344,7 @@ internal sealed class ControlServer : IDisposable
 
     private JsonObject Capture()
     {
-        SessionManager.CaptureResult capture = _session.CaptureScreenEx(
+        CaptureResult capture = _session.CaptureScreenEx(
             null, null, null, null, 0.5, savePath: null, storeFrame: false, previewScale: null);
         string path = Path.Combine(
             _session.ArtifactDirectory,

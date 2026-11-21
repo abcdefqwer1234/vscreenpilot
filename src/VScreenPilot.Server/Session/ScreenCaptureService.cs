@@ -27,7 +27,7 @@ internal sealed class ScreenCaptureService
     public (byte[] Png, CaptureView Meta) CaptureScreen(
         int? x, int? y, int? width, int? height, double scale, string? savePath)
     {
-        SessionManager.CaptureResult result = CaptureScreenEx(
+        CaptureResult result = CaptureScreenEx(
             x, y, width, height, scale, savePath, storeFrame: true, previewScale: null);
         return (result.Png, result.Meta);
     }
@@ -36,7 +36,7 @@ internal sealed class ScreenCaptureService
     /// 一次采集、两次编码：preview 与主图来自同一帧（R12），
     /// storeFrame=false 时快照/预览不会挤掉 assert_region 的基线（R13）。
     /// </summary>
-    internal SessionManager.CaptureResult CaptureScreenEx(
+    internal CaptureResult CaptureScreenEx(
         int? x, int? y, int? width, int? height, double scale, string? savePath,
         bool storeFrame, double? previewScale)
     {
@@ -135,6 +135,6 @@ internal sealed class ScreenCaptureService
             Baseline: new BaselineView(left, top, capturedWidth, capturedHeight),
             Path: string.IsNullOrWhiteSpace(savePath) ? null : _host.ValidateSavePath(savePath));
 
-        return new SessionManager.CaptureResult(png, meta, previewPng, previewMeta);
+        return new CaptureResult(png, meta, previewPng, previewMeta);
     }
 }

@@ -15,10 +15,10 @@ internal sealed class AppAllowlistPolicy
 {
     private readonly IAppAllowlistHost _host;
 
-    public AppAllowlistPolicy(IAppAllowlistHost host)
+    public AppAllowlistPolicy(IAppAllowlistHost host, string[]? globalRoots = null)
     {
         _host = host;
-        GlobalRoots = ReadAppAllowlist();
+        GlobalRoots = globalRoots ?? ReadAppAllowlist();
     }
 
     public string[] GlobalRoots { get; }

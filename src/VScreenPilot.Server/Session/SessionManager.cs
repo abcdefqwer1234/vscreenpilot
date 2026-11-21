@@ -638,7 +638,7 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
 
     object ISessionStateHost.Gate => _gate;
 
-    StateStore ISessionStateHost.Store => _stateStore;
+    ISessionStateStore ISessionStateHost.Store => _stateStore;
 
     DisplayStateStore ISessionStateHost.DisplayState => _display.State;
 

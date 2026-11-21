@@ -44,7 +44,7 @@ internal static class LocalSessionInvoker
                     break;
 
                 case "screen":
-                    SessionManager.CaptureResult capture = session.CaptureScreenEx(
+                    CaptureResult capture = session.CaptureScreenEx(
                         null, null, null, null, 0.5, savePath: null,
                         storeFrame: false, previewScale: null);
                     string path = Path.Combine(

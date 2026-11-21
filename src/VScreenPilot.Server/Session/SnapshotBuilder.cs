@@ -34,7 +34,7 @@ internal interface ISnapshotHost
     IReadOnlyList<TrackedApp> OwnedApps();
     bool IsLive(TrackedApp app);
     (byte[] Bgra, int Width, int Height) CaptureRegion(int x, int y, int width, int height);
-    SessionManager.CaptureResult CaptureForSnapshot(double scale, double previewScale);
+    CaptureResult CaptureForSnapshot(double scale, double previewScale);
 }
 
 /// <summary>快照：环境确认、语义树、弹窗、前台、可选截图与脱敏。</summary>
@@ -444,7 +444,7 @@ internal sealed class SnapshotBuilder : IDisposable
             else
             {
                 // 快照截图不写帧缓存；preview 与主图同帧，且不阻塞 _refGate（已在锁外）。
-                SessionManager.CaptureResult capture = _host.CaptureForSnapshot(
+                CaptureResult capture = _host.CaptureForSnapshot(
                     Math.Clamp(scale, 0.1, 1.0),
                     Math.Max(Limits.MinScale, scale * Limits.PreviewScale));
 
