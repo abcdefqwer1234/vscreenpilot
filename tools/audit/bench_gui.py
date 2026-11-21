@@ -239,7 +239,12 @@ def main() -> int:
                       note_pid=note_pid, ui_pid=ui_pid, type=typed_pid.code or "ok", find=find_pid.code or "ok"))
 
     # ---------------- GUI-15 故障恢复 ----------------
-    kill_tree(ui_pid or 0)
+    # 先清空其它应用：GUI-14 会同时保留 Notepad 与 UiTarget。
+    # “被杀后无目标”的语义只在单应用场景成立；多应用时 find_element 选最后一个存活应用是正确行为。
+    client.call("release_environment", {"keep_display": True, "on_dirty": "discard", "allow_data_loss": True}, 120)
+    fresh = client.call("launch_or_place_app", {"path": UITARGET, "wait_ms": 15000}, 120)
+    fresh_pid = (fresh.data or {}).get("pid")
+    kill_tree(fresh_pid or 0)
     time.sleep(1.0)
     dead = client.call("find_element", {"automation_id": "input"}, 30)
     relaunched = client.call("launch_or_place_app", {"path": UITARGET, "wait_ms": 15000}, 120)

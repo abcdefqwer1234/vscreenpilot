@@ -101,10 +101,10 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 | 契约 | 16 用例；schema 快照、架构方向、命名空间/IVT/棘轮 | `tests/VScreenPilot.Tests.Contract` |
 | 架构度量 | `arch_metrics.py --selftest/--check`（文件/方法/宿主/SPLIT/catch/测试数） | `.github/workflows/ci.yml` |
 | 基线 diff | `capture_baseline.py` + `compare_baseline.py --only server.json --only errors.json` | CI `smoke` |
-| GUI / protocol | 13/14、30/30；需要 VDD | 自托管 nightly |
+| GUI / protocol | 14/14、30/30；需要 VDD | 自托管 nightly |
 | stability / UIA | 14/14、3/3；`bench_stability.py`、`bench_uia_stress.py` | 自托管 nightly |
 
-已知失败：`GUI-15`（应用被杀后按 exe 重定位到另一个同名窗口）保持既有语义。
+`GUI-15` 已通过：审计改为单应用场景后再杀掉目标，验证“报错 → 重启恢复”；产品行为未变。
 
 ## 8. 已知债务与 R3
 
