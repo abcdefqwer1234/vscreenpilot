@@ -8,6 +8,7 @@ using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
+using VScreenPilot.Views;
 
 namespace VScreenPilot.Session;
 
@@ -850,7 +851,7 @@ internal sealed partial class SessionManager
             display, handle, entry, value, refreshed, mode, allowDestructive);
     }
 
-    public JsonObject GetElementText(string reference, int maxChars)
+    public ElementTextView GetElementText(string reference, int maxChars)
     {
         DisplayInfo display = EnsureEnvironment();
         ElementRefEntry probe = RequireElementEntry(reference);
@@ -859,16 +860,14 @@ internal sealed partial class SessionManager
         if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaChildId))
         {
             string msaaText = Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId)) ?? string.Empty;
-            return new JsonObject
-            {
-                ["ref"] = probe.Ref,
-                ["control_type"] = probe.ControlTypeName,
-                ["automation_id"] = probe.AutomationId,
-                ["text"] = msaaText.Length > maxChars ? msaaText[..maxChars] : msaaText,
-                ["length"] = msaaText.Length,
-                ["truncated"] = msaaText.Length > maxChars,
-                ["refreshed"] = false,
-            };
+            return new ElementTextView(
+                probe.Ref,
+                probe.ControlTypeName,
+                probe.AutomationId,
+                msaaText.Length > maxChars ? msaaText[..maxChars] : msaaText,
+                msaaText.Length,
+                msaaText.Length > maxChars,
+                Refreshed: false);
         }
 
         using UiaElementHandle handle = ResolveElementHandle(
@@ -884,16 +883,14 @@ internal sealed partial class SessionManager
                 new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(handle.Info) });
         }
 
-        return new JsonObject
-        {
-            ["ref"] = entry.Ref,
-            ["control_type"] = handle.Info.ControlTypeName,
-            ["automation_id"] = handle.Info.AutomationId,
-            ["text"] = text,
-            ["length"] = text.Length,
-            ["truncated"] = text.Length >= maxChars,
-            ["refreshed"] = refreshed,
-        };
+        return new ElementTextView(
+            entry.Ref,
+            handle.Info.ControlTypeName,
+            handle.Info.AutomationId,
+            text,
+            text.Length,
+            text.Length >= maxChars,
+            refreshed);
     }
 
     private JsonObject SetElementValueByKeyboard(

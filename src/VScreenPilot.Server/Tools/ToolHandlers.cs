@@ -316,7 +316,7 @@ internal sealed partial class McpTransport
             ?? throw new ToolException("E_INVALID_ARG", "get_element_text 需要 ref");
         int maxChars = OptionalInt(arguments, "max_chars", 4096);
 
-        return ToolResponse.Text(_session.GetElementText(reference, maxChars));
+        return ToolResponseWriter.FromView(_session.GetElementText(reference, maxChars));
     }
 
     private ToolResponse ReadScreenText(JsonElement arguments)
