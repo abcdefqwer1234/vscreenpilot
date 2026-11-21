@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-11-21T19:51:09Z",
+  "generated_at": "2026-11-21T20:22:08Z",
   "source": {
-    "files": 163,
-    "lines": 31637,
+    "files": 165,
+    "lines": 31767,
     "max_file": 783,
     "files_gt_600": 6,
     "files_gt_800": 0,
@@ -40,10 +40,6 @@
         "path": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs"
       },
       {
-        "lines": 565,
-        "path": "src/VScreenPilot.Server/Session/AppLauncher.Launch.cs"
-      },
-      {
         "lines": 525,
         "path": "src/VScreenPilot.Server/Ipc/ControlServer.cs"
       },
@@ -54,22 +50,20 @@
       {
         "lines": 463,
         "path": "src/VScreenPilot.Server/Infrastructure/LogRing.cs"
+      },
+      {
+        "lines": 453,
+        "path": "src/VScreenPilot.Platform/Display/VddDevice.cs"
       }
     ]
   },
   "methods": {
-    "max": 542,
-    "gt_150": 1,
-    "ge_200": 1,
-    "ge_120": 15,
-    "ge_80": 51,
+    "max": 148,
+    "gt_150": 0,
+    "ge_200": 0,
+    "ge_120": 14,
+    "ge_80": 53,
     "top": [
-      {
-        "lines": 542,
-        "path": "src/VScreenPilot.Server/Session/AppLauncher.Launch.cs",
-        "line": 22,
-        "name": "Launch"
-      },
       {
         "lines": 148,
         "path": "src/VScreenPilot.Automation/Scripting/ScriptRunner.cs",
@@ -135,6 +129,12 @@
         "path": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs",
         "line": 402,
         "name": "FindByFingerprint"
+      },
+      {
+        "lines": 125,
+        "path": "src/VScreenPilot.Server/Session/ElementOperations.cs",
+        "line": 59,
+        "name": "GetUiTree"
       }
     ]
   },
