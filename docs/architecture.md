@@ -26,13 +26,17 @@ Server ──────> Automation ──────> Platform ────�
 ```
 MCP 传输层   官方 ModelContextProtocol SDK（stdio；协议协商/分帧/取消/进度由 SDK 负责）
              多客户端：首个进程优先 spawn 独立 daemon（PipeHost），失败回退进程内 daemon；后续进程用 StdioProxy 转发
-工具层       McpServer：工具目录、严格参数校验、写操作调度、进度、JSONL 追踪、屏幕租约
-会话层       SessionManager：虚拟屏、应用接管、快照、UIA、输入、断言、脚本、per-client 上下文
+工具层       McpTransport（协议适配）+ ToolRegistry/ToolDescriptor（目录与 schema）
+             + ToolExecutor（策略驱动的租约/写锁/超时/epoch）+ ToolHandlers（参数解析与调用）
+会话层       SessionManager：虚拟屏、应用接管、快照、UIA、输入、断言、脚本
+             ClientSessionRegistry：per-client 上下文；ClientPathPolicy：路径与截图落盘边界
 感知层       ScreenCapture（复用 GDI 资源）/ PngWriter（池化 + Up 过滤）/ PngReader / TemplateMatcher
 平台层       Interop（Win32/COM）、DisplayTopology、VddDevice、JobObject、CursorGuard、InstanceRegistry
 ```
 
-> 过渡状态：`Session/*` 仍留在 `Server`，因为它依赖 `LogRing`/`InstanceRegistry`/`StateStore`/`TraceLog`，而 `Automation` 不能反向引用 `Server`。P4 拆成组件、P6 注入接口后再迁入 `Automation`。不变量清单见 `docs/refactor-invariants.md`。
+> 过渡状态：`Session/*` 仍留在 `Server`，因为它依赖 `LogRing`/`InstanceRegistry`/`StateStore`/`TraceLog`，而 `Automation` 不能反向引用 `Server`。
+> `Automation` 已接收无 Server 依赖的会话组件（`ArtifactStore`、`FrameStore`、`SessionGuard`、`ClientSessionRegistry`、`ClientPathPolicy`、`ElementRefStore`、`TrackedApp` 等）。
+> 不变量清单见 `docs/refactor-invariants.md`。
 
 
 ## 2. 并发模型
@@ -48,8 +52,8 @@ MCP 传输层   官方 ModelContextProtocol SDK（stdio；协议协商/分帧/�
   返回 `E_CANCELLED`，避免“清空集合后旧 handler 继续写”。
 - **每调用取消**：`AsyncLocal<CancellationTokenSource>`，并发工具不会互相清取消。
 - **UIA 串行**：`UiaService` 内所有 COM 访问（含建树、写值、读文本）统一进 `_sync`；
-  超时后 `ResetUia` 把旧实例放进退休列表，会话结束时统一释放（不再中途丢弃实例）；
-  后续替换为专用 MTA worker。
+  超时后 `ResetUia` 把旧实例放进退休列表，会话结束时统一释放（不再中途丢弃实例）。
+  专用 MTA worker（`UiaHost`）仍是 P7 的待办，当前实现保持既有锁语义。
 - **MSAA 回退**：单个窗口 UIA 完全不可见时，`MsaaService` 用 `IAccessible` 枚举子控件；
   Word `bosa_sdm_msword` 对话框走这条路径。
 - **UWP**：顶层类是 `ApplicationFrameWindow`，内容进程没有独立 HWND；UIA 从 frame 取树，
@@ -96,9 +100,8 @@ ref 只在该代内有效；跨代使用返回 `E_STALE_SNAPSHOT`，未知/被�
 
 ## 6. 已知未完成（下一阶段）
 
-- **会话组件化**：`SessionManager` 尚未按组件拆分（P4），因此它仍在 `Server`。
-- **工具层重写**：22 个工具仍是 `McpServer` 内的方法，尚未迁移到 `ToolDescriptor`（P5）。
-- **组合根**：`Program` 仍有内联分支，静态 provider 尚未移除（P6）。
+- **会话组件化**：`SessionManager` 尚未拆到薄门面（P4），快照/应用/显示/输入仍在 partial 中。
+- **领域视图**：22 个工具中 5 个已走强类型视图，其余仍由 handler 直接拼 `JsonObject`（P3）。
 - **UIA 单线程宿主**：`UiaService` 已按职责拆成 7 个文件，但仍用锁串行化，未改为 MTA worker（P7）。
 - **全屏截图**：复用资源 + 去 `CAPTUREBLT` + 大图不内联后，服务端 P95 已降至 ~56ms；
   早期“1.2–1.4s”是内联大 PNG 的回传成本，已由 preview/artifact 方案消除。
