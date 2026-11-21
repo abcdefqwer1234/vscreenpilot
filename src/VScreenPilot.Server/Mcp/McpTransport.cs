@@ -43,9 +43,9 @@ internal sealed partial class McpTransport
     private readonly WriteScheduler _scheduler;
 
     // 令牌桶限流：daemon 内所有连接共享，避免 N 个客户端把限制放大 N 倍。
-    private static readonly object RateGate = new();
-    private static double _rateTokens = 300;
-    private static long _rateLastTicks = Environment.TickCount64;
+    private readonly object _rateGate = new();
+    private double _rateTokens = 300;
+    private long _rateLastTicks = Environment.TickCount64;
     private const double RateCapacity = 300;
     private const double RateRefillPerSecond = 100;
 
@@ -518,11 +518,11 @@ internal sealed partial class McpTransport
         return ToResult(response);
     }
 
-    private static bool TryAcquireRateLimit(out int retryAfterMs)
+    private bool TryAcquireRateLimit(out int retryAfterMs)
     {
         retryAfterMs = 0;
 
-        lock (RateGate)
+        lock (_rateGate)
         {
             long now = Environment.TickCount64;
             double elapsed = Math.Max(0, now - _rateLastTicks) / 1000.0;
