@@ -97,7 +97,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 
 | 闸门 | 内容 | 位置 |
 |---|---|---|
-| 单元 | 196 用例；视图序列化、策略、路径、拓扑、租约、组件 fake | `tests/VScreenPilot.Tests.Unit` |
+| 单元 | 200 用例；视图序列化、策略、路径、拓扑、租约、组件 fake | `tests/VScreenPilot.Tests.Unit` |
 | 契约 | 16 用例；schema 快照、架构方向、命名空间/IVT/棘轮 | `tests/VScreenPilot.Tests.Contract` |
 | 架构度量 | `arch_metrics.py --selftest/--check`（文件/方法/宿主/SPLIT/catch/测试数） | `.github/workflows/ci.yml` |
 | 基线 diff | `capture_baseline.py` + `compare_baseline.py --only server.json --only errors.json` | CI `smoke` |

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-21T19:40:30Z",
+  "generated_at": "2026-11-21T19:41:45Z",
   "source": {
     "files": 163,
     "lines": 31186,
@@ -372,11 +372,11 @@
     "debug_only": 0
   },
   "tests": {
-    "fact": 161,
+    "fact": 165,
     "theory": 10,
-    "methods": 171,
+    "methods": 175,
     "inline_data": 51,
-    "files": 31,
-    "lines": 3229
+    "files": 32,
+    "lines": 3302
   }
 }

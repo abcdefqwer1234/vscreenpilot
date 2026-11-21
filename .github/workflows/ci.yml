@@ -96,6 +96,12 @@ jobs:
       - name: Publish
         run: dotnet publish src/VScreenPilot.Server/VScreenPilot.Server.csproj -c Release -r win-x64 -o artifacts/server
 
+      - name: Build audit probes
+        run: |
+          dotnet build tools/VddProbe/VddProbe.csproj -c Release
+          dotnet build tools/TestTool/targets/UiTarget/UiTarget.csproj -c Release -o tools/audit/targets/bin/UiTarget
+          dotnet build tools/audit/targets/ClickProbe/ClickProbe.csproj -c Release -o tools/audit/targets/bin/ClickProbe
+
       - name: Protocol / contract / concurrency / capture
         run: |
           python tools/audit/bench_protocol.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/nightly --fuzz 500
@@ -103,6 +109,11 @@ jobs:
           python tools/audit/bench_concurrency.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/nightly
           python tools/audit/bench_capture_soak.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/nightly
           python tools/audit/bench_gui2.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/nightly
+
+      - name: Stability / UIA stress
+        run: |
+          python tools/audit/bench_stability.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/nightly --sessions 5 --soak-min 3
+          python tools/audit/bench_uia_stress.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/nightly --iterations 200
 
       - name: PPT / Office fixes (requires PowerPoint + VDD)
         shell: pwsh

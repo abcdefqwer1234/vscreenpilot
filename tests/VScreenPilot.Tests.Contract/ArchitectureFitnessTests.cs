@@ -36,7 +36,7 @@ public sealed class ArchitectureFitnessTests
 
     private const int MaxFileLines = 800;
     private const int MaxUntypedCatch = 0;
-    private const int MinTestMethods = 171;
+    private const int MinTestMethods = 175;
 
     [Fact]
     public void NamespaceBelongsToSingleAssembly()
