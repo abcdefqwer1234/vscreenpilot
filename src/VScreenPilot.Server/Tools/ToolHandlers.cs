@@ -364,7 +364,7 @@ internal sealed partial class McpTransport
         bool observe = OptionalBool(arguments, "observe", true);
         bool fallbackInput = OptionalBool(arguments, "fallback_input", false);
 
-        return ToolResponse.Text(
+        return ToolResponseWriter.FromView(
             _session.Click(x, y, button, clicks, mode, keepForeground, observe, fallbackInput));
     }
 

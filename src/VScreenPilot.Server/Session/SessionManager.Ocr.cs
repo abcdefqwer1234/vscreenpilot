@@ -2,8 +2,10 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Diagnostics;
+using VScreenPilot.Json;
 using VScreenPilot.Mcp;
 using VScreenPilot.Perception;
+using VScreenPilot.Views;
 
 namespace VScreenPilot.Session;
 
@@ -236,7 +238,7 @@ internal sealed partial class SessionManager
 
         int clickX = left + match.Left + match.Width / 2;
         int clickY = top + match.Top + match.Height / 2;
-        JsonObject click = Click(
+        ClickView click = Click(
             clickX, clickY, "left", 1, channel, keepForeground, observe, fallbackInput);
 
         int clickRedactions = 0;
@@ -251,8 +253,8 @@ internal sealed partial class SessionManager
             ["bounds"] = RegionJson(left + match.Left, top + match.Top, match.Width, match.Height),
             ["ambiguous"] = matches.Count > 1,
             ["matches"] = DescribeMatches(matches, left, top),
-            ["method"] = click["method"]?.GetValue<string>(),
-            ["observed"] = click["observed"]?.DeepClone(),
+            ["method"] = click.Method,
+            ["observed"] = click.Observed is null ? null : VspJson.ToNode(click.Observed),
             ["privacy_redactions"] = clickRedactions,
         };
     }

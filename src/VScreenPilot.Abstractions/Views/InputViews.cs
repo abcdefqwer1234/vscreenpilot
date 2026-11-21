@@ -87,3 +87,25 @@ public sealed record GestureView(
     [property: JsonPropertyName("observed")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     ObservedView? Observed);
+
+/// <summary>`click` 的输出视图。</summary>
+public sealed record ClickView(
+    [property: JsonPropertyName("x")] int X,
+    [property: JsonPropertyName("y")] int Y,
+    [property: JsonPropertyName("button")] string Button,
+    [property: JsonPropertyName("clicks")] int Clicks,
+    [property: JsonPropertyName("mode")] string Mode,
+    [property: JsonPropertyName("method")] string Method,
+    [property: JsonPropertyName("inject_ms")] double InjectMs,
+    [property: JsonPropertyName("duration_ms")] double DurationMs,
+    [property: JsonPropertyName("verified")] bool Verified,
+    [property: JsonPropertyName("keep_foreground")] bool KeepForeground,
+    [property: JsonPropertyName("observed")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    ObservedView? Observed,
+    [property: JsonPropertyName("detail")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Detail,
+    [property: JsonPropertyName("hint")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Hint);

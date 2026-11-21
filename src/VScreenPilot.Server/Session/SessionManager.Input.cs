@@ -15,7 +15,7 @@ internal sealed partial class SessionManager
         string reference, string? channel, bool keepForeground, bool fallbackInput = false) =>
         _input.ClickElementRef(reference, channel, keepForeground, fallbackInput);
 
-    public JsonObject Click(
+    public ClickView Click(
         int x, int y, string button, int clicks, string mode,
         bool keepForeground = false, bool observe = true, bool fallbackInput = false) =>
         _input.Click(x, y, button, clicks, mode, keepForeground, observe, fallbackInput);

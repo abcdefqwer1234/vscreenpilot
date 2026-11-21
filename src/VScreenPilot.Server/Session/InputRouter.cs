@@ -124,12 +124,12 @@ internal sealed class InputRouter
                     _ => "auto",
                 };
 
-                JsonObject msaaClick = Click(
+                ClickView msaaClick = Click(
                     bounds.Value.Left + bounds.Value.Width / 2,
                     bounds.Value.Top + bounds.Value.Height / 2,
                     "left", 1, msaaMode, keepForeground, observe: true, fallbackInput: fallbackInput);
                 acted = true;
-                resultChannel = msaaClick["method"]?.GetValue<string>() ?? msaaMode;
+                resultChannel = msaaClick.Method;
             }
 
             if (!acted)
@@ -202,10 +202,11 @@ internal sealed class InputRouter
         int centerY = info.Top + Math.Max(1, info.Height) / 2;
         // 显式 message/input 保持原语义；auto 才允许继续降级（含 fallback_input）。
         string coordinateMode = mode is "input" or "message" ? mode : "auto";
-        JsonObject result = Click(
+        ClickView clickResult = Click(
             centerX, centerY, "left", 1, coordinateMode,
             keepForeground, observe: true, fallbackInput: fallbackInput);
 
+        JsonObject result = VspJson.ToNode(clickResult).AsObject();
         result["clicked"] = true;
         result["ref"] = entry.Ref;
         result["refreshed"] = refreshed;
@@ -248,7 +249,7 @@ internal sealed class InputRouter
         }
     }
 
-    public JsonObject Click(
+    public ClickView Click(
         int x, int y, string button, int clicks, string mode,
         bool keepForeground = false, bool observe = true, bool fallbackInput = false)
     {
@@ -432,36 +433,22 @@ internal sealed class InputRouter
         ObservedView? observed = _host.BuildObserved(
             observeBefore, observeAfter, observeWatch.Elapsed.TotalMilliseconds);
 
-        var result = new JsonObject
-        {
-            ["x"] = x,
-            ["y"] = y,
-            ["button"] = button,
-            ["clicks"] = clicks,
-            ["mode"] = mode,
-            ["method"] = method,
-            ["inject_ms"] = Math.Round(injectMs, 2),
-            ["duration_ms"] = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
-            ["verified"] = observed?.Changed ?? false,
-            ["keep_foreground"] = keepForeground,
-        };
-
-        if (observed is not null)
-        {
-            result["observed"] = VspJson.ToNode(observed);
-        }
-
-        if (detail is not null)
-        {
-            result["detail"] = detail;
-        }
-
-        if (method == "message")
-        {
-            result["hint"] = "消息点击可能被部分应用忽略，请用 wait_for/assert_region 验证";
-        }
-
-        return result;
+        return new ClickView(
+            x,
+            y,
+            button,
+            clicks,
+            mode,
+            method,
+            Math.Round(injectMs, 2),
+            Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
+            observed?.Changed ?? false,
+            keepForeground,
+            observed,
+            detail,
+            method == "message"
+                ? "消息点击可能被部分应用忽略，请用 wait_for/assert_region 验证"
+                : null);
     }
 
     public TypeTextView TypeText(
