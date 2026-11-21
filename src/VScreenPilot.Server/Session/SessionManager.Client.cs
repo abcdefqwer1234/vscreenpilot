@@ -134,16 +134,7 @@ internal sealed partial class SessionManager
     {
         lock (_gate)
         {
-            foreach ((string refKey, ElementRefEntry entry) in _elements
-                         .Where(pair => string.Equals(
-                             pair.Value.OwnerClientId, clientId, StringComparison.Ordinal))
-                         .ToList())
-            {
-                _elements.Remove(refKey);
-                _elementKeys.Remove(entry.Key);
-            }
-
-            ClearSnapshotState(clientId);
+            _refs.DropClient(clientId);
             _uiaBlockedPids.Remove(clientId);
 
             _frames.RemoveClient(clientId);

@@ -131,7 +131,7 @@ internal sealed partial class SessionManager
         JsonObject tree;
         string snapshotId;
 
-        lock (_refGate)
+        lock (_refs.SyncRoot)
         {
             snapshotId = BeginSnapshot();
             tree = ConvertTreeNode(result.Root, hwnd, ref rootRef);
@@ -230,7 +230,7 @@ internal sealed partial class SessionManager
                 {
                     var controls = new JsonArray();
 
-                    lock (_refGate)
+                    lock (_refs.SyncRoot)
                     {
                         foreach (UiaElementInfo info in msaa.Items)
                         {

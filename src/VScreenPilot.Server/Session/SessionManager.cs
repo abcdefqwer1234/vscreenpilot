@@ -1465,22 +1465,11 @@ internal sealed partial class SessionManager : IDisposable
 
                 if (forceAllClients)
                 {
-                    _elements.Clear();
-                    _elementKeys.Clear();
-                    ClearSnapshotState(clientId: null);
+                    _refs.ClearUnsafe();
                 }
                 else
                 {
-                    foreach ((string refKey, ElementRefEntry entry) in _elements
-                                 .Where(pair => string.Equals(
-                                     pair.Value.OwnerClientId, releaseClient, StringComparison.Ordinal))
-                                 .ToList())
-                    {
-                        _elements.Remove(refKey);
-                        _elementKeys.Remove(entry.Key);
-                    }
-
-                    ClearSnapshotState(releaseClient);
+                    _refs.DropClientUnsafe(releaseClient);
                 }
 
                 // 基线帧是整屏 BGRA（约 3.7MB）；只清当前客户端的帧，避免 A release 清掉 B 的基线。

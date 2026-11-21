@@ -13,275 +13,41 @@ namespace VScreenPilot.Session;
 
 internal sealed partial class SessionManager
 {
-    // 保留当前代 + 上一代（max_nodes 1024），避免新快照把自己的 ref 挤掉。
-    private const int ElementRefCapacity = 2048;
-    private const long ElementRefTtlMs = 5 * 60 * 1000;
+    private readonly ElementRefStore _refs = new();
 
-    private readonly Dictionary<string, ElementRefEntry> _elements = new();
-    private readonly Dictionary<string, string> _elementKeys = new();
-    // 快照构建与 ref 解析共用一把锁：保证“清空 + 建树 + 登记”对其他线程是原子的。
-    private readonly object _refGate = new();
+    // 容量属于对外可观察字段（snapshot 的 ref_capacity），保留原常量名。
+    private const int ElementRefCapacity = ElementRefStore.Capacity;
+
     // snapshot 的建树与提交串行化：避免两个 snapshot 乱序提交、互相覆盖代际。
     private readonly SemaphoreSlim _snapshotGate = new(1, 1);
-    private long _elementSeq;
-    private long _snapshotSeq;
-    // 这两个字典会在不持 _refGate 的路径被读取（SnapshotId/RequireElementEntry），
-    // 而写入发生在 _refGate + _gate 或 release 的 _gate 下；用并发字典避免跨客户端读写撕裂。
-    private readonly ConcurrentDictionary<string, long> _snapshotGenerationByClient =
-        new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, string> _snapshotIdByClient =
-        new(StringComparer.Ordinal);
 
     /// <summary>最近一次 snapshot 的 id；ref 只在该快照内有效。</summary>
-    public string SnapshotId =>
-        _snapshotIdByClient.TryGetValue(CurrentClientId, out string? id) ? id : string.Empty;
+    public string SnapshotId => _refs.CurrentSnapshotId(CurrentClientId);
 
-    /// <summary>
-    /// 当前快照 id；若还没有任何快照则创建第一个。
-    /// get_ui_tree/find_element 默认复用当前代，不再每次调用都让既有 ref 失效。
-    /// </summary>
-    public string EnsureSnapshot()
-    {
-        lock (_refGate)
-        {
-            string clientId = CurrentClientId;
+    /// <summary>当前快照 id；没有则创建第一个。</summary>
+    public string EnsureSnapshot() => _refs.EnsureSnapshot(CurrentClientId);
 
-            if (_snapshotGenerationByClient.TryGetValue(clientId, out long generation) &&
-                generation > 0 &&
-                _snapshotIdByClient.TryGetValue(clientId, out string? id))
-            {
-                return id;
-            }
+    private void ClearSnapshotState(string? clientId) => _refs.ClearSnapshots(clientId);
 
-            return BeginSnapshot();
-        }
-    }
-
-    /// <summary>清空指定客户端的快照代际；clientId 为空表示全量（daemon 退出）。</summary>
-    private void ClearSnapshotState(string? clientId)
-    {
-        if (clientId is not null)
-        {
-            _snapshotGenerationByClient.TryRemove(clientId, out _);
-            _snapshotIdByClient.TryRemove(clientId, out _);
-            return;
-        }
-
-        foreach (string key in _snapshotGenerationByClient.Keys)
-        {
-            _snapshotGenerationByClient.TryRemove(key, out _);
-        }
-
-        foreach (string key in _snapshotIdByClient.Keys)
-        {
-            _snapshotIdByClient.TryRemove(key, out _);
-        }
-    }
-
-    /// <summary>开始新快照：清空当前客户端的旧 ref，让跨快照使用返回 E_ELEMENT_STALE。</summary>
-    public string BeginSnapshot()
-    {
-        lock (_refGate)
-        {
-            lock (_gate)
-            {
-                string clientId = CurrentClientId;
-                long generation = _snapshotGenerationByClient.TryGetValue(clientId, out long current)
-                    ? current + 1
-                    : 1;
-                _snapshotGenerationByClient[clientId] = generation;
-
-                // 保留上一代 ref，才能对“旧快照 ref”返回 E_STALE_SNAPSHOT 而不是“未知 ref”。
-                // 只淘汰当前客户端的更老代际，不能影响其他客户端。
-                List<string>? expired = null;
-
-                foreach ((string key, ElementRefEntry value) in _elements)
-                {
-                    if (string.Equals(value.OwnerClientId, clientId, StringComparison.Ordinal) &&
-                        value.Generation < generation - 1)
-                    {
-                        (expired ??= new List<string>()).Add(key);
-                    }
-                }
-
-                if (expired is not null)
-                {
-                    foreach (string key in expired)
-                    {
-                        RemoveElement(key);
-                    }
-                }
-
-                string snapshotId = "s" + Interlocked.Increment(ref _snapshotSeq);
-                _snapshotIdByClient[clientId] = snapshotId;
-                return snapshotId;
-            }
-        }
-    }
+    /// <summary>开始新快照：推进代际并清掉更早一代的 ref。</summary>
+    public string BeginSnapshot() => _refs.BeginSnapshot(CurrentClientId);
 
     /// <summary>登记元素并返回稳定的会话内引用（只对外暴露 ref）。</summary>
-    public string RegisterElement(UiaElementInfo info, IntPtr hwnd)
-    {
-        lock (_refGate)
-        lock (_gate)
-        {
-            PruneExpiredElements();
-
-            string clientId = CurrentClientId;
-            string key = ElementRefEntry.BuildKey(clientId, info, hwnd);
-            long generation = _snapshotGenerationByClient.TryGetValue(clientId, out long current)
-                ? current
-                : 0;
-
-            if (_elementKeys.TryGetValue(key, out string? existingRef) &&
-                _elements.TryGetValue(existingRef, out ElementRefEntry? existing) &&
-                existing.Generation == generation)
-            {
-                existing.Update(info, hwnd);
-                return existing.Ref;
-            }
-
-            if (_elements.Count >= ElementRefCapacity)
-            {
-                EvictOldestElement();
-            }
-
-            string reference = "e" + (++_elementSeq);
-            // UWP 等跨进程宿主：元素属于内容进程，HWND 属于 ApplicationFrameHost。
-            // ref 的归属校验必须按 HWND 的进程，否则每次解析都会被判成“句柄复用”。
-            int ownerPid = hwnd != IntPtr.Zero ? WindowManager.GetProcessId(hwnd) : 0;
-            var entry = new ElementRefEntry
-            {
-                Ref = reference,
-                Key = key,
-                OwnerClientId = clientId,
-                Pid = ownerPid > 0 ? ownerPid : info.ProcessId,
-                Hwnd = hwnd,
-                Generation = generation,
-                LastUsedTicks = Environment.TickCount64,
-            };
-            entry.Update(info, hwnd);
-
-            _elements[reference] = entry;
-            _elementKeys[key] = reference;
-            return reference;
-        }
-    }
-
-    private void PruneExpiredElements()
-    {
-        long now = Environment.TickCount64;
-        List<string>? expired = null;
-
-        foreach (var pair in _elements)
-        {
-            if (now - pair.Value.LastUsedTicks > ElementRefTtlMs)
-            {
-                (expired ??= new List<string>()).Add(pair.Key);
-            }
-        }
-
-        if (expired is null)
-        {
-            return;
-        }
-
-        foreach (string reference in expired)
-        {
-            RemoveElement(reference);
-        }
-    }
-
-    private void EvictOldestElement()
-    {
-        string? oldestRef = null;
-        long oldestTicks = long.MaxValue;
-
-        foreach (var pair in _elements)
-        {
-            if (pair.Value.LastUsedTicks < oldestTicks)
-            {
-                oldestTicks = pair.Value.LastUsedTicks;
-                oldestRef = pair.Key;
-            }
-        }
-
-        if (oldestRef is not null)
-        {
-            RemoveElement(oldestRef);
-        }
-    }
-
-    private void RemoveElement(string reference)
-    {
-        if (!_elements.Remove(reference, out ElementRefEntry? entry))
-        {
-            return;
-        }
-
-        if (_elementKeys.TryGetValue(entry.Key, out string? mapped) && mapped == reference)
-        {
-            _elementKeys.Remove(entry.Key);
-        }
-        else
-        {
-            foreach (var pair in _elementKeys)
-            {
-                if (pair.Value == reference)
-                {
-                    _elementKeys.Remove(pair.Key);
-                    break;
-                }
-            }
-        }
-    }
+    public string RegisterElement(UiaElementInfo info, IntPtr hwnd) =>
+        _refs.Register(CurrentClientId, info, hwnd);
 
     private ElementRefEntry RequireElementEntry(string reference)
     {
         string key = (reference ?? string.Empty).Trim();
+
         if (key.Length == 0)
         {
             throw new ToolException("E_INVALID_ARG", "element_ref 不能为空");
         }
 
-        ElementRefEntry? entry;
-        bool staleSnapshot = false;
-        string clientId = CurrentClientId;
-        long generation = _snapshotGenerationByClient.TryGetValue(clientId, out long current)
-            ? current
-            : 0;
+        ElementRefEntry? entry = _refs.TryResolve(CurrentClientId, key, out bool stale);
 
-        lock (_refGate)
-        lock (_gate)
-        {
-            if (!_elements.TryGetValue(key, out entry))
-            {
-                entry = null;
-            }
-            else if (!string.Equals(entry.OwnerClientId, clientId, StringComparison.Ordinal))
-            {
-                // 其他客户端的 ref 对当前客户端等同未知，避免跨会话读取元素。
-                entry = null;
-            }
-            else if (Environment.TickCount64 - entry.LastUsedTicks > ElementRefTtlMs)
-            {
-                // 过期条目直接移除，避免后续按旧 runtime_id 误命中。
-                RemoveElement(key);
-                entry = null;
-            }
-            else if (generation > 0 && entry.Generation != generation)
-            {
-                // ref 只对创建它的快照有效：跨快照使用是明确错误，而不是“碰巧还能用”。
-                entry = null;
-                staleSnapshot = true;
-            }
-            else
-            {
-                entry.LastUsedTicks = Environment.TickCount64;
-            }
-        }
-
-        if (staleSnapshot)
+        if (stale)
         {
             throw new ToolException(
                 "E_STALE_SNAPSHOT",
@@ -508,7 +274,7 @@ internal sealed partial class SessionManager
         JsonObject tree;
         string snapshotId;
 
-        lock (_refGate)
+        lock (_refs.SyncRoot)
         {
             // 只有显式 new_snapshot 才推进代际；默认复用当前快照，
             // 这样 find -> get_ui_tree -> invoke 不会莫名 E_STALE_SNAPSHOT。
@@ -576,7 +342,7 @@ internal sealed partial class SessionManager
         string snapshotId;
         int count = 0;
 
-        lock (_refGate)
+        lock (_refs.SyncRoot)
         {
             snapshotId = EnsureSnapshot();
 
