@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using VScreenPilot.Apps;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Json;
 using VScreenPilot.Diagnostics;
@@ -10,6 +11,8 @@ using VScreenPilot.Ui;
 using VScreenPilot.Perception;
 using VScreenPilot.Uia;
 using VScreenPilot.Views;
+using VScreenPilot.Platform.Windows;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 

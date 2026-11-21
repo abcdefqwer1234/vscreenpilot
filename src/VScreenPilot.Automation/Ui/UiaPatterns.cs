@@ -3,7 +3,6 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Interop.UIAutomationClient;
 using VScreenPilot.Interop;
-using VScreenPilot.Mcp;
 
 namespace VScreenPilot.Uia;
 

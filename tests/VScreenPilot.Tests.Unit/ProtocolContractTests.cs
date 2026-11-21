@@ -6,6 +6,7 @@ using VScreenPilot.Perception;
 using VScreenPilot.Diagnostics;
 using VScreenPilot.Session;
 using Xunit;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Tests;
 

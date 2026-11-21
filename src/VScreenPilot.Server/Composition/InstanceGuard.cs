@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 
 namespace VScreenPilot.Composition;
 

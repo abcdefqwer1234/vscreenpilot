@@ -1,46 +1,46 @@
 {
-  "generated_at": "2026-11-21T19:31:27Z",
+  "generated_at": "2026-11-21T19:35:54Z",
   "source": {
-    "files": 149,
-    "lines": 30643,
-    "max_file": 1552,
+    "files": 150,
+    "lines": 30748,
+    "max_file": 1555,
     "files_gt_600": 9,
     "files_gt_800": 3,
     "top_files": [
       {
-        "lines": 1552,
+        "lines": 1555,
         "path": "src/VScreenPilot.Server/Session/InputRouter.cs"
       },
       {
-        "lines": 1242,
+        "lines": 1246,
         "path": "src/VScreenPilot.Server/Session/AppLauncher.cs"
       },
       {
-        "lines": 940,
+        "lines": 944,
         "path": "src/VScreenPilot.Server/Session/ElementOperations.cs"
       },
       {
-        "lines": 757,
+        "lines": 759,
         "path": "src/VScreenPilot.Server/Session/VirtualDisplayController.cs"
       },
       {
-        "lines": 746,
+        "lines": 740,
         "path": "src/VScreenPilot.Server/Session/SessionManager.cs"
       },
       {
-        "lines": 721,
+        "lines": 723,
         "path": "src/VScreenPilot.Server/Mcp/McpTransport.cs"
       },
       {
-        "lines": 659,
+        "lines": 661,
         "path": "src/VScreenPilot.Server/Tools/ToolHandlers.cs"
       },
       {
-        "lines": 645,
+        "lines": 648,
         "path": "src/VScreenPilot.Server/Session/SnapshotBuilder.cs"
       },
       {
-        "lines": 609,
+        "lines": 611,
         "path": "src/VScreenPilot.Server/Session/VisualMatchService.cs"
       },
       {
@@ -48,7 +48,7 @@
         "path": "src/VScreenPilot.Automation/Ui/MsaaService.cs"
       },
       {
-        "lines": 572,
+        "lines": 571,
         "path": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs"
       },
       {
@@ -67,73 +67,73 @@
       {
         "lines": 542,
         "path": "src/VScreenPilot.Server/Session/AppLauncher.cs",
-        "line": 56,
+        "line": 60,
         "name": "Launch"
       },
       {
         "lines": 385,
         "path": "src/VScreenPilot.Server/Session/SnapshotBuilder.cs",
-        "line": 89,
+        "line": 92,
         "name": "SnapshotCore"
       },
       {
         "lines": 330,
         "path": "src/VScreenPilot.Server/Session/VirtualDisplayController.cs",
-        "line": 87,
+        "line": 89,
         "name": "Ensure"
       },
       {
         "lines": 295,
         "path": "src/VScreenPilot.Server/Tools/ToolExecutor.cs",
-        "line": 51,
+        "line": 54,
         "name": "ExecuteAsync"
       },
       {
         "lines": 294,
         "path": "src/VScreenPilot.Server/Session/EnvironmentReporter.cs",
-        "line": 54,
+        "line": 57,
         "name": "GetEnvironment"
       },
       {
         "lines": 289,
         "path": "src/VScreenPilot.Server/Session/InputRouter.cs",
-        "line": 781,
+        "line": 784,
         "name": "Gesture"
       },
       {
         "lines": 277,
         "path": "src/VScreenPilot.Server/Session/WaitService.cs",
-        "line": 112,
+        "line": 114,
         "name": "EvaluateCondition"
       },
       {
-        "lines": 246,
+        "lines": 241,
         "path": "src/VScreenPilot.Server/Diagnostics/DoctorReportBuilder.cs",
-        "line": 17,
+        "line": 18,
         "name": "Run"
       },
       {
         "lines": 210,
         "path": "src/VScreenPilot.Server/Session/EnvironmentReleaser.cs",
-        "line": 45,
+        "line": 48,
         "name": "Release"
       },
       {
         "lines": 205,
         "path": "src/VScreenPilot.Server/Session/VisualMatchService.cs",
-        "line": 259,
+        "line": 261,
         "name": "MatchTemplate"
       },
       {
         "lines": 201,
         "path": "src/VScreenPilot.Server/Session/InputRouter.cs",
-        "line": 459,
+        "line": 462,
         "name": "TypeText"
       },
       {
         "lines": 201,
         "path": "src/VScreenPilot.Server/Session/InputRouter.cs",
-        "line": 257,
+        "line": 260,
         "name": "Click"
       }
     ]
@@ -218,20 +218,13 @@
     ]
   },
   "namespaces": {
-    "split": [
-      "VScreenPilot.Apps",
-      "VScreenPilot.Infrastructure",
-      "VScreenPilot.Mcp",
-      "VScreenPilot.Session",
-      "VScreenPilot.Ui"
-    ],
+    "split": [],
     "map": {
       "VScreenPilot": [
         "VScreenPilot.Server"
       ],
       "VScreenPilot.Apps": [
-        "VScreenPilot.Automation",
-        "VScreenPilot.Platform"
+        "VScreenPilot.Server"
       ],
       "VScreenPilot.Cli": [
         "VScreenPilot.Server"
@@ -242,10 +235,11 @@
       "VScreenPilot.Diagnostics": [
         "VScreenPilot.Server"
       ],
+      "VScreenPilot.Errors": [
+        "VScreenPilot.Abstractions"
+      ],
       "VScreenPilot.Infrastructure": [
-        "VScreenPilot.Abstractions",
-        "VScreenPilot.Platform",
-        "VScreenPilot.Server"
+        "VScreenPilot.Abstractions"
       ],
       "VScreenPilot.Input": [
         "VScreenPilot.Platform"
@@ -260,7 +254,6 @@
         "VScreenPilot.Abstractions"
       ],
       "VScreenPilot.Mcp": [
-        "VScreenPilot.Abstractions",
         "VScreenPilot.Server"
       ],
       "VScreenPilot.Options": [
@@ -275,18 +268,28 @@
       "VScreenPilot.Platform.Interop": [
         "VScreenPilot.Platform"
       ],
+      "VScreenPilot.Platform.Ipc": [
+        "VScreenPilot.Platform"
+      ],
+      "VScreenPilot.Platform.Processes": [
+        "VScreenPilot.Platform"
+      ],
       "VScreenPilot.Platform.Security": [
+        "VScreenPilot.Platform"
+      ],
+      "VScreenPilot.Platform.Windows": [
         "VScreenPilot.Platform"
       ],
       "VScreenPilot.Scripting": [
         "VScreenPilot.Automation"
       ],
+      "VScreenPilot.Server.Infrastructure": [
+        "VScreenPilot.Server"
+      ],
       "VScreenPilot.Session": [
-        "VScreenPilot.Automation",
         "VScreenPilot.Server"
       ],
       "VScreenPilot.Ui": [
-        "VScreenPilot.Automation",
         "VScreenPilot.Server"
       ],
       "VScreenPilot.Uia": [
@@ -366,11 +369,11 @@
     "debug_only": 83
   },
   "tests": {
-    "fact": 155,
+    "fact": 161,
     "theory": 10,
-    "methods": 165,
+    "methods": 171,
     "inline_data": 51,
-    "files": 30,
-    "lines": 3059
+    "files": 31,
+    "lines": 3229
   }
 }

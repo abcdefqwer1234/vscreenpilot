@@ -1,4 +1,4 @@
-namespace VScreenPilot.Infrastructure;
+namespace VScreenPilot.Server.Infrastructure;
 
 /// <summary>全局命名互斥体，保证同一会话只有一个 Server 实例。</summary>
 public sealed class MutexGuard : IDisposable

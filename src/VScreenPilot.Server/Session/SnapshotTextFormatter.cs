@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json.Nodes;
 
-namespace VScreenPilot.Ui;
+namespace VScreenPilot.Session;
 
 /// <summary>
 /// 行式紧凑快照格式。比嵌套 JSON 少 3–5 倍 token，并且保留 ref/状态/值。

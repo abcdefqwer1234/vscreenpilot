@@ -1,6 +1,6 @@
 using System.Text.Json.Nodes;
 
-namespace VScreenPilot.Mcp;
+namespace VScreenPilot.Errors;
 
 /// <summary>
 /// 常见错误 details 的统一构造。放在 Abstractions，供 Automation/Platform 复用，

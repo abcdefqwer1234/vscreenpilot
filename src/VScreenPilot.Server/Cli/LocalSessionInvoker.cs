@@ -1,9 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Json;
 using VScreenPilot.Session;
 using static VScreenPilot.Cli.CommandLineOptions;
+using VScreenPilot.Platform.Processes;
 
 namespace VScreenPilot.Cli;
 

@@ -2,8 +2,11 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Session;
-using static VScreenPilot.Mcp.JsonArgReader;
+using static VScreenPilot.Json.JsonArgReader;
+using VScreenPilot.Errors;
+using VScreenPilot.Json;
 
 namespace VScreenPilot.Mcp;
 

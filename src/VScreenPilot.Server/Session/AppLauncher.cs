@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using VScreenPilot.Apps;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Input;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
@@ -10,6 +11,9 @@ using VScreenPilot.Platform.Displays;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
 using VScreenPilot.Views;
+using VScreenPilot.Platform.Processes;
+using VScreenPilot.Platform.Windows;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 

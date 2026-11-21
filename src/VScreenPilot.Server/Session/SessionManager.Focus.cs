@@ -1,6 +1,7 @@
 using VScreenPilot.Apps;
 using VScreenPilot.Interop;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 
 namespace VScreenPilot.Session;
 

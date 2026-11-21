@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 
 namespace VScreenPilot.Ipc;
 

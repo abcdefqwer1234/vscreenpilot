@@ -8,6 +8,8 @@ using VScreenPilot.Mcp;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
 using VScreenPilot.Views;
+using VScreenPilot.Platform.Windows;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 

@@ -17,7 +17,7 @@ internal sealed partial class SessionManager
             new ScriptRunContext(
                 AllowScript: Clients.Current?.AllowScript ?? _allowScript,
                 AllowUnsafeScript: Clients.Current is null
-                    ? Infrastructure.EnvFlags.IsTruthyLoose(
+                    ? Server.Infrastructure.EnvFlags.IsTruthyLoose(
                         Environment.GetEnvironmentVariable("VSP_ALLOW_UNSAFE_SCRIPT"))
                     : Clients.Current.AllowUnsafeScript,
                 AssignToJob: process => _job.Assign(process),

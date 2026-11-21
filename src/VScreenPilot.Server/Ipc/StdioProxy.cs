@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Text.Json.Nodes;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Mcp;
 
 namespace VScreenPilot.Ipc;

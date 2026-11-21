@@ -1,10 +1,12 @@
 using System.Text.Json.Nodes;
 using VScreenPilot.Views;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
 using ObserveSignature = VScreenPilot.Verification.ObserveSampler.Signature;
+using VScreenPilot.Apps;
 
 namespace VScreenPilot.Session;
 

@@ -4,10 +4,13 @@ using VScreenPilot.Apps;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Diagnostics;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
+using VScreenPilot.Platform.Windows;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 

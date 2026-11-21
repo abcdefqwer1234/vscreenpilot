@@ -7,6 +7,7 @@ using VScreenPilot.Platform.Displays;
 using VScreenPilot.Platform.Interop;
 using VScreenPilot.Platform.Security;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Composition;
 using VScreenPilot.Ipc;
 using static VScreenPilot.Cli.ControlOutput;
@@ -15,6 +16,7 @@ using static VScreenPilot.Ipc.ProxyRunner;
 using VScreenPilot.Json;
 using VScreenPilot.Mcp;
 using VScreenPilot.Session;
+using VScreenPilot.Platform.Processes;
 
 namespace VScreenPilot;
 

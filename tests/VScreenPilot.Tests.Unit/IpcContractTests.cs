@@ -1,5 +1,6 @@
 using System.Text;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Ipc;
 using Xunit;
 

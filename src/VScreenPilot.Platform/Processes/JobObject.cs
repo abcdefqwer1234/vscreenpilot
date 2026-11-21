@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace VScreenPilot.Infrastructure;
+namespace VScreenPilot.Platform.Processes;
 
 /// <summary>
 /// 作业对象：父进程退出/崩溃时由操作系统回收所有已加入的子进程。
@@ -118,7 +118,7 @@ public sealed class JobObject : IDisposable
 
     public int LastError => Volatile.Read(ref _lastError);
 
-    public bool Assign(Process process)
+    public bool Assign(System.Diagnostics.Process process)
     {
         if (!IsValid)
         {

@@ -2,7 +2,7 @@ using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
-namespace VScreenPilot.Infrastructure;
+namespace VScreenPilot.Platform.Ipc;
 
 /// <summary>
 /// 命名管道客户端完整性校验。高完整性 daemon 不能被普通进程借用，

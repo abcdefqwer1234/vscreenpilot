@@ -1,4 +1,4 @@
-namespace VScreenPilot.Infrastructure;
+namespace VScreenPilot.Server.Infrastructure;
 
 /// <summary>
 /// 环境变量布尔值解析。严格/宽松两种口径必须分开保留：

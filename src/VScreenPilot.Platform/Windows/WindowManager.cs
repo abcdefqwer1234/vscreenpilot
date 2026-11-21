@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using VScreenPilot.Interop;
 
-namespace VScreenPilot.Apps;
+namespace VScreenPilot.Platform.Windows;
 
 internal sealed record WindowInfo(
     IntPtr Hwnd,

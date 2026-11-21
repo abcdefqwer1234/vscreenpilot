@@ -1,4 +1,5 @@
 using VScreenPilot.Interop;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Input;
 
@@ -169,7 +170,7 @@ internal static class SystemKeyGuard
             (alt && tab) ||
             (alt && escape))
         {
-            throw new VScreenPilot.Mcp.ToolException(
+            throw new VScreenPilot.Errors.ToolException(
                 "E_SYSTEM_KEY_BLOCKED",
                 $"按键组合会作用于用户桌面/系统，已拒绝: {keys}",
                 new System.Text.Json.Nodes.JsonObject { ["keys"] = keys },

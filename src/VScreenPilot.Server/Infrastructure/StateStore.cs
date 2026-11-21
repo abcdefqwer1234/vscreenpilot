@@ -2,7 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using VScreenPilot.Session;
 
-namespace VScreenPilot.Infrastructure;
+namespace VScreenPilot.Server.Infrastructure;
 
 public sealed class AppState
 {

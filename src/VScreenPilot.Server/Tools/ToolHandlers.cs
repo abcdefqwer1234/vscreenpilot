@@ -7,11 +7,13 @@ using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Json;
 using VScreenPilot.Perception;
 using VScreenPilot.Session;
 using VScreenPilot.Views;
-using static VScreenPilot.Mcp.JsonArgReader;
+using static VScreenPilot.Json.JsonArgReader;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Mcp;
 

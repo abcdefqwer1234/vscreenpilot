@@ -5,8 +5,10 @@ using System.Text.Json.Nodes;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Perception;
 using VScreenPilot.Mcp;
-using static VScreenPilot.Mcp.JsonArgReader;
+using static VScreenPilot.Json.JsonArgReader;
 using VScreenPilot.Views;
+using VScreenPilot.Errors;
+using VScreenPilot.Json;
 
 namespace VScreenPilot.Session;
 

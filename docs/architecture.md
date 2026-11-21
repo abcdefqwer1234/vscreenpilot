@@ -39,15 +39,15 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 
 命名空间与目录同名；跨程序集同名命名空间是待清理债务：
 
-| 命名空间 | 当前分布 | 归属 |
-|---|---|---|
-| `VScreenPilot.Session` | Server 43 + Automation 6 | 目标 Server 独占 |
-| `VScreenPilot.Infrastructure` | Abstractions 2 + Platform 2 + Server 10 | 目标 Abstractions 独占 |
-| `VScreenPilot.Mcp` | Abstractions 4 + Server 10 | 目标 Server 独占（契约另立命名空间） |
-| `VScreenPilot.Ui` | Automation 2 + Server 1 | 目标 Server 独占 |
-| `VScreenPilot.Apps` | Automation 1 + Platform 1 | 目标 Server 独占 |
+| 命名空间 | 归属 |
+|---|---|
+| `VScreenPilot.Session` | Server（元素 ref、应用跟踪、artifact/frame/session） |
+| `VScreenPilot.Infrastructure` | Abstractions（`BuildInfo`、`MetricsRegistry`） |
+| `VScreenPilot.Mcp` | Server（工具传输与目录；错误契约迁到 `Errors`，参数读取迁到 `Json`） |
+| `VScreenPilot.Ui` | Server（`ElementRefStore`/文本格式化） |
+| `VScreenPilot.Apps` | Server（`TrackedApp`/注册表） |
 
-其余命名空间单归属：`VScreenPilot.Uia`、`Perception`、`Scripting`、`Platform.*`、`Views`、`Cli`、`Ipc`、`Tools`、`Input`、`Composition`、`Diagnostics`。
+当前 SPLIT 命名空间 **0 个**；其余命名空间单归属：`VScreenPilot.Uia`、`Perception`、`Scripting`、`Platform.*`、`Views`、`Cli`、`Ipc`、`Tools`、`Input`、`Composition`、`Diagnostics`。
 
 ## 3. 启动、组合根与会话
 
@@ -112,5 +112,5 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 - 16 个方法 >150，最大 `AppLauncher.Launch` 542；27 个 ≥120。
 - 无类型 `catch` 37 处（其中无日志 34 处）；83 处宽捕获只写 `Debug.WriteLine`。
 - 18 个组件只有 5 个有直接单测；编排主要靠 Python 审计。
-- 5 个 SPLIT 命名空间（见 §2）；`ToolContext` 仍持有门面；`Program`/`ServerHost` 双 wiring。
+- SPLIT 命名空间已在 R2-2 清零；`ToolContext` 仍持有门面；`Program`/`ServerHost` 双 wiring。
 - R2 目标：3 个组件拆分、16 个方法 ≤150、文件 ≤800、SPLIT ≤2、catch 收口；R3 再降到 ≤600 / ≤120 并清理剩余 partial。

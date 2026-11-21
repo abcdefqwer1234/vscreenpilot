@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json.Nodes;
 
-namespace VScreenPilot.Infrastructure;
+namespace VScreenPilot.Server.Infrastructure;
 
 public sealed record LogEntry(
     DateTimeOffset Time, string Level, string Message, string? ClientId = null);

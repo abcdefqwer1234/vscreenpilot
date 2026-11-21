@@ -1,4 +1,5 @@
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 
 namespace VScreenPilot.Cli;
 

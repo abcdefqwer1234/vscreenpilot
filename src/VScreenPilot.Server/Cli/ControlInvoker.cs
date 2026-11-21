@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using VScreenPilot.Composition;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using static VScreenPilot.Composition.InstanceGuard;
 using VScreenPilot.Ipc;
 using static VScreenPilot.Cli.ControlOutput;

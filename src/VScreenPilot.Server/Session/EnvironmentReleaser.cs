@@ -2,11 +2,14 @@ using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using VScreenPilot.Apps;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Ui;
 using VScreenPilot.Views;
+using VScreenPilot.Platform.Windows;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 

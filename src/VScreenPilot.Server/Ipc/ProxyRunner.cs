@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 
 namespace VScreenPilot.Ipc;
 

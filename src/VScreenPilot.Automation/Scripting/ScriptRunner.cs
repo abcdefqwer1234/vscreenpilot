@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text;
-using VScreenPilot.Mcp;
 using VScreenPilot.Views;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Scripting;
 

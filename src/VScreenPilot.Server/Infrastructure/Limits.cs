@@ -1,4 +1,4 @@
-namespace VScreenPilot.Infrastructure;
+namespace VScreenPilot.Server.Infrastructure;
 
 /// <summary>
 /// 与外部行为相关的阈值。此前分散在 McpTransport 与 SessionManager.Snapshot 里，

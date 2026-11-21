@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace VScreenPilot.Infrastructure;
+namespace VScreenPilot.Server.Infrastructure;
 
 /// <summary>
 /// 多会话 profile：不同 profile 使用独立互斥体、状态目录与日志目录，

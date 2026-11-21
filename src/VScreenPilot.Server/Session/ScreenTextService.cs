@@ -6,6 +6,7 @@ using VScreenPilot.Json;
 using VScreenPilot.Mcp;
 using VScreenPilot.Perception;
 using VScreenPilot.Views;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 

@@ -1,7 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using VScreenPilot.Errors;
 
-namespace VScreenPilot.Mcp;
+namespace VScreenPilot.Json;
 
 /// <summary>
 /// JSON 参数读取的唯一实现。三种口径必须保持区分，不能合并成一种：

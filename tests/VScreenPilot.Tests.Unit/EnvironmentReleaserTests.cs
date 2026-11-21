@@ -1,9 +1,11 @@
 using VScreenPilot.Apps;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Mcp;
 using VScreenPilot.Session;
 using VScreenPilot.Views;
 using Xunit;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Tests;
 

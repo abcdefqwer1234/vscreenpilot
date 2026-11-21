@@ -1,6 +1,6 @@
 using VScreenPilot.Interop;
 
-namespace VScreenPilot.Infrastructure;
+namespace VScreenPilot.Server.Infrastructure;
 
 /// <summary>进程/桌面/显示器探测的单一实现，避免各组件各自复制。</summary>
 internal static class EnvironmentProbe

@@ -6,12 +6,14 @@ using VScreenPilot.Apps;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Platform.Security;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Diagnostics;
 using VScreenPilot.Mcp;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
 using VScreenPilot.Views;
+using VScreenPilot.Platform.Processes;
 
 namespace VScreenPilot.Session;
 

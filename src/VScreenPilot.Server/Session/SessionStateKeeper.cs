@@ -1,7 +1,9 @@
 using System.Runtime.InteropServices;
 using VScreenPilot.Apps;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Interop;
+using VScreenPilot.Platform.Windows;
 
 namespace VScreenPilot.Session;
 

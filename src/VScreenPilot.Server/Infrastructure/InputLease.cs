@@ -1,7 +1,8 @@
 using System.Text.Json.Nodes;
 using VScreenPilot.Mcp;
+using VScreenPilot.Errors;
 
-namespace VScreenPilot.Infrastructure;
+namespace VScreenPilot.Server.Infrastructure;
 
 /// <summary>
 /// 跨 profile 的输入租约。只在 VSP_FOCUS_LEASE=1 时启用：

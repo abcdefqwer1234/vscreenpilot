@@ -1,9 +1,11 @@
 using System.Text.Json.Nodes;
 using VScreenPilot.Apps;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Mcp;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 

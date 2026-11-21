@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using VScreenPilot.Apps;
 using VScreenPilot.Uia;
+using VScreenPilot.Platform.Windows;
 
 namespace VScreenPilot.Ui;
 

@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 
-namespace VScreenPilot.Mcp;
+namespace VScreenPilot.Errors;
 
 internal sealed record ErrorInfo(
     string Code,

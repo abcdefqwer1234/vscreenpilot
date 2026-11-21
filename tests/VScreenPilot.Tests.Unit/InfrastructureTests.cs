@@ -1,7 +1,10 @@
 using System.Runtime.InteropServices;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Mcp;
 using Xunit;
+using VScreenPilot.Platform.Processes;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Tests;
 

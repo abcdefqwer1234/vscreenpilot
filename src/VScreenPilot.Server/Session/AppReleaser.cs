@@ -2,9 +2,11 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using VScreenPilot.Apps;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
+using VScreenPilot.Platform.Windows;
 
 namespace VScreenPilot.Session;
 

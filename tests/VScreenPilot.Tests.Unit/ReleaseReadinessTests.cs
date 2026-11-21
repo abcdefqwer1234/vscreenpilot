@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using VScreenPilot.Mcp;
 using Xunit;
+using VScreenPilot.Session;
 
 namespace VScreenPilot.Tests;
 

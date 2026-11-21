@@ -1,5 +1,6 @@
 using VScreenPilot.Composition;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 
 namespace VScreenPilot.Ipc;
 

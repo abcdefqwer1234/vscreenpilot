@@ -1,6 +1,6 @@
 using System.Text.Json.Nodes;
 
-namespace VScreenPilot.Mcp;
+namespace VScreenPilot.Errors;
 
 /// <summary>结构化工具错误。所有对外失败都应转换为该异常。</summary>
 public sealed class ToolException : Exception

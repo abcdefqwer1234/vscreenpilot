@@ -5,10 +5,14 @@ using System.Text.Json.Nodes;
 using VScreenPilot.Apps;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Json;
 using VScreenPilot.Mcp;
 using VScreenPilot.Session;
-using static VScreenPilot.Mcp.JsonArgReader;
+using static VScreenPilot.Json.JsonArgReader;
+using VScreenPilot.Platform.Ipc;
+using VScreenPilot.Platform.Windows;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Ipc;
 

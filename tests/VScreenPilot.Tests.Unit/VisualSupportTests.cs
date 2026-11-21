@@ -2,6 +2,7 @@ using System.Text.Json;
 using VScreenPilot.Mcp;
 using VScreenPilot.Session;
 using Xunit;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Tests;
 

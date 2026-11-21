@@ -14,14 +14,7 @@ public sealed class ArchitectureFitnessTests
     private static readonly string Src = Path.Combine(Root, "src");
 
     // R2 起点：5 个 SPLIT 命名空间。R2-2 完成后应缩到 1（Infrastructure），重命名 Mcp 契约后为 0。
-    private static readonly HashSet<string> SplitAllowlist = new(StringComparer.Ordinal)
-    {
-        "VScreenPilot.Apps",
-        "VScreenPilot.Infrastructure",
-        "VScreenPilot.Mcp",
-        "VScreenPilot.Session",
-        "VScreenPilot.Ui",
-    };
+    private static readonly HashSet<string> SplitAllowlist = new(StringComparer.Ordinal);
 
     private static readonly HashSet<string> IvtAllowlist = new(StringComparer.Ordinal)
     {
@@ -41,9 +34,9 @@ public sealed class ArchitectureFitnessTests
         "VScreenPilot->VScreenPilot.Tests.Contract",
     };
 
-    private const int MaxFileLines = 1552;
+    private const int MaxFileLines = 1555;
     private const int MaxUntypedCatch = 37;
-    private const int MinTestMethods = 165;
+    private const int MinTestMethods = 171;
 
     [Fact]
     public void NamespaceBelongsToSingleAssembly()

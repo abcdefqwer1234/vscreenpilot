@@ -3,8 +3,9 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using VScreenPilot.Platform.Security;
 using VScreenPilot.Ipc;
+using VScreenPilot.Infrastructure;
 
-namespace VScreenPilot.Infrastructure;
+namespace VScreenPilot.Server.Infrastructure;
 
 /// <summary>
 /// 当前 profile 的活动实例登记。用于“实例已被占用”时给出 pid/cwd/profile，

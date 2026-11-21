@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using VScreenPilot.Session;
 
 namespace VScreenPilot.Diagnostics;
 

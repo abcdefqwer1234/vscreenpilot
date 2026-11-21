@@ -2,10 +2,12 @@ using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using VScreenPilot.Composition;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Ipc;
 using VScreenPilot.Mcp;
 using VScreenPilot.Options;
 using VScreenPilot.Session;
+using VScreenPilot.Platform.Processes;
 
 namespace VScreenPilot.Composition;
 

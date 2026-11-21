@@ -1,6 +1,6 @@
 using VScreenPilot.Interop;
 
-namespace VScreenPilot.Session;
+namespace VScreenPilot.Apps;
 
 /// <summary>
 /// 会话跟踪的一个应用窗口。UWP 会同时记录 frame host（Pid/Hwnd）与内容进程（ContentPid）；

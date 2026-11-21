@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json.Nodes;
 
-namespace VScreenPilot.Infrastructure;
+namespace VScreenPilot.Server.Infrastructure;
 
 /// <summary>
 /// 每会话一份 JSONL 追踪文件。记录每次工具调用的耗时、错误码、返回字节与通道，

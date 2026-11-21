@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 using VScreenPilot.Interop;
-using VScreenPilot.Mcp;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Input;
 
