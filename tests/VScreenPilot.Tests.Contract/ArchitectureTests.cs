@@ -56,10 +56,10 @@ public sealed class ArchitectureTests
     }
 
     /// <summary>
-    /// P3–P4 期间 Automation 仍借用 UiaElementInfo.ToJson；P5 删除 McpTransport 门面后必须为 0。
-    /// 该断言先跳过，但已入库，避免遗漏。
+    /// P4/P5 收尾前 Automation 仍借用 UiaElementInfo.ToJson 等 13 个文件的 Nodes 类型；
+    /// 完成 ElementPresenter 迁移后必须为 0。该断言先跳过，但已入库，避免遗漏。
     /// </summary>
-    [Fact(Skip = "P5：UiaElementInfo 序列化移到 ElementPresenter 后启用")]
+    [Fact(Skip = "P4/P5：ElementPresenter 未完成，Automation 仍有 13 个文件使用 System.Text.Json.Nodes")]
     public void AutomationHasNoSystemTextJsonNodes()
     {
         string repoRoot = FindRepoRoot();

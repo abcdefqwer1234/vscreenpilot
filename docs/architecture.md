@@ -19,7 +19,7 @@ Server ──────> Automation ──────> Platform ────�
 | `VScreenPilot.Automation` | `net10.0-windows10.0.19041.0` | UIA/MSAA、屏幕捕获与 PNG、OCR、模板匹配（会话组件正在从 Server 迁入） |
 | `VScreenPilot.Server` | 可执行 | MCP 传输与工具层、会话编排、CLI、IPC、组合根 |
 
-约束由 `tests/VScreenPilot.Tests.Contract/ArchitectureTests.cs` 断言：`Abstractions` 不引用任何内部工程，`Platform` 只引用 `Abstractions`，`Automation` 不引用 `Server` 与 MCP SDK。
+约束由 `tests/VScreenPilot.Tests.Contract/ArchitectureTests.cs` 断言：`Abstractions` 不引用任何内部工程，`Platform` 只引用 `Abstractions`，`Automation` 不引用 `Server` 与 MCP SDK。`AutomationHasNoSystemTextJsonNodes` 仍为 Skip：`Automation` 尚有 13 个文件使用 `System.Text.Json.Nodes`，待 P4/P5 收尾。
 
 层内分工：
 
@@ -28,14 +28,17 @@ MCP 传输层   官方 ModelContextProtocol SDK（stdio；协议协商/分帧/�
              多客户端：首个进程优先 spawn 独立 daemon（PipeHost），失败回退进程内 daemon；后续进程用 StdioProxy 转发
 工具层       McpTransport（协议适配）+ ToolRegistry/ToolDescriptor（目录与 schema）
              + ToolExecutor（策略驱动的租约/写锁/超时/epoch）+ ToolHandlers（参数解析与调用）
-会话层       SessionManager：虚拟屏、应用接管、快照、UIA、输入、断言、脚本
+会话层       SessionManager：剩余编排与门面（元素/断言/视觉/OCR/焦点）
+             SnapshotBuilder / EnvironmentReporter / VirtualDisplayController /
+             AppLauncher / AppReleaser / InputRouter
              ClientSessionRegistry：per-client 上下文；ClientPathPolicy：路径与截图落盘边界
 感知层       ScreenCapture（复用 GDI 资源）/ PngWriter（池化 + Up 过滤）/ PngReader / TemplateMatcher
 平台层       Interop（Win32/COM）、DisplayTopology、VddDevice、JobObject、CursorGuard、InstanceRegistry
 ```
 
 > 过渡状态：`Session/*` 仍留在 `Server`，因为它依赖 `LogRing`/`InstanceRegistry`/`StateStore`/`TraceLog`，而 `Automation` 不能反向引用 `Server`。
-> `Automation` 已接收无 Server 依赖的会话组件（`ArtifactStore`、`FrameStore`、`SessionGuard`、`ClientSessionRegistry`、`ClientPathPolicy`、`ElementRefStore`、`TrackedApp` 等）。
+> `Automation` 已接收无 Server 依赖的会话组件（`ArtifactStore`、`FrameStore`、`SessionGuard`、`ClientSessionRegistry`、`ClientPathPolicy`、`ElementRefStore`、`TrackedApp`、`TrackedAppRegistry` 等）。
+> `Server/Session` 另有 `SnapshotBuilder`、`EnvironmentReporter`、`VirtualDisplayController`、`AppLauncher`、`AppReleaser`、`InputRouter`；它们依赖会话锁与 Server 基础设施，暂不迁入 `Automation`。
 > 不变量清单见 `docs/refactor-invariants.md`。
 
 
@@ -100,13 +103,13 @@ ref 只在该代内有效；跨代使用返回 `E_STALE_SNAPSHOT`，未知/被�
 
 ## 6. 已知未完成（下一阶段）
 
-- **会话组件化**：`SessionManager` 尚未拆到薄门面（P4），快照/应用/显示/输入仍在 partial 中。
+- **会话组件化**：`SessionManager` 仍 4,433 行、20 个 partial；元素操作/断言/视觉/OCR/焦点护栏尚未拆，薄门面目标（≤600 行）未达成。
 - **领域视图**：22 个工具中 5 个已走强类型视图，其余仍由 handler 直接拼 `JsonObject`（P3）。
 - **UIA 句柄亲和**：服务级调用已进 `UiaHost` 的 MTA worker；句柄级操作仍走 `UiaService._sync`。
 - **全屏截图**：复用资源 + 去 `CAPTUREBLT` + 大图不内联后，服务端 P95 已降至 ~56ms；
   早期“1.2–1.4s”是内联大 PNG 的回传成本，已由 preview/artifact 方案消除。
   Windows.Graphics.Capture（`CreateForMonitor` + D3D11 staging readback）仍是后续后端优化。
-- **UIA 专用 MTA worker**：当前用锁串行化；下一阶段改为单线程队列，彻底消除跨 apartment 风险。
+- **MSAA 与句柄亲和**：MSAA 仍在调用线程执行（17 处直接调用），`UiaElementHandle` 的 Focus/Invoke/GetText 仍走 `UiaService._sync`，尚未并入 `UiaHost` 队列。
 - **MSAA 第二后端**：已接入，按窗口回退；Word 查找替换可读/可触发。
 - **UWP**：`ApplicationFrameWindow` 已解析；REG-14 通过。
 - **OCR**：已接入 Windows.Media.Ocr（`read_screen_text` / `click_text`）。

@@ -37,15 +37,16 @@ pwsh tools/audit/run_all.ps1 -Exe artifacts/server/VScreenPilot.exe -Out tools/a
 
 ## 3. 新增一个工具
 
-当前（P5 之前）工具仍定义在 `src/VScreenPilot.Server/Mcp/McpServer.cs` 的 `BuildTools`：
+工具定义已集中到 `src/VScreenPilot.Server/Tools/ToolCatalog.cs` 的 `BuildTools`：
 
-1. 在 `BuildTools` 里加 `Add(...)`：名称、标题、描述、`inputSchema`/`outputSchema`、`readOnly`/`destructive`、超时、handler。
-2. 若会改变会话状态，把名称加入 `MutatingTools`；若需要屏幕，更新 `RequiresScreenLease` 与 `ExecuteToolAsync` 的读/写锁判断。
-3. 在 `tests/VScreenPilot.Tests.Unit/ReleaseReadinessTests.cs` 的 `Expected` 数组补名称。
-4. 错误码如为新增，补 `docs/errors.md` 与 `ErrorCatalog`。
-5. 运行第 2 节的审计命令，并用 `python tools/audit/capture_baseline.py` 重抓基线后提交。
+1. 在 `BuildTools` 里加 `Add(...)`：名称、标题、描述、`inputSchema`/`outputSchema`、`ToolPolicy`、超时、handler。
+2. 用 `ToolPolicy` 声明调度行为：`Mutates`、`Lease`（`ScreenLeaseMode`）、`SessionRead`/`SessionWrite`、`BypassWriteLock`、`WriteTimeoutMs`；不要再维护 `MutatingTools`/`RequiresScreenLease` 清单。
+3. handler 放 `src/VScreenPilot.Server/Tools/ToolHandlers.cs`，或委托给会话/领域组件。
+4. 在 `tests/VScreenPilot.Tests.Unit/ReleaseReadinessTests.cs` 的 `Expected` 数组补名称；必要时补 `ToolPolicyTests` 断言。
+5. 错误码如为新增，补 `docs/errors.md` 与 `ErrorCatalog`。
+6. 运行第 2 节的审计命令，并用 `python tools/audit/capture_baseline.py` 重抓基线后提交。
 
-P5 之后改为：`Server/Tools/Definitions/<name>.json` + `Server/Tools/<Name>Tool.cs` + `ToolRegistry` 注册一行。
+> 目标形态（尚未实现，见执行报告）：`Tools/Definitions/<name>.json` + 单工具类 + `ToolRegistry` 注册一行。
 
 ## 4. 修改 schema 或输出字段
 
