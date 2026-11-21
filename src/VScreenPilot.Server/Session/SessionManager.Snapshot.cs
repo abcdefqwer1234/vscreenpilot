@@ -91,7 +91,7 @@ internal sealed partial class SessionManager
             interactiveOnly: interactiveOnly,
             maxNodes: nodes,
             timeBudgetMs: 3000,
-            isCancelled: () => Cancellation.IsCancellationRequested);
+            isCancelled: CancellationProbe());
 
         bool emptyRetried = false;
         bool effectiveInteractiveOnly = interactiveOnly;
@@ -109,7 +109,7 @@ internal sealed partial class SessionManager
                 interactiveOnly: false,
                 maxNodes: nodes,
                 timeBudgetMs: 3000,
-                isCancelled: () => Cancellation.IsCancellationRequested);
+                isCancelled: CancellationProbe());
 
             if (retry.Root is not null && retry.Nodes > result.Nodes)
             {

@@ -54,8 +54,7 @@ internal sealed partial class SessionManager : IDisposable
         new(StringComparer.Ordinal);
     private bool _jobUnavailableLogged;
 
-    private UiaService? _uia;
-    private readonly List<UiaService> _retiredUia = new();
+    private readonly UiaHost _uiaHost = new();
     private CursorGuard? _cursorGuard;
     // 每调用一个异步流：并发工具不会互相清掉取消令牌（旧实现是单个字段）。
     private readonly AsyncLocal<CancellationTokenSource?> _cancellation = new();
@@ -87,51 +86,17 @@ internal sealed partial class SessionManager : IDisposable
     private long _nextFocusRestoreTicks;
     private long _focusGuardResumeAtTicks;
 
-    private UiaService Uia
-    {
-        get
-        {
-            UiaService? current = _uia;
-
-            if (current is not null)
-            {
-                return current;
-            }
-
-            var created = new UiaService();
-            UiaService? existing = Interlocked.CompareExchange(ref _uia, created, null);
-            return existing ?? created;
-        }
-    }
+    private UiaHost Uia => _uiaHost;
 
     /// <summary>
-    /// 放弃当前 UIA 服务并换新实例。只在 UIA 调用超时/疑似卡死时调用：
-    /// 旧实例可能仍有线程卡在 COM 调用里，不能 Dispose，只能让新调用走新实例。
+    /// 放弃当前 UIA 代际并换新实例。只在 UIA 调用超时/疑似卡死时调用：
+    /// 旧代际的工作线程会把手上的 COM 调用做完再自行释放，不在本线程 Dispose。
     /// </summary>
     public void ResetUia()
     {
-        UiaService? old = Interlocked.Exchange(ref _uia, null);
-
-        if (old is null)
+        if (_uiaHost.Retire())
         {
-            return;
-        }
-
-        _log.Warn("UIA 服务疑似卡死，已切换到新实例（旧实例后台释放）");
-
-        // 不在 Reset 时立刻 Dispose：卡死实例可能仍有线程在 COM 调用里，
-        // 从另一线程释放 RCW 有 use-after-free 风险。只做有界退休，会话结束时统一释放。
-        lock (_retiredUia)
-        {
-            _retiredUia.Add(old);
-
-            // 不能在这里 Dispose：退休实例可能仍有 COM 调用在飞（Reset 通常由超时触发），
-            // 立刻释放会造成 use-after-free。改为全部保留到会话 Dispose 时统一释放；
-            // 之前“超过 4 个直接丢弃”会让这些 RCW 只能等终结器，长会话下持续泄漏。
-            if (_retiredUia.Count > 8)
-            {
-                _log.Warn($"UIA 退休实例已累积 {_retiredUia.Count} 个，将在会话结束时统一释放");
-            }
+            _log.Warn("UIA 服务疑似卡死，已切换到新代际（旧实例后台收尾释放）");
         }
     }
 
@@ -158,6 +123,16 @@ internal sealed partial class SessionManager : IDisposable
     }
 
     public void SetCancellation(CancellationTokenSource? source) => _cancellation.Value = source;
+    /// <summary>
+    /// 把当前异步流的取消令牌固化成回调：UIA 宿主在自己的 MTA 线程上调用它，
+    /// AsyncLocal 不会跨手工线程流动，必须在调用方先取令牌。
+    /// </summary>
+    private Func<bool> CancellationProbe()
+    {
+        CancellationToken token = Cancellation;
+        return () => token.IsCancellationRequested;
+    }
+
 
     /// <summary>会话代际：release_environment 之后递增，旧 handler 的结果会被丢弃。</summary>
     public long Epoch => Clients.Current is { } client
@@ -2372,17 +2347,7 @@ internal sealed partial class SessionManager : IDisposable
         // 会话结束时统一释放 UIA COM 引用（当前 + 退休实例）。
         try
         {
-            Interlocked.Exchange(ref _uia, null)?.Dispose();
-
-            lock (_retiredUia)
-            {
-                foreach (UiaService retired in _retiredUia)
-                {
-                    retired.Dispose();
-                }
-
-                _retiredUia.Clear();
-            }
+            _uiaHost.Dispose();
         }
         catch (Exception exception)
         {

@@ -258,7 +258,7 @@ internal sealed partial class SessionManager
             interactive,
             nodes,
             timeBudgetMs: 3000,
-            isCancelled: () => Cancellation.IsCancellationRequested);
+            isCancelled: CancellationProbe());
 
         if (result.Root is null)
         {
