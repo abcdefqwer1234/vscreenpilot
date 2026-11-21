@@ -50,7 +50,7 @@ public sealed class ProtocolContractTests
     [InlineData("", "PowerPoint", false)]
     public void DocumentWindowTitleClassification(string title, string product, bool expected)
     {
-        Assert.Equal(expected, SessionManager.LooksLikeDocumentWindow(title, product));
+        Assert.Equal(expected, AppLauncher.LooksLikeDocumentWindow(title, product));
     }
 
     [Fact]

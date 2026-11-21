@@ -47,11 +47,11 @@ internal sealed partial class SessionManager : IDisposable
     private const int MaxFrames = 8;
     private readonly Dictionary<string, HashSet<int>> _uiaBlockedPids =
         new(StringComparer.Ordinal);
-    private bool _jobUnavailableLogged;
 
     private readonly UiaHost _uiaHost = new();
     private readonly VirtualDisplayController _display;
     private readonly AppReleaser _releaser;
+    private readonly AppLauncher _launcher;
     private CursorGuard? _cursorGuard;
     // 每调用一个异步流：并发工具不会互相清掉取消令牌（旧实现是单个字段）。
     private readonly AsyncLocal<CancellationTokenSource?> _cancellation = new();
@@ -214,6 +214,12 @@ internal sealed partial class SessionManager : IDisposable
     public SessionManager(
         LogRing log, StateStore stateStore, JobObject job, bool allowScript = false)
     {
+        _log = log;
+        _stateStore = stateStore;
+        _job = job;
+        _allowScript = allowScript;
+        _appAllowlist = ReadAppAllowlist();
+
         _paths = new ClientPathPolicy(Clients);
         _apps = new TrackedAppRegistry(_gate);
         _snapshots = new SnapshotBuilder(this);
@@ -228,13 +234,9 @@ internal sealed partial class SessionManager : IDisposable
             VirtualHeight,
             VirtualRefresh);
         _releaser = new AppReleaser(log, _uiaHost, ResetUia);
-        _log = log;
-        _stateStore = stateStore;
-        _job = job;
-        _allowScript = allowScript;
-        _appAllowlist = ReadAppAllowlist();
+        _launcher = new AppLauncher(this);
         _log.ClientIdProvider = () => Clients.CurrentId;
-        CleanupStaleProfiles();
+        AppLauncher.CleanupStaleProfiles();
         SweepOldArtifacts();
         RecoverFromPreviousCrash();
         StartMaintenance();

@@ -10,7 +10,7 @@ public sealed class LaunchPolicyTests
     {
         // 单实例回退：close_on_release 必须保持 false，否则 release 会关闭用户原有窗口。
         (bool closeOnRelease, bool dedicated) =
-            SessionManager.ResolveNewInstanceOwnership(
+            AppLauncher.ResolveNewInstanceOwnership(
                 adoptedExisting: true, hadRunningInstance: true, isEdge: false);
 
         Assert.False(closeOnRelease);
@@ -21,7 +21,7 @@ public sealed class LaunchPolicyTests
     public void FreshInstanceIsOwnedAndClosed()
     {
         (bool closeOnRelease, bool dedicated) =
-            SessionManager.ResolveNewInstanceOwnership(
+            AppLauncher.ResolveNewInstanceOwnership(
                 adoptedExisting: false, hadRunningInstance: false, isEdge: false);
 
         Assert.True(closeOnRelease);
@@ -32,7 +32,7 @@ public sealed class LaunchPolicyTests
     public void EdgeKeepsDedicatedProfileWhenAnotherInstanceIsRunning()
     {
         (bool closeOnRelease, bool dedicated) =
-            SessionManager.ResolveNewInstanceOwnership(
+            AppLauncher.ResolveNewInstanceOwnership(
                 adoptedExisting: false, hadRunningInstance: true, isEdge: true);
 
         Assert.True(closeOnRelease);
@@ -52,6 +52,6 @@ public sealed class LaunchPolicyTests
     {
         Assert.Equal(
             expected,
-            SessionManager.LooksLikeRestoredNotepadTitle(exeName, started, arguments, title));
+            AppLauncher.LooksLikeRestoredNotepadTitle(exeName, started, arguments, title));
     }
 }
