@@ -14,30 +14,6 @@ using VScreenPilot.Views;
 
 namespace VScreenPilot.Session;
 
-internal sealed class TrackedApp
-{
-    public int Pid { get; set; }
-    /// <summary>哪个 MCP 客户端拥有该窗口；单客户端/旧行为默认 c0。</summary>
-    public string OwnerClientId { get; set; } = "c0";
-    public string ExePath { get; init; } = string.Empty;
-    /// <summary>UWP 内容进程；普通应用为 0。关闭/杀进程必须用它，不能杀 frame host。</summary>
-    public int ContentPid { get; set; }
-    public string ContentExePath { get; set; } = string.Empty;
-    public IntPtr Hwnd { get; set; }
-    public string Title { get; set; } = string.Empty;
-    public bool StartedProcess { get; init; }
-    public DateTime StartedAt { get; init; } = DateTime.UtcNow;
-    /// <summary>本会话真正拥有该窗口/进程时才允许在释放时关闭；接管用户窗口必须为 false。</summary>
-    public bool Owned { get; set; }
-    public bool CloseWindowOnRelease { get; set; }
-    public bool DedicatedProcess { get; set; }
-    public string? TempProfile { get; init; }
-    public NativeMethods.WINDOWPLACEMENT Placement { get; set; }
-    public bool PlacementSaved { get; set; }
-    /// <summary>首次观察到窗口失效的时间；超过 3s 才从 apps[] 移除，避免瞬时刷新被误删。</summary>
-    public DateTime? DeadSince { get; set; }
-}
-
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
