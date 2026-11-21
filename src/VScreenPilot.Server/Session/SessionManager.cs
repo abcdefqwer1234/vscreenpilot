@@ -18,7 +18,7 @@ namespace VScreenPilot.Session;
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
-internal sealed partial class SessionManager : IDisposable, ISessionStateHost, IAppAllowlistHost, IEnvironmentReleaserHost, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, IFocusHost, ITrackedAppHost
+internal sealed partial class SessionManager : IDisposable, ISessionStateHost, IAppAllowlistHost, IEnvironmentReleaserHost, IMaintenanceHost, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, IFocusHost, ITrackedAppHost
 {
     private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
@@ -196,7 +196,6 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
 
     private readonly object _artifactGate = new();
     private readonly Dictionary<string, string> _artifactDirectories = new(StringComparer.Ordinal);
-    private ArtifactStore? _artifacts;
 
     /// <summary>大截图/快照的落盘目录；按客户端隔离，通过 vsp://artifacts/ 资源 URI 暴露。</summary>
     public string ArtifactDirectory
@@ -275,6 +274,7 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
         _stateKeeper = new SessionStateKeeper(this);
         _allowlist = new AppAllowlistPolicy(this);
         _releaserService = new EnvironmentReleaser(this);
+        _maintenance = new MaintenanceService(this);
         _log.ClientIdProvider = () => Clients.CurrentId;
         AppLauncher.CleanupStaleProfiles();
         SweepOldArtifacts();
@@ -418,8 +418,7 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
             return;
         }
 
-        _maintenanceTimer?.Dispose();
-        _maintenanceTimer = null;
+        _maintenance.Dispose();
         StopFocusGuard();
 
         // 清理不能无限等：如果某个 handler 卡在 UIA COM 里并持有 _gate，
@@ -750,4 +749,21 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
     MemoryView IEnvironmentReleaserHost.TrimIdleMemory(string reason) => TrimIdleMemory(reason);
 
     LogRing IEnvironmentReleaserHost.Log => _log;
+
+    string IMaintenanceHost.ArtifactRoot => ArtifactRoot;
+
+    bool IMaintenanceHost.Disposed => Volatile.Read(ref _disposed) != 0;
+
+    string[] IMaintenanceHost.ArtifactDirectories
+    {
+        get
+        {
+            lock (_artifactGate)
+            {
+                return _artifactDirectories.Values.ToArray();
+            }
+        }
+    }
+
+    LogRing IMaintenanceHost.Log => _log;
 }
