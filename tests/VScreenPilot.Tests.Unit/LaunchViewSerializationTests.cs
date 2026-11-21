@@ -43,7 +43,7 @@ public sealed class LaunchViewSerializationTests
         var view = new LaunchOrPlaceView(
             true, false, true, true, false, 1, 2, "T", true, "document_element", true,
             new OptionalBoundsView(0, 1, 2, 3),
-            new[] { "w1", "w2" }, "profile", "hint",
+            Warnings, "profile", "hint",
             Array.Empty<LaunchDialogView>());
 
         Assert.Equal(
