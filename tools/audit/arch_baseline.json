@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-11-21T20:44:13Z",
+  "generated_at": "2026-11-21T20:50:12Z",
   "source": {
     "files": 178,
-    "lines": 32202,
+    "lines": 32261,
     "max_file": 598,
     "files_gt_600": 0,
     "files_gt_800": 0,
@@ -12,7 +12,7 @@
         "path": "src/VScreenPilot.Automation/Ui/MsaaService.cs"
       },
       {
-        "lines": 572,
+        "lines": 586,
         "path": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs"
       },
       {
@@ -24,12 +24,12 @@
         "path": "src/VScreenPilot.Automation/Perception/TemplateMatcher.cs"
       },
       {
-        "lines": 470,
-        "path": "src/VScreenPilot.Server/Session/SessionManager.Lifecycle.cs"
+        "lines": 479,
+        "path": "src/VScreenPilot.Server/Session/ElementOperations.Value.cs"
       },
       {
-        "lines": 468,
-        "path": "src/VScreenPilot.Server/Session/ElementOperations.Value.cs"
+        "lines": 470,
+        "path": "src/VScreenPilot.Server/Session/SessionManager.Lifecycle.cs"
       },
       {
         "lines": 463,
@@ -40,7 +40,7 @@
         "path": "src/VScreenPilot.Platform/Display/VddDevice.cs"
       },
       {
-        "lines": 436,
+        "lines": 448,
         "path": "src/VScreenPilot.Server/Tools/ToolExecutor.cs"
       },
       {
@@ -58,48 +58,12 @@
     ]
   },
   "methods": {
-    "max": 137,
+    "max": 120,
     "gt_150": 0,
     "ge_200": 0,
-    "ge_120": 7,
-    "ge_80": 52,
+    "ge_120": 1,
+    "ge_80": 50,
     "top": [
-      {
-        "lines": 137,
-        "path": "src/VScreenPilot.Automation/Perception/PngReader.cs",
-        "line": 25,
-        "name": "Decode"
-      },
-      {
-        "lines": 134,
-        "path": "src/VScreenPilot.Server/Tools/ToolExecutor.cs",
-        "line": 61,
-        "name": "ExecuteAsync"
-      },
-      {
-        "lines": 132,
-        "path": "src/VScreenPilot.Server/Session/ElementOperations.Value.cs",
-        "line": 257,
-        "name": "SetElementValueByKeyboard"
-      },
-      {
-        "lines": 132,
-        "path": "src/VScreenPilot.Automation/Ui/UiaTreeWalker.cs",
-        "line": 119,
-        "name": "BuildChildren"
-      },
-      {
-        "lines": 129,
-        "path": "src/VScreenPilot.Server/Session/InputRouter.Click.cs",
-        "line": 27,
-        "name": "ClickElementRef"
-      },
-      {
-        "lines": 126,
-        "path": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs",
-        "line": 402,
-        "name": "FindByFingerprint"
-      },
       {
         "lines": 120,
         "path": "src/VScreenPilot.Server/Session/SnapshotBuilder.cs",
@@ -135,6 +99,42 @@
         "path": "src/VScreenPilot.Server/Session/ElementOperations.Invoke.cs",
         "line": 25,
         "name": "InvokeElement"
+      },
+      {
+        "lines": 113,
+        "path": "src/VScreenPilot.Server/Session/AppLauncher.Launch.cs",
+        "line": 173,
+        "name": "StartNewInstance"
+      },
+      {
+        "lines": 111,
+        "path": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs",
+        "line": 234,
+        "name": "FindElementsDetailed"
+      },
+      {
+        "lines": 110,
+        "path": "src/VScreenPilot.Server/Session/InputRouter.Keyboard.cs",
+        "line": 252,
+        "name": "PressKeySequence"
+      },
+      {
+        "lines": 110,
+        "path": "src/VScreenPilot.Server/Session/AppLauncher.LaunchFlow.cs",
+        "line": 116,
+        "name": "EnsureDocumentReady"
+      },
+      {
+        "lines": 110,
+        "path": "src/VScreenPilot.Automation/Scripting/ScriptRunner.cs",
+        "line": 88,
+        "name": "private"
+      },
+      {
+        "lines": 109,
+        "path": "src/VScreenPilot.Server/Tools/ToolExecutor.cs",
+        "line": 61,
+        "name": "ExecuteAsync"
       }
     ]
   },

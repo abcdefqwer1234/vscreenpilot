@@ -186,6 +186,18 @@ internal sealed partial class UiaService
                     }
                 }
 
+                VisitChild(children, i, node, depth, state);
+            }
+        }
+        finally
+        {
+            ReleaseElement(children);
+        }
+    }
+
+    private void VisitChild(
+        IUIAutomationElementArray children, int i, UiaTreeNode node, int depth, TreeBuildState state)
+    {
                 IUIAutomationElement? child = null;
 
                 try
@@ -193,7 +205,7 @@ internal sealed partial class UiaService
                     child = children.GetElement(i);
                     if (child is null)
                     {
-                        continue;
+                        return;
                     }
 
                     state.Visited++;
@@ -202,13 +214,13 @@ internal sealed partial class UiaService
                     UiaElementInfo? info = Describe(child, cached: true);
                     if (info is null)
                     {
-                        continue;
+                        return;
                     }
 
                     if (IsNoiseControl(info.ControlType))
                     {
                         // 滚动条/进度条/分隔条内部全是机械按钮，进树只会污染上下文。
-                        continue;
+                        return;
                     }
 
                     var childNode = new UiaTreeNode { Info = info };
@@ -224,7 +236,7 @@ internal sealed partial class UiaService
                             node.Children.Add(childNode.Children[0]);
                         }
 
-                        continue;
+                        return;
                     }
 
                     // 递归可能已经用满预算；此时不能再把当前节点计入，否则 max_nodes 会被超过。
@@ -241,12 +253,6 @@ internal sealed partial class UiaService
                 {
                     ReleaseElement(child);
                 }
-            }
-        }
-        finally
-        {
-            ReleaseElement(children);
-        }
     }
 
     private static bool IsInteresting(UiaTreeNode node) =>

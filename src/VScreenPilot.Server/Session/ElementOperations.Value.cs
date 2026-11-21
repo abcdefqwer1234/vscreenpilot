@@ -263,36 +263,9 @@ internal sealed partial class ElementOperations
         string? mode,
         bool allowDestructive)
     {
-        TrackedApp? app;
+        (TrackedApp app, string effectiveMode, bool replace) =
+            ResolveKeyboardTarget(display, entry, handle, mode, allowDestructive);
 
-        app = _host.OwnedAppForPid(entry.Pid);
-
-        if (app is null)
-        {
-            throw new ToolException(
-                "E_NO_TARGET",
-                "element_ref 所属应用不在本会话中，无法键入",
-                new JsonObject { ["ref"] = entry.Ref });
-        }
-
-        _host.RequireOnDisplay(display, entry.Hwnd, "set_element_value");
-
-        string effectiveMode = ResolveWriteMode(mode, handle.Info);
-        bool replace = effectiveMode == "replace";
-
-        if (replace && !allowDestructive)
-        {
-            throw new ToolException(
-                "E_DESTRUCTIVE_REQUIRED",
-                "replace 会先全选目标内容再覆盖；请显式传 allow_destructive=true，或改用 mode=append/insert",
-                new JsonObject
-                {
-                    ["ref"] = entry.Ref,
-                    ["mode"] = effectiveMode,
-                    ["control_type"] = handle.Info.ControlTypeName,
-                    ["automation_id"] = handle.Info.AutomationId,
-                });
-        }
 
         IntPtr previous = WindowManager.GetForegroundWindow();
         _host.PauseFocusGuard();
@@ -385,6 +358,44 @@ internal sealed partial class ElementOperations
             _host.RestoreForeground(previous);
             _host.ResumeFocusGuard();
         }
+    }
+
+    private (TrackedApp App, string EffectiveMode, bool Replace) ResolveKeyboardTarget(
+        DisplayInfo display, ElementRefEntry entry, UiaElementHandle handle,
+        string? mode, bool allowDestructive)
+    {
+        TrackedApp? app;
+
+        app = _host.OwnedAppForPid(entry.Pid);
+
+        if (app is null)
+        {
+            throw new ToolException(
+                "E_NO_TARGET",
+                "element_ref 所属应用不在本会话中，无法键入",
+                new JsonObject { ["ref"] = entry.Ref });
+        }
+
+        _host.RequireOnDisplay(display, entry.Hwnd, "set_element_value");
+
+        string effectiveMode = ResolveWriteMode(mode, handle.Info);
+        bool replace = effectiveMode == "replace";
+
+        if (replace && !allowDestructive)
+        {
+            throw new ToolException(
+                "E_DESTRUCTIVE_REQUIRED",
+                "replace 会先全选目标内容再覆盖；请显式传 allow_destructive=true，或改用 mode=append/insert",
+                new JsonObject
+                {
+                    ["ref"] = entry.Ref,
+                    ["mode"] = effectiveMode,
+                    ["control_type"] = handle.Info.ControlTypeName,
+                    ["automation_id"] = handle.Info.AutomationId,
+                });
+        }
+
+        return (app, effectiveMode, replace);
     }
 
     /// <summary>

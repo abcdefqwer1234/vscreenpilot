@@ -76,32 +76,7 @@ internal sealed class ToolExecutor
 
         try
         {
-            string clientId = context.Client?.Id ?? "c0";
-
-            if (RequiresScreenLease(context, policy))
-            {
-                screenLease = context.Session.Lease.Acquire(clientId, tool.Name);
-
-                if (KeepsForeground(context.Arguments))
-                {
-                    context.Session.Lease.Extend(clientId, 30_000);
-                    context.Session.PauseFocusGuard(30_000);
-                }
-            }
-
-            if (mutating)
-            {
-                // release 用 6s：正常写操作应在这之前结束；只有锁定超过 5s 的卡死 handler 才旁路。
-                TimeSpan wait = TimeSpan.FromMilliseconds(policy.WriteTimeoutMs);
-
-                lease = await _scheduler.AcquireAsync(
-                    tool.Name, wait, context.CancellationToken,
-                    bypass: policy.BypassWriteLock).ConfigureAwait(false);
-            }
-
-            callCts = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken);
-            callCts.CancelAfter(tool.TimeoutMs);
-            context.Session.SetCancellation(callCts);
+            (lease, screenLease, callCts) = await BeginInvocation(tool, context, policy).ConfigureAwait(false);
 
             // 长任务至少给一次“已开始/已完成”进度，客户端不会以为调用挂死。
             _progress?.Invoke(0, 1, "started");
@@ -191,6 +166,43 @@ internal sealed class ToolExecutor
             lease?.Dispose();
             screenLease?.Dispose();
         }
+    }
+
+    private async Task<(WriteScheduler.Lease? Lease, IDisposable? ScreenLease, CancellationTokenSource CallCts)>
+        BeginInvocation(ToolDescriptor tool, ToolContext context, ToolPolicy policy)
+    {
+        WriteScheduler.Lease? lease = null;
+        IDisposable? screenLease = null;
+        CancellationTokenSource? callCts = null;
+
+            string clientId = context.Client?.Id ?? "c0";
+
+            if (RequiresScreenLease(context, policy))
+            {
+                screenLease = context.Session.Lease.Acquire(clientId, tool.Name);
+
+                if (KeepsForeground(context.Arguments))
+                {
+                    context.Session.Lease.Extend(clientId, 30_000);
+                    context.Session.PauseFocusGuard(30_000);
+                }
+            }
+
+            if (policy.Mutates)
+            {
+                // release 用 6s：正常写操作应在这之前结束；只有锁定超过 5s 的卡死 handler 才旁路。
+                TimeSpan wait = TimeSpan.FromMilliseconds(policy.WriteTimeoutMs);
+
+                lease = await _scheduler.AcquireAsync(
+                    tool.Name, wait, context.CancellationToken,
+                    bypass: policy.BypassWriteLock).ConfigureAwait(false);
+            }
+
+            callCts = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken);
+            callCts.CancelAfter(tool.TimeoutMs);
+            context.Session.SetCancellation(callCts);
+
+        return (lease, screenLease, callCts!);
     }
 
     private Task<ToolResponse> StartHandlerTask(

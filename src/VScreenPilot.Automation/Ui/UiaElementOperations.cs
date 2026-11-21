@@ -447,9 +447,50 @@ internal sealed partial class UiaService
                 return null;
             }
 
+        (best, bestInfo) = SelectBest(
+            all, name, automationId, controlTypeName, left, top, right, bottom,
+            out int exact, out int near);
+
+            if (best is null || bestInfo is null)
+            {
+                return null;
+            }
+
+            // 多个同名候选且边界附近不是唯一一个：宁可报 stale，也不猜。
+            if (exact > 1 && near != 1)
+            {
+                ReleaseElement(best);
+                return null;
+            }
+
+            var handle = new UiaElementHandle(this, best, bestInfo);
+            best = null;
+            return handle;
+        }
+        finally
+        {
+            ReleaseElement(best);
+            ReleaseElement(all);
+            ReleaseElement(root);
+
+            if (!ReferenceEquals(condition, _trueCondition))
+            {
+                ReleaseElement(condition);
+            }
+        }
+        }
+    }
+
+    private (IUIAutomationElement? Best, UiaElementInfo? BestInfo) SelectBest(
+        IUIAutomationElementArray all, string name, string? automationId, string? controlTypeName,
+        int left, int top, int right, int bottom, out int exact, out int near)
+    {
+        IUIAutomationElement? best = null;
+        UiaElementInfo? bestInfo = null;
+
             int count = Math.Min(all.Length, 200);
-            int exact = 0;
-            int near = 0;
+            exact = 0;
+            near = 0;
 
             for (int i = 0; i < count; i++)
             {
@@ -496,34 +537,7 @@ internal sealed partial class UiaService
                 }
             }
 
-            if (best is null || bestInfo is null)
-            {
-                return null;
-            }
-
-            // 多个同名候选且边界附近不是唯一一个：宁可报 stale，也不猜。
-            if (exact > 1 && near != 1)
-            {
-                ReleaseElement(best);
-                return null;
-            }
-
-            var handle = new UiaElementHandle(this, best, bestInfo);
-            best = null;
-            return handle;
-        }
-        finally
-        {
-            ReleaseElement(best);
-            ReleaseElement(all);
-            ReleaseElement(root);
-
-            if (!ReferenceEquals(condition, _trueCondition))
-            {
-                ReleaseElement(condition);
-            }
-        }
-        }
+        return (best, bestInfo);
     }
 
     private static bool IsNear(UiaElementInfo info, int left, int top, int right, int bottom)

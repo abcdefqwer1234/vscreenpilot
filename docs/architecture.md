@@ -109,7 +109,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 ## 8. 已知债务与 R3
 
 - 0 个文件 >600；最大 598（`MsaaService.cs`）。R3 已拆 `VirtualDisplayController`/`SessionManager`/`McpTransport`/`ToolHandlers`/`SnapshotBuilder`/`VisualMatchService`。
-- 0 个方法 >150；6 个 121–137 行方法待 R3 压到 ≤120。最大方法 137 行。
+- 0 个方法 >120；最大方法 120 行（R3 已完成）。
 - 无类型 `catch` 37 处（其中无日志 34 处）；83 处宽捕获只写 `Debug.WriteLine`。
 - 18 个组件只有 5 个有直接单测；编排主要靠 Python 审计。
 - SPLIT 命名空间已在 R2-2 清零；`ToolContext` 仍持有门面；`Program`/`ServerHost` 双 wiring。

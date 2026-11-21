@@ -39,52 +39,7 @@ internal sealed partial class InputRouter
         // MSAA 控件没有 UIA 句柄：显式 channel 仍要遵守，不能一律走默认动作。
         if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaOrdinal))
         {
-            bool acted = mode is "auto" or "uia" &&
-                         _host.Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaOrdinal));
-            var bounds = _host.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaOrdinal));
-            string resultChannel = acted ? "msaa" : string.Empty;
-
-            if (!acted && mode != "uia" && bounds is not null)
-            {
-                // auto 在 MSAA 默认动作失败后允许继续走 UIA/消息/输入降级链。
-                string msaaMode = mode switch
-                {
-                    "input" => "input",
-                    "message" => "message",
-                    _ => "auto",
-                };
-
-                ClickView msaaClick = Click(
-                    bounds.Value.Left + bounds.Value.Width / 2,
-                    bounds.Value.Top + bounds.Value.Height / 2,
-                    "left", 1, msaaMode, keepForeground, observe: true, fallbackInput: fallbackInput);
-                acted = true;
-                resultChannel = msaaClick.Method;
-            }
-
-            if (!acted)
-            {
-                throw new ToolException(
-                    "E_PATTERN_UNSUPPORTED",
-                    "MSAA 控件没有默认动作，且无法按坐标点击",
-                    new JsonObject { ["ref"] = probe.Ref });
-            }
-
-            return new ClickRefView(
-                Clicked: true,
-                Ref: probe.Ref,
-                Channel: resultChannel,
-                X: null, Y: null, Button: null, Clicks: null, Mode: null, Method: null,
-                Pattern: null, InjectMs: null, DurationMs: null, Verified: null,
-                KeepForeground: null,
-                Refreshed: false,
-                Observed: new ElementObservedView(true, null, null, null, null),
-                Bounds: bounds is null
-                    ? new OptionalBoundsView(null, null, null, null)
-                    : new OptionalBoundsView(
-                        bounds.Value.Left, bounds.Value.Top, bounds.Value.Width, bounds.Value.Height),
-                Detail: null,
-                Hint: null);
+            return ClickMsaaRef(probe, msaaHwnd, msaaOrdinal, mode, keepForeground, fallbackInput);
         }
 
         using UiaElementHandle handle = _host.ResolveHandle(
@@ -378,4 +333,56 @@ internal sealed partial class InputRouter
     }
 
 
+
+    private ClickRefView ClickMsaaRef(
+        ElementRefEntry probe, IntPtr msaaHwnd, int msaaOrdinal, string mode,
+        bool keepForeground, bool fallbackInput)
+    {
+            bool acted = mode is "auto" or "uia" &&
+                         _host.Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaOrdinal));
+            var bounds = _host.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaOrdinal));
+            string resultChannel = acted ? "msaa" : string.Empty;
+
+            if (!acted && mode != "uia" && bounds is not null)
+            {
+                // auto 在 MSAA 默认动作失败后允许继续走 UIA/消息/输入降级链。
+                string msaaMode = mode switch
+                {
+                    "input" => "input",
+                    "message" => "message",
+                    _ => "auto",
+                };
+
+                ClickView msaaClick = Click(
+                    bounds.Value.Left + bounds.Value.Width / 2,
+                    bounds.Value.Top + bounds.Value.Height / 2,
+                    "left", 1, msaaMode, keepForeground, observe: true, fallbackInput: fallbackInput);
+                acted = true;
+                resultChannel = msaaClick.Method;
+            }
+
+            if (!acted)
+            {
+                throw new ToolException(
+                    "E_PATTERN_UNSUPPORTED",
+                    "MSAA 控件没有默认动作，且无法按坐标点击",
+                    new JsonObject { ["ref"] = probe.Ref });
+            }
+
+            return new ClickRefView(
+                Clicked: true,
+                Ref: probe.Ref,
+                Channel: resultChannel,
+                X: null, Y: null, Button: null, Clicks: null, Mode: null, Method: null,
+                Pattern: null, InjectMs: null, DurationMs: null, Verified: null,
+                KeepForeground: null,
+                Refreshed: false,
+                Observed: new ElementObservedView(true, null, null, null, null),
+                Bounds: bounds is null
+                    ? new OptionalBoundsView(null, null, null, null)
+                    : new OptionalBoundsView(
+                        bounds.Value.Left, bounds.Value.Top, bounds.Value.Width, bounds.Value.Height),
+                Detail: null,
+                Hint: null);
+    }
 }

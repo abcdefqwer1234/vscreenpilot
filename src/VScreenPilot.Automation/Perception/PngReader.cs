@@ -24,6 +24,82 @@ internal static class PngReader
 
     public static PngImage Decode(byte[] data)
     {
+        (int width, int height, int bitDepth, int colorType, int interlace, byte[] compressed) =
+            ParseChunks(data);
+
+        if (width <= 0 || height <= 0)
+        {
+            throw new PngFormatException("缺少有效 IHDR");
+        }
+
+        if ((long)width * height > MaxPixels)
+        {
+            throw new PngFormatException($"图片过大: {width}x{height}");
+        }
+
+        if (bitDepth != 8)
+        {
+            throw new PngFormatException($"仅支持 8bit PNG，当前 bitDepth={bitDepth}");
+        }
+
+        if (interlace != 0)
+        {
+            throw new PngFormatException("不支持隔行 PNG");
+        }
+
+        int channels = colorType switch
+        {
+            0 => 1,
+            2 => 3,
+            4 => 2,
+            6 => 4,
+            3 => throw new PngFormatException("不支持调色板 PNG，请另存为 RGBA"),
+            _ => throw new PngFormatException($"不支持的 colorType={colorType}"),
+        };
+
+        if (compressed.Length == 0)
+        {
+            throw new PngFormatException("缺少 IDAT");
+        }
+
+        int stride = width * channels;
+        byte[] raw = new byte[(stride + 1) * height];
+
+        try
+        {
+            using var input = new MemoryStream(compressed);
+            using var zlib = new ZLibStream(input, CompressionMode.Decompress);
+            int read = 0;
+
+            while (read < raw.Length)
+            {
+                int current = zlib.Read(raw, read, raw.Length - read);
+                if (current <= 0)
+                {
+                    break;
+                }
+
+                read += current;
+            }
+
+            if (read < raw.Length)
+            {
+                throw new PngFormatException("PNG 像素数据不完整");
+            }
+        }
+        catch (InvalidDataException exception)
+        {
+            throw new PngFormatException($"PNG zlib 解压失败: {exception.Message}");
+        }
+
+        byte[] pixels = Unfilter(raw, width, height, channels);
+        byte[] rgba = ToRgba(pixels, width, height, channels);
+        return new PngImage(rgba, width, height);
+    }
+
+    private static (int Width, int Height, int BitDepth, int ColorType, int Interlace, byte[] Compressed)
+        ParseChunks(byte[] data)
+    {
         if (data.Length < 8)
         {
             throw new PngFormatException("数据太短，不是 PNG");
@@ -89,75 +165,8 @@ internal static class PngReader
             offset += 12 + length;
         }
 
-        if (width <= 0 || height <= 0)
-        {
-            throw new PngFormatException("缺少有效 IHDR");
-        }
-
-        if ((long)width * height > MaxPixels)
-        {
-            throw new PngFormatException($"图片过大: {width}x{height}");
-        }
-
-        if (bitDepth != 8)
-        {
-            throw new PngFormatException($"仅支持 8bit PNG，当前 bitDepth={bitDepth}");
-        }
-
-        if (interlace != 0)
-        {
-            throw new PngFormatException("不支持隔行 PNG");
-        }
-
-        int channels = colorType switch
-        {
-            0 => 1,
-            2 => 3,
-            4 => 2,
-            6 => 4,
-            3 => throw new PngFormatException("不支持调色板 PNG，请另存为 RGBA"),
-            _ => throw new PngFormatException($"不支持的 colorType={colorType}"),
-        };
-
-        if (idat.Length == 0)
-        {
-            throw new PngFormatException("缺少 IDAT");
-        }
-
         byte[] compressed = idat.ToArray();
-        int stride = width * channels;
-        byte[] raw = new byte[(stride + 1) * height];
-
-        try
-        {
-            using var input = new MemoryStream(compressed);
-            using var zlib = new ZLibStream(input, CompressionMode.Decompress);
-            int read = 0;
-
-            while (read < raw.Length)
-            {
-                int current = zlib.Read(raw, read, raw.Length - read);
-                if (current <= 0)
-                {
-                    break;
-                }
-
-                read += current;
-            }
-
-            if (read < raw.Length)
-            {
-                throw new PngFormatException("PNG 像素数据不完整");
-            }
-        }
-        catch (InvalidDataException exception)
-        {
-            throw new PngFormatException($"PNG zlib 解压失败: {exception.Message}");
-        }
-
-        byte[] pixels = Unfilter(raw, width, height, channels);
-        byte[] rgba = ToRgba(pixels, width, height, channels);
-        return new PngImage(rgba, width, height);
+        return (width, height, bitDepth, colorType, interlace, compressed);
     }
 
     /// <summary>只读 IHDR，用于在完整解码前拒绝超大模板。</summary>
