@@ -264,6 +264,12 @@ internal sealed class VirtualDisplayController
                     // Parsec 驱动在 REMOVE 后约 3-5 秒内会拒绝 ADD；重试并等待本次新变可用的屏。
                     // 不能用“设备名是否出现过”判断：驱动会复用已有 detached 适配器的名字（本机 DISPLAY5~20）。
                     HashSet<string> beforeLive = DisplayTopology.LiveParsecDevices();
+                    // 记录 ADD 前已存在的全部 Parsec 设备名（含 detached）：
+                    // 部分驱动/系统组合只会创建 detached monitor，必须由我们显式设模式才会挂载。
+                    HashSet<string> beforeAll = DisplayTopology.List()
+                        .Where(item => item.IsParsec)
+                        .Select(item => item.DeviceName)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
                     int[] delays = { 0, 500, 1000, 1500, 2000 };
 
@@ -311,12 +317,27 @@ internal sealed class VirtualDisplayController
 
                     if (string.IsNullOrWhiteSpace(targetDevice))
                     {
-                        if (!DisplayTopology.WaitForNewLiveParsecDisplay(
-                                beforeLive,
-                                TimeSpan.FromSeconds(3),
-                                out DisplayInfo? added,
-                                IsDisplayOwnedByOther) ||
-                            added is null)
+                        bool liveArrived = DisplayTopology.WaitForNewLiveParsecDisplay(
+                            beforeLive,
+                            TimeSpan.FromSeconds(3),
+                            out DisplayInfo? added,
+                            IsDisplayOwnedByOther);
+
+                        if ((!liveArrived || added is null) &&
+                            DisplayTopology.List()
+                                .FirstOrDefault(item =>
+                                    item.IsParsec &&
+                                    !beforeAll.Contains(item.DeviceName) &&
+                                    !IsDisplayOwnedByOther(item.DeviceName)) is { } detachedNew)
+                        {
+                            // 驱动创建了 monitor 但 Windows 未自动挂载：直接对新建的
+                            // detached 设备设模式，TryActivateDisplay 会完成挂载。
+                            targetDevice = detachedNew.DeviceName;
+                            _log.Info($"新建虚拟屏处于 detached，直接激活: {detachedNew.DeviceName}");
+                        }
+
+                        if (string.IsNullOrWhiteSpace(targetDevice) &&
+                            (!liveArrived || added is null))
                         {
                             JsonObject details = new()
                             {
@@ -336,8 +357,11 @@ internal sealed class VirtualDisplayController
                                 stage: "display");
                         }
 
-                        targetDevice = added.DeviceName;
-                        _log.Info($"新建虚拟屏已可用: {added}");
+                        if (liveArrived && added is not null)
+                        {
+                            targetDevice = added.DeviceName;
+                            _log.Info($"新建虚拟屏已可用: {added}");
+                        }
                     }
                 }
                 finally

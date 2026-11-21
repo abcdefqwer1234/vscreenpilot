@@ -555,12 +555,53 @@ internal static class Program
             return 2;
         }
 
+        var beforeDevices = DisplayTopology.List()
+            .Where(d => d.IsParsec)
+            .Select(d => d.DeviceName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         vdd.StartKeepAlive();
         int index = vdd.AddDisplay();
         Console.WriteLine($"add           : index={index}");
         if (index < 0)
         {
             return 4;
+        }
+
+        if (variant == "force")
+        {
+            var after = DisplayTopology.List().Where(d => d.IsParsec).ToList();
+            var target = after.FirstOrDefault(d => !beforeDevices.Contains(d.DeviceName))
+                         ?? after.FirstOrDefault();
+
+            if (target is null)
+            {
+                Console.WriteLine("force         : no parsec display at all");
+                vdd.RemoveDisplay(index);
+                return 5;
+            }
+
+            Console.WriteLine(
+                $"force target  : {target.DeviceName} attached={target.Attached} " +
+                $"{target.Width}x{target.Height} at ({target.X},{target.Y})");
+
+            int forceResult = DisplayTopology.SetModeAndPosition(
+                target.DeviceName, width, height, frequency, x, y, out int forceApply);
+            Console.WriteLine($"force set     : result={forceResult} apply={forceApply}");
+
+            bool forceAttached = DisplayTopology.WaitUntil(
+                () => DisplayTopology.List().Any(d => d.IsParsec && d.Attached),
+                TimeSpan.FromSeconds(3));
+            Console.WriteLine($"force attached: {forceAttached}");
+            PrintDisplays();
+
+            if (hold > 0 && forceAttached)
+            {
+                Thread.Sleep(TimeSpan.FromSeconds(hold));
+            }
+
+            vdd.RemoveDisplay(index);
+            return forceAttached ? 0 : 6;
         }
 
         if (!DisplayTopology.WaitForParsecAdapter(TimeSpan.FromSeconds(3), out var adapter) ||
