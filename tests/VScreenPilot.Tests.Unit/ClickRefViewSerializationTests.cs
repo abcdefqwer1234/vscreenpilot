@@ -27,13 +27,13 @@ public sealed class ClickRefViewSerializationTests
     public void CoordinateBranchCarriesClickFields()
     {
         var view = new ClickRefView(
-            true, "e2", "message_click", 10, 20, "left", 1, "auto", "message_click",
+            true, "e2", null, 10, 20, "left", 1, "auto", "message_click",
             null, 1.5, 2.5, true, false, true,
             new ElementObservedView(true, null, null, null, null),
             null, "detail", null);
 
         Assert.Equal(
-            "{\"clicked\":true,\"ref\":\"e2\",\"channel\":\"message_click\",\"x\":10,\"y\":20," +
+            "{\"clicked\":true,\"ref\":\"e2\",\"x\":10,\"y\":20," +
             "\"button\":\"left\",\"clicks\":1,\"mode\":\"auto\",\"method\":\"message_click\"," +
             "\"inject_ms\":1.5,\"duration_ms\":2.5,\"verified\":true,\"keep_foreground\":false," +
             "\"refreshed\":true,\"observed\":{\"present\":true},\"detail\":\"detail\"}",

@@ -205,7 +205,7 @@ internal sealed class InputRouter
         return new ClickRefView(
             Clicked: true,
             Ref: entry.Ref,
-            Channel: clickResult.Method,
+            Channel: null,
             X: clickResult.X,
             Y: clickResult.Y,
             Button: clickResult.Button,

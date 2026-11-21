@@ -130,7 +130,9 @@ public sealed record ElementObservedView(
 public sealed record ClickRefView(
     [property: JsonPropertyName("clicked")] bool Clicked,
     [property: JsonPropertyName("ref")] string Ref,
-    [property: JsonPropertyName("channel")] string Channel,
+    [property: JsonPropertyName("channel")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Channel,
     [property: JsonPropertyName("x")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     int? X,
