@@ -1,0 +1,376 @@
+{
+  "generated_at": "2026-11-21T19:31:27Z",
+  "source": {
+    "files": 149,
+    "lines": 30643,
+    "max_file": 1552,
+    "files_gt_600": 9,
+    "files_gt_800": 3,
+    "top_files": [
+      {
+        "lines": 1552,
+        "path": "src/VScreenPilot.Server/Session/InputRouter.cs"
+      },
+      {
+        "lines": 1242,
+        "path": "src/VScreenPilot.Server/Session/AppLauncher.cs"
+      },
+      {
+        "lines": 940,
+        "path": "src/VScreenPilot.Server/Session/ElementOperations.cs"
+      },
+      {
+        "lines": 757,
+        "path": "src/VScreenPilot.Server/Session/VirtualDisplayController.cs"
+      },
+      {
+        "lines": 746,
+        "path": "src/VScreenPilot.Server/Session/SessionManager.cs"
+      },
+      {
+        "lines": 721,
+        "path": "src/VScreenPilot.Server/Mcp/McpTransport.cs"
+      },
+      {
+        "lines": 659,
+        "path": "src/VScreenPilot.Server/Tools/ToolHandlers.cs"
+      },
+      {
+        "lines": 645,
+        "path": "src/VScreenPilot.Server/Session/SnapshotBuilder.cs"
+      },
+      {
+        "lines": 609,
+        "path": "src/VScreenPilot.Server/Session/VisualMatchService.cs"
+      },
+      {
+        "lines": 597,
+        "path": "src/VScreenPilot.Automation/Ui/MsaaService.cs"
+      },
+      {
+        "lines": 572,
+        "path": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs"
+      },
+      {
+        "lines": 524,
+        "path": "src/VScreenPilot.Automation/Perception/TemplateMatcher.cs"
+      }
+    ]
+  },
+  "methods": {
+    "max": 542,
+    "gt_150": 16,
+    "ge_200": 13,
+    "ge_120": 27,
+    "ge_80": 53,
+    "top": [
+      {
+        "lines": 542,
+        "path": "src/VScreenPilot.Server/Session/AppLauncher.cs",
+        "line": 56,
+        "name": "Launch"
+      },
+      {
+        "lines": 385,
+        "path": "src/VScreenPilot.Server/Session/SnapshotBuilder.cs",
+        "line": 89,
+        "name": "SnapshotCore"
+      },
+      {
+        "lines": 330,
+        "path": "src/VScreenPilot.Server/Session/VirtualDisplayController.cs",
+        "line": 87,
+        "name": "Ensure"
+      },
+      {
+        "lines": 295,
+        "path": "src/VScreenPilot.Server/Tools/ToolExecutor.cs",
+        "line": 51,
+        "name": "ExecuteAsync"
+      },
+      {
+        "lines": 294,
+        "path": "src/VScreenPilot.Server/Session/EnvironmentReporter.cs",
+        "line": 54,
+        "name": "GetEnvironment"
+      },
+      {
+        "lines": 289,
+        "path": "src/VScreenPilot.Server/Session/InputRouter.cs",
+        "line": 781,
+        "name": "Gesture"
+      },
+      {
+        "lines": 277,
+        "path": "src/VScreenPilot.Server/Session/WaitService.cs",
+        "line": 112,
+        "name": "EvaluateCondition"
+      },
+      {
+        "lines": 246,
+        "path": "src/VScreenPilot.Server/Diagnostics/DoctorReportBuilder.cs",
+        "line": 17,
+        "name": "Run"
+      },
+      {
+        "lines": 210,
+        "path": "src/VScreenPilot.Server/Session/EnvironmentReleaser.cs",
+        "line": 45,
+        "name": "Release"
+      },
+      {
+        "lines": 205,
+        "path": "src/VScreenPilot.Server/Session/VisualMatchService.cs",
+        "line": 259,
+        "name": "MatchTemplate"
+      },
+      {
+        "lines": 201,
+        "path": "src/VScreenPilot.Server/Session/InputRouter.cs",
+        "line": 459,
+        "name": "TypeText"
+      },
+      {
+        "lines": 201,
+        "path": "src/VScreenPilot.Server/Session/InputRouter.cs",
+        "line": 257,
+        "name": "Click"
+      }
+    ]
+  },
+  "hosts": {
+    "count": 18,
+    "members": 187,
+    "max_members": 26,
+    "items": [
+      {
+        "name": "IEnvironmentHost",
+        "members": 26
+      },
+      {
+        "name": "IInputHost",
+        "members": 26
+      },
+      {
+        "name": "IElementOperationsHost",
+        "members": 24
+      },
+      {
+        "name": "IEnvironmentReleaserHost",
+        "members": 20
+      },
+      {
+        "name": "IAppLaunchHost",
+        "members": 17
+      },
+      {
+        "name": "ISnapshotHost",
+        "members": 15
+      },
+      {
+        "name": "IWaitHost",
+        "members": 12
+      },
+      {
+        "name": "IElementResolverHost",
+        "members": 7
+      },
+      {
+        "name": "IElementFinderHost",
+        "members": 6
+      },
+      {
+        "name": "IRegionVerifierHost",
+        "members": 5
+      },
+      {
+        "name": "ISessionStateHost",
+        "members": 5
+      },
+      {
+        "name": "IFocusHost",
+        "members": 4
+      },
+      {
+        "name": "IMaintenanceHost",
+        "members": 4
+      },
+      {
+        "name": "IScreenTextHost",
+        "members": 4
+      },
+      {
+        "name": "ITrackedAppHost",
+        "members": 4
+      },
+      {
+        "name": "IScreenCaptureHost",
+        "members": 3
+      },
+      {
+        "name": "IVisualHost",
+        "members": 3
+      },
+      {
+        "name": "IAppAllowlistHost",
+        "members": 2
+      }
+    ]
+  },
+  "namespaces": {
+    "split": [
+      "VScreenPilot.Apps",
+      "VScreenPilot.Infrastructure",
+      "VScreenPilot.Mcp",
+      "VScreenPilot.Session",
+      "VScreenPilot.Ui"
+    ],
+    "map": {
+      "VScreenPilot": [
+        "VScreenPilot.Server"
+      ],
+      "VScreenPilot.Apps": [
+        "VScreenPilot.Automation",
+        "VScreenPilot.Platform"
+      ],
+      "VScreenPilot.Cli": [
+        "VScreenPilot.Server"
+      ],
+      "VScreenPilot.Composition": [
+        "VScreenPilot.Server"
+      ],
+      "VScreenPilot.Diagnostics": [
+        "VScreenPilot.Server"
+      ],
+      "VScreenPilot.Infrastructure": [
+        "VScreenPilot.Abstractions",
+        "VScreenPilot.Platform",
+        "VScreenPilot.Server"
+      ],
+      "VScreenPilot.Input": [
+        "VScreenPilot.Platform"
+      ],
+      "VScreenPilot.Interop": [
+        "VScreenPilot.Platform"
+      ],
+      "VScreenPilot.Ipc": [
+        "VScreenPilot.Server"
+      ],
+      "VScreenPilot.Json": [
+        "VScreenPilot.Abstractions"
+      ],
+      "VScreenPilot.Mcp": [
+        "VScreenPilot.Abstractions",
+        "VScreenPilot.Server"
+      ],
+      "VScreenPilot.Options": [
+        "VScreenPilot.Abstractions"
+      ],
+      "VScreenPilot.Perception": [
+        "VScreenPilot.Automation"
+      ],
+      "VScreenPilot.Platform.Displays": [
+        "VScreenPilot.Platform"
+      ],
+      "VScreenPilot.Platform.Interop": [
+        "VScreenPilot.Platform"
+      ],
+      "VScreenPilot.Platform.Security": [
+        "VScreenPilot.Platform"
+      ],
+      "VScreenPilot.Scripting": [
+        "VScreenPilot.Automation"
+      ],
+      "VScreenPilot.Session": [
+        "VScreenPilot.Automation",
+        "VScreenPilot.Server"
+      ],
+      "VScreenPilot.Ui": [
+        "VScreenPilot.Automation",
+        "VScreenPilot.Server"
+      ],
+      "VScreenPilot.Uia": [
+        "VScreenPilot.Automation"
+      ],
+      "VScreenPilot.Verification": [
+        "VScreenPilot.Server"
+      ],
+      "VScreenPilot.Views": [
+        "VScreenPilot.Abstractions"
+      ]
+    }
+  },
+  "ivt": [
+    {
+      "from": "VScreenPilot",
+      "to": "VScreenPilot.Tests.Contract"
+    },
+    {
+      "from": "VScreenPilot",
+      "to": "VScreenPilot.Tests.Unit"
+    },
+    {
+      "from": "VScreenPilot.Abstractions",
+      "to": "VScreenPilot"
+    },
+    {
+      "from": "VScreenPilot.Abstractions",
+      "to": "VScreenPilot.Automation"
+    },
+    {
+      "from": "VScreenPilot.Abstractions",
+      "to": "VScreenPilot.Tests.Contract"
+    },
+    {
+      "from": "VScreenPilot.Abstractions",
+      "to": "VScreenPilot.Tests.Unit"
+    },
+    {
+      "from": "VScreenPilot.Automation",
+      "to": "VScreenPilot"
+    },
+    {
+      "from": "VScreenPilot.Automation",
+      "to": "VScreenPilot.Tests.Contract"
+    },
+    {
+      "from": "VScreenPilot.Automation",
+      "to": "VScreenPilot.Tests.Unit"
+    },
+    {
+      "from": "VScreenPilot.Platform",
+      "to": "VScreenPilot"
+    },
+    {
+      "from": "VScreenPilot.Platform",
+      "to": "VScreenPilot.Automation"
+    },
+    {
+      "from": "VScreenPilot.Platform",
+      "to": "VScreenPilot.Tests.Contract"
+    },
+    {
+      "from": "VScreenPilot.Platform",
+      "to": "VScreenPilot.Tests.Unit"
+    },
+    {
+      "from": "VScreenPilot.Platform",
+      "to": "VddProbe"
+    }
+  ],
+  "catches": {
+    "typed_wide": 134,
+    "typed_narrow": 85,
+    "untyped": 37,
+    "untyped_silent": 37,
+    "debug_only": 83
+  },
+  "tests": {
+    "fact": 155,
+    "theory": 10,
+    "methods": 165,
+    "inline_data": 51,
+    "files": 30,
+    "lines": 3059
+  }
+}

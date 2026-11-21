@@ -26,6 +26,11 @@ jobs:
       - name: Docs links
         run: node scripts/check-docs-links.mjs
 
+      - name: Architecture metrics
+        run: |
+          python tools/audit/arch_metrics.py --selftest
+          python tools/audit/arch_metrics.py --check
+
       - name: Version consistency
         run: node scripts/check-version.mjs
 
