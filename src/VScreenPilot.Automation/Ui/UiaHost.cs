@@ -176,7 +176,7 @@ internal sealed class UiaHost : IDisposable
     private Generation Start()
     {
         var generation = new Generation(_factory);
-        generation.Thread.Start(generation);
+        generation.Thread.Start();
         return generation;
     }
 

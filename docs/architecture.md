@@ -51,9 +51,9 @@ MCP 传输层   官方 ModelContextProtocol SDK（stdio；协议协商/分帧/�
 - **会话代际（epoch）**：`release_environment` 先递增 epoch；旧 handler 的结果被丢弃，
   返回 `E_CANCELLED`，避免“清空集合后旧 handler 继续写”。
 - **每调用取消**：`AsyncLocal<CancellationTokenSource>`，并发工具不会互相清取消。
-- **UIA 串行**：`UiaService` 内所有 COM 访问（含建树、写值、读文本）统一进 `_sync`；
-  超时后 `ResetUia` 把旧实例放进退休列表，会话结束时统一释放（不再中途丢弃实例）。
-  专用 MTA worker（`UiaHost`）仍是 P7 的待办，当前实现保持既有锁语义。
+- **UIA 串行**：`UiaHost` 用专用 MTA 线程串行执行 `UiaService` 的服务级调用（建树、查找、读取焦点）；
+  超时后 `ResetUia` 只退休当前代际并让新调用走新线程，旧线程把手上的 COM 调用做完再释放。
+  `UiaElementHandle` 的 Focus/Invoke/GetText 仍由 `UiaService._sync` 串行（MTA 对象可跨线程使用）。
 - **MSAA 回退**：单个窗口 UIA 完全不可见时，`MsaaService` 用 `IAccessible` 枚举子控件；
   Word `bosa_sdm_msword` 对话框走这条路径。
 - **UWP**：顶层类是 `ApplicationFrameWindow`，内容进程没有独立 HWND；UIA 从 frame 取树，
@@ -102,7 +102,7 @@ ref 只在该代内有效；跨代使用返回 `E_STALE_SNAPSHOT`，未知/被�
 
 - **会话组件化**：`SessionManager` 尚未拆到薄门面（P4），快照/应用/显示/输入仍在 partial 中。
 - **领域视图**：22 个工具中 5 个已走强类型视图，其余仍由 handler 直接拼 `JsonObject`（P3）。
-- **UIA 单线程宿主**：`UiaService` 已按职责拆成 7 个文件，但仍用锁串行化，未改为 MTA worker（P7）。
+- **UIA 句柄亲和**：服务级调用已进 `UiaHost` 的 MTA worker；句柄级操作仍走 `UiaService._sync`。
 - **全屏截图**：复用资源 + 去 `CAPTUREBLT` + 大图不内联后，服务端 P95 已降至 ~56ms；
   早期“1.2–1.4s”是内联大 PNG 的回传成本，已由 preview/artifact 方案消除。
   Windows.Graphics.Capture（`CreateForMonitor` + D3D11 staging readback）仍是后续后端优化。
