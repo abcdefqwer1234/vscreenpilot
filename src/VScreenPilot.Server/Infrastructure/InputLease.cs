@@ -66,9 +66,9 @@ internal static class InputLease
             {
                 mutex.ReleaseMutex();
             }
-            catch (ApplicationException)
-            {
+            catch (ApplicationException exception){
                 // 不是当前线程持有；忽略。
+                _ = exception;
             }
 
             mutex.Dispose();

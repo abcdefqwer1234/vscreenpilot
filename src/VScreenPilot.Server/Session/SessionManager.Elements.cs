@@ -696,9 +696,9 @@ internal sealed partial class SessionManager
                 handle.Focus();
             }
             catch (Exception exception) when (
-                exception is COMException or InvalidOperationException)
-            {
+                exception is COMException or InvalidOperationException){
                 // 部分 WinForms/WPF 控件不支持 SetFocus；继续用 Enter 尝试。
+                _ = exception;
             }
 
             Thread.Sleep(80);
@@ -1151,9 +1151,9 @@ internal sealed partial class SessionManager
             return VerifyFocus(handle);
         }
         catch (Exception exception) when (
-            exception is System.Runtime.InteropServices.COMException or InvalidOperationException)
-        {
+            exception is System.Runtime.InteropServices.COMException or InvalidOperationException){
             // Word 正文的 Edit/Body 不支持 UIA SetFocus；退化到消息点击元素中心。
+            _ = exception;
         }
 
         UiaElementInfo info = handle.Info;

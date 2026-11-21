@@ -19,9 +19,9 @@ internal static class ParentProcessWatcher
                 using var parent = System.Diagnostics.Process.GetProcessById(parentPid);
                 parent.WaitForExit();
             }
-            catch (ArgumentException)
-            {
+            catch (ArgumentException exception){
                 // 父进程在进入监听前已经退出。
+                _ = exception;
             }
             catch (Exception exception)
             {

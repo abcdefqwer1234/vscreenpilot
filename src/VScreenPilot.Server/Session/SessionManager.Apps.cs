@@ -601,9 +601,9 @@ internal sealed partial class SessionManager
                     return true;
                 }
             }
-            catch (System.Runtime.InteropServices.COMException)
-            {
+            catch (System.Runtime.InteropServices.COMException exception){
                 // Word 正在切换文档，稍后重试。
+                _ = exception;
             }
 
             Thread.Sleep(150);
@@ -661,9 +661,9 @@ internal sealed partial class SessionManager
                 }
             }
         }
-        catch (System.Runtime.InteropServices.COMException)
-        {
+        catch (System.Runtime.InteropServices.COMException exception){
             // 开始屏幕的 UIA 提供程序不稳定时按“找不到磁贴”处理。
+            _ = exception;
         }
 
         return null;

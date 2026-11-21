@@ -191,9 +191,9 @@ internal sealed class PipeHost : IDisposable
                 await server.RunAsync(limiter, limiter, connectionCts.Token).ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException)
-        {
+        catch (OperationCanceledException exception){
             // 进程退出/管道断开。
+            _ = exception;
         }
         catch (Exception exception)
         {
@@ -244,9 +244,9 @@ internal sealed class PipeHost : IDisposable
         {
             _cts.Cancel();
         }
-        catch (ObjectDisposedException)
-        {
+        catch (ObjectDisposedException exception){
             // 已经取消。
+            _ = exception;
         }
 
         // 不在 Dispose 立即释放 CTS：连接任务仍可能在创建 linked token；

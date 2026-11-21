@@ -61,9 +61,9 @@ internal sealed partial class UiaService
             }
         }
         catch (Exception exception) when (
-            exception is COMException or ArgumentException or InvalidOperationException)
-        {
+            exception is COMException or ArgumentException or InvalidOperationException){
             // 不是所有 provider 都支持 TextPattern；继续尝试 ValuePattern。
+            _ = exception;
         }
         finally
         {

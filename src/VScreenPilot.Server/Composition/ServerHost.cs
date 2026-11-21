@@ -139,9 +139,9 @@ internal sealed class ServerHost : IDisposable
                 Shutdown();
             });
         }
-        catch (PlatformNotSupportedException)
-        {
+        catch (PlatformNotSupportedException exception){
             // Windows 上部分场景不支持，忽略。
+            _ = exception;
         }
 
         try

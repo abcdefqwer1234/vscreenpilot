@@ -505,9 +505,9 @@ internal sealed class ControlServer : IDisposable
         {
             _cts.Cancel();
         }
-        catch (ObjectDisposedException)
-        {
+        catch (ObjectDisposedException exception){
             // 已经取消。
+            _ = exception;
         }
 
         // 不立即 Dispose：HandleAsync 可能还在创建 linked token；进程退出时由 OS 回收。

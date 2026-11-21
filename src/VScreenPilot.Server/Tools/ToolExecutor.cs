@@ -192,9 +192,9 @@ internal sealed class ToolExecutor
                 {
                     callCts?.Cancel();
                 }
-                catch (ObjectDisposedException)
-                {
+                catch (ObjectDisposedException exception){
                     // 已经结束。
+                    _ = exception;
                 }
                 _ = handlerTask!.ContinueWith(
                     _ => callCts?.Dispose(), TaskScheduler.Default);
@@ -279,9 +279,9 @@ internal sealed class ToolExecutor
             {
                 callCts?.Cancel();
             }
-            catch (ObjectDisposedException)
-            {
+            catch (ObjectDisposedException exception){
                 // 已经结束。
+                _ = exception;
             }
 
             if (callCts is not null && handlerTask is not null && !handlerTask.IsCompleted)

@@ -194,9 +194,9 @@ internal sealed partial class UiaService
                             return Describe(element, cached: false);
                         }
                     }
-                    catch (COMException)
-                    {
+                    catch (COMException exception){
                         // 单个 provider 读文本失败不影响其余候选。
+                        _ = exception;
                     }
                     finally
                     {

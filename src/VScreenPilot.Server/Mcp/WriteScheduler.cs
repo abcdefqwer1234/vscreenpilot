@@ -111,9 +111,9 @@ internal sealed class WriteScheduler : IDisposable
             {
                 _owner._write.Release();
             }
-            catch (ObjectDisposedException)
-            {
+            catch (ObjectDisposedException exception){
                 // 进程退出时忽略。
+                _ = exception;
             }
         }
     }

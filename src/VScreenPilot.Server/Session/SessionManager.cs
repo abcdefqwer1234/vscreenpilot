@@ -1740,9 +1740,9 @@ internal sealed partial class SessionManager : IDisposable
             }
         }
         catch (Exception exception) when (
-            exception is COMException or InvalidOperationException or ArgumentException)
-        {
+            exception is COMException or InvalidOperationException or ArgumentException){
             // 继续走 WM_CLOSE/超时策略。
+            _ = exception;
         }
 
         return false;

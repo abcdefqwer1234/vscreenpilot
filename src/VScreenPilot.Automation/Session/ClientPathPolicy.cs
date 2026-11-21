@@ -57,9 +57,9 @@ internal sealed class ClientPathPolicy
                 fullPath = target.FullName;
             }
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException){
             // 文件尚不存在/无权限读取链接：保留原路径，后续 CreateNew 会给出明确 IO 错误。
+            _ = exception;
         }
 
         // 文件本身不存在时，父目录仍可能是 junction；逐级解析，防止写到允许根之外。
@@ -118,9 +118,9 @@ internal sealed class ClientPathPolicy
                 }
             }
             catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException)
-            {
+                exception is IOException or UnauthorizedAccessException){
                 // 无权限读取链接时继续向上；最终仍会受 IsUnder 限制。
+                _ = exception;
             }
 
             directory = Path.GetDirectoryName(directory);

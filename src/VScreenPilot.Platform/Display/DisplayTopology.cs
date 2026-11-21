@@ -312,11 +312,13 @@ public static class DisplayTopology
                 return dpiX;
             }
         }
-        catch (DllNotFoundException)
-        {
+        catch (DllNotFoundException exception){
+            // 已显式忽略：预期异常，不影响主流程。
+            _ = exception;
         }
-        catch (EntryPointNotFoundException)
-        {
+        catch (EntryPointNotFoundException exception){
+            // 已显式忽略：预期异常，不影响主流程。
+            _ = exception;
         }
 
         return 0;
