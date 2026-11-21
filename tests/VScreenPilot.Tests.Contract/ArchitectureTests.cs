@@ -56,10 +56,10 @@ public sealed class ArchitectureTests
     }
 
     /// <summary>
-    /// P4/P5 收尾前 Automation 仍借用 UiaElementInfo.ToJson 等 13 个文件的 Nodes 类型；
-    /// 完成 ElementPresenter 迁移后必须为 0。该断言先跳过，但已入库，避免遗漏。
+    /// Automation 不得依赖 System.Text.Json.Nodes：元素序列化已迁到 Server 的
+    /// ElementPresenter，格式化/脱敏/观察采样也移回 Server。
     /// </summary>
-    [Fact(Skip = "P4/P5：ElementPresenter 未完成，Automation 仍有 13 个文件使用 System.Text.Json.Nodes")]
+    [Fact]
     public void AutomationHasNoSystemTextJsonNodes()
     {
         string repoRoot = FindRepoRoot();

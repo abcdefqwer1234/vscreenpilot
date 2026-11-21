@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text;
-using System.Text.Json.Nodes;
 using VScreenPilot.Mcp;
 using VScreenPilot.Views;
 
@@ -199,7 +198,7 @@ internal sealed class ScriptRunner
                 throw new ToolException(
                     "E_DISABLED",
                     $"run_script 黑名单拒绝命令: {token}",
-                    new JsonObject { ["token"] = token },
+                    ToolDetails.ScriptToken(token),
                     retryable: false,
                     hint: "该能力不是沙箱；如确需执行，设置 VSP_ALLOW_UNSAFE_SCRIPT=1 并自行承担风险",
                     stage: "script");

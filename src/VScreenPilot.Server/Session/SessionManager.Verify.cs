@@ -172,7 +172,7 @@ internal sealed partial class SessionManager
 
             foreach (UiaElementInfo item in matches.Take(maxResults))
             {
-                JsonObject element = item.ToCompactJson();
+                JsonObject element = ElementPresenter.ToCompactJson(item);
                 element["ref"] = RegisterElement(item, HwndFor(item));
                 elements.Add(element);
             }
@@ -199,7 +199,7 @@ internal sealed partial class SessionManager
         }
 
         UiaElementInfo info = matches[index];
-        JsonObject result = info.ToCompactJson();
+        JsonObject result = ElementPresenter.ToCompactJson(info);
         result["ref"] = RegisterElement(info, HwndFor(info));
         result["name_match"] = nameMatch;
         result["role"] = role;
@@ -510,7 +510,7 @@ internal sealed partial class SessionManager
                     return new JsonObject
                     {
                         ["satisfied"] = satisfied,
-                        ["element"] = info?.ToJson(),
+                        ["element"] = info is null ? null : ElementPresenter.ToJson(info),
                     };
                 }
                 catch (COMException exception)
@@ -577,7 +577,7 @@ internal sealed partial class SessionManager
                     return new JsonObject
                     {
                         ["satisfied"] = true,
-                        ["element"] = info.ToCompactJson(),
+                        ["element"] = ElementPresenter.ToCompactJson(info),
                         ["window"] = new JsonObject
                         {
                             ["pid"] = app.Pid,

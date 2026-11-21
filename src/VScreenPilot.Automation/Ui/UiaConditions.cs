@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.Json.Nodes;
 using Interop.UIAutomationClient;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
@@ -30,17 +29,13 @@ internal sealed partial class UiaService
             if (!TryParseControlType(controlType, out int controlTypeId))
             {
                 // 静默忽略会让 find_element(control_type:"Buton") 返回第一个元素，模型点错控件。
-                var supported = new JsonArray();
-
-                foreach (string typeName in ControlTypes.Values.OrderBy(value => value, StringComparer.Ordinal))
-                {
-                    supported.Add(typeName);
-                }
+                IEnumerable<string> supported = ControlTypes.Values
+                    .OrderBy(value => value, StringComparer.Ordinal);
 
                 throw new ToolException(
                     "E_INVALID_ARG",
                     $"control_type 无效: {controlType}",
-                    new JsonObject { ["field"] = "control_type", ["supported"] = supported },
+                    ToolDetails.InvalidControlType("control_type", supported),
                     retryable: false,
                     hint: "使用 UIA 控件类型英文名，例如 Button、Edit、Document",
                     stage: "validate");

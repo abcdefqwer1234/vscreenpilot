@@ -306,7 +306,8 @@ internal sealed class EnvironmentReporter
         {
             try
             {
-                focusedElement = _host.Uia.GetFocusedElement()?.ToJson();
+                UiaElementInfo? focused = _host.Uia.GetFocusedElement();
+                focusedElement = focused is null ? null : ElementPresenter.ToJson(focused);
 
                 // 二次校验：焦点元素必须属于当前客户端（含 UWP 内容进程）。
                 if (focusedElement is JsonObject focus &&

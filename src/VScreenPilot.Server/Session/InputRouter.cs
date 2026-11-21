@@ -522,7 +522,7 @@ internal sealed class InputRouter
                         new JsonObject
                         {
                             ["target_pid"] = app.Pid,
-                            ["element"] = focused.Info.ToJson(),
+                            ["element"] = ElementPresenter.ToJson(focused.Info),
                         },
                         retryable: true,
                         hint: "先 click 目标控件或把目标窗口切到前台",

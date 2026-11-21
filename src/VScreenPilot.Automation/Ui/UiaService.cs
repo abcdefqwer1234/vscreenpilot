@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.Json.Nodes;
 using Interop.UIAutomationClient;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
@@ -32,90 +31,6 @@ internal sealed record UiaElementInfo(
 
     public int Height => Math.Max(0, Bottom - Top);
 
-    /// <summary>面向模型的精简表示：只保留定位/判断所需字段，省略 runtime_id/class_name 等诊断信息。</summary>
-    public JsonObject ToCompactJson()
-    {
-        var json = new JsonObject
-        {
-            ["name"] = Name,
-            ["automation_id"] = AutomationId,
-            ["control_type"] = ControlTypeName,
-            ["bounds"] = new JsonObject
-            {
-                ["x"] = Left,
-                ["y"] = Top,
-                ["width"] = Width,
-                ["height"] = Height,
-            },
-        };
-
-        if (!Enabled)
-        {
-            json["enabled"] = false;
-        }
-
-        if (Offscreen)
-        {
-            json["offscreen"] = true;
-        }
-
-        if (Focused)
-        {
-            json["focused"] = true;
-        }
-
-        if (!Password && !string.IsNullOrEmpty(Value))
-        {
-            json["value"] = Value.Length > 200 ? Value[..200] : Value;
-        }
-
-        return json;
-    }
-
-    public JsonObject ToJson()
-    {
-        var json = new JsonObject
-        {
-            ["runtime_id"] = RuntimeId,
-            ["name"] = Name,
-            ["automation_id"] = AutomationId,
-            ["control_type"] = ControlTypeName,
-            ["control_type_id"] = ControlType,
-            ["bounds"] = new JsonObject
-            {
-                ["x"] = Left,
-                ["y"] = Top,
-                ["width"] = Width,
-                ["height"] = Height,
-            },
-            ["enabled"] = Enabled,
-            ["offscreen"] = Offscreen,
-            ["process_id"] = ProcessId,
-            ["class_name"] = ClassName,
-        };
-
-        if (Focusable)
-        {
-            json["focusable"] = true;
-        }
-
-        if (Focused)
-        {
-            json["focused"] = true;
-        }
-
-        if (!Password && !string.IsNullOrEmpty(Value))
-        {
-            json["value"] = Value;
-        }
-
-        if (!Password && !string.IsNullOrEmpty(Text))
-        {
-            json["text"] = Text;
-        }
-
-        return json;
-    }
 }
 
 /// <summary>UI Automation 元素句柄；释放前可安全执行模式方法。</summary>

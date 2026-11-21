@@ -461,7 +461,7 @@ internal sealed partial class SessionManager
             throw new ToolException(
                 "E_ELEMENT_DISABLED",
                 "控件已禁用，拒绝触发",
-                new JsonObject { ["ref"] = entry.Ref, ["element"] = info.ToJson() });
+                new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
         }
 
         if (mode == UiaInvokePattern.Default)
@@ -507,7 +507,7 @@ internal sealed partial class SessionManager
                 ["ref"] = entry.Ref,
                 ["method"] = strategy,
                 ["refreshed"] = refreshed,
-                ["element"] = info.ToCompactJson(),
+                ["element"] = ElementPresenter.ToCompactJson(info),
             };
         }
 
@@ -517,7 +517,7 @@ internal sealed partial class SessionManager
                 "E_PATTERN_UNSUPPORTED",
                 "该控件没有可用的 UIA 触发模式（Invoke/Toggle/SelectionItem/ExpandCollapse/Legacy）；" +
                 "可先用 pattern 指定期望模式；如需按坐标触发，请改用 click 或显式传 allow_click=true",
-                new JsonObject { ["ref"] = entry.Ref, ["element"] = info.ToJson() });
+                new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
         }
 
         int centerX = info.Left + info.Width / 2;
@@ -548,7 +548,7 @@ internal sealed partial class SessionManager
             ["method"] = "message_click",
             ["refreshed"] = refreshed,
             ["detail"] = detail,
-            ["element"] = info.ToCompactJson(),
+            ["element"] = ElementPresenter.ToCompactJson(info),
         };
         }
         finally
@@ -649,7 +649,7 @@ internal sealed partial class SessionManager
                 ["method"] = "default_action",
                 ["control_type"] = handle.Info.ControlTypeName,
                 ["refreshed"] = refreshed,
-                ["element"] = handle.Info.ToJson(),
+                ["element"] = ElementPresenter.ToJson(handle.Info),
             };
         }
         finally
@@ -738,7 +738,7 @@ internal sealed partial class SessionManager
             throw new ToolException(
                 "E_ELEMENT_DISABLED",
                 "控件已禁用，拒绝写值",
-                new JsonObject { ["ref"] = entry.Ref, ["element"] = info.ToJson() });
+                new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
         }
 
         string effectiveMode = ResolveWriteMode(mode, info);
@@ -772,7 +772,7 @@ internal sealed partial class SessionManager
                     {
                         ["ref"] = entry.Ref,
                         ["mode"] = effectiveMode,
-                        ["element"] = info.ToJson(),
+                        ["element"] = ElementPresenter.ToJson(info),
                     });
             }
 
@@ -811,7 +811,7 @@ internal sealed partial class SessionManager
             throw new ToolException(
                 "E_UIA",
                 $"ValuePattern 写值失败: {result.Failure}",
-                new JsonObject { ["ref"] = entry.Ref, ["element"] = info.ToJson() });
+                new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
         }
 
         if (result.Supported && result.ReadOnly)
@@ -843,7 +843,7 @@ internal sealed partial class SessionManager
             throw new ToolException(
                 "E_PATTERN_UNSUPPORTED",
                 "该控件不支持 ValuePattern；如接受切换前台后键入，请显式传 allow_keyboard=true",
-                new JsonObject { ["ref"] = entry.Ref, ["element"] = info.ToJson() });
+                new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
         }
 
         return SetElementValueByKeyboard(
@@ -881,7 +881,7 @@ internal sealed partial class SessionManager
             throw new ToolException(
                 "E_PATTERN_UNSUPPORTED",
                 "该控件不支持 TextPattern/ValuePattern，无法读取文本",
-                new JsonObject { ["ref"] = entry.Ref, ["element"] = handle.Info.ToJson() });
+                new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(handle.Info) });
         }
 
         return new JsonObject
