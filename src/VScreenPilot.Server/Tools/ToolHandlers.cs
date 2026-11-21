@@ -293,7 +293,7 @@ internal sealed partial class McpTransport
         bool allowClick = OptionalBool(arguments, "allow_click", false);
         string? pattern = OptionalString(arguments, "pattern");
 
-        return ToolResponse.Text(_session.InvokeElement(reference, allowClick, pattern));
+        return ToolResponseWriter.FromView(_session.InvokeElement(reference, allowClick, pattern));
     }
 
     private ToolResponse SetElementValue(JsonElement arguments)

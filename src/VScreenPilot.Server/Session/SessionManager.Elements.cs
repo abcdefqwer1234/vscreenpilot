@@ -408,7 +408,7 @@ internal sealed partial class SessionManager
     /* 工具：invoke_element / set_element_value                            */
     /* ------------------------------------------------------------------ */
 
-    public JsonObject InvokeElement(string reference, bool allowClick, string? pattern = null)
+    public InvokeElementView InvokeElement(string reference, bool allowClick, string? pattern = null)
     {
         DisplayInfo display = EnsureEnvironment();
         ElementRefEntry probe = RequireElementEntry(reference);
@@ -438,14 +438,9 @@ internal sealed partial class SessionManager
                     new JsonObject { ["ref"] = probe.Ref });
             }
 
-            return new JsonObject
-            {
-                ["ref"] = probe.Ref,
-                ["method"] = "msaa",
-                ["invoked"] = true,
-                ["verified"] = false,
-                ["refreshed"] = false,
-            };
+            return new InvokeElementView(
+                probe.Ref, "msaa", Invoked: true, Verified: false, ControlType: null,
+                Refreshed: false, Detail: null, Element: null);
         }
 
         UiaElementHandle handle = ResolveElementHandle(reference, display, out ElementRefEntry entry, out bool refreshed);
@@ -503,13 +498,9 @@ internal sealed partial class SessionManager
         if (ok)
         {
             Thread.Sleep(50);
-            return new JsonObject
-            {
-                ["ref"] = entry.Ref,
-                ["method"] = strategy,
-                ["refreshed"] = refreshed,
-                ["element"] = ElementPresenter.ToCompactJson(info),
-            };
+            return new InvokeElementView(
+                entry.Ref, strategy ?? "uia", null, null, null, refreshed, null,
+                ElementPresenter.ToView(info, compact: true));
         }
 
         if (!allowClick)
@@ -543,14 +534,9 @@ internal sealed partial class SessionManager
         }
 
         Thread.Sleep(50);
-        return new JsonObject
-        {
-            ["ref"] = entry.Ref,
-            ["method"] = "message_click",
-            ["refreshed"] = refreshed,
-            ["detail"] = detail,
-            ["element"] = ElementPresenter.ToCompactJson(info),
-        };
+        return new InvokeElementView(
+            entry.Ref, "message_click", null, null, null, refreshed, detail,
+            ElementPresenter.ToView(info, compact: true));
         }
         finally
         {
@@ -580,7 +566,7 @@ internal sealed partial class SessionManager
     /// 显式“打开/默认动作”：聚焦控件后发送 Space+Enter（树节点）或 Enter。
     /// 用于 WinForms 树节点等没有 InvokePattern、只能靠键盘默认动作打开的场景。
     /// </summary>
-    private JsonObject InvokeDefaultAction(
+    private InvokeElementView InvokeDefaultAction(
         DisplayInfo display,
         UiaElementHandle handle,
         ElementRefEntry entry,
@@ -644,14 +630,9 @@ internal sealed partial class SessionManager
             InputInjector.PressKeys("Enter");
             Thread.Sleep(250);
 
-            return new JsonObject
-            {
-                ["ref"] = entry.Ref,
-                ["method"] = "default_action",
-                ["control_type"] = handle.Info.ControlTypeName,
-                ["refreshed"] = refreshed,
-                ["element"] = ElementPresenter.ToJson(handle.Info),
-            };
+            return new InvokeElementView(
+                entry.Ref, "default_action", null, null, handle.Info.ControlTypeName, refreshed, null,
+                ElementPresenter.ToView(handle.Info, compact: false));
         }
         finally
         {
