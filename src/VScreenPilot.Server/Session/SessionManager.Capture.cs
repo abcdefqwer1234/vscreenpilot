@@ -22,11 +22,13 @@ internal sealed partial class SessionManager
         bool storeFrame, double? previewScale) =>
         _capture.CaptureScreenEx(x, y, width, height, scale, savePath, storeFrame, previewScale);
 
+    private readonly ScreenCapture _screenCapture = new();
+
     public (byte[] Bgra, int Width, int Height) CaptureRegion(int x, int y, int width, int height)
     {
         try
         {
-            return ScreenCapture.Capture(x, y, width, height);
+            return _screenCapture.Capture(x, y, width, height);
         }
         catch (InvalidOperationException exception)
         {

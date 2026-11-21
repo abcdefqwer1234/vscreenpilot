@@ -8,21 +8,21 @@ namespace VScreenPilot.Infrastructure;
 /// 进程内轻量指标。没有外部 metrics 依赖，随 get_environment 一起返回。
 /// 计数用 Interlocked，按工具/错误码的字典用 ConcurrentDictionary。
 /// </summary>
-internal static class MetricsRegistry
+internal sealed class MetricsRegistry
 {
-    private static long _calls;
-    private static long _errors;
-    private static long _totalMs;
-    private static long _maxMs;
-    private static long _textBytes;
-    private static long _imageBytes;
-    private static long _snapshotNodes;
-    private static long _ocrCalls;
+    private long _calls;
+    private long _errors;
+    private long _totalMs;
+    private long _maxMs;
+    private long _textBytes;
+    private long _imageBytes;
+    private long _snapshotNodes;
+    private long _ocrCalls;
 
-    private static readonly ConcurrentDictionary<string, long> ByTool = new(StringComparer.Ordinal);
-    private static readonly ConcurrentDictionary<string, long> ByCode = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, long> ByTool = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, long> ByCode = new(StringComparer.Ordinal);
 
-    public static void RecordTool(
+    public void RecordTool(
         string tool, double milliseconds, string? code, bool isError, int text, int image)
     {
         Interlocked.Increment(ref _calls);
@@ -44,12 +44,12 @@ internal static class MetricsRegistry
         ByTool.AddOrUpdate(tool, 1, (_, value) => value + 1);
     }
 
-    public static void RecordSnapshot(int nodes) =>
+    public void RecordSnapshot(int nodes) =>
         Interlocked.Add(ref _snapshotNodes, Math.Max(0, nodes));
 
-    public static void RecordOcr() => Interlocked.Increment(ref _ocrCalls);
+    public void RecordOcr() => Interlocked.Increment(ref _ocrCalls);
 
-    public static JsonObject ToJson()
+    public JsonObject ToJson()
     {
         long calls = Interlocked.Read(ref _calls);
         long totalMs = Interlocked.Read(ref _totalMs);
@@ -85,7 +85,7 @@ internal static class MetricsRegistry
     }
 
     /// <summary>快照为强类型视图；by_tool/by_code 按 Ordinal 排序，保证输出稳定。</summary>
-    public static MetricsView ToView()
+    public MetricsView ToView()
     {
         long calls = Interlocked.Read(ref _calls);
         long totalMs = Interlocked.Read(ref _totalMs);

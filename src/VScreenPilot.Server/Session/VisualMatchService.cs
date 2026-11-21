@@ -102,7 +102,7 @@ internal sealed class VisualMatchService
                 });
         }
 
-        byte[] bgra = ScreenCapture.CapturePixel(px, py);
+        byte[] bgra = _host.CaptureRegion(px, py, 1, 1).Bgra;
 
         return new MatchVisualView(
             Mode: string.Empty,

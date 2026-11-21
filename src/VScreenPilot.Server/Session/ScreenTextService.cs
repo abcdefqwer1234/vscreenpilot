@@ -15,6 +15,7 @@ internal interface IScreenTextHost
     DisplayInfo EnsureDisplay();
     (byte[] Bgra, int Width, int Height) CaptureRegion(int x, int y, int width, int height);
     CancellationToken Cancellation { get; }
+    void RecordOcr();
     ClickView Click(
         int x, int y, string button, int clicks, string mode,
         bool keepForeground = false, bool observe = true, bool fallbackInput = false);
@@ -24,6 +25,7 @@ internal interface IScreenTextHost
 internal sealed class ScreenTextService
 {
     private readonly IScreenTextHost _host;
+    private readonly OcrService _ocr = new();
 
     public ScreenTextService(IScreenTextHost host) => _host = host;
 
@@ -56,7 +58,7 @@ internal sealed class ScreenTextService
 
         try
         {
-            lines = OcrService.Read(
+            lines = _ocr.Read(
                 bgra, captureWidth, captureHeight,
                 out string engine, out string language, query ?? string.Empty,
                 _host.Cancellation);
@@ -179,8 +181,9 @@ internal sealed class ScreenTextService
 
         try
         {
-            lines = OcrService.Read(
+            lines = _ocr.Read(
                 bgra, captureWidth, captureHeight, out _, out _, text, _host.Cancellation);
+            _host.RecordOcr();
         }
         catch (NotSupportedException exception)
         {

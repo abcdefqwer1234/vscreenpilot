@@ -13,12 +13,12 @@ internal sealed record ScreenTextLine(
 /// 不替代 UIA：结果带区域，且必须允许失败。
 /// 中文环境对英文短横线识别很差，因此按查询脚本选择 en-US/中文引擎。
 /// </summary>
-internal static class OcrService
+internal sealed class OcrService
 {
-    private static readonly object Sync = new();
-    private static readonly Dictionary<string, OcrEngine> Engines = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _sync = new();
+    private readonly Dictionary<string, OcrEngine> _engines = new(StringComparer.OrdinalIgnoreCase);
 
-    public static (string Engine, string Language) Describe(bool preferLatin = false)
+    public (string Engine, string Language) Describe(bool preferLatin = false)
     {
         OcrEngine? engine = EnsureEngine(preferLatin, !preferLatin, out string language);
         return engine is null
@@ -26,7 +26,7 @@ internal static class OcrService
             : ("windows-ocr", language);
     }
 
-    public static List<ScreenTextLine> Read(
+    public List<ScreenTextLine> Read(
         byte[] bgra, int width, int height,
         out string engine, out string language, string textHint,
         CancellationToken cancellationToken = default)
@@ -57,7 +57,6 @@ internal static class OcrService
             .AsTask(cancellationToken)
             .GetAwaiter()
             .GetResult();
-        MetricsRegistry.RecordOcr();
         var lines = new List<ScreenTextLine>();
 
         foreach (var line in result.Lines)
@@ -100,9 +99,9 @@ internal static class OcrService
         return lines;
     }
 
-    private static OcrEngine? EnsureEngine(bool preferLatin, bool preferCjk, out string language)
+    private OcrEngine? EnsureEngine(bool preferLatin, bool preferCjk, out string language)
     {
-        lock (Sync)
+        lock (_sync)
         {
             if (preferLatin && TryGet("en-US", preferLatin: true, out OcrEngine? latin, out language))
             {
@@ -132,11 +131,11 @@ internal static class OcrService
         }
     }
 
-    private static bool TryGet(
+    private bool TryGet(
         string? tag, bool preferLatin, out OcrEngine? engine, out string language)
     {        string key = tag ?? "user-profile";
 
-        if (Engines.TryGetValue(key, out OcrEngine? cached))
+        if (_engines.TryGetValue(key, out OcrEngine? cached))
         {
             engine = cached;
             language = cached.RecognizerLanguage?.LanguageTag ?? key;
@@ -156,7 +155,7 @@ internal static class OcrService
                 return false;
             }
 
-            Engines[key] = created;
+            _engines[key] = created;
             engine = created;
             language = created.RecognizerLanguage?.LanguageTag ?? key;
             return true;

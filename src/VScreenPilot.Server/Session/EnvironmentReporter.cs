@@ -16,6 +16,7 @@ namespace VScreenPilot.Session;
 /// <summary>环境诊断视图所需的最小宿主接口。</summary>
 internal interface IEnvironmentHost
 {
+    MetricsRegistry Metrics { get; }
     object Gate { get; }
     VddDevice Vdd { get; }
     bool Initialized { get; }
@@ -295,7 +296,7 @@ internal sealed class EnvironmentReporter
                 Foreground = foregroundView,
                 Cursor = cursorView,
                 Apps = apps,
-                Metrics = MetricsRegistry.ToView(),
+                Metrics = _host.Metrics.ToView(),
             };
         }
 

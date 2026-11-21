@@ -23,6 +23,7 @@ internal interface ISnapshotHost
     ElementRefStore Refs { get; }
     string SnapshotId { get; }
     int RefCapacity { get; }
+    MetricsRegistry Metrics { get; }
     DisplayInfo EnsureDisplay();
     void PruneApps();
     TrackedApp? FindApp(int? pid);
@@ -211,7 +212,7 @@ internal sealed class SnapshotBuilder : IDisposable
                     : result.Pruned > 0 ? "pruned_all" : "uia_busy");
         }
 
-        MetricsRegistry.RecordSnapshot(result.Nodes);
+        _host.Metrics.RecordSnapshot(result.Nodes);
 
         if (maxNodes > Math.Min(1024, _host.RefCapacity))
         {

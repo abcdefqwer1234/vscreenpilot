@@ -1,3 +1,4 @@
+using VScreenPilot.Infrastructure;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
@@ -25,6 +26,8 @@ internal sealed partial class SessionManager : ISnapshotHost
     ElementRefStore ISnapshotHost.Refs => _refs;
 
     string ISnapshotHost.SnapshotId => SnapshotId;
+
+    MetricsRegistry ISnapshotHost.Metrics => Metrics;
 
     int ISnapshotHost.RefCapacity => ElementRefCapacity;
 

@@ -240,7 +240,7 @@ internal sealed class WaitService
 
                 VisualSupport.RequireRegionInDisplay(display, x, y, 1, 1, "color");
 
-                byte[] pixel = Perception.ScreenCapture.CapturePixel(x, y);
+                byte[] pixel = _host.CaptureRegion(x, y, 1, 1).Bgra;
                 int tolerance = GetInt(condition, "tolerance", 10);
                 bool satisfied = VisualSupport.ColorMatches(pixel, 0, r, g, b, tolerance);
 

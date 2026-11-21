@@ -280,6 +280,8 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
 
     public LogRing Log => _log;
 
+    internal MetricsRegistry Metrics { get; } = new();
+
     public bool AllowScript => _allowScript;
 
     public bool Initialized => _display.State.Initialized;
@@ -1109,4 +1111,8 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
     bool ITrackedAppHost.IsOwned(TrackedApp app) => IsOwned(app);
 
     LogRing ITrackedAppHost.Log => _log;
+
+    MetricsRegistry IEnvironmentHost.Metrics => Metrics;
+
+    void IScreenTextHost.RecordOcr() => Metrics.RecordOcr();
 }

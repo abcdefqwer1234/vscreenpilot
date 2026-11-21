@@ -642,7 +642,7 @@ internal sealed partial class McpTransport
             }
         }
 
-        MetricsRegistry.RecordTool(
+        _session.Metrics.RecordTool(
             tool, milliseconds, code, response.IsError, textBytes, imageBytes);
 
         _trace?.ToolCall(tool, requestId, arguments, milliseconds, code, response.IsError,

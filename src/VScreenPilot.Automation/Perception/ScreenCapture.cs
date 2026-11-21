@@ -7,7 +7,7 @@ namespace VScreenPilot.Perception;
 /// 复用 screen DC / memory DC / DIB：旧实现每次调用都新建 3.7MB DIB，
 /// 120 次全屏会产生 ~1.4GB 分配，并显著加剧 IDD 上的性能悬崖。
 /// </summary>
-internal static class ScreenCapture
+internal sealed class ScreenCapture
 {
     private const uint SrcCopy = 0x00CC0020;
     private const uint CaptureBlt = 0x40000000;
@@ -16,10 +16,10 @@ internal static class ScreenCapture
     private static readonly bool IncludeLayered =
         Environment.GetEnvironmentVariable("VSP_CAPTURE_LAYERED") == "1";
 
-    private static readonly object Sync = new();
-    private static readonly Dictionary<(int Width, int Height), Surface> Surfaces = new();
-    private static IntPtr _screenDc;
-    private static IntPtr _pixelDc;
+    private readonly object _sync = new();
+    private readonly Dictionary<(int Width, int Height), Surface> _surfaces = new();
+    private IntPtr _screenDc;
+    private IntPtr _pixelDc;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct BITMAPINFOHEADER
@@ -105,14 +105,14 @@ internal static class ScreenCapture
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool DeleteDC(IntPtr hdc);
 
-    public static (byte[] Bgra, int Width, int Height) Capture(int x, int y, int width, int height)
+    public (byte[] Bgra, int Width, int Height) Capture(int x, int y, int width, int height)
     {
         if (width <= 0 || height <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(width));
         }
 
-        lock (Sync)
+        lock (_sync)
         {
             Surface surface = RentSurface(width, height);
             uint rop = SrcCopy | (IncludeLayered ? CaptureBlt : 0);
@@ -140,9 +140,9 @@ internal static class ScreenCapture
     }
 
     /// <summary>单像素读取：复用同一个 screen DC，避免为 1×1 创建 DIB。</summary>
-    public static byte[] CapturePixel(int x, int y)
+    public byte[] CapturePixel(int x, int y)
     {
-        lock (Sync)
+        lock (_sync)
         {
             IntPtr dc = EnsurePixelDc();
             uint color = GetPixel(dc, x, y);
@@ -172,14 +172,14 @@ internal static class ScreenCapture
     }
 
     /// <summary>显示器切换/驱动重挂后，旧 DC 与 DIB 可能全部失效，必须整体重建。</summary>
-    private static void ResetCachedResources()
+    private void ResetCachedResources()
     {
-        foreach (Surface surface in Surfaces.Values)
+        foreach (Surface surface in _surfaces.Values)
         {
             surface.Dispose();
         }
 
-        Surfaces.Clear();
+        _surfaces.Clear();
 
         if (_screenDc != IntPtr.Zero)
         {
@@ -194,7 +194,7 @@ internal static class ScreenCapture
         }
     }
 
-    private static IntPtr EnsureScreenDc()
+    private IntPtr EnsureScreenDc()
     {
         if (_screenDc == IntPtr.Zero)
         {
@@ -204,7 +204,7 @@ internal static class ScreenCapture
         return _screenDc;
     }
 
-    private static IntPtr EnsurePixelDc()
+    private IntPtr EnsurePixelDc()
     {
         if (_pixelDc == IntPtr.Zero)
         {
@@ -214,23 +214,23 @@ internal static class ScreenCapture
         return _pixelDc;
     }
 
-    private static Surface RentSurface(int width, int height)
+    private Surface RentSurface(int width, int height)
     {
         var key = (width, height);
 
-        if (Surfaces.TryGetValue(key, out Surface? existing))
+        if (_surfaces.TryGetValue(key, out Surface? existing))
         {
             existing.LastUsedTicks = Environment.TickCount64;
             return existing;
         }
 
-        if (Surfaces.Count >= MaxSurfaces)
+        if (_surfaces.Count >= MaxSurfaces)
         {
-            (int Width, int Height) oldestKey = Surfaces
+            (int Width, int Height) oldestKey = _surfaces
                 .OrderBy(pair => pair.Value.LastUsedTicks)
                 .First().Key;
-            Surfaces[oldestKey].Dispose();
-            Surfaces.Remove(oldestKey);
+            _surfaces[oldestKey].Dispose();
+            _surfaces.Remove(oldestKey);
         }
 
         IntPtr screen = EnsureScreenDc();
@@ -283,7 +283,7 @@ internal static class ScreenCapture
             LastUsedTicks = Environment.TickCount64,
         };
 
-        Surfaces[key] = surface;
+        _surfaces[key] = surface;
         return surface;
     }
 }
