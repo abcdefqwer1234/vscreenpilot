@@ -34,7 +34,7 @@ public sealed class ArchitectureFitnessTests
         "VScreenPilot->VScreenPilot.Tests.Contract",
     };
 
-    private const int MaxFileLines = 1555;
+    private const int MaxFileLines = 800;
     private const int MaxUntypedCatch = 37;
     private const int MinTestMethods = 171;
 

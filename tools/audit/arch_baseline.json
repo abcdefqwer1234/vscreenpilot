@@ -1,24 +1,12 @@
 {
-  "generated_at": "2026-11-21T19:35:54Z",
+  "generated_at": "2026-11-21T19:38:48Z",
   "source": {
-    "files": 150,
-    "lines": 30748,
-    "max_file": 1555,
-    "files_gt_600": 9,
-    "files_gt_800": 3,
+    "files": 162,
+    "lines": 31032,
+    "max_file": 759,
+    "files_gt_600": 6,
+    "files_gt_800": 0,
     "top_files": [
-      {
-        "lines": 1555,
-        "path": "src/VScreenPilot.Server/Session/InputRouter.cs"
-      },
-      {
-        "lines": 1246,
-        "path": "src/VScreenPilot.Server/Session/AppLauncher.cs"
-      },
-      {
-        "lines": 944,
-        "path": "src/VScreenPilot.Server/Session/ElementOperations.cs"
-      },
       {
         "lines": 759,
         "path": "src/VScreenPilot.Server/Session/VirtualDisplayController.cs"
@@ -52,8 +40,20 @@
         "path": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs"
       },
       {
+        "lines": 565,
+        "path": "src/VScreenPilot.Server/Session/AppLauncher.Launch.cs"
+      },
+      {
         "lines": 524,
         "path": "src/VScreenPilot.Automation/Perception/TemplateMatcher.cs"
+      },
+      {
+        "lines": 521,
+        "path": "src/VScreenPilot.Server/Ipc/ControlServer.cs"
+      },
+      {
+        "lines": 459,
+        "path": "src/VScreenPilot.Server/Infrastructure/LogRing.cs"
       }
     ]
   },
@@ -66,8 +66,8 @@
     "top": [
       {
         "lines": 542,
-        "path": "src/VScreenPilot.Server/Session/AppLauncher.cs",
-        "line": 60,
+        "path": "src/VScreenPilot.Server/Session/AppLauncher.Launch.cs",
+        "line": 22,
         "name": "Launch"
       },
       {
@@ -96,8 +96,8 @@
       },
       {
         "lines": 289,
-        "path": "src/VScreenPilot.Server/Session/InputRouter.cs",
-        "line": 784,
+        "path": "src/VScreenPilot.Server/Session/InputRouter.Gesture.cs",
+        "line": 26,
         "name": "Gesture"
       },
       {
@@ -126,14 +126,14 @@
       },
       {
         "lines": 201,
-        "path": "src/VScreenPilot.Server/Session/InputRouter.cs",
-        "line": 462,
+        "path": "src/VScreenPilot.Server/Session/InputRouter.Keyboard.cs",
+        "line": 26,
         "name": "TypeText"
       },
       {
         "lines": 201,
-        "path": "src/VScreenPilot.Server/Session/InputRouter.cs",
-        "line": 260,
+        "path": "src/VScreenPilot.Server/Session/InputRouter.Click.cs",
+        "line": 187,
         "name": "Click"
       }
     ]
