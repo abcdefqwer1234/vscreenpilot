@@ -76,7 +76,9 @@ internal sealed class VirtualDisplayController
     {
         DisplayInfo? display = State.VirtualDisplay;
 
-        return display is { Attached: true } && Vdd.IsOpen
+        // 快速路径也必须验证拓扑：外接摘屏后 Attached 可能仍是旧值，
+        // 直接返回会让 capture_screen 在已消失的坐标上截到黑图。
+        return display is { Attached: true } && Vdd.IsOpen && GeometryStillValid(display)
             ? display
             : Ensure();
     }
@@ -483,8 +485,6 @@ internal sealed class VirtualDisplayController
             return true;
         }
 
-        Interlocked.Exchange(ref State.LastGeometryCheckTicks, now);
-
         DisplayInfo? actual = OwnDisplay();
         if (actual is null)
         {
@@ -493,13 +493,17 @@ internal sealed class VirtualDisplayController
         }
 
         (int x, int y) = ExpectedPosition();
+        // Windows/VDD 可能拒绝移动位置，此时已置 PositionFallback；再拿“期望位置”
+        // 比较会让每次快速调用都走完整自愈。回退状态下只校验尺寸与设备存在。
+        bool positionOk = State.PositionFallback || (actual.X == x && actual.Y == y);
         bool matches = actual.Width == _width &&
                        actual.Height == _height &&
-                       actual.X == x &&
-                       actual.Y == y;
+                       positionOk;
 
         if (matches)
         {
+            // 只缓存成功结果；失败时下一次调用立即重试，避免把“已摘屏”缓存成 1 秒有效。
+            Interlocked.Exchange(ref State.LastGeometryCheckTicks, now);
             State.VirtualDisplay = actual;
         }
         else

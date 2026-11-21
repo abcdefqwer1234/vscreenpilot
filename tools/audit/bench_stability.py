@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -156,12 +157,36 @@ def faults(exe: str, cases: list[dict]) -> None:
 
     # 2 外部摘屏
     vdd = os.path.join(os.path.dirname(os.path.dirname(HERE)), "tools", "VddProbe", "bin", "Release", "net10.0-windows", "VddProbe.exe")
-    removed = subprocess.run([vdd, "removeall"], capture_output=True, text=True, timeout=120) if os.path.exists(vdd) else None
+    removed = None
+    if os.path.exists(vdd):
+        # VddProbe 是 apphost exe，必须能找到 .NET 运行时；本地 SDK 常放在
+        # %LOCALAPPDATA%\vsp-dotnet，调用方 PATH 未包含时要显式补 DOTNET_ROOT。
+        env = os.environ.copy()
+        dotnet = shutil.which("dotnet") or os.path.join(
+            os.environ.get("LOCALAPPDATA", ""), "vsp-dotnet", "dotnet.exe")
+        if os.path.exists(dotnet):
+            env.setdefault("DOTNET_ROOT", os.path.dirname(dotnet))
+            env["PATH"] = os.path.dirname(dotnet) + os.pathsep + env.get("PATH", "")
+        removed = subprocess.run(
+            [vdd, "removeall"], capture_output=True, text=True, timeout=120, env=env)
     shot = client.call("capture_screen", {}, 60)
     recovered = client.call("get_environment", {"ensure": True}, 120)
-    cases.append(case("FAULT-02", "外部摘屏后截图报错并可自愈",
-                      (shot.code is not None) and recovered.ok,
-                      code=shot.code, recovered=recovered.ok,
+    recovered_display = (recovered.data or {}).get("virtual_display") or {}
+    baseline = (shot.data or {}).get("baseline") or {}
+    # 与 HOT-01 同一契约：外部摘屏后允许“明确报错”，也允许“自愈后成功”，
+    # 但成功的截图必须来自当前真实虚拟屏，不能停在已消失的旧坐标上。
+    geometry_ok = (
+        bool(recovered_display.get("enabled"))
+        and baseline.get("x") == recovered_display.get("x")
+        and baseline.get("y") == recovered_display.get("y")
+        and baseline.get("width") == recovered_display.get("width")
+        and baseline.get("height") == recovered_display.get("height")
+    )
+    cases.append(case("FAULT-02", "外部摘屏后截图报错或自愈到正确几何",
+                      (shot.code is not None or (shot.ok and geometry_ok)) and recovered.ok,
+                      code=shot.code, recovered=recovered.ok, baseline=baseline,
+                      display={key: recovered_display.get(key)
+                               for key in ("enabled", "x", "y", "width", "height")},
                       vdd_exit=(removed.returncode if removed else None)))
 
     # 3 越界
@@ -204,10 +229,11 @@ def faults(exe: str, cases: list[dict]) -> None:
 
     def worker():
         try:
+            # 25s > wait_for 的 20s，取消被服务端静默丢弃时也能在 join 前结束。
             holder["response"] = client.request("tools/call", {
                 "name": "wait_for",
                 "arguments": {"condition": {"type": "color", "x": 1925, "y": 5, "value": "#FF00FF", "tolerance": 0},
-                              "timeout_ms": 20000}}, 40)
+                              "timeout_ms": 20000}}, 25)
         except TimeoutError:
             holder["timeout"] = True
 
@@ -216,11 +242,12 @@ def faults(exe: str, cases: list[dict]) -> None:
     time.sleep(1.2)
     client.send_line = original  # type: ignore[assignment]
     client.notify("notifications/cancelled", {"requestId": request_id[0], "reason": "fault"})
-    thread.join(20)
+    thread.join(30)
     ping = client.request("ping", {}, 10)
     cases.append(case("FAULT-07", "取消后协议仍可用",
                       ping.get("result") == {} and (holder.get("timeout") or holder.get("response") is not None),
-                      cancelled_response=bool(holder.get("response")), ping=ping.get("result")))
+                      cancelled_response=bool(holder.get("response")), client_timeout=bool(holder.get("timeout")),
+                      ping=ping.get("result")))
     client.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     client.stop()
 
