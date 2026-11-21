@@ -115,10 +115,20 @@ internal sealed class WaitService
     {
         string type = GetString(condition, "type") ?? "element";
 
-        switch (type.ToLowerInvariant())
+        return type.ToLowerInvariant() switch
         {
-            case "element":
-            {
+            "element" => EvaluateElement(condition),
+            "text" => EvaluateText(condition, display),
+            "color" => EvaluateColor(condition, display),
+            "window" => EvaluateWindow(condition),
+            "pixel_diff" => EvaluatePixelDiff(condition, display),
+            "visual" => EvaluateVisual(condition),
+            _ => throw new ToolException("E_INVALID_ARG", $"未知 wait_for 条件类型: {type}"),
+        };
+    }
+
+    private JsonObject EvaluateElement(JsonElement condition)
+    {
                 string? name = GetString(condition, "name");
                 string? controlType = GetString(condition, "control_type");
                 string? automationId = GetString(condition, "automation_id");
@@ -157,10 +167,10 @@ internal sealed class WaitService
                 {
                     return new JsonObject { ["satisfied"] = false, ["reason"] = exception.Message };
                 }
-            }
+    }
 
-            case "text":
-            {
+    private JsonObject EvaluateText(JsonElement condition, DisplayInfo display)
+    {
                 string? needle = GetString(condition, "text");
 
                 if (string.IsNullOrWhiteSpace(needle))
@@ -226,10 +236,10 @@ internal sealed class WaitService
                     ["satisfied"] = false,
                     ["reason"] = candidates.Count == 0 ? "no_target_window" : "uia_text_not_found",
                 };
-            }
+    }
 
-            case "color":
-            {
+    private JsonObject EvaluateColor(JsonElement condition, DisplayInfo display)
+    {
                 int x = GetInt(condition, "x", int.MinValue);
                 int y = GetInt(condition, "y", int.MinValue);
                 string? value = GetString(condition, "value");
@@ -251,10 +261,10 @@ internal sealed class WaitService
                     ["satisfied"] = satisfied,
                     ["actual"] = VisualSupport.ToHex(pixel, 0),
                 };
-            }
+    }
 
-            case "window":
-            {
+    private JsonObject EvaluateWindow(JsonElement condition)
+    {
                 string? title = GetString(condition, "title");
                 string state = GetString(condition, "state") ?? "exists";
                 string scope = (GetString(condition, "scope") ?? "tracked").ToLowerInvariant();
@@ -318,10 +328,10 @@ internal sealed class WaitService
                             ["pid"] = trackedWindow ? window.Pid : null,
                         },
                 };
-            }
+    }
 
-            case "pixel_diff":
-            {
+    private JsonObject EvaluatePixelDiff(JsonElement condition, DisplayInfo display)
+    {
                 if (!condition.TryGetProperty("region", out JsonElement regionElement) ||
                     regionElement.ValueKind != JsonValueKind.Object)
                 {
@@ -356,10 +366,10 @@ internal sealed class WaitService
                     ["threshold"] = threshold,
                     ["baseline_frame_id"] = baseline.Id,
                 };
-            }
+    }
 
-            case "visual":
-            {
+    private JsonObject EvaluateVisual(JsonElement condition)
+    {
                 // 直接复用 match_visual：condition 与 match_visual 参数同构（type 字段会被忽略）。
                 try
                 {
@@ -382,10 +392,5 @@ internal sealed class WaitService
                         ["reason"] = "no_match",
                     };
                 }
-            }
-
-            default:
-                throw new ToolException("E_INVALID_ARG", $"未知 wait_for 条件类型: {type}");
-        }
     }
 }
