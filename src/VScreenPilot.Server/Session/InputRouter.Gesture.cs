@@ -59,10 +59,19 @@ internal sealed partial class InputRouter
                 stage: "input");
         }
 
-        switch (type.ToLowerInvariant())
+        return type.ToLowerInvariant() switch
         {
-            case "drag":
-            {
+            "drag" => GestureDrag(arguments, display, button, duration, observe, useInput, stopwatch, previousForeground),
+            "scroll" => GestureScroll(arguments, display, observe, useInput, stopwatch, previousForeground),
+            "move" => GestureMove(arguments, display, useInput, stopwatch, previousForeground),
+            _ => throw new ToolException("E_INVALID_ARG", $"未知 gesture 类型: {type}"),
+        };
+    }
+
+    private GestureView GestureDrag(
+        JsonElement arguments, DisplayInfo display, string button, int duration, bool observe,
+        bool useInput, Stopwatch stopwatch, IntPtr previousForeground)
+    {
                 (int fromX, int fromY) = GetPoint(arguments, "from")
                     ?? throw new ToolException("E_INVALID_ARG", "drag 需要 from");
                 (int toX, int toY) = GetPoint(arguments, "to")
@@ -148,10 +157,12 @@ internal sealed partial class InputRouter
                 }
 
                 return dragResult;
-            }
+    }
 
-            case "scroll":
-            {
+    private GestureView GestureScroll(
+        JsonElement arguments, DisplayInfo display, bool observe,
+        bool useInput, Stopwatch stopwatch, IntPtr previousForeground)
+    {
                 (int? x, int? y) = GetPoint(arguments, "from") is { } point
                     ? (point.X, point.Y)
                     : ((int?)null, (int?)null);
@@ -253,10 +264,12 @@ internal sealed partial class InputRouter
                 }
 
                 return scrollResult;
-            }
+    }
 
-            case "move":
-            {
+    private GestureView GestureMove(
+        JsonElement arguments, DisplayInfo display, bool useInput,
+        Stopwatch stopwatch, IntPtr previousForeground)
+    {
                 (int toX, int toY) = GetPoint(arguments, "to")
                     ?? throw new ToolException("E_INVALID_ARG", "move 需要 to");
 
@@ -306,11 +319,6 @@ internal sealed partial class InputRouter
                     Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
                     null,
                     null);
-            }
-
-            default:
-                throw new ToolException("E_INVALID_ARG", $"未知 gesture 类型: {type}");
-        }
     }
 
 }

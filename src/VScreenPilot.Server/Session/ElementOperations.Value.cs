@@ -30,68 +30,62 @@ internal sealed partial class ElementOperations
 
         if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaChildId))
         {
-            string? existing = _host.Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
+            return SetMsaaValue(probe, msaaHwnd, msaaChildId, value, allowKeyboard, mode, allowDestructive);
+        }
 
-            if (!string.IsNullOrEmpty(existing) &&
-                !string.Equals(existing, value, StringComparison.Ordinal) &&
-                !allowDestructive)
+        return SetUiaValue(display, reference, value, allowKeyboard, mode, allowDestructive);
+    }
+
+    private SetElementValueView SetMsaaValue(
+        ElementRefEntry probe, IntPtr msaaHwnd, int msaaChildId, string value,
+        bool allowKeyboard, string? mode, bool allowDestructive)
+    {
+        string? existing = _host.Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
+
+        if (!string.IsNullOrEmpty(existing) &&
+            !string.Equals(existing, value, StringComparison.Ordinal) &&
+            !allowDestructive)
+        {
+            throw new ToolException(
+                "E_DESTRUCTIVE_REQUIRED",
+                "MSAA 控件已有内容；覆盖请显式传 allow_destructive=true",
+                new JsonObject { ["ref"] = probe.Ref, ["existing_length"] = existing.Length });
+        }
+
+        if (!_host.Uia.InvokeMsaa(() => MsaaService.SetValue(msaaHwnd, msaaChildId, value)))
+        {
+            if (!allowKeyboard)
             {
                 throw new ToolException(
-                    "E_DESTRUCTIVE_REQUIRED",
-                    "MSAA 控件已有内容；覆盖请显式传 allow_destructive=true",
-                    new JsonObject { ["ref"] = probe.Ref, ["existing_length"] = existing.Length });
+                    "E_PATTERN_UNSUPPORTED",
+                    "MSAA 控件不支持 accValue 写入；可改用 allow_keyboard=true 的键盘路径",
+                    new JsonObject { ["ref"] = probe.Ref });
             }
 
-            if (!_host.Uia.InvokeMsaa(() => MsaaService.SetValue(msaaHwnd, msaaChildId, value)))
+            var bounds = _host.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaChildId));
+
+            if (bounds is null)
             {
-                if (!allowKeyboard)
-                {
-                    throw new ToolException(
-                        "E_PATTERN_UNSUPPORTED",
-                        "MSAA 控件不支持 accValue 写入；可改用 allow_keyboard=true 的键盘路径",
-                        new JsonObject { ["ref"] = probe.Ref });
-                }
-
-                var bounds = _host.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaChildId));
-
-                if (bounds is null)
-                {
-                    throw new ToolException(
-                        "E_ELEMENT_OFFSCREEN",
-                        "MSAA 控件没有可用位置，无法切换到键盘写入",
-                        new JsonObject { ["ref"] = probe.Ref });
-                }
-
-                _host.Click(
-                    bounds.Value.Left + bounds.Value.Width / 2,
-                    bounds.Value.Top + bounds.Value.Height / 2,
-                    "left", 1, "message");
-
-                TypeTextView typed = _host.TypeText(value, null, verify: true, chunkChars: 32, channel: "auto");
-                return new SetElementValueView(
-                    probe.Ref,
-                    "msaa+keyboard",
-                    mode ?? "auto",
-                    Destructive: null,
-                    typed.Verified,
-                    value,
-                    typed.ObservedLength is null ? null : JsonValue.Create(typed.ObservedLength.Value),
-                    Refreshed: false,
-                    Chunks: null,
-                    DurationMs: null,
-                    ObservedLength: null,
-                    Warning: null);
+                throw new ToolException(
+                    "E_ELEMENT_OFFSCREEN",
+                    "MSAA 控件没有可用位置，无法切换到键盘写入",
+                    new JsonObject { ["ref"] = probe.Ref });
             }
 
-            string? observed = _host.Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
+            _host.Click(
+                bounds.Value.Left + bounds.Value.Width / 2,
+                bounds.Value.Top + bounds.Value.Height / 2,
+                "left", 1, "message");
+
+            TypeTextView typed = _host.TypeText(value, null, verify: true, chunkChars: 32, channel: "auto");
             return new SetElementValueView(
                 probe.Ref,
-                "msaa",
+                "msaa+keyboard",
                 mode ?? "auto",
                 Destructive: null,
-                string.Equals(observed, value, StringComparison.Ordinal),
+                typed.Verified,
                 value,
-                observed is null ? null : JsonValue.Create(observed),
+                typed.ObservedLength is null ? null : JsonValue.Create(typed.ObservedLength.Value),
                 Refreshed: false,
                 Chunks: null,
                 DurationMs: null,
@@ -99,6 +93,26 @@ internal sealed partial class ElementOperations
                 Warning: null);
         }
 
+        string? observed = _host.Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
+        return new SetElementValueView(
+            probe.Ref,
+            "msaa",
+            mode ?? "auto",
+            Destructive: null,
+            string.Equals(observed, value, StringComparison.Ordinal),
+            value,
+            observed is null ? null : JsonValue.Create(observed),
+            Refreshed: false,
+            Chunks: null,
+            DurationMs: null,
+            ObservedLength: null,
+            Warning: null);
+    }
+
+    private SetElementValueView SetUiaValue(
+        DisplayInfo display, string reference, string value,
+        bool allowKeyboard, string? mode, bool allowDestructive)
+    {
         using UiaElementHandle handle = _host.Resolver.Resolve(reference, display, out ElementRefEntry entry, out bool refreshed);
         UiaElementInfo info = handle.Info;
 
@@ -106,7 +120,7 @@ internal sealed partial class ElementOperations
         {
             throw new ToolException(
                 "E_ELEMENT_DISABLED",
-                "控件已禁用，拒绝写值",
+                "控件已禁用，拒绝写入",
                 new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
         }
 
@@ -150,7 +164,7 @@ internal sealed partial class ElementOperations
         }
 
         // ValuePattern 的 SetValue 是整值覆盖。mode=insert 在普通控件上走这条路径，
-        // 因此必须先看现有内容：非空且不同就要求显式 allow_destructive，
+        // 因此必须先看现有内容：非空且不同就要求显式 allow_destructive。
         // 避免把“插入”误当成安全操作而静默清空用户已有输入。
         string? existingValue = handle.GetValue();
         bool destructiveInsert = effectiveMode == "insert" &&
@@ -187,7 +201,7 @@ internal sealed partial class ElementOperations
         {
             throw new ToolException(
                 "E_ELEMENT_READONLY",
-                "控件为只读，无法通过 ValuePattern 写值",
+                "控件为只读，无法通过 ValuePattern 写入",
                 new JsonObject { ["ref"] = entry.Ref, ["value"] = result.Value });
         }
 
@@ -220,6 +234,7 @@ internal sealed partial class ElementOperations
         return SetElementValueByKeyboard(
             display, handle, entry, value, refreshed, mode, allowDestructive);
     }
+
 
     private SetElementValueView SetElementValueByKeyboard(
         DisplayInfo display,

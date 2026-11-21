@@ -44,52 +44,12 @@ internal sealed class ElementFinder
         string? role = null,
         string prefer = "auto")
     {
-        IntPtr hwnd = _host.FindApp(pid)?.Hwnd ?? IntPtr.Zero;
-
-        if (hwnd == IntPtr.Zero)
-        {
-            throw new ToolException(
-                "E_NO_TARGET",
-                pid is null
-                    ? "没有已接管的应用窗口，请先 launch_or_place_app"
-                    : $"pid={pid} 不是本会话中存活的应用",
-                new JsonObject { ["pid"] = pid });
-        }
-
+        IntPtr hwnd = ResolveWindow(pid);
         DisplayInfo display = _host.EnsureDisplay();
-
         _host.RequireOnDisplay(display, hwnd, "find_element");
 
         (controlType, automationId) = ApplyRole(role, controlType, automationId);
-
-        UiaNameMatch mode = nameMatch.ToLowerInvariant() switch
-        {
-            "exact" => UiaNameMatch.Exact,
-            "contains" => UiaNameMatch.Contains,
-            "regex" => UiaNameMatch.Regex,
-            _ => throw new ToolException(
-                "E_INVALID_ARG", $"未知 name_match: {nameMatch}（可选 exact/contains/regex）"),
-        };
-
-        string preferMode = (prefer ?? "auto").Trim().ToLowerInvariant();
-
-        if (preferMode is not ("auto" or "first" or "focused" or "largest" or "last"))
-        {
-            throw new ToolException(
-                "E_INVALID_ARG", $"未知 prefer: {prefer}（可选 auto/first/focused/largest/last）");
-        }
-
-        if (mode == UiaNameMatch.Regex && !string.IsNullOrEmpty(name))
-        {
-            try
-            {
-                _ = new Regex(name, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-            }
-            catch (ArgumentException exception)
-            {
-                throw new ToolException("E_INVALID_ARG", $"name 不是合法正则: {exception.Message}");
-            }
-        }
+        (UiaNameMatch mode, string preferMode) = ParseQuery(nameMatch, prefer, name);
 
         int requested = Math.Clamp(all ? maxResults : Math.Max(index + 1, 1), 1, 200);
         // largest/focused 需要尽量完整的候选集；auto/last 只多取少量，避免每次查找都扫全树。
@@ -100,62 +60,8 @@ internal sealed class ElementFinder
             _ => Math.Min(200, Math.Max(requested, 20)),
         };
 
-        List<(UiaElementInfo Info, IntPtr Hwnd)> candidates;
-        bool findTruncated;
-
-        try
-        {
-            (candidates, findTruncated) =
-                FindAcrossAppWindows(hwnd, name, mode, controlType, automationId, limit);
-        }
-        catch (RegexMatchTimeoutException)
-        {
-            throw new ToolException("E_INVALID_ARG", "正则匹配超时，请简化 name");
-        }
-        catch (COMException exception)
-        {
-            throw new ToolException("E_UIA", $"UI Automation 调用失败: {exception.Message}");
-        }
-
-        List<UiaElementInfo> matches = candidates.Select(item => item.Info).ToList();
-
-        if (!includeOffscreen)
-        {
-            matches = matches.Where(item => !item.Offscreen && item.Width > 0 && item.Height > 0).ToList();
-        }
-
-        // UIA 完全看不到时走 MSAA（Office 旧对话框、bosa_sdm_msword 等）。
-        if (matches.Count == 0)
-        {
-            var fallback = new List<(UiaElementInfo Info, IntPtr Hwnd)>();
-            int pidForMsaa = WindowManager.GetProcessId(hwnd);
-
-            foreach (WindowInfo window in WindowManager.ListForProcess(pidForMsaa))
-            {
-                MsaaFindResult msaa = _host.Uia.InvokeMsaa(() => MsaaService.FindElements(
-                    window.Hwnd, name, mode, controlType, limit));
-                fallback.AddRange(msaa.Items.Select(info => (info, window.Hwnd)));
-                findTruncated |= msaa.Truncated;
-
-                if (fallback.Count >= limit)
-                {
-                    break;
-                }
-            }
-
-            if (!includeOffscreen)
-            {
-                fallback = fallback
-                    .Where(item => !item.Info.Offscreen && item.Info.Width > 0 && item.Info.Height > 0)
-                    .ToList();
-            }
-
-            if (fallback.Count > 0)
-            {
-                candidates = fallback;
-                matches = fallback.Select(item => item.Info).ToList();
-            }
-        }
+        (List<(UiaElementInfo Info, IntPtr Hwnd)> candidates, List<UiaElementInfo> matches, bool findTruncated) =
+            FindMatches(hwnd, name, mode, controlType, automationId, limit, includeOffscreen);
 
         if (matches.Count == 0)
         {
@@ -184,22 +90,7 @@ internal sealed class ElementFinder
 
         if (all)
         {
-            var elements = new List<FindElementItemView>();
-
-            foreach (UiaElementInfo item in matches.Take(maxResults))
-            {
-                elements.Add(ElementPresenter.ToFindItem(item, _host.RegisterElement(item, HwndFor(item))));
-            }
-
-            return new FindElementsView(
-                elements.Count,
-                matches.Count,
-                findTruncated || matches.Count > maxResults,
-                nameMatch,
-                role,
-                preferMode,
-                snapshotId,
-                elements);
+            return BuildAllView(matches, maxResults, findTruncated, nameMatch, role, preferMode, snapshotId, HwndFor);
         }
 
         if (index < 0 || index >= matches.Count)
@@ -230,6 +121,157 @@ internal sealed class ElementFinder
             matches.Count,
             findTruncated,
             snapshotId);
+    }
+
+    private IntPtr ResolveWindow(int? pid)
+    {
+        IntPtr hwnd = _host.FindApp(pid)?.Hwnd ?? IntPtr.Zero;
+
+        if (hwnd == IntPtr.Zero)
+        {
+            throw new ToolException(
+                "E_NO_TARGET",
+                pid is null
+                    ? "没有已接管的应用窗口，请先 launch_or_place_app"
+                    : $"pid={pid} 不是本会话中存活的应用",
+                new JsonObject { ["pid"] = pid });
+        }
+
+        return hwnd;
+    }
+
+    private static (UiaNameMatch Mode, string PreferMode) ParseQuery(
+        string nameMatch, string? prefer, string? name)
+    {
+        UiaNameMatch mode = nameMatch.ToLowerInvariant() switch
+        {
+            "exact" => UiaNameMatch.Exact,
+            "contains" => UiaNameMatch.Contains,
+            "regex" => UiaNameMatch.Regex,
+            _ => throw new ToolException(
+                "E_INVALID_ARG", $"未知 name_match: {nameMatch}（可选 exact/contains/regex）"),
+        };
+
+        string preferMode = (prefer ?? "auto").Trim().ToLowerInvariant();
+
+        if (preferMode is not ("auto" or "first" or "focused" or "largest" or "last"))
+        {
+            throw new ToolException(
+                "E_INVALID_ARG", $"未知 prefer: {prefer}（可选 auto/first/focused/largest/last）");
+        }
+
+        if (mode == UiaNameMatch.Regex && !string.IsNullOrEmpty(name))
+        {
+            try
+            {
+                _ = new Regex(name, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+            }
+            catch (ArgumentException exception)
+            {
+                throw new ToolException("E_INVALID_ARG", $"name 不是合法正则: {exception.Message}");
+            }
+        }
+
+        return (mode, preferMode);
+    }
+
+    private (List<(UiaElementInfo Info, IntPtr Hwnd)> Candidates, List<UiaElementInfo> Matches, bool Truncated)
+        FindMatches(
+            IntPtr hwnd, string? name, UiaNameMatch mode, string? controlType,
+            string? automationId, int limit, bool includeOffscreen)
+    {
+        List<(UiaElementInfo Info, IntPtr Hwnd)> candidates;
+        bool findTruncated;
+
+        try
+        {
+            (candidates, findTruncated) =
+                FindAcrossAppWindows(hwnd, name, mode, controlType, automationId, limit);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            throw new ToolException("E_INVALID_ARG", "正则匹配超时，请简化 name");
+        }
+        catch (COMException exception)
+        {
+            throw new ToolException("E_UIA", $"UI Automation 调用失败: {exception.Message}");
+        }
+
+        List<UiaElementInfo> matches = candidates.Select(item => item.Info).ToList();
+
+        if (!includeOffscreen)
+        {
+            matches = matches.Where(item => !item.Offscreen && item.Width > 0 && item.Height > 0).ToList();
+        }
+
+        // UIA 完全看不到时回退 MSAA（Office 旧对话框、bosa_sdm_msword 等）。
+        if (matches.Count == 0)
+        {
+            (candidates, matches, findTruncated) = FindWithMsaa(
+                hwnd, name, mode, controlType, limit, includeOffscreen, findTruncated);
+        }
+
+        return (candidates, matches, findTruncated);
+    }
+
+    private (List<(UiaElementInfo Info, IntPtr Hwnd)> Candidates, List<UiaElementInfo> Matches, bool Truncated)
+        FindWithMsaa(
+            IntPtr hwnd, string? name, UiaNameMatch mode, string? controlType,
+            int limit, bool includeOffscreen, bool findTruncated)
+    {
+        var fallback = new List<(UiaElementInfo Info, IntPtr Hwnd)>();
+        int pidForMsaa = WindowManager.GetProcessId(hwnd);
+
+        foreach (WindowInfo window in WindowManager.ListForProcess(pidForMsaa))
+        {
+            MsaaFindResult msaa = _host.Uia.InvokeMsaa(() => MsaaService.FindElements(
+                window.Hwnd, name, mode, controlType, limit));
+            fallback.AddRange(msaa.Items.Select(info => (info, window.Hwnd)));
+            findTruncated |= msaa.Truncated;
+
+            if (fallback.Count >= limit)
+            {
+                break;
+            }
+        }
+
+        if (!includeOffscreen)
+        {
+            fallback = fallback
+                .Where(item => !item.Info.Offscreen && item.Info.Width > 0 && item.Info.Height > 0)
+                .ToList();
+        }
+
+        List<UiaElementInfo> matches = fallback.Select(item => item.Info).ToList();
+        return (fallback, matches, findTruncated);
+    }
+
+    private object BuildAllView(
+        List<UiaElementInfo> matches,
+        int maxResults,
+        bool findTruncated,
+        string nameMatch,
+        string? role,
+        string preferMode,
+        string snapshotId,
+        Func<UiaElementInfo, IntPtr> hwndFor)
+    {
+        var elements = new List<FindElementItemView>();
+
+        foreach (UiaElementInfo item in matches.Take(maxResults))
+        {
+            elements.Add(ElementPresenter.ToFindItem(item, _host.RegisterElement(item, hwndFor(item))));
+        }
+
+        return new FindElementsView(
+            elements.Count,
+            matches.Count,
+            findTruncated || matches.Count > maxResults,
+            nameMatch,
+            role,
+            preferMode,
+            snapshotId,
+            elements);
     }
 
     /// <summary>

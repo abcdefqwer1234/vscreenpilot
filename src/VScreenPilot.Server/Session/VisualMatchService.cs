@@ -261,57 +261,111 @@ internal sealed class VisualMatchService
     private MatchVisualView MatchTemplate(
         JsonElement arguments, int regionX, int regionY, int width, int height)
     {
-        byte[] png;
+        byte[] png = LoadTemplate(arguments);
+        PngImage image = ReadTemplateImage(png, regionX, regionY, width, height);
 
+        double threshold = Math.Clamp(GetDouble(arguments, "threshold", 0.88), 0.3, 1.0);
+        int maxResults = Math.Clamp(GetInt(arguments, "max_results", 10), 1, 100);
+        bool requireUnique = GetBool(arguments, "require_unique", false);
+
+        (byte[] bgra, int capturedWidth, int capturedHeight) =
+            _host.CaptureRegion(regionX, regionY, width, height);
+
+        List<double> scales = ParseScales(arguments);
+
+        List<VisualMatch> found = TemplateMatcher.MatchMultiScale(
+            bgra,
+            capturedWidth,
+            capturedHeight,
+            image,
+            threshold,
+            maxResults,
+            scales,
+            () => _host.IsCancelled());
+
+        if (found.Count == 0)
+        {
+            throw NoMatch(threshold, image, regionX, regionY, width, height);
+        }
+
+        if (requireUnique && found.Count > 1)
+        {
+            throw MultipleMatches(found, regionX, regionY);
+        }
+
+        double scoreMargin = found.Count > 1
+            ? Math.Round(found[0].Score - found[1].Score, 4)
+            : 1.0;
+
+        List<VisualMatchView> matches = BuildMatches(found, regionX, regionY);
+
+        return new MatchVisualView(
+            Mode: string.Empty,
+            ElapsedMs: 0,
+            Point: null, Color: null, Rgb: null,
+            new OptionalBoundsView(regionX, regionY, width, height),
+            Target: null, Tolerance: null, MinPixels: null, MaxAreaRatio: null,
+            ExcludeBorder: null, MatchedPixels: null,
+            matches.Count,
+            matches,
+            threshold,
+            new TemplateSizeView(image.Width, image.Height),
+            found.Count > 1,
+            scoreMargin);
+    }
+
+    private byte[] LoadTemplate(JsonElement arguments)
+    {
         string? target = GetString(arguments, "target");
 
         if (!string.IsNullOrWhiteSpace(target))
         {
-            png = DecodeBase64Png(target);
+            return DecodeBase64Png(target);
         }
-        else
-        {
-            string? targetPath = GetString(arguments, "target_path");
 
-            if (string.IsNullOrWhiteSpace(targetPath))
+        string? targetPath = GetString(arguments, "target_path");
+
+        if (string.IsNullOrWhiteSpace(targetPath))
+        {
+            throw new ToolException(
+                "E_INVALID_ARG", "template 模式需要 target=Base64 PNG 或 target_path=.png");
+        }
+
+        string fullPath = _host.ValidatePngPath(targetPath, "target_path");
+
+        try
+        {
+            var file = new FileInfo(fullPath);
+
+            if (!file.Exists)
             {
                 throw new ToolException(
-                    "E_INVALID_ARG", "template 模式需要 target=Base64 PNG 或 target_path=.png");
+                    "E_INVALID_ARG", $"模板文件不存在: {fullPath}");
             }
 
-            string fullPath = _host.ValidatePngPath(targetPath, "target_path");
-
-            try
+            if (file.Length > MaxTemplateBytes)
             {
-                var file = new FileInfo(fullPath);
-
-                if (!file.Exists)
-                {
-                    throw new ToolException(
-                        "E_INVALID_ARG", $"模板文件不存在: {fullPath}");
-                }
-
-                if (file.Length > MaxTemplateBytes)
-                {
-                    throw new ToolException(
-                        "E_UNSUPPORTED_IMAGE",
-                        $"模板文件过大: {file.Length} 字节（上限 {MaxTemplateBytes}）",
-                        new JsonObject { ["path"] = fullPath, ["bytes"] = file.Length });
-                }
-
-                png = File.ReadAllBytes(fullPath);
+                throw new ToolException(
+                    "E_UNSUPPORTED_IMAGE",
+                    $"模板文件过大: {file.Length} 字节（上限 {MaxTemplateBytes}）",
+                    new JsonObject { ["path"] = fullPath, ["bytes"] = file.Length });
             }
-            catch (ToolException)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                throw new ToolException("E_IO", $"读取模板失败: {exception.Message}");
-            }
+
+            return File.ReadAllBytes(fullPath);
         }
+        catch (ToolException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new ToolException("E_IO", $"读取模板失败: {exception.Message}");
+        }
+    }
 
-        // 先读 IHDR：超大模板在完整解码前就拒绝，避免几十 MB 的临时分配。
+    /// <summary>先读 IHDR：超大模板在完整解码前就拒绝，避免几十 MB 的临时分配。</summary>
+    private static PngImage ReadTemplateImage(byte[] png, int regionX, int regionY, int width, int height)
+    {
         PngInfo info;
 
         try
@@ -342,11 +396,9 @@ internal sealed class VisualMatchService
                 });
         }
 
-        PngImage image;
-
         try
         {
-            image = PngReader.Decode(png);
+            return PngReader.Decode(png);
         }
         catch (PngFormatException exception)
         {
@@ -355,14 +407,10 @@ internal sealed class VisualMatchService
                 $"模板图片无法解码: {exception.Message}",
                 new JsonObject { ["bytes"] = png.Length });
         }
+    }
 
-        double threshold = Math.Clamp(GetDouble(arguments, "threshold", 0.88), 0.3, 1.0);
-        int maxResults = Math.Clamp(GetInt(arguments, "max_results", 10), 1, 100);
-        bool requireUnique = GetBool(arguments, "require_unique", false);
-
-        (byte[] bgra, int capturedWidth, int capturedHeight) =
-            _host.CaptureRegion(regionX, regionY, width, height);
-
+    private static List<double> ParseScales(JsonElement arguments)
+    {
         var scales = new List<double>();
 
         if (arguments.ValueKind == JsonValueKind.Object &&
@@ -383,54 +431,44 @@ internal sealed class VisualMatchService
             scales.Add(1.0);
         }
 
-        List<VisualMatch> found = TemplateMatcher.MatchMultiScale(
-            bgra,
-            capturedWidth,
-            capturedHeight,
-            image,
-            threshold,
-            maxResults,
-            scales,
-            () => _host.IsCancelled());
+        return scales;
+    }
 
-        if (found.Count == 0)
-        {
-            throw new ToolException(
-                "E_NO_MATCH",
-                "模板在指定区域内未达到阈值",
-                new JsonObject
+    private static ToolException NoMatch(
+        double threshold, PngImage image, int regionX, int regionY, int width, int height) =>
+        new(
+            "E_NO_MATCH",
+            "模板在指定区域内未达到阈值",
+            new JsonObject
+            {
+                ["threshold"] = threshold,
+                ["template"] = new JsonObject
                 {
-                    ["threshold"] = threshold,
-                    ["template"] = new JsonObject
-                    {
-                        ["width"] = image.Width,
-                        ["height"] = image.Height,
-                    },
-                    ["region"] = VisualSupport.RegionJson(regionX, regionY, width, height),
-                });
-        }
+                    ["width"] = image.Width,
+                    ["height"] = image.Height,
+                },
+                ["region"] = VisualSupport.RegionJson(regionX, regionY, width, height),
+            });
 
-        if (requireUnique && found.Count > 1)
-        {
-            throw new ToolException(
-                "E_MULTIPLE_MATCHES",
-                "模板命中多个位置；请缩小 region、提高 threshold，或使用 require_unique=false",
-                new JsonObject
+    private static ToolException MultipleMatches(
+        List<VisualMatch> found, int regionX, int regionY) =>
+        new(
+            "E_MULTIPLE_MATCHES",
+            "模板命中多个位置；请缩小 region、提高 threshold，或使用 require_unique=false",
+            new JsonObject
+            {
+                ["count"] = found.Count,
+                ["matches"] = new JsonArray(found.Take(5).Select(match => (JsonNode)new JsonObject
                 {
-                    ["count"] = found.Count,
-                    ["matches"] = new JsonArray(found.Take(5).Select(match => (JsonNode)new JsonObject
-                    {
-                        ["x"] = regionX + match.X,
-                        ["y"] = regionY + match.Y,
-                        ["score"] = match.Score,
-                    }).ToArray()),
-                });
-        }
+                    ["x"] = regionX + match.X,
+                    ["y"] = regionY + match.Y,
+                    ["score"] = match.Score,
+                }).ToArray()),
+            });
 
-        double scoreMargin = found.Count > 1
-            ? Math.Round(found[0].Score - found[1].Score, 4)
-            : 1.0;
-
+    private static List<VisualMatchView> BuildMatches(
+        List<VisualMatch> found, int regionX, int regionY)
+    {
         var matches = new List<VisualMatchView>();
 
         foreach (VisualMatch match in found)
@@ -449,20 +487,9 @@ internal sealed class VisualMatchService
                 match.Scale));
         }
 
-        return new MatchVisualView(
-            Mode: string.Empty,
-            ElapsedMs: 0,
-            Point: null, Color: null, Rgb: null,
-            new OptionalBoundsView(regionX, regionY, width, height),
-            Target: null, Tolerance: null, MinPixels: null, MaxAreaRatio: null,
-            ExcludeBorder: null, MatchedPixels: null,
-            matches.Count,
-            matches,
-            threshold,
-            new TemplateSizeView(image.Width, image.Height),
-            found.Count > 1,
-            scoreMargin);
+        return matches;
     }
+
 
     private static byte[] DecodeBase64Png(string value)
     {

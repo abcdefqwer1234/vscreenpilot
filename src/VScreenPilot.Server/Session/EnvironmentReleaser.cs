@@ -45,214 +45,252 @@ internal sealed class EnvironmentReleaser
 
     public EnvironmentReleaser(IEnvironmentReleaserHost host) => _host = host;
 
+    private sealed class ReleaseState
+    {
+        public List<int> Closed { get; } = new();
+        public List<int> Restored { get; } = new();
+        public List<int> Forced { get; } = new();
+        public List<int> Kept { get; } = new();
+        public List<int> Saved { get; } = new();
+        public List<int> Discarded { get; } = new();
+        public JsonArray Warnings { get; } = new();
+    }
+
     public ReleaseReport Release(
         bool keepDisplay, string onDirty = "abort", bool allowDataLoss = false,
         bool forceRemoveDisplay = false, bool forceAllClients = false)
     {
         lock (_host.Gate)
         {
-            var closed = new List<int>();
-            var restored = new List<int>();
-            var forced = new List<int>();
-            var kept = new List<int>();
-            var saved = new List<int>();
-            var discarded = new List<int>();
-            var warnings = new JsonArray();
-            bool removed = false;
-
-            onDirty = (onDirty ?? "abort").Trim().ToLowerInvariant();
-
-            if (onDirty is not ("force" or "discard" or "save" or "abort"))
-            {
-                throw new ToolException(
-                    "E_INVALID_ARG",
-                    $"未知 on_dirty: {onDirty}（可选 force/discard/save/abort）");
-            }
-
-            if (onDirty is "force" or "discard" && !allowDataLoss)
-            {
-                throw new ToolException(
-                    "E_DATA_LOSS_REQUIRED",
-                    $"on_dirty={onDirty} 会丢弃未保存内容，需要显式 allow_data_loss=true",
-                    new JsonObject { ["on_dirty"] = onDirty },
-                    retryable: true,
-                    hint: "先保存；确认可丢弃后传 allow_data_loss=true，或改用 on_dirty=save/abort",
-                    stage: "release");
-            }
+            var state = new ReleaseState();
+            onDirty = ValidateOnDirty(onDirty, allowDataLoss);
 
             // 校验通过后再推进代际：一次被拒绝的 release 不应让在途结果作废。
             _host.IncrementEpoch();
 
-            // abort 的语义是“保留未保存窗口”。如果同时摘掉虚拟屏，窗口会被留在
-            // 已不存在的显示器坐标上，因此这里强制保留屏，并明确告知调用方。
-            bool keepDisplayEffective = keepDisplay;
+            bool keepDisplayEffective = ResolveKeepDisplay(
+                keepDisplay, onDirty, forceRemoveDisplay, state.Warnings);
 
-            if (onDirty == "abort" && !keepDisplayEffective)
-            {
-                keepDisplayEffective = true;
-                warnings.Add("on_dirty=abort 需要保留虚拟屏，已忽略 keep_display=false");
-            }
-
-            if (!keepDisplayEffective && _host.ActiveClientCount > 1 && !forceRemoveDisplay)
-            {
-                keepDisplayEffective = true;
-                warnings.Add("其他客户端仍在使用虚拟屏，已忽略 keep_display=false");
-            }
+            bool removed = false;
 
             try
             {
-                IEnumerable<TrackedApp> releaseApps = forceAllClients
-                    ? _host.Apps.Snapshot()
-                    : _host.Apps.Where(_host.IsOwned);
-
-                foreach (TrackedApp app in releaseApps.Reverse().ToList())
-                {
-                    try
-                    {
-                        if (app.Hwnd != IntPtr.Zero && NativeMethods.IsWindow(app.Hwnd))
-                        {
-                            if (app.Owned && app.CloseWindowOnRelease)
-                            {
-                                string outcome = _host.CloseTrackedApp(app, onDirty, out string? warning);
-
-                                switch (outcome)
-                                {
-                                    case "closed":
-                                        closed.Add(app.Pid);
-                                        break;
-                                    case "saved":
-                                        saved.Add(app.Pid);
-                                        closed.Add(app.Pid);
-                                        break;
-                                    case "discarded":
-                                        discarded.Add(app.Pid);
-                                        closed.Add(app.Pid);
-                                        break;
-                                    case "forced":
-                                        forced.Add(app.Pid);
-                                        closed.Add(app.Pid);
-                                        break;
-                                    default:
-                                        kept.Add(app.Pid);
-                                        break;
-                                }
-
-                                if (warning is not null)
-                                {
-                                    warnings.Add(warning);
-                                }
-                            }
-                            else if (app.PlacementSaved)
-                            {
-                                // 接管（非本会话启动）的窗口只归位、不关闭。
-                                WindowManager.SetPlacement(app.Hwnd, app.Placement);
-                                restored.Add(app.Pid);
-                                kept.Add(app.Pid);
-                            }
-
-                            if (app.StartedProcess && app.TempProfile is not null)
-                            {
-                                AppReleaser.KillProcessTreeIfMatches(app.Pid, app.ExePath);
-                                forced.Add(app.Pid);
-                            }
-                        }
-
-                        if (app.TempProfile is not null)
-                        {
-                            // 窗口已关闭但进程可能仍在后台（Edge 常驻），按 exe 路径核对后再杀，
-                            // 避免 PID 复用误杀无关进程。
-                            if (app.StartedProcess &&
-                                (app.Hwnd == IntPtr.Zero || !NativeMethods.IsWindow(app.Hwnd)))
-                            {
-                                AppReleaser.KillProcessTreeIfMatches(app.Pid, app.ExePath);
-                            }
-
-                            AppReleaser.TryDeleteDirectory(app.TempProfile);
-                        }
-                        else if (app.CloseWindowOnRelease && app.DedicatedProcess &&
-                                 app.StartedProcess &&
-                                 (app.Hwnd == IntPtr.Zero || !NativeMethods.IsWindow(app.Hwnd)))
-                        {
-                            // 专用实例的窗口被用户先关掉时，回收可能残留的进程。
-                            AppReleaser.KillProcessTreeIfMatches(app.Pid, app.ExePath);
-                        }
-                    }
-                    catch (ArgumentException)
-                    {
-                        if (app.StartedProcess)
-                        {
-                            closed.Add(app.Pid);
-                        }
-                    }
-                    catch (Exception exception)
-                    {
-                        _host.Log.Warn($"清理应用 {app.Pid} 失败: {exception.Message}");
-                        warnings.Add($"清理 {app.Pid} 失败: {exception.Message}");
-                    }
-                }
+                ReleaseApps(state, onDirty, forceAllClients);
             }
             finally
             {
-                // keep_foreground 可能暂停了焦点护栏；释放时恢复，避免用户前台一直留在虚拟屏。
-                _host.ResumeFocusGuard();
-
-                // abort 的语义是“保留未保存窗口”，因此必须保留跟踪信息：
-                // 否则后续 release 无法关闭/归位这些窗口，虚拟屏上会留下工具看不见的孤儿。
-                if (onDirty != "abort")
-                {
-                    _host.Apps.RemoveAll(app => forceAllClients || _host.IsOwned(app));
-                }
-
-                // 注意：这里已持 _gate；不要再拿 _refGate（Ref 路径的锁顺序是 _refGate -> _gate）。
-                // MCP 层用 session 读写锁保证 release 不与 find/tree 并发。
-                _host.ClearElementRefs(forceAllClients);
-
-                // 基线帧是整屏 BGRA（约 3.7MB）；只清当前客户端的帧，避免 A release 清掉 B 的基线。
-                _host.ClearFrames(forceAllClients);
-
-                _host.ClearInputBlock(forceAllClients);
-
-                if (forceAllClients)
-                {
-                    _host.MarkDisplaySelfHealedFalse();
-                }
-
-                if (keepDisplayEffective)
-                {
-                    // 会话级常驻：只归还窗口/关闭本会话应用，不摘屏，避免再次黑屏。
-                    _host.MarkDisplayInitialized(_host.DisplayAttached);
-                    _host.SaveState();
-                }
-                else
-                {
-                    removed = _host.TryRemoveDisplay();
-                    _host.StopAndDisposeVdd();
-                    
-                    _host.MarkDisplayInitialized(false);
-                    _host.ClearStateStore();
-                }
-
-                _host.Log.Info(
-                    $"环境已释放 (displayRemoved={removed}, kept={keepDisplayEffective})");
+                removed = FinishRelease(state, onDirty, forceAllClients, keepDisplayEffective);
             }
 
             MemoryView memory = _host.TrimIdleMemory("release");
-
-            var closedSet = closed.ToHashSet();
-
-            return new ReleaseReport(
-                Released: true,
-                DisplayRemoved: removed,
-                DisplayKept: keepDisplayEffective,
-                OnDirty: onDirty,
-                RestoredPids: restored.Distinct().ToArray(),
-                ClosedPids: closed.Distinct().ToArray(),
-                ForcedPids: forced.Distinct().ToArray(),
-                KeptPids: kept.Where(pid => !closedSet.Contains(pid)).Distinct().ToArray(),
-                SavedPids: saved.Distinct().ToArray(),
-                DiscardedPids: discarded.Distinct().ToArray(),
-                Memory: memory,
-                Warnings: warnings.Select(item => item!.GetValue<string>()).ToArray());
+            return BuildReport(state, removed, keepDisplayEffective, onDirty, memory);
         }
+    }
+
+    private static string ValidateOnDirty(string? onDirty, bool allowDataLoss)
+    {
+        onDirty = (onDirty ?? "abort").Trim().ToLowerInvariant();
+
+        if (onDirty is not ("force" or "discard" or "save" or "abort"))
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"未知 on_dirty: {onDirty}（可选 force/discard/save/abort）");
+        }
+
+        if (onDirty is "force" or "discard" && !allowDataLoss)
+        {
+            throw new ToolException(
+                "E_DATA_LOSS_REQUIRED",
+                $"on_dirty={onDirty} 会丢弃未保存内容，需要显式 allow_data_loss=true",
+                new JsonObject { ["on_dirty"] = onDirty },
+                retryable: true,
+                hint: "先保存；确认可丢弃后再传 allow_data_loss=true，或改用 on_dirty=save/abort",
+                stage: "release");
+        }
+
+        return onDirty;
+    }
+
+    /// <summary>abort 必须保留虚拟屏；其他客户端仍在使用时也不能摘屏。</summary>
+    private bool ResolveKeepDisplay(
+        bool keepDisplay, string onDirty, bool forceRemoveDisplay, JsonArray warnings)
+    {
+        bool keepDisplayEffective = keepDisplay;
+
+        if (onDirty == "abort" && !keepDisplayEffective)
+        {
+            keepDisplayEffective = true;
+            warnings.Add("on_dirty=abort 需要保留虚拟屏，已忽略 keep_display=false");
+        }
+
+        if (!keepDisplayEffective && _host.ActiveClientCount > 1 && !forceRemoveDisplay)
+        {
+            keepDisplayEffective = true;
+            warnings.Add("其他客户端仍在使用虚拟屏，已忽略 keep_display=false");
+        }
+
+        return keepDisplayEffective;
+    }
+
+    private void ReleaseApps(ReleaseState state, string onDirty, bool forceAllClients)
+    {
+        IEnumerable<TrackedApp> releaseApps = forceAllClients
+            ? _host.Apps.Snapshot()
+            : _host.Apps.Where(_host.IsOwned);
+
+        foreach (TrackedApp app in releaseApps.Reverse().ToList())
+        {
+            try
+            {
+                CloseOrRestoreApp(state, app, onDirty);
+            }
+            catch (ArgumentException)
+            {
+                if (app.StartedProcess)
+                {
+                    state.Closed.Add(app.Pid);
+                }
+            }
+            catch (Exception exception)
+            {
+                _host.Log.Warn($"清理应用 {app.Pid} 失败: {exception.Message}");
+                state.Warnings.Add($"清理 {app.Pid} 失败: {exception.Message}");
+            }
+        }
+    }
+
+    private void CloseOrRestoreApp(ReleaseState state, TrackedApp app, string onDirty)
+    {
+        if (app.Hwnd != IntPtr.Zero && NativeMethods.IsWindow(app.Hwnd))
+        {
+            if (app.Owned && app.CloseWindowOnRelease)
+            {
+                string outcome = _host.CloseTrackedApp(app, onDirty, out string? warning);
+
+                switch (outcome)
+                {
+                    case "closed":
+                        state.Closed.Add(app.Pid);
+                        break;
+                    case "saved":
+                        state.Saved.Add(app.Pid);
+                        state.Closed.Add(app.Pid);
+                        break;
+                    case "discarded":
+                        state.Discarded.Add(app.Pid);
+                        state.Closed.Add(app.Pid);
+                        break;
+                    case "forced":
+                        state.Forced.Add(app.Pid);
+                        state.Closed.Add(app.Pid);
+                        break;
+                    default:
+                        state.Kept.Add(app.Pid);
+                        break;
+                }
+
+                if (warning is not null)
+                {
+                    state.Warnings.Add(warning);
+                }
+            }
+            else if (app.PlacementSaved)
+            {
+                // 接管（非本会话启动）的窗口只归位、不关闭。
+                WindowManager.SetPlacement(app.Hwnd, app.Placement);
+                state.Restored.Add(app.Pid);
+                state.Kept.Add(app.Pid);
+            }
+
+            if (app.StartedProcess && app.TempProfile is not null)
+            {
+                AppReleaser.KillProcessTreeIfMatches(app.Pid, app.ExePath);
+                state.Forced.Add(app.Pid);
+            }
+        }
+
+        if (app.TempProfile is not null)
+        {
+            // 窗口已关闭但进程可能仍在后台（Edge 常驻），按 exe 路径核对后再杀。
+            if (app.StartedProcess &&
+                (app.Hwnd == IntPtr.Zero || !NativeMethods.IsWindow(app.Hwnd)))
+            {
+                AppReleaser.KillProcessTreeIfMatches(app.Pid, app.ExePath);
+            }
+
+            AppReleaser.TryDeleteDirectory(app.TempProfile);
+        }
+        else if (app.CloseWindowOnRelease && app.DedicatedProcess &&
+                 app.StartedProcess &&
+                 (app.Hwnd == IntPtr.Zero || !NativeMethods.IsWindow(app.Hwnd)))
+        {
+            // 专用实例的窗口被用户先关掉时，回收可能残留的进程。
+            AppReleaser.KillProcessTreeIfMatches(app.Pid, app.ExePath);
+        }
+    }
+
+    /// <summary>释放 ref/帧/输入与显示；返回是否真正摘屏。原 finally 语义保持不变。</summary>
+    private bool FinishRelease(
+        ReleaseState state, string onDirty, bool forceAllClients, bool keepDisplayEffective)
+    {
+        bool removed = false;
+
+        // keep_foreground 可能暂停了焦点护栏；释放时恢复，避免用户前台一直留在虚拟屏。
+        _host.ResumeFocusGuard();
+
+        // abort 的语义是“保留未保存窗口”，因此必须保留跟踪信息。
+        if (onDirty != "abort")
+        {
+            _host.Apps.RemoveAll(app => forceAllClients || _host.IsOwned(app));
+        }
+
+        // 注意：这里已持 _gate；不要再进 _refGate（Ref 路径的锁顺序是 _refGate -> _gate）。
+        _host.ClearElementRefs(forceAllClients);
+        _host.ClearFrames(forceAllClients);
+        _host.ClearInputBlock(forceAllClients);
+
+        if (forceAllClients)
+        {
+            _host.MarkDisplaySelfHealedFalse();
+        }
+
+        if (keepDisplayEffective)
+        {
+            _host.MarkDisplayInitialized(_host.DisplayAttached);
+            _host.SaveState();
+        }
+        else
+        {
+            removed = _host.TryRemoveDisplay();
+            _host.StopAndDisposeVdd();
+
+            _host.MarkDisplayInitialized(false);
+            _host.ClearStateStore();
+        }
+
+        _host.Log.Info(
+            $"环境已释放 (displayRemoved={removed}, kept={keepDisplayEffective})");
+        return removed;
+    }
+
+    private static ReleaseReport BuildReport(
+        ReleaseState state, bool removed, bool keepDisplayEffective, string onDirty, MemoryView memory)
+    {
+        var closedSet = state.Closed.ToHashSet();
+
+        return new ReleaseReport(
+            Released: true,
+            DisplayRemoved: removed,
+            DisplayKept: keepDisplayEffective,
+            OnDirty: onDirty,
+            RestoredPids: state.Restored.Distinct().ToArray(),
+            ClosedPids: state.Closed.Distinct().ToArray(),
+            ForcedPids: state.Forced.Distinct().ToArray(),
+            KeptPids: state.Kept.Where(pid => !closedSet.Contains(pid)).Distinct().ToArray(),
+            SavedPids: state.Saved.Distinct().ToArray(),
+            DiscardedPids: state.Discarded.Distinct().ToArray(),
+            Memory: memory,
+            Warnings: state.Warnings.Select(item => item!.GetValue<string>()).ToArray());
     }
 }

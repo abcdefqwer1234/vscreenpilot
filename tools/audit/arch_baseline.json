@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-11-21T19:41:45Z",
+  "generated_at": "2026-11-21T19:48:31Z",
   "source": {
     "files": 163,
-    "lines": 31186,
+    "lines": 31447,
     "max_file": 761,
     "files_gt_600": 6,
     "files_gt_800": 0,
@@ -28,7 +28,7 @@
         "path": "src/VScreenPilot.Server/Session/SnapshotBuilder.cs"
       },
       {
-        "lines": 611,
+        "lines": 638,
         "path": "src/VScreenPilot.Server/Session/VisualMatchService.cs"
       },
       {
@@ -59,10 +59,10 @@
   },
   "methods": {
     "max": 542,
-    "gt_150": 16,
-    "ge_200": 13,
-    "ge_120": 27,
-    "ge_80": 53,
+    "gt_150": 5,
+    "ge_200": 5,
+    "ge_120": 17,
+    "ge_80": 48,
     "top": [
       {
         "lines": 542,
@@ -95,46 +95,46 @@
         "name": "GetEnvironment"
       },
       {
-        "lines": 289,
-        "path": "src/VScreenPilot.Server/Session/InputRouter.Gesture.cs",
-        "line": 26,
-        "name": "Gesture"
-      },
-      {
-        "lines": 277,
-        "path": "src/VScreenPilot.Server/Session/WaitService.cs",
-        "line": 114,
-        "name": "EvaluateCondition"
-      },
-      {
-        "lines": 241,
-        "path": "src/VScreenPilot.Server/Diagnostics/DoctorReportBuilder.cs",
-        "line": 19,
+        "lines": 148,
+        "path": "src/VScreenPilot.Automation/Scripting/ScriptRunner.cs",
+        "line": 35,
         "name": "Run"
       },
       {
-        "lines": 210,
-        "path": "src/VScreenPilot.Server/Session/EnvironmentReleaser.cs",
-        "line": 48,
-        "name": "Release"
+        "lines": 145,
+        "path": "src/VScreenPilot.Server/Ipc/StdioProxy.cs",
+        "line": 16,
+        "name": "TryRun"
       },
       {
-        "lines": 205,
+        "lines": 139,
         "path": "src/VScreenPilot.Server/Session/VisualMatchService.cs",
-        "line": 261,
-        "name": "MatchTemplate"
+        "line": 121,
+        "name": "MatchColor"
       },
       {
-        "lines": 201,
-        "path": "src/VScreenPilot.Server/Session/InputRouter.Keyboard.cs",
-        "line": 26,
-        "name": "TypeText"
+        "lines": 138,
+        "path": "src/VScreenPilot.Server/Session/ElementOperations.Invoke.cs",
+        "line": 25,
+        "name": "InvokeElement"
       },
       {
-        "lines": 201,
-        "path": "src/VScreenPilot.Server/Session/InputRouter.Click.cs",
-        "line": 187,
-        "name": "Click"
+        "lines": 137,
+        "path": "src/VScreenPilot.Automation/Perception/PngReader.cs",
+        "line": 25,
+        "name": "Decode"
+      },
+      {
+        "lines": 132,
+        "path": "src/VScreenPilot.Server/Session/ElementOperations.Value.cs",
+        "line": 239,
+        "name": "SetElementValueByKeyboard"
+      },
+      {
+        "lines": 132,
+        "path": "src/VScreenPilot.Automation/Ui/UiaTreeWalker.cs",
+        "line": 119,
+        "name": "BuildChildren"
       }
     ]
   },

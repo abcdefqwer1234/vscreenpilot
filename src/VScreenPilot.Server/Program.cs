@@ -25,17 +25,7 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
-        Win32.SetProcessDpiAwarenessContext(Win32.DpiAwarenessContextPerMonitorAwareV2);
-
-        try
-        {
-            Console.OutputEncoding = new UTF8Encoding(false);
-        }
-        catch (Exception exception)
-        {
-            // 某些宿主没有可用的控制台编码，不影响 stdio。
-            LogSink.Debug($"忽略异常: {exception.Message}");
-        }
+        ConfigureConsole();
 
         if (HasFlag(args, "--help") || HasFlag(args, "-h"))
         {
@@ -52,8 +42,6 @@ internal static class Program
         bool allowScript = HasFlag(args, "--allow-script") ||
                            EnvFlags.IsTruthy(Environment.GetEnvironmentVariable("VSP_ALLOW_SCRIPT"));
 
-        // 多会话 profile：每个 profile 独立互斥体/状态/日志/追踪目录；输入所有权仍由前台决定。
-        // profile 必须先解析，日志文件名才能带上 profile。
         string? profileFlag = GetOption(args, "--profile");
 
         if (!string.IsNullOrWhiteSpace(profileFlag))
@@ -66,7 +54,6 @@ internal static class Program
         LogSink.Configure(Path.Combine(
             Path.GetDirectoryName(log.FilePath) ?? AppContext.BaseDirectory,
             $"trace-{profile}.log"));
-        TraceLog? trace = null;
 
         string? cliCommand = GetOption(args, "--cli");
         bool cliNeedsLocalSession = false;
@@ -82,17 +69,11 @@ internal static class Program
             return 2;
         }
 
-        if (!string.IsNullOrWhiteSpace(cliCommand))
+        int? cliExit = TryRunCli(args, cliCommand, profile, log, out cliNeedsLocalSession);
+        if (cliExit is not null)
         {
-            int cliExit = ControlInvoker.Run(
-                cliCommand, profile, log, HasFlag(args, "--force"),
-                HasFlag(args, "--ensure"), HasFlag(args, "--all"), out cliNeedsLocalSession);
-
-            if (cliExit >= 0)
-            {
-                log.Dispose();
-                return cliExit;
-            }
+            log.Dispose();
+            return cliExit.Value;
         }
 
         if (HasFlag(args, "--doctor"))
@@ -109,7 +90,6 @@ internal static class Program
             return daemonExit;
         }
 
-        // 已有实例：直接做瘦代理，不构造 SessionManager。
         int? proxyExit = RunProxy(profile, allowScript);
         if (proxyExit is not null)
         {
@@ -117,77 +97,146 @@ internal static class Program
             return proxyExit.Value;
         }
 
-        // 没有 daemon 时优先启动独立 daemon；--cli snapshot/screen 的本地会话不能触发 spawn。
-        if (!cliNeedsLocalSession && !IsMutexHeld(profile))
+        int? spawnedExit = TrySpawnDaemon(profile, log, allowScript, cliNeedsLocalSession);
+        if (spawnedExit is not null)
         {
-            using Process? spawned = DaemonSpawner.TryStart(profile, log);
-
-            if (spawned is not null)
-            {
-                int? attached = AttachToSpawnedDaemon(profile, log, allowScript, spawned);
-                if (attached is not null)
-                {
-                    log.Dispose();
-                    return attached.Value;
-                }
-
-                try
-                {
-                    if (!spawned.HasExited)
-                    {
-                        spawned.Kill(entireProcessTree: true);
-                    }
-                }
-                catch (Exception exception)
-                {
-                    // 子进程可能已自行退出。
-                    LogSink.Debug($"忽略异常: {exception.Message}");
-                }
-            }
+            log.Dispose();
+            return spawnedExit.Value;
         }
 
         var mutex = new MutexGuard();
-
-        if (!mutex.TryAcquire(Profile.MutexName(profile), out string? error))
+        int? busyExit = AcquireMutexOrWait(mutex, profile, log, allowScript);
+        if (busyExit is not null)
         {
-            // 第一个连接与 daemon 启动有竞态：先看 registry 判断是新实例启动还是旧实例。
-            int attempts = 5;
-            InstanceRegistry.Entry? known = new InstanceRegistry(profile).Read();
-
-            if (known is not null &&
-                string.Equals(known.Version, BuildInfo.Version, StringComparison.Ordinal))
-            {
-                attempts = 60;
-            }
-
-            for (int attempt = 0; attempt < attempts; attempt++)
-            {
-                Thread.Sleep(200);
-                proxyExit = RunProxy(profile, allowScript);
-
-                if (proxyExit is not null)
-                {
-                    mutex.Dispose();
-                    log.Dispose();
-                    return proxyExit.Value;
-                }
-            }
-
-            ReportInstanceBusy(profile, error, log);
             mutex.Dispose();
             log.Dispose();
-            return 3;
+            return busyExit.Value;
         }
 
         if (cliNeedsLocalSession)
         {
-            var stateStore = new StateStore(log);
-            var job = new JobObject();
-            var localSession = new SessionManager(log, stateStore, job, allowScript);
-            McpTransport.WireProviders(localSession, log);
-            return LocalSessionInvoker.Run(cliCommand!, args, localSession, log, job, mutex);
+            return RunLocalSession(args, cliCommand!, log, mutex, allowScript);
         }
 
+        return RunHost(args, profile, log, mutex, allowScript);
+    }
+
+    private static void ConfigureConsole()
+    {
+        Win32.SetProcessDpiAwarenessContext(Win32.DpiAwarenessContextPerMonitorAwareV2);
+
+        try
+        {
+            Console.OutputEncoding = new UTF8Encoding(false);
+        }
+        catch (Exception exception)
+        {
+            // 某些宿主没有可用的控制台编码，不影响 stdio。
+            LogSink.Debug($"忽略异常: {exception.Message}");
+        }
+    }
+
+    private static int? TryRunCli(
+        string[] args, string? cliCommand, string profile, LogRing log, out bool cliNeedsLocalSession)
+    {
+        cliNeedsLocalSession = false;
+
+        if (string.IsNullOrWhiteSpace(cliCommand))
+        {
+            return null;
+        }
+
+        int cliExit = ControlInvoker.Run(
+            cliCommand, profile, log, HasFlag(args, "--force"),
+            HasFlag(args, "--ensure"), HasFlag(args, "--all"), out cliNeedsLocalSession);
+
+        return cliExit >= 0 ? cliExit : null;
+    }
+
+    /// <summary>没有 daemon 时优先启动独立 daemon；-cli snapshot/screen 的本地会话不能触发 spawn。</summary>
+    private static int? TrySpawnDaemon(
+        string profile, LogRing log, bool allowScript, bool cliNeedsLocalSession)
+    {
+        if (cliNeedsLocalSession || IsMutexHeld(profile))
+        {
+            return null;
+        }
+
+        using Process? spawned = DaemonSpawner.TryStart(profile, log);
+
+        if (spawned is null)
+        {
+            return null;
+        }
+
+        int? attached = AttachToSpawnedDaemon(profile, log, allowScript, spawned);
+        if (attached is not null)
+        {
+            return attached;
+        }
+
+        try
+        {
+            if (!spawned.HasExited)
+            {
+                spawned.Kill(entireProcessTree: true);
+            }
+        }
+        catch (Exception exception)
+        {
+            // 子进程可能已自行退出。
+            LogSink.Debug($"忽略异常: {exception.Message}");
+        }
+
+        return null;
+    }
+
+    /// <summary>互斥体被占用时等待 daemon 就绪；拿到控制管道就返回代理退出码。</summary>
+    private static int? AcquireMutexOrWait(MutexGuard mutex, string profile, LogRing log, bool allowScript)
+    {
+        if (mutex.TryAcquire(Profile.MutexName(profile), out string? error))
+        {
+            return null;
+        }
+
+        // 第一个连接与 daemon 启动有竞态：先看 registry 判断是新实例启动还是旧实例。
+        int attempts = 5;
+        InstanceRegistry.Entry? known = new InstanceRegistry(profile).Read();
+
+        if (known is not null &&
+            string.Equals(known.Version, BuildInfo.Version, StringComparison.Ordinal))
+        {
+            attempts = 60;
+        }
+
+        for (int attempt = 0; attempt < attempts; attempt++)
+        {
+            Thread.Sleep(200);
+            int? proxyExit = RunProxy(profile, allowScript);
+
+            if (proxyExit is not null)
+            {
+                return proxyExit;
+            }
+        }
+
+        ReportInstanceBusy(profile, error, log);
+        return 3;
+    }
+
+    private static int RunLocalSession(
+        string[] args, string cliCommand, LogRing log, MutexGuard mutex, bool allowScript)
+    {
+        var stateStore = new StateStore(log);
+        var job = new JobObject();
+        var localSession = new SessionManager(log, stateStore, job, allowScript);
+        McpTransport.WireProviders(localSession, log);
+        return LocalSessionInvoker.Run(cliCommand, args, localSession, log, job, mutex);
+    }
+
+    private static int RunHost(
+        string[] args, string profile, LogRing log, MutexGuard mutex, bool allowScript)
+    {
         var registry = new InstanceRegistry(profile);
         InstanceRegistry.Entry entry = InstanceRegistry.Create(profile, ready: false);
         registry.Write(entry);
@@ -196,7 +245,7 @@ internal static class Program
         var appJob = new JobObject();
         var session = new SessionManager(log, appStateStore, appJob, allowScript);
         McpTransport.WireProviders(session, log);
-        trace = new TraceLog();
+        var trace = new TraceLog();
 
         using var host = new ServerHost(
             session, log, trace, registry, appJob, mutex, allowScript);

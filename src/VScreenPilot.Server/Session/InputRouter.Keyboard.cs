@@ -26,24 +26,7 @@ internal sealed partial class InputRouter
     public TypeTextView TypeText(
         string text, int? pid = null, bool verify = true, int chunkChars = 32, string? channel = null)
     {
-        if (text.Length > 100_000)
-        {
-            throw new ToolException(
-                "E_INVALID_ARG",
-                $"type_text 文本过长（{text.Length} 字符，上限 100000）；请分段输入",
-                retryable: false,
-                stage: "input");
-        }
-
-        if (!_host.IsInputDesktopAvailable())
-        {
-            throw new ToolException(
-                "E_NO_INTERACTIVE_DESKTOP",
-                "当前没有可交互桌面（锁屏/安全桌面/Session 0），SendInput 无法注入",
-                retryable: true,
-                hint: "解锁桌面或改用 UIA 语义操作",
-                stage: "input");
-        }
+        ValidateTextRequest(text);
 
         DisplayInfo display = _host.Ensure();
         TrackedApp app = RequireTrackedApp(pid);
@@ -56,126 +39,16 @@ internal sealed partial class InputRouter
 
         try
         {
-            if (!_host.EnsureForeground(app))
-            {
-                throw new ToolException(
-                    "E_FOCUS",
-                    "无法把目标窗口切换到前台，已取消输入以避免打字到用户当前窗口",
-                    retryable: true,
-                    hint: "确认没有模态框禁用主窗口；可改用 click 的消息点击或先关闭弹窗",
-                    stage: "focus");
-            }
+            EnsureForegroundForTyping(app);
 
             try
             {
-                // 前台切换后再取焦点元素：此时才是目标应用内部的焦点控件。
-                // 传入 pid 可避免焦点短暂落在宿主/其他进程时把输入验证对象搞错。
-                using UiaElementHandle? focused = _host.Uia.GetFocusedElementHandle(app.Pid);
+                using UiaElementHandle? focused = FocusedElementInForeground(app);
 
-                // 同进程可能有多个文档窗口/对话框：焦点元素必须落在当前前台窗口内，
-                // 否则宁可中止，也不要把文本打进另一个文档。
-                if (focused is not null &&
-                    !ElementBelongsToWindow(focused.Info, WindowManager.GetForegroundWindow()))
-                {
-                    throw new ToolException(
-                        "E_FOCUS",
-                        "焦点元素不属于当前前台窗口，已取消输入以避免写错文档",
-                        new JsonObject
-                        {
-                            ["target_pid"] = app.Pid,
-                            ["element"] = ElementPresenter.ToJson(focused.Info),
-                        },
-                        retryable: true,
-                        hint: "先 click 目标控件或把目标窗口切到前台",
-                        stage: "focus");
-                }
+                (TextWriteResult write, bool patternUsed, bool useClipboard) = WriteByChannel(
+                    app, focused, text, channel, verify, effectiveChunk, verifyEvery);
 
-                // 长文本逐字符 SendInput 约 3.8ms/字；剪贴板一次性粘贴通常 <200ms。
-                // 代理对（emoji）即使很短也走剪贴板：逐码元 SendInput 在部分应用会丢字符。
-                string mode = (channel ?? "auto").Trim().ToLowerInvariant();
-                bool hasSurrogate = false;
-
-                foreach (char ch in text)
-                {
-                    if (char.IsSurrogate(ch))
-                    {
-                        hasSurrogate = true;
-                        break;
-                    }
-                }
-
-                bool patternUsed = false;
-                bool useClipboard = false;
-                TextWriteResult write;
-
-                if (mode == "pattern")
-                {
-                    if (focused is null)
-                    {
-                        throw new ToolException(
-                            "E_PATTERN_UNSUPPORTED",
-                            "当前焦点控件不可用，无法用 ValuePattern 写入",
-                            retryable: false,
-                            hint: "改用 channel=auto 或 channel=clipboard",
-                            stage: "input");
-                    }
-
-                    UiaSetValueResult set = focused.SetValue(text);
-
-                    if (!set.Supported || set.ReadOnly || set.Failure is not null)
-                    {
-                        throw new ToolException(
-                            "E_PATTERN_UNSUPPORTED",
-                            "控件不支持可写 ValuePattern",
-                            new JsonObject { ["failure"] = set.Failure },
-                            retryable: false,
-                            hint: "改用 channel=auto 或 channel=clipboard",
-                            stage: "input");
-                    }
-
-                    patternUsed = true;
-                    write = new TextWriteResult(
-                        text.Length, Chunks: 1, TextSupported: true,
-                        Verified: string.Equals(set.Value, text, StringComparison.Ordinal),
-                        ObservedLength: set.Value?.Length,
-                        InjectMs: 0, DurationMs: 0);
-                }
-                else
-                {
-                    useClipboard = mode == "clipboard" ||
-                                   (mode == "auto" && (text.Length >= 200 || hasSurrogate));
-
-                    if (useClipboard && ClipboardText.HasNonTextFormats())
-                    {
-                        // 剪贴板里有图片/文件：写文本会永久清掉它们，且无法还原。
-                        if (mode == "clipboard")
-                        {
-                            throw new ToolException(
-                                "E_CLIPBOARD_UNSAFE",
-                                "剪贴板包含非文本内容（图片/文件），写入文本会清空且无法还原",
-                                retryable: false,
-                                hint: "改用 channel=auto/keys（SendInput），或先让用户备份剪贴板",
-                                stage: "input");
-                        }
-
-                        useClipboard = false;
-                    }
-
-                    if (useClipboard)
-                    {
-                        write = WriteTextViaClipboard(focused, text);
-                    }
-                    else
-                    {
-                        write = verify
-                            ? WriteTextVerified(
-                                app, focused, text, replace: false, timeoutMs: 10000,
-                                chunkChars: effectiveChunk, verifyEveryChunks: verifyEvery)
-                            : WriteTextUnverified(app, focused, text);
-                    }
-                }
-
-                // 写入前焦点控件偶发不可用（UWP/新版记事本）；写完后再取一次补校验，
+                // 写入前焦点控件偶发不可用（UWP/新版记事本）；写完后再取一次补校验。
                 // 避免“内容其实写对了，但 verified 永远是 false”。
                 if (!write.Verified && verify && focused is null && !patternUsed && !useClipboard)
                 {
@@ -224,6 +97,148 @@ internal sealed partial class InputRouter
             _host.ResumeFocusGuard();
         }
     }
+
+    private void ValidateTextRequest(string text)
+    {
+        if (text.Length > 100_000)
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"type_text 文本过长（{text.Length} 字符，上限 100000）；请分段输入",
+                retryable: false,
+                stage: "input");
+        }
+
+        if (!_host.IsInputDesktopAvailable())
+        {
+            throw new ToolException(
+                "E_NO_INTERACTIVE_DESKTOP",
+                "当前没有可交互桌面（锁屏/安全桌面/Session 0），SendInput 无法注入",
+                retryable: true,
+                hint: "解锁桌面或改用 UIA 语义操作",
+                stage: "input");
+        }
+    }
+
+    private void EnsureForegroundForTyping(TrackedApp app)
+    {
+        if (!_host.EnsureForeground(app))
+        {
+            throw new ToolException(
+                "E_FOCUS",
+                "无法把目标窗口切换到前台，已取消输入以避免打字到用户当前窗口",
+                retryable: true,
+                hint: "确认没有模态框禁用主窗口；可改用 click 的消息点击或先关闭弹窗",
+                stage: "focus");
+        }
+    }
+
+    /// <summary>前台切换后再取焦点元素；同进程多窗口时，焦点必须落在当前前台窗口内。</summary>
+    private UiaElementHandle? FocusedElementInForeground(TrackedApp app)
+    {
+        UiaElementHandle? focused = _host.Uia.GetFocusedElementHandle(app.Pid);
+
+        if (focused is not null &&
+            !ElementBelongsToWindow(focused.Info, WindowManager.GetForegroundWindow()))
+        {
+            UiaElementInfo info = focused.Info;
+            focused.Dispose();
+            throw new ToolException(
+                "E_FOCUS",
+                "焦点元素不属于当前前台窗口，已取消输入以避免写错文档",
+                new JsonObject
+                {
+                    ["target_pid"] = app.Pid,
+                    ["element"] = ElementPresenter.ToJson(info),
+                },
+                retryable: true,
+                hint: "先 click 目标控件或把目标窗口切到前台",
+                stage: "focus");
+        }
+
+        return focused;
+    }
+
+    private (TextWriteResult Write, bool PatternUsed, bool UseClipboard) WriteByChannel(
+        TrackedApp app, UiaElementHandle? focused, string text, string? channel,
+        bool verify, int effectiveChunk, int verifyEvery)
+    {
+        string mode = (channel ?? "auto").Trim().ToLowerInvariant();
+        bool hasSurrogate = text.Any(char.IsSurrogate);
+        bool patternUsed = false;
+        bool useClipboard = false;
+        TextWriteResult write;
+
+        if (mode == "pattern")
+        {
+            if (focused is null)
+            {
+                throw new ToolException(
+                    "E_PATTERN_UNSUPPORTED",
+                    "当前焦点控件不可用，无法用 ValuePattern 写入",
+                    retryable: false,
+                    hint: "改用 channel=auto 或 channel=clipboard",
+                    stage: "input");
+            }
+
+            UiaSetValueResult set = focused.SetValue(text);
+
+            if (!set.Supported || set.ReadOnly || set.Failure is not null)
+            {
+                throw new ToolException(
+                    "E_PATTERN_UNSUPPORTED",
+                    "控件不支持可用 ValuePattern",
+                    new JsonObject { ["failure"] = set.Failure },
+                    retryable: false,
+                    hint: "改用 channel=auto 或 channel=clipboard",
+                    stage: "input");
+            }
+
+            patternUsed = true;
+            write = new TextWriteResult(
+                text.Length, Chunks: 1, TextSupported: true,
+                Verified: string.Equals(set.Value, text, StringComparison.Ordinal),
+                ObservedLength: set.Value?.Length,
+                InjectMs: 0, DurationMs: 0);
+        }
+        else
+        {
+            useClipboard = mode == "clipboard" ||
+                           (mode == "auto" && (text.Length >= 200 || hasSurrogate));
+
+            if (useClipboard && ClipboardText.HasNonTextFormats())
+            {
+                // 剪贴板里有图片/文件：写文本会永久清掉它们，且无法还原。
+                if (mode == "clipboard")
+                {
+                    throw new ToolException(
+                        "E_CLIPBOARD_UNSAFE",
+                        "剪贴板包含非文本内容（图片/文件），写入文本会清空且无法还原",
+                        retryable: false,
+                        hint: "改用 channel=auto/keys（SendInput），或先让用户备份剪贴板",
+                        stage: "input");
+                }
+
+                useClipboard = false;
+            }
+
+            if (useClipboard)
+            {
+                write = WriteTextViaClipboard(focused, text);
+            }
+            else
+            {
+                write = verify
+                    ? WriteTextVerified(
+                        app, focused, text, replace: false, timeoutMs: 10000,
+                        chunkChars: effectiveChunk, verifyEveryChunks: verifyEvery)
+                    : WriteTextUnverified(app, focused, text);
+            }
+        }
+
+        return (write, patternUsed, useClipboard);
+    }
+
 
     public PressKeysView PressKeys(
         string keys, bool keepForeground = false, int? pid = null,

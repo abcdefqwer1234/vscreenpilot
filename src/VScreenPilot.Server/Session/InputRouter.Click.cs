@@ -207,12 +207,7 @@ internal sealed partial class InputRouter
 
         if (mode == "input" && !_host.IsInputDesktopAvailable())
         {
-            throw new ToolException(
-                "E_NO_INTERACTIVE_DESKTOP",
-                "当前没有可交互桌面（锁屏/安全桌面/Session 0），SendInput 无法注入",
-                retryable: true,
-                hint: "解锁桌面或改用 UIA 语义操作",
-                stage: "input");
+            throw NoInteractiveDesktop();
         }
 
         TrackedApp app = _host.RequirePointInTrackedApp(display, x, y, "click");
@@ -222,134 +217,19 @@ internal sealed partial class InputRouter
             ? _host.CaptureSignature(display, x - 60, y - 60, 120, 120)
             : null;
 
-        string method;
-        string? detail = null;
         var stopwatch = Stopwatch.StartNew();
         IntPtr previousForeground = WindowManager.GetForegroundWindow();
 
         if (keepForeground)
         {
             // 菜单/弹出层需要连续操作时，暂时冻结焦点护栏；租约到期后自动恢复，
-            // 避免异常路径或 agent 不再调用工具时永久关闭护栏。
+            // 避免异常路径上 agent 不再调用工具时永久关闭护栏。
             _host.PauseFocusGuard(30000);
         }
 
         bool canUseUia = button.Equals("left", StringComparison.OrdinalIgnoreCase) && clicks == 1;
-
-        switch (mode)
-        {
-            case "input":
-            {
-                _host.PauseCursor();
-                _host.PauseFocusGuard();
-                try
-                {
-                    InputInjector.Click(x, y, button, clicks);
-                }
-                finally
-                {
-                    _host.ResumeCursor();
-
-                    if (!keepForeground)
-                    {
-                        _host.ResumeFocusGuard();
-                    }
-                }
-
-                method = "input";
-                break;
-            }
-
-            case "uia":
-            {
-                if (!canUseUia)
-                {
-                    throw new ToolException("E_INVALID_ARG", "UIA 模式仅支持左键单击");
-                }
-
-                if (!TryUiaInvoke(x, y, app.Pid))
-                {
-                    throw new ToolException(
-                        "E_INPUT_UNSUPPORTED",
-                        "该坐标没有 UIA InvokePattern，无法在不移动光标的前提下点击");
-                }
-
-                method = "uia";
-                break;
-            }
-
-            case "message":
-            {
-                RejectNonClientArea(app, x, y, "message");
-
-                if (!MessageInput.Click(x, y, button, clicks, out detail))
-                {
-                    throw new ToolException(
-                        "E_INPUT_UNSUPPORTED",
-                        "窗口消息注入失败",
-                        new JsonObject { ["detail"] = detail });
-                }
-
-                method = "message";
-                break;
-            }
-
-            case "auto":
-            default:
-            {
-                if (canUseUia && TryUiaInvoke(x, y, app.Pid))
-                {
-                    method = "uia";
-                }
-                else if (!IsNonClientPoint(app.Hwnd, x, y) &&
-                         MessageInput.Click(x, y, button, clicks, out detail))
-                {
-                    method = "message";
-                }
-                else if (allowInputFallback)
-                {
-                    // fallback 也要检查交互桌面：锁屏/安全桌面下 SendInput 只会得到
-                    // 模糊的 E_INPUT，提前给出 E_NO_INTERACTIVE_DESKTOP 更有用。
-                    if (!_host.IsInputDesktopAvailable())
-                    {
-                        throw new ToolException(
-                            "E_NO_INTERACTIVE_DESKTOP",
-                            "当前没有可交互桌面（锁屏/安全桌面/Session 0），SendInput 无法注入",
-                            retryable: true,
-                            hint: "解锁桌面或改用 UIA 语义操作",
-                            stage: "input");
-                    }
-
-                    _host.PauseCursor();
-                    _host.PauseFocusGuard();
-
-                    try
-                    {
-                        InputInjector.Click(x, y, button, clicks);
-                    }
-                    finally
-                    {
-                        _host.ResumeCursor();
-
-                        if (!keepForeground)
-                        {
-                            _host.ResumeFocusGuard();
-                        }
-                    }
-
-                    method = "input-fallback";
-                }
-                else
-                {
-                    throw new ToolException(
-                        "E_INPUT_UNSUPPORTED",
-                        "无法在不移动光标的前提下点击；如接受光标跳变，请显式使用 mode=\"input\" 或 fallback_input=true",
-                        new JsonObject { ["detail"] = detail });
-                }
-
-                break;
-            }
-        }
+        string method = InjectClick(
+            app, x, y, button, clicks, mode, keepForeground, allowInputFallback, canUseUia, out string? detail);
 
         double injectMs = stopwatch.Elapsed.TotalMilliseconds;
 
@@ -385,5 +265,117 @@ internal sealed partial class InputRouter
                 ? "消息点击可能被部分应用忽略，请用 wait_for/assert_region 验证"
                 : null);
     }
+
+    private static ToolException NoInteractiveDesktop() =>
+        new(
+            "E_NO_INTERACTIVE_DESKTOP",
+            "当前没有可交互桌面（锁屏/安全桌面/Session 0），SendInput 无法注入",
+            retryable: true,
+            hint: "解锁桌面或改用 UIA 语义操作",
+            stage: "input");
+
+    private string InjectClick(
+        TrackedApp app, int x, int y, string button, int clicks, string mode,
+        bool keepForeground, bool allowInputFallback, bool canUseUia, out string? detail)
+    {
+        detail = null;
+
+        switch (mode)
+        {
+            case "input":
+                InjectInput(x, y, button, clicks, keepForeground);
+                return "input";
+
+            case "uia":
+                if (!canUseUia)
+                {
+                    throw new ToolException("E_INVALID_ARG", "UIA 模式仅支持左键单击");
+                }
+
+                if (!TryUiaInvoke(x, y, app.Pid))
+                {
+                    throw new ToolException(
+                        "E_INPUT_UNSUPPORTED",
+                        "该坐标没有 UIA InvokePattern，无法在不移动光标的前提下点击");
+                }
+
+                return "uia";
+
+            case "message":
+                RejectNonClientArea(app, x, y, "message");
+
+                if (!MessageInput.Click(x, y, button, clicks, out detail))
+                {
+                    throw new ToolException(
+                        "E_INPUT_UNSUPPORTED",
+                        "窗口消息注入失败",
+                        new JsonObject { ["detail"] = detail });
+                }
+
+                return "message";
+
+            case "auto":
+            default:
+                return InjectAuto(app, x, y, button, clicks, keepForeground, allowInputFallback,
+                    canUseUia, out detail);
+        }
+    }
+
+    private string InjectAuto(
+        TrackedApp app, int x, int y, string button, int clicks,
+        bool keepForeground, bool allowInputFallback, bool canUseUia, out string? detail)
+    {
+        detail = null;
+
+        if (canUseUia && TryUiaInvoke(x, y, app.Pid))
+        {
+            return "uia";
+        }
+
+        if (!IsNonClientPoint(app.Hwnd, x, y) &&
+            MessageInput.Click(x, y, button, clicks, out detail))
+        {
+            return "message";
+        }
+
+        if (!allowInputFallback)
+        {
+            throw new ToolException(
+                "E_INPUT_UNSUPPORTED",
+                "无法在不移动光标的前提下点击；如接受光标跳变，请显式使用 mode=\"input\" 或 fallback_input=true",
+                new JsonObject { ["detail"] = detail });
+        }
+
+        // fallback 也要检查交互桌面：锁屏/安全桌面上 SendInput 只会得到
+        // 模糊的 E_INPUT，提前给出 E_NO_INTERACTIVE_DESKTOP 更有用。
+        if (!_host.IsInputDesktopAvailable())
+        {
+            throw NoInteractiveDesktop();
+        }
+
+        InjectInput(x, y, button, clicks, keepForeground);
+        return "input-fallback";
+    }
+
+    private void InjectInput(int x, int y, string button, int clicks, bool keepForeground)
+    {
+        _host.PauseCursor();
+        _host.PauseFocusGuard();
+
+        try
+        {
+            InputInjector.Click(x, y, button, clicks);
+        }
+        finally
+        {
+            _host.ResumeCursor();
+
+            if (!keepForeground)
+            {
+                _host.ResumeFocusGuard();
+            }
+        }
+    }
+
 
 }

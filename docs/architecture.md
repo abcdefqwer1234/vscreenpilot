@@ -109,7 +109,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 ## 8. 已知债务与 R3
 
 - 6 个文件 >600：`VirtualDisplayController` 759、`SessionManager.cs` 746、`McpTransport` 721、`ToolHandlers` 659、`SnapshotBuilder` 645、`VisualMatchService` 609（R2-3 已拆 `InputRouter`/`AppLauncher`/`ElementOperations`）。
-- 14 个方法 >150，最大 `AppLauncher.Launch` 542；25 个 ≥120（R2-4 已拆 2 个，剩余清单见执行报告）。
+- 5 个方法 >150，最大 `AppLauncher.Launch` 542；17 个 ≥120（R2-4 已拆 11 个，剩余清单见执行报告）。
 - 无类型 `catch` 37 处（其中无日志 34 处）；83 处宽捕获只写 `Debug.WriteLine`。
 - 18 个组件只有 5 个有直接单测；编排主要靠 Python 审计。
 - SPLIT 命名空间已在 R2-2 清零；`ToolContext` 仍持有门面；`Program`/`ServerHost` 双 wiring。
