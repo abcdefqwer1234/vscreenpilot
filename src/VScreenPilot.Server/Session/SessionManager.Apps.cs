@@ -1,10 +1,10 @@
-using System.Text.Json.Nodes;
+using VScreenPilot.Views;
 
 namespace VScreenPilot.Session;
 
 internal sealed partial class SessionManager
 {
-    public JsonObject LaunchOrPlaceApp(
+    public LaunchOrPlaceView LaunchOrPlaceApp(
         string? path,
         string? windowTitle,
         string? arguments,

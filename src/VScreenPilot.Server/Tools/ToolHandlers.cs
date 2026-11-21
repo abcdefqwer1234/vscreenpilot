@@ -36,7 +36,7 @@ internal sealed partial class McpTransport
         bool newInstance = OptionalBool(arguments, "new_instance", true);
         int? pid = OptionalNullableInt(arguments, "pid");
 
-        return ToolResponse.Text(
+        return ToolResponseWriter.FromView(
             _session.LaunchOrPlaceApp(
                 path, window, args, waitMs, newInstance,
                 OptionalBool(arguments, "ensure_document", true), pid));

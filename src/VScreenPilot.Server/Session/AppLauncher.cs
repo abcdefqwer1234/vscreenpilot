@@ -9,6 +9,7 @@ using VScreenPilot.Mcp;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
+using VScreenPilot.Views;
 
 namespace VScreenPilot.Session;
 
@@ -52,7 +53,7 @@ internal sealed class AppLauncher
         _gate = host.Gate;
     }
 
-    public JsonObject Launch(
+    public LaunchOrPlaceView Launch(
         string? path,
         string? windowTitle,
         string? arguments,
@@ -441,7 +442,7 @@ internal sealed class AppLauncher
         WindowInfo? after = WindowManager.FromHandle(window.Hwnd);
         _host.SaveState();
 
-        var warnings = new JsonArray();
+        var warnings = new List<string>();
 
         if (launchWarning is not null)
         {
@@ -563,64 +564,36 @@ internal sealed class AppLauncher
             documentReason = "not_modeled";
         }
 
-        var result = new JsonObject
-        {
-            ["launched"] = started,
-            ["new_instance"] = newInstance,
-            ["reused"] = !started,
-            ["maximized"] = maximized,
-            ["close_on_release"] = tracked?.CloseWindowOnRelease ?? closeOnRelease,
-            ["hwnd"] = window.Hwnd.ToInt64(),
-            ["pid"] = window.Pid,
-            ["title"] = after?.Title ?? window.Title,
-            ["document_ready"] = documentReady is null ? null : JsonValue.Create(documentReady.Value),
-            ["document_ready_reason"] = documentReason,
-            ["ensure_document"] = ensureDocument,
-            ["bounds"] = after is null
-                ? new JsonObject()
-                : new JsonObject
-                {
-                    ["x"] = after.Rect.Left,
-                    ["y"] = after.Rect.Top,
-                    ["width"] = after.Width,
-                    ["height"] = after.Height,
-                },
-        };
-
-        if (warnings.Count > 0)
-        {
-            result["warnings"] = warnings;
-        }
-
-        if (tempProfile is not null)
-        {
-            result["profile"] = tempProfile;
-        }
-
-        if (!newInstance && hadRunningInstance)
-        {
-            result["hint"] = tracked?.CloseWindowOnRelease == true
-                ? "已复用本会话已启动的窗口；release_environment 会关闭它"
-                : "已接管现有窗口；关闭调试后只归位、不关闭该应用";
-        }
-
-        // 接管时就把“主窗口之外的 owned 窗口”暴露出来：Office 的自定义对话框、
-        // 经典 #32770、#32768 菜单都不在主窗口 UIA 树里，模型需要先知道它们存在。
-        var dialogs = new JsonArray();
+        var dialogs = new List<LaunchDialogView>();
 
         foreach (WindowInfo dialog in WindowManager.ListOwnedWindows(window.Pid, window.Hwnd))
         {
-            dialogs.Add((JsonNode)new JsonObject
-            {
-                ["hwnd"] = dialog.Hwnd.ToInt64(),
-                ["title"] = dialog.Title,
-                ["class"] = dialog.ClassName,
-            });
+            dialogs.Add(new LaunchDialogView(dialog.Hwnd.ToInt64(), dialog.Title, dialog.ClassName));
         }
 
-        result["dialogs"] = dialogs;
-
-        return result;
+        return new LaunchOrPlaceView(
+            started,
+            newInstance,
+            !started,
+            maximized,
+            tracked?.CloseWindowOnRelease ?? closeOnRelease,
+            window.Hwnd.ToInt64(),
+            window.Pid,
+            after?.Title ?? window.Title,
+            documentReady,
+            documentReason,
+            ensureDocument,
+            after is null
+                ? new OptionalBoundsView(null, null, null, null)
+                : new OptionalBoundsView(after.Rect.Left, after.Rect.Top, after.Width, after.Height),
+            warnings.Count > 0 ? warnings : null,
+            tempProfile,
+            !newInstance && hadRunningInstance
+                ? tracked?.CloseWindowOnRelease == true
+                    ? "已复用本会话已启动的窗口；release_environment 会关闭它"
+                    : "已接管现有窗口；关闭调试后只归位、不关闭该应用"
+                : null,
+            dialogs);
     }
 
     private bool WaitForWordDocument(IntPtr hwnd, int timeoutMs)
