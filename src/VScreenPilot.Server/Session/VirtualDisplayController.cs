@@ -129,250 +129,16 @@ internal sealed class VirtualDisplayController
 
             bool configured = false;
             bool displayAdded = false;
-            string? targetDevice = null;
             DisplayInfo? existing = OwnDisplay();
 
-            if (existing is null)
-            {
-                DisplayInfo? attached = DisplayTopology.FindParsecDisplay();
+            existing = AdoptOrphanIfNeeded(existing, ref configured, ref displayAdded, ref selfHealReason);
+            existing = ReconcileExisting(ref existing, ref configured, ref displayAdded, ref selfHealReason);
 
-                // 已经有其他 live profile 认领的屏不能接管；否则会抢别人的屏。
-                if (attached is not null && !IsDisplayOwnedByOther(attached.DeviceName))
-                {
-                    bool matchesRecovered = !string.IsNullOrWhiteSpace(State.RecoveredDevice) &&
-                                            string.Equals(
-                                                attached.DeviceName,
-                                                State.RecoveredDevice,
-                                                StringComparison.OrdinalIgnoreCase);
-
-                    // 不认领“来源不明”的屏；只有自己的崩溃 state 匹配才允许。
-                    // 另一个 profile 正在启动（registry 已存在但 display_device 还没写）时，
-                    // 不要抢它的屏，也不要直接失败，直接申请一块新的。
-                    if (matchesRecovered)
-                    {
-                        existing = attached;
-                    }
-                    else if (HasOtherLiveProfile())
-                    {
-                        existing = null;
-                    }
-                    else if (!string.Equals(_profile, "default", StringComparison.Ordinal))
-                    {
-                        throw new ToolException(
-                            "E_ORPHAN_DISPLAY",
-                            "检测到未归属的虚拟显示器；非默认 profile 不自动接管，避免抢其他 profile 的屏",
-                            new JsonObject
-                            {
-                                ["display"] = attached.ToString(),
-                                ["profile"] = _profile,
-                            },
-                            retryable: true,
-                            hint: "确认该屏无人使用后手动摘除，或使用默认 profile/独立 VM",
-                            stage: "display");
-                    }
-                    else
-                    {
-                        existing = attached;
-                    }
-                }
-            }
-
-            if (existing is not null && State.Index < 0)
-            {
-                if (State.RecoveredIndex >= 0)
-                {
-                    _log.Warn(
-                        $"检测到孤儿虚拟屏，按上次记录接管 " +
-                        $"(index={State.RecoveredIndex}, device={State.RecoveredDevice}, " +
-                        $"pid={State.RecoveredPid})");
-                    State.Index = State.RecoveredIndex;
-                    configured = TryActivateDisplay(existing.DeviceName, out string? adoptFailure);
-
-                    if (configured)
-                    {
-                        State.DeviceName = existing.DeviceName;
-                        State.AdoptedOrphan = true;
-                        selfHealReason = "orphan_adopted";
-                        _log.Info($"孤儿虚拟屏已接管: {existing}");
-                    }
-                    else
-                    {
-                        _log.Warn($"孤儿虚拟屏接管失败 ({adoptFailure})，尝试重置");
-                        RemoveDisplayAfterEnsureFailure(displayAdded);
-                        selfHealReason = "orphan_reclaimed";
-                    }
-                }
-                else
-                {
-                    // 进程异常退出后驱动通常约 1s 自动回收；给一个短窗口再决定。
-                    if (!DisplayTopology.WaitForNoParsecDisplay(TimeSpan.FromSeconds(2)))
-                    {
-                        throw new ToolException(
-                            "E_ORPHAN_DISPLAY",
-                            "检测到未归属的虚拟显示器，且无上次会话记录可供安全接管",
-                            new JsonObject { ["display"] = existing.ToString() });
-                    }
-
-                    _log.Info("孤儿虚拟屏已被驱动自动回收");
-                    existing = DisplayTopology.FindParsecDisplay();
-                }
-
-                // 一次会话只按上次记录接管一次，避免旧索引在后续重建时被误用。
-                State.RecoveredIndex = -1;
-                State.RecoveredDevice = string.Empty;
-            }
-
-            if (existing is not null)
-            {
-                targetDevice = existing.DeviceName;
-            }
-
-            // 显示索引仍归本会话，但拓扑丢失/几何被改（睡眠、驱动回收、用户改设置）。
-            if (existing is not null && State.Index >= 0)
-            {
-                _log.Warn($"虚拟屏状态异常 ({existing})，尝试恢复");
-
-                if (!configured)
-                {
-                    configured = TryActivateDisplay(existing.DeviceName, out string? failure);
-
-                    if (!configured)
-                    {
-                        _log.Warn($"恢复失败 ({failure})，重建虚拟屏");
-                        RemoveDisplayAfterEnsureFailure(displayAdded);
-                        State.RecreateCount++;
-                        selfHealReason = "display_recreated";
-                    }
-                    else if (selfHealReason is null)
-                    {
-                        selfHealReason = "geometry_changed";
-                    }
-                }
-            }
-            else if (existing is null && State.Index >= 0)
-            {
-                // 驱动已回收设备：索引失效，直接丢弃后重新创建，避免对旧索引反复重试。
-                _log.Warn("虚拟屏已被驱动回收，重新创建");
-                Forget();
-                State.RecreateCount++;
-                selfHealReason = "display_reclaimed";
-            }
+            string? targetDevice = existing?.DeviceName;
 
             if (!configured && State.Index < 0)
             {
-                // ADD 与“解析新屏 device”必须整体串行：只锁 ADD 时，两个 profile 可能在
-                // 解析阶段把同一块刚挂上的屏都认成自己的（后写 registry 的会覆盖前者）。
-                Mutex? allocation = TryAcquireDisplayAllocation(out bool allocationHeld);
-
-                try
-                {
-                    // Parsec 驱动在 REMOVE 后约 3-5 秒内会拒绝 ADD；重试并等待本次新变可用的屏。
-                    // 不能用“设备名是否出现过”判断：驱动会复用已有 detached 适配器的名字（本机 DISPLAY5~20）。
-                    HashSet<string> beforeLive = DisplayTopology.LiveParsecDevices();
-                    // 记录 ADD 前已存在的全部 Parsec 设备名（含 detached）：
-                    // 部分驱动/系统组合只会创建 detached monitor，必须由我们显式设模式才会挂载。
-                    HashSet<string> beforeAll = DisplayTopology.List()
-                        .Where(item => item.IsParsec)
-                        .Select(item => item.DeviceName)
-                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-                    int[] delays = { 0, 500, 1000, 1500, 2000 };
-
-                    foreach (int delay in delays)
-                    {
-                        if (delay > 0)
-                        {
-                            Thread.Sleep(delay);
-                        }
-
-                        State.Index = Vdd.AddDisplay();
-
-                        if (State.Index >= 0)
-                        {
-                            displayAdded = true;
-                            break;
-                        }
-
-                        if (DisplayTopology.PickNewLiveParsec(
-                                DisplayTopology.List(), beforeLive, IsDisplayOwnedByOther) is not null)
-                        {
-                            _log.Warn("驱动拒绝 ADD，但检测到本次新变可用的 Parsec 屏，按已创建处理");
-                            break;
-                        }
-
-                        _log.Warn("驱动拒绝创建虚拟显示器，准备重试");
-                    }
-
-                    if (State.Index < 0 &&
-                        DisplayTopology.PickNewLiveParsec(
-                            DisplayTopology.List(), beforeLive, IsDisplayOwnedByOther) is null)
-                    {
-                        throw new ToolException(
-                            "E_DISPLAY_ADD",
-                            "驱动拒绝创建虚拟显示器",
-                            new JsonObject
-                            {
-                                ["before_live"] = DescribeDevices(beforeLive),
-                                ["after_live"] = DescribeDevices(DisplayTopology.LiveParsecDevices()),
-                            },
-                            retryable: true,
-                            hint: "驱动 REMOVE 后需要 3-5 秒冷却；稍后重试或重启驱动",
-                            stage: "display");
-                    }
-
-                    if (string.IsNullOrWhiteSpace(targetDevice))
-                    {
-                        bool liveArrived = DisplayTopology.WaitForNewLiveParsecDisplay(
-                            beforeLive,
-                            TimeSpan.FromSeconds(3),
-                            out DisplayInfo? added,
-                            IsDisplayOwnedByOther);
-
-                        if ((!liveArrived || added is null) &&
-                            DisplayTopology.List()
-                                .FirstOrDefault(item =>
-                                    item.IsParsec &&
-                                    !beforeAll.Contains(item.DeviceName) &&
-                                    !IsDisplayOwnedByOther(item.DeviceName)) is { } detachedNew)
-                        {
-                            // 驱动创建了 monitor 但 Windows 未自动挂载：直接对新建的
-                            // detached 设备设模式，TryActivateDisplay 会完成挂载。
-                            targetDevice = detachedNew.DeviceName;
-                            _log.Info($"新建虚拟屏处于 detached，直接激活: {detachedNew.DeviceName}");
-                        }
-
-                        if (string.IsNullOrWhiteSpace(targetDevice) &&
-                            (!liveArrived || added is null))
-                        {
-                            JsonObject details = new()
-                            {
-                                ["display_index"] = State.Index,
-                                ["before_live"] = DescribeDevices(beforeLive),
-                                ["after_live"] = DescribeDevices(DisplayTopology.LiveParsecDevices()),
-                            };
-
-                            _log.Warn($"新建虚拟屏未转可用: {details.ToJsonString()}");
-                            RemoveDisplayAfterEnsureFailure(displayAdded);
-                            throw new ToolException(
-                                "E_DISPLAY_ADD",
-                                "新建的虚拟显示器未出现在拓扑中",
-                                details,
-                                retryable: true,
-                                hint: "确认 Parsec VDD 正常；detached 适配器不算已存在，若仍失败请提供 details",
-                                stage: "display");
-                        }
-
-                        if (liveArrived && added is not null)
-                        {
-                            targetDevice = added.DeviceName;
-                            _log.Info($"新建虚拟屏已可用: {added}");
-                        }
-                    }
-                }
-                finally
-                {
-                    ReleaseDisplayAllocation(allocation, allocationHeld);
-                }
+                CreateNewDisplay(ref targetDevice, ref displayAdded);
             }
 
             if (!configured)
@@ -417,6 +183,262 @@ internal sealed class VirtualDisplayController
             return activated;
         }
     }
+
+    /// <summary>已存在的孤儿屏：优先按上次 state 接管；非 default profile 不抢别人的屏。</summary>
+    private DisplayInfo? AdoptOrphanIfNeeded(
+        DisplayInfo? existing, ref bool configured, ref bool displayAdded, ref string? selfHealReason)
+    {
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        DisplayInfo? attached = DisplayTopology.FindParsecDisplay();
+
+        // 已经有其他 live profile 认领的屏不能接管；否则会抢别人的屏。
+        if (attached is null || IsDisplayOwnedByOther(attached.DeviceName))
+        {
+            return existing;
+        }
+
+        bool matchesRecovered = !string.IsNullOrWhiteSpace(State.RecoveredDevice) &&
+                                string.Equals(
+                                    attached.DeviceName,
+                                    State.RecoveredDevice,
+                                    StringComparison.OrdinalIgnoreCase);
+
+        // 不认领“来源不明”的屏；只有自己的崩溃 state 匹配才允许。
+        // 另一个 profile 正在启动（registry 已存在但 display_device 还没写）时，
+        // 不要抢它的屏，也不要直接失败，直接申请一块新的。
+        if (matchesRecovered)
+        {
+            return attached;
+        }
+
+        if (HasOtherLiveProfile())
+        {
+            return null;
+        }
+
+        if (!string.Equals(_profile, "default", StringComparison.Ordinal))
+        {
+            throw new ToolException(
+                "E_ORPHAN_DISPLAY",
+                "检测到未归属的虚拟显示器；非默认 profile 不自动接管，避免抢其他 profile 的屏",
+                new JsonObject
+                {
+                    ["display"] = attached.ToString(),
+                    ["profile"] = _profile,
+                },
+                retryable: true,
+                hint: "确认该屏无人使用后手动摘除，或使用默认 profile/独立 VM",
+                stage: "display");
+        }
+
+        return attached;
+    }
+
+    /// <summary>已有屏的索引/几何修复；索引失效时重新创建。</summary>
+    private DisplayInfo? ReconcileExisting(
+        ref DisplayInfo? existing, ref bool configured, ref bool displayAdded, ref string? selfHealReason)
+    {
+        if (existing is not null && State.Index < 0)
+        {
+            if (State.RecoveredIndex >= 0)
+            {
+                _log.Warn(
+                    $"检测到孤儿虚拟屏，按上次记录接管 " +
+                    $"(index={State.RecoveredIndex}, device={State.RecoveredDevice}, " +
+                    $"pid={State.RecoveredPid})");
+                State.Index = State.RecoveredIndex;
+                configured = TryActivateDisplay(existing.DeviceName, out string? adoptFailure);
+
+                if (configured)
+                {
+                    State.DeviceName = existing.DeviceName;
+                    State.AdoptedOrphan = true;
+                    selfHealReason = "orphan_adopted";
+                    _log.Info($"孤儿虚拟屏已接管: {existing}");
+                }
+                else
+                {
+                    _log.Warn($"孤儿虚拟屏接管失败 ({adoptFailure})，尝试重建");
+                    RemoveDisplayAfterEnsureFailure(displayAdded);
+                    selfHealReason = "orphan_reclaimed";
+                }
+            }
+            else
+            {
+                // 进程异常退出后驱动通常在 ~1s 自动回收；给一个短窗口再决定。
+                if (!DisplayTopology.WaitForNoParsecDisplay(TimeSpan.FromSeconds(2)))
+                {
+                    throw new ToolException(
+                        "E_ORPHAN_DISPLAY",
+                        "检测到未归属的虚拟显示器，且无上次会话记录可供安全接管",
+                        new JsonObject { ["display"] = existing.ToString() });
+                }
+
+                _log.Info("孤儿虚拟屏已被驱动自动回收");
+                existing = DisplayTopology.FindParsecDisplay();
+            }
+
+            // 一次会话只按上次记录接管一次，避免旧索引在后续重建时被误用。
+            State.RecoveredIndex = -1;
+            State.RecoveredDevice = string.Empty;
+        }
+
+        // 显示索引仍归本会话，但拓扑丢失或几何被改（睡眠、驱动回收、用户改设置）。
+        if (existing is not null && State.Index >= 0)
+        {
+            _log.Warn($"虚拟屏状态异常 ({existing})，尝试恢复");
+
+            if (!configured)
+            {
+                configured = TryActivateDisplay(existing.DeviceName, out string? failure);
+
+                if (!configured)
+                {
+                    _log.Warn($"恢复失败 ({failure})，重建虚拟屏");
+                    RemoveDisplayAfterEnsureFailure(displayAdded);
+                    State.RecreateCount++;
+                    selfHealReason = "display_recreated";
+                }
+                else if (selfHealReason is null)
+                {
+                    selfHealReason = "geometry_changed";
+                }
+            }
+        }
+        else if (existing is null && State.Index >= 0)
+        {
+            // 驱动已回收设备：索引失效，直接丢弃后重新创建，避免对旧索引反复重试。
+            _log.Warn("虚拟屏已被驱动回收，重新创建");
+            Forget();
+            State.RecreateCount++;
+            selfHealReason = "display_reclaimed";
+        }
+
+        return existing;
+    }
+
+    /// <summary>ADD 与“解析新 device”必须整体串行，避免两个 profile 把同一块新屏都认成自己的。</summary>
+    private void CreateNewDisplay(ref string? targetDevice, ref bool displayAdded)
+    {
+        Mutex? allocation = TryAcquireDisplayAllocation(out bool allocationHeld);
+
+        try
+        {
+            // Parsec 驱动在 REMOVE 后约 3-5 秒内会拒绝 ADD；重试并等待本次新变可用的屏。
+            // 不能用“设备名是否出现过”判断：驱动会复用已 detached 适配器的名字（本次 DISPLAY5~20）。
+            HashSet<string> beforeLive = DisplayTopology.LiveParsecDevices();
+            // 记录 ADD 前已存在的全部 Parsec 设备名（含 detached）：
+            // 部分驱动/系统组合只会创建 detached monitor，必须由我们显式设模式才会挂载。
+            HashSet<string> beforeAll = DisplayTopology.List()
+                .Where(item => item.IsParsec)
+                .Select(item => item.DeviceName)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            int[] delays = { 0, 500, 1000, 1500, 2000 };
+
+            foreach (int delay in delays)
+            {
+                if (delay > 0)
+                {
+                    Thread.Sleep(delay);
+                }
+
+                State.Index = Vdd.AddDisplay();
+
+                if (State.Index >= 0)
+                {
+                    displayAdded = true;
+                    break;
+                }
+
+                if (DisplayTopology.PickNewLiveParsec(
+                        DisplayTopology.List(), beforeLive, IsDisplayOwnedByOther) is not null)
+                {
+                    _log.Warn("驱动拒绝 ADD，但检测到本次新变可用的 Parsec 屏，按已创建处理");
+                    break;
+                }
+
+                _log.Warn("驱动拒绝创建虚拟显示器，准备重试");
+            }
+
+            if (State.Index < 0 &&
+                DisplayTopology.PickNewLiveParsec(
+                    DisplayTopology.List(), beforeLive, IsDisplayOwnedByOther) is null)
+            {
+                throw new ToolException(
+                    "E_DISPLAY_ADD",
+                    "驱动拒绝创建虚拟显示器",
+                    new JsonObject
+                    {
+                        ["before_live"] = DescribeDevices(beforeLive),
+                        ["after_live"] = DescribeDevices(DisplayTopology.LiveParsecDevices()),
+                    },
+                    retryable: true,
+                    hint: "驱动 REMOVE 后需要 3-5 秒冷却；稍后重试或重启驱动",
+                    stage: "display");
+            }
+
+            if (!string.IsNullOrWhiteSpace(targetDevice))
+            {
+                return;
+            }
+
+            bool liveArrived = DisplayTopology.WaitForNewLiveParsecDisplay(
+                beforeLive,
+                TimeSpan.FromSeconds(3),
+                out DisplayInfo? added,
+                IsDisplayOwnedByOther);
+
+            if ((!liveArrived || added is null) &&
+                DisplayTopology.List()
+                    .FirstOrDefault(item =>
+                        item.IsParsec &&
+                        !beforeAll.Contains(item.DeviceName) &&
+                        !IsDisplayOwnedByOther(item.DeviceName)) is { } detachedNew)
+            {
+                // 驱动创建的 monitor 未被 Windows 自动挂载：直接对新建的
+                // detached 设备设模式，TryActivateDisplay 会完成挂载。
+                targetDevice = detachedNew.DeviceName;
+                _log.Info($"新建虚拟屏处于 detached，直接激活: {detachedNew.DeviceName}");
+            }
+
+            if (string.IsNullOrWhiteSpace(targetDevice) &&
+                (!liveArrived || added is null))
+            {
+                JsonObject details = new()
+                {
+                    ["display_index"] = State.Index,
+                    ["before_live"] = DescribeDevices(beforeLive),
+                    ["after_live"] = DescribeDevices(DisplayTopology.LiveParsecDevices()),
+                };
+
+                _log.Warn($"新建虚拟屏未转可用: {details.ToJsonString()}");
+                RemoveDisplayAfterEnsureFailure(displayAdded);
+                throw new ToolException(
+                    "E_DISPLAY_ADD",
+                    "新建的虚拟显示器未出现在拓扑中",
+                    details,
+                    retryable: true,
+                    hint: "确认 Parsec VDD 正常；detached 适配器不算已存在，若仍失败请提供 details",
+                    stage: "display");
+            }
+
+            if (liveArrived && added is not null)
+            {
+                targetDevice = added.DeviceName;
+                _log.Info($"新建虚拟屏已可用: {added}");
+            }
+        }
+        finally
+        {
+            ReleaseDisplayAllocation(allocation, allocationHeld);
+        }
+    }
+
 
     /// <summary>
     /// 不同 profile 同时启动时串行化“ADD + 解析 device”，避免抢同一个 slot 或同一块新屏。

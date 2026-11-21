@@ -116,40 +116,8 @@ internal sealed class SnapshotBuilder : IDisposable
         int nodes = Math.Clamp(maxNodes, 1, Math.Min(1024, _host.RefCapacity));
         long started = Environment.TickCount64;
 
-        UiaTreeResult result = _host.Uia.BuildTree(
-            hwnd,
-            rootRuntimeId: string.Empty,
-            maxDepth: depth,
-            interactiveOnly: interactiveOnly,
-            maxNodes: nodes,
-            timeBudgetMs: 3000,
-            isCancelled: _host.CancellationProbe());
-
-        bool emptyRetried = false;
-        bool effectiveInteractiveOnly = interactiveOnly;
-
-        // 空树在 UIA 忙/首帧未就绪时很常见。重试一次并放开 interactive_only：
-        // 比直接返回“1 个节点 + 无解释”对调用方有用得多（N4）。
-        if (result.Nodes <= 1)
-        {
-            Thread.Sleep(200);
-
-            UiaTreeResult retry = _host.Uia.BuildTree(
-                hwnd,
-                rootRuntimeId: string.Empty,
-                maxDepth: Math.Max(depth, 4),
-                interactiveOnly: false,
-                maxNodes: nodes,
-                timeBudgetMs: 3000,
-                isCancelled: _host.CancellationProbe());
-
-            if (retry.Root is not null && retry.Nodes > result.Nodes)
-            {
-                result = retry;
-                emptyRetried = true;
-                effectiveInteractiveOnly = false;
-            }
-        }
+        UiaTreeResult result = BuildTree(
+            hwnd, depth, nodes, interactiveOnly, out bool emptyRetried, out bool effectiveInteractiveOnly);
 
         if (result.Root is null)
         {
@@ -227,6 +195,71 @@ internal sealed class SnapshotBuilder : IDisposable
             data["truncated_reason"] = result.Reason;
         }
 
+        BuildDialogs(app, hwnd, data, ref redactions);
+        BuildWindowsAndForeground(data);
+
+        (byte[]? png, byte[]? previewPng, JsonObject? previewMeta) =
+            BuildScreenshot(data, tree, display, includeScreenshot, annotate, scale);
+
+        if (redactions > 0)
+        {
+            data["privacy_redactions"] = redactions;
+        }
+
+        PrivacyRedactor.RedactJsonStrings(data, ref redactions);
+
+        if (redactions > 0)
+        {
+            data["privacy_redactions"] = redactions;
+        }
+
+        return new SnapshotResult(ToView(data), png, previewPng, previewMeta);
+    }
+
+    private UiaTreeResult BuildTree(
+        IntPtr hwnd, int depth, int nodes, bool interactiveOnly,
+        out bool emptyRetried, out bool effectiveInteractiveOnly)
+    {
+        UiaTreeResult result = _host.Uia.BuildTree(
+            hwnd,
+            rootRuntimeId: string.Empty,
+            maxDepth: depth,
+            interactiveOnly: interactiveOnly,
+            maxNodes: nodes,
+            timeBudgetMs: 3000,
+            isCancelled: _host.CancellationProbe());
+
+        emptyRetried = false;
+        effectiveInteractiveOnly = interactiveOnly;
+
+        // 空树在 UIA 首帧未就绪时很常见。重试一次并放开 interactive_only；
+        // 比直接返回“1 个节点 + 无解释”对调用方有用得多（N4）。
+        if (result.Nodes <= 1)
+        {
+            Thread.Sleep(200);
+
+            UiaTreeResult retry = _host.Uia.BuildTree(
+                hwnd,
+                rootRuntimeId: string.Empty,
+                maxDepth: Math.Max(depth, 4),
+                interactiveOnly: false,
+                maxNodes: nodes,
+                timeBudgetMs: 3000,
+                isCancelled: _host.CancellationProbe());
+
+            if (retry.Root is not null && retry.Nodes > result.Nodes)
+            {
+                result = retry;
+                emptyRetried = true;
+                effectiveInteractiveOnly = false;
+            }
+        }
+
+        return result;
+    }
+
+    private void BuildDialogs(TrackedApp app, IntPtr hwnd, JsonObject data, ref int redactions)
+    {
         var dialogs = new JsonArray();
         bool rootListed = false;
 
@@ -252,7 +285,7 @@ internal sealed class SnapshotBuilder : IDisposable
             };
 
             // Office 旧对话框（bosa_sdm_msword）UIA 树为空，MSAA 是唯一语义来源。
-            // 把控件直接放进 snapshot.dialogs[].controls，模型不需要再猜 find_element。
+            // 把控件直接放进 snapshot.dialogs[].controls，模型不需要再调 find_element。
             if (dialog.ClassName.Contains("bosa", StringComparison.OrdinalIgnoreCase))
             {
                 MsaaFindResult msaa = _host.Uia.InvokeMsaa(() => MsaaService.FindElements(
@@ -297,7 +330,7 @@ internal sealed class SnapshotBuilder : IDisposable
             dialogs.Add(dialogJson);
         }
 
-        // snapshot 的 root 可能已经是弹窗（GetActivePopup）。此前 dialogs[] 不含它，
+        // snapshot 的 root 可能已经是弹窗（GetActivePopup）。此时 dialogs[] 不含它，
         // 调用方会看到“root 是对话框、dialogs 却是空”的矛盾（N6）。
         if (hwnd != app.Hwnd)
         {
@@ -329,7 +362,10 @@ internal sealed class SnapshotBuilder : IDisposable
         }
 
         data["dialogs"] = dialogs;
+    }
 
+    private void BuildWindowsAndForeground(JsonObject data)
+    {
         var windows = new JsonArray();
 
         foreach (TrackedApp tracked in _host.OwnedApps())
@@ -366,114 +402,110 @@ internal sealed class SnapshotBuilder : IDisposable
                 ["title"] = foregroundTracked ? foregroundInfo.Title : null,
                 ["tracked"] = foregroundTracked,
             };
+    }
 
+    private (byte[]? Png, byte[]? PreviewPng, JsonObject? PreviewMeta) BuildScreenshot(
+        JsonObject data, JsonObject tree, DisplayInfo display,
+        bool includeScreenshot, bool annotate, double scale)
+    {
         byte[]? png = null;
         byte[]? previewPng = null;
         JsonObject? previewMeta = null;
 
-        if (includeScreenshot)
+        if (!includeScreenshot)
         {
-            if (annotate)
+            return (png, previewPng, previewMeta);
+        }
+
+        if (annotate)
+        {
+            var annotations = new JsonArray();
+            CollectAnnotations(tree, display, annotations, maxCount: 80);
+            data["annotations"] = annotations;
+
+            // 直接用源帧做叠加，再缩放编码；网格让模型估坐标时有参照。
+            (byte[] bgra, int captureWidth, int captureHeight) =
+                _host.CaptureRegion(display.X, display.Y, display.Width, display.Height);
+
+            double effectiveScale = Math.Clamp(scale, 0.1, 1.0);
+            int thickness = Math.Max(2, (int)Math.Ceiling(2 / effectiveScale));
+            int numberScale = Math.Max(2, (int)Math.Ceiling(2 / effectiveScale));
+
+            PngOverlay.DrawGrid(bgra, captureWidth, captureHeight, 100);
+
+            foreach (JsonNode? item in annotations)
             {
-                var annotations = new JsonArray();
-                CollectAnnotations(tree, display, annotations, maxCount: 80);
-                data["annotations"] = annotations;
-
-                // 直接用源帧做叠加，再缩放编码；网格让模型估坐标时有参照。
-                (byte[] bgra, int captureWidth, int captureHeight) =
-                    _host.CaptureRegion(display.X, display.Y, display.Width, display.Height);
-
-                double effectiveScale = Math.Clamp(scale, 0.1, 1.0);
-                int thickness = Math.Max(2, (int)Math.Ceiling(2 / effectiveScale));
-                int numberScale = Math.Max(2, (int)Math.Ceiling(2 / effectiveScale));
-
-                PngOverlay.DrawGrid(bgra, captureWidth, captureHeight, 100);
-
-                foreach (JsonNode? item in annotations)
+                if (item is not JsonObject annotation ||
+                    annotation["bounds"] is not JsonObject bounds)
                 {
-                    if (item is not JsonObject annotation ||
-                        annotation["bounds"] is not JsonObject bounds)
-                    {
-                        continue;
-                    }
-
-                    int index = annotation["index"]?.GetValue<int>() ?? 0;
-                    int bx = (bounds["x"]?.GetValue<int>() ?? 0) - display.X;
-                    int by = (bounds["y"]?.GetValue<int>() ?? 0) - display.Y;
-                    int bw = bounds["width"]?.GetValue<int>() ?? 0;
-                    int bh = bounds["height"]?.GetValue<int>() ?? 0;
-                    (byte r, byte g, byte b) = PngOverlay.ColorFor(Math.Max(0, index - 1));
-
-                    PngOverlay.DrawBox(
-                        bgra, captureWidth, captureHeight, bx, by, bw, bh, r, g, b, thickness);
-                    PngOverlay.DrawNumber(
-                        bgra, captureWidth, captureHeight, bx + 2, by + 2, index, numberScale);
+                    continue;
                 }
 
-                png = PngWriter.Encode(
-                    bgra, captureWidth, captureHeight, effectiveScale,
-                    out int outputWidth, out int outputHeight);
-                previewPng = PngWriter.Encode(
-                    bgra, captureWidth, captureHeight, Math.Max(Limits.MinScale, effectiveScale * Limits.PreviewScale),
-                    out int previewWidth, out int previewHeight);
+                int index = annotation["index"]?.GetValue<int>() ?? 0;
+                int bx = (bounds["x"]?.GetValue<int>() ?? 0) - display.X;
+                int by = (bounds["y"]?.GetValue<int>() ?? 0) - display.Y;
+                int bw = bounds["width"]?.GetValue<int>() ?? 0;
+                int bh = bounds["height"]?.GetValue<int>() ?? 0;
+                (byte r, byte g, byte b) = PngOverlay.ColorFor(Math.Max(0, index - 1));
 
-                data["screenshot"] = new JsonObject
+                PngOverlay.DrawBox(
+                    bgra, captureWidth, captureHeight, bx, by, bw, bh, r, g, b, thickness);
+                PngOverlay.DrawNumber(
+                    bgra, captureWidth, captureHeight, bx + 2, by + 2, index, numberScale);
+            }
+
+            png = PngWriter.Encode(
+                bgra, captureWidth, captureHeight, effectiveScale,
+                out int outputWidth, out int outputHeight);
+            previewPng = PngWriter.Encode(
+                bgra, captureWidth, captureHeight, Math.Max(Limits.MinScale, effectiveScale * Limits.PreviewScale),
+                out int previewWidth, out int previewHeight);
+
+            data["screenshot"] = new JsonObject
+            {
+                ["x"] = display.X,
+                ["y"] = display.Y,
+                ["width"] = outputWidth,
+                ["height"] = outputHeight,
+                ["source_width"] = captureWidth,
+                ["source_height"] = captureHeight,
+                ["scale"] = effectiveScale,
+                ["png_bytes"] = png.Length,
+                ["backend"] = "gdi+overlay",
+                ["baseline"] = new JsonObject
                 {
                     ["x"] = display.X,
                     ["y"] = display.Y,
-                    ["width"] = outputWidth,
-                    ["height"] = outputHeight,
-                    ["source_width"] = captureWidth,
-                    ["source_height"] = captureHeight,
-                    ["scale"] = effectiveScale,
-                    ["png_bytes"] = png.Length,
-                    ["backend"] = "gdi+overlay",
-                    ["baseline"] = new JsonObject
-                    {
-                        ["x"] = display.X,
-                        ["y"] = display.Y,
-                        ["width"] = captureWidth,
-                        ["height"] = captureHeight,
-                    },
-                };
-                previewMeta = new JsonObject
-                {
-                    ["width"] = previewWidth,
-                    ["height"] = previewHeight,
-                    ["scale"] = Math.Max(Limits.MinScale, effectiveScale * Limits.PreviewScale),
-                    ["png_bytes"] = previewPng.Length,
-                };
-            }
-            else
+                    ["width"] = captureWidth,
+                    ["height"] = captureHeight,
+                },
+            };
+            previewMeta = new JsonObject
             {
-                // 快照截图不写帧缓存；preview 与主图同帧，且不阻塞 _refGate（已在锁外）。
-                CaptureResult capture = _host.CaptureForSnapshot(
-                    Math.Clamp(scale, 0.1, 1.0),
-                    Math.Max(Limits.MinScale, scale * Limits.PreviewScale));
-
-                png = capture.Png;
-                previewPng = capture.PreviewPng;
-                previewMeta = capture.PreviewMeta is null
-                    ? null
-                    : VspJson.ToNode(capture.PreviewMeta).AsObject();
-                data["screenshot"] = VspJson.ToNode(capture.Meta);
-            }
+                ["width"] = previewWidth,
+                ["height"] = previewHeight,
+                ["scale"] = Math.Max(Limits.MinScale, effectiveScale * Limits.PreviewScale),
+                ["png_bytes"] = previewPng.Length,
+            };
         }
-
-        if (redactions > 0)
+        else
         {
-            data["privacy_redactions"] = redactions;
+            // 快照截图不写帧缓存；preview 与主图同帧，且不阻塞 _refGate（已在锁外）。
+            CaptureResult capture = _host.CaptureForSnapshot(
+                Math.Clamp(scale, 0.1, 1.0),
+                Math.Max(Limits.MinScale, scale * Limits.PreviewScale));
+
+            png = capture.Png;
+            previewPng = capture.PreviewPng;
+            previewMeta = capture.PreviewMeta is null
+                ? null
+                : VspJson.ToNode(capture.PreviewMeta).AsObject();
+            data["screenshot"] = VspJson.ToNode(capture.Meta);
         }
 
-        PrivacyRedactor.RedactJsonStrings(data, ref redactions);
-
-        if (redactions > 0)
-        {
-            data["privacy_redactions"] = redactions;
-        }
-
-        return new SnapshotResult(ToView(data), png, previewPng, previewMeta);
+        return (png, previewPng, previewMeta);
     }
+
 
     /// <summary>把组装完成的 JsonObject 收敛成强类型视图；子树保持原样。</summary>
     private static SnapshotView ToView(JsonObject data)
