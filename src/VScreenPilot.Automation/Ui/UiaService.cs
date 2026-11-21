@@ -134,19 +134,32 @@ internal sealed class UiaElementHandle : IDisposable
 
     public UiaElementInfo Info { get; }
 
-    /// <summary>所有对 COM 元素的访问都回到 UiaService 的同步域，避免跨线程并发。</summary>
-    public void Focus() => _owner.FocusElement(Element);
+    /// <summary>所有对 COM 元素的访问都回到所属 UiaHost 的 MTA worker。</summary>
+    public void Focus() => Dispatch(service =>
+    {
+        service.FocusElement(Element);
+        return true;
+    });
 
     public (bool Ok, string? Strategy) Invoke(UiaInvokePattern pattern = UiaInvokePattern.Auto) =>
-        _owner.TryInvoke(Element, pattern);
+        Dispatch(service => service.TryInvoke(Element, pattern));
 
-    public string? GetText(int maxChars = 65536) => _owner.GetText(Element, maxChars);
+    public string? GetText(int maxChars = 65536) =>
+        Dispatch(service => service.GetText(Element, maxChars));
 
-    public string? GetValue() => _owner.GetValue(Element);
+    public string? GetValue() => Dispatch(service => service.GetValue(Element));
 
-    public UiaSetValueResult SetValue(string value) => _owner.TrySetValue(Element, value);
+    public UiaSetValueResult SetValue(string value) =>
+        Dispatch(service => service.TrySetValue(Element, value));
 
-    public void Dispose() => UiaService.ReleaseElement(Element);
+    public void Dispose() => Dispatch(service =>
+    {
+        UiaService.ReleaseElement(Element);
+        return true;
+    });
+
+    private T Dispatch<T>(Func<UiaService, T> action) =>
+        _owner.Host is { } host ? host.InvokeOn(_owner, action) : action(_owner);
 }
 
 /// <summary>裁剪后的语义树节点（仅含缓存属性，不持有 COM 对象）。</summary>
@@ -250,6 +263,9 @@ internal sealed partial class UiaService : IDisposable
 
     private readonly object _sync = new();
     private readonly IUIAutomation _automation;
+
+    /// <summary>拥有该实例的 UiaHost；句柄操作据此回到同一 MTA worker。</summary>
+    internal UiaHost? Host { get; set; }
     private int _disposed;
 
     // 线程本地：调用方拿到结果后立刻读，避免其它线程的下一次查询把标志覆盖。

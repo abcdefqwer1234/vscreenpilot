@@ -153,11 +153,53 @@ internal sealed class UiaHost : IDisposable
 
     public static IReadOnlyList<string> SupportedControlTypes => UiaService.SupportedControlTypes;
 
+    /// <summary>
+    /// 把句柄级操作派发到它所属代际的 worker；代际已退休/队列关闭时退回直接调用，
+    /// 保证旧句柄在超时路径上仍可用。
+    /// </summary>
+    public T InvokeOn<T>(UiaService owner, Func<UiaService, T> action)
+    {
+        Generation? generation;
+
+        lock (_gate)
+        {
+            generation = _current?.Service == owner
+                ? _current
+                : _retired.FirstOrDefault(item => item.Service == owner);
+        }
+
+        if (generation is null || generation.Queue.IsAddingCompleted ||
+            generation.Thread == Thread.CurrentThread)
+        {
+            return action(owner);
+        }
+
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        try
+        {
+            generation.Queue.Add(new WorkItem<T>(action, completion));
+        }
+        catch (InvalidOperationException)
+        {
+            return action(owner);
+        }
+
+        generation.Ready.Task.GetAwaiter().GetResult();
+        return completion.Task.GetAwaiter().GetResult();
+    }
+
     private T Invoke<T>(Func<UiaService, T> action)
     {
         while (true)
         {
             Generation generation = Current();
+
+            if (generation.Thread == Thread.CurrentThread)
+            {
+                return action(generation.Service!);
+            }
+
             var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
 
             try
@@ -186,7 +228,7 @@ internal sealed class UiaHost : IDisposable
 
     private Generation Start()
     {
-        var generation = new Generation(_factory);
+        var generation = new Generation(_factory, this);
         generation.Thread.Start();
         return generation;
     }
@@ -237,10 +279,12 @@ internal sealed class UiaHost : IDisposable
     private sealed class Generation
     {
         private readonly Func<UiaService> _factory;
+        private readonly UiaHost _host;
 
-        public Generation(Func<UiaService> factory)
+        public Generation(Func<UiaService> factory, UiaHost host)
         {
             _factory = factory;
+            _host = host;
             Thread = new Thread(Run)
             {
                 IsBackground = true,
@@ -253,6 +297,8 @@ internal sealed class UiaHost : IDisposable
 
         public Thread Thread { get; }
 
+        public UiaService? Service { get; private set; }
+
         public TaskCompletionSource Ready { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -263,6 +309,8 @@ internal sealed class UiaHost : IDisposable
             try
             {
                 service = _factory();
+                service.Host = _host;
+                Service = service;
                 Ready.TrySetResult();
             }
             catch (Exception exception)
