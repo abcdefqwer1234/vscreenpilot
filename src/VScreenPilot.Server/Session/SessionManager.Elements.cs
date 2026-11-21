@@ -18,9 +18,6 @@ internal sealed partial class SessionManager
     // 容量属于对外可观察字段（snapshot 的 ref_capacity），保留原常量名。
     private const int ElementRefCapacity = ElementRefStore.Capacity;
 
-    // snapshot 的建树与提交串行化：避免两个 snapshot 乱序提交、互相覆盖代际。
-    private readonly SemaphoreSlim _snapshotGate = new(1, 1);
-
     /// <summary>最近一次 snapshot 的 id；ref 只在该快照内有效。</summary>
     public string SnapshotId => _refs.CurrentSnapshotId(Clients.CurrentId);
 
@@ -279,7 +276,7 @@ internal sealed partial class SessionManager
             // 只有显式 new_snapshot 才推进代际；默认复用当前快照，
             // 这样 find -> get_ui_tree -> invoke 不会莫名 E_STALE_SNAPSHOT。
             snapshotId = newSnapshot ? BeginSnapshot() : EnsureSnapshot();
-            tree = ConvertTreeNode(result.Root, hwnd, ref rootRef);
+            tree = _snapshots.ConvertTreeNode(result.Root, hwnd, ref rootRef);
         }
 
         WindowInfo? window = WindowManager.FromHandle(hwnd);
@@ -401,75 +398,6 @@ internal sealed partial class SessionManager
         if (string.Equals(format, "text", StringComparison.OrdinalIgnoreCase))
         {
             json["text"] = SnapshotTextFormatter.Render(tree, includeValues: true);
-        }
-
-        return json;
-    }
-
-    private JsonObject ConvertTreeNode(UiaTreeNode node, IntPtr hwnd, ref string rootRef)
-    {
-        UiaElementInfo info = node.Info;
-        string reference = RegisterElement(info, hwnd);
-
-        if (string.IsNullOrEmpty(rootRef))
-        {
-            rootRef = reference;
-        }
-
-        var json = new JsonObject
-        {
-            ["ref"] = reference,
-            ["control_type"] = info.ControlTypeName,
-        };
-
-        if (!string.IsNullOrEmpty(info.Name))
-        {
-            json["name"] = info.Name.Length > 200 ? info.Name[..200] : info.Name;
-        }
-
-        if (!string.IsNullOrEmpty(info.AutomationId))
-        {
-            json["automation_id"] = info.AutomationId;
-        }
-
-        if (!info.Password && !string.IsNullOrEmpty(info.Value))
-        {
-            json["value"] = info.Value.Length > 200 ? info.Value[..200] : info.Value;
-        }
-
-        json["bounds"] = new JsonObject
-        {
-            ["x"] = info.Left,
-            ["y"] = info.Top,
-            ["width"] = info.Width,
-            ["height"] = info.Height,
-        };
-
-        if (!info.Enabled)
-        {
-            json["enabled"] = false;
-        }
-
-        if (info.Offscreen)
-        {
-            json["offscreen"] = true;
-        }
-
-        if (info.Focused)
-        {
-            json["focused"] = true;
-        }
-
-        if (node.Children.Count > 0)
-        {
-            var children = new JsonArray();
-            foreach (UiaTreeNode child in node.Children)
-            {
-                string unused = string.Empty;
-                children.Add(ConvertTreeNode(child, hwnd, ref unused));
-            }
-
-            json["children"] = children;
         }
 
         return json;

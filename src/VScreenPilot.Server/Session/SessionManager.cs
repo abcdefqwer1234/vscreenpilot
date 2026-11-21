@@ -218,6 +218,7 @@ internal sealed partial class SessionManager : IDisposable
     {
         _paths = new ClientPathPolicy(Clients);
         _apps = new TrackedAppRegistry(_gate);
+        _snapshots = new SnapshotBuilder(this);
         _log = log;
         _stateStore = stateStore;
         _job = job;

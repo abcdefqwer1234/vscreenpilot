@@ -1,5 +1,4 @@
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using VScreenPilot.Apps;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Infrastructure;
@@ -16,8 +15,34 @@ namespace VScreenPilot.Session;
 internal sealed record SnapshotResult(
     JsonObject Data, byte[]? Png, byte[]? PreviewPng, JsonObject? PreviewMeta);
 
-internal sealed partial class SessionManager
+/// <summary>快照构建所需的最小宿主接口；由 <see cref="SessionManager"/> 实现。</summary>
+internal interface ISnapshotHost
 {
+    UiaHost Uia { get; }
+    ElementRefStore Refs { get; }
+    string SnapshotId { get; }
+    int RefCapacity { get; }
+    DisplayInfo EnsureDisplay();
+    void PruneApps();
+    TrackedApp? FindApp(int? pid);
+    void RequireOnDisplay(DisplayInfo display, IntPtr hwnd, string label);
+    Func<bool> CancellationProbe();
+    string BeginSnapshot();
+    string RegisterElement(UiaElementInfo info, IntPtr hwnd);
+    IReadOnlyList<TrackedApp> OwnedApps();
+    bool IsLive(TrackedApp app);
+    (byte[] Bgra, int Width, int Height) CaptureRegion(int x, int y, int width, int height);
+    SessionManager.CaptureResult CaptureForSnapshot(double scale, double previewScale);
+}
+
+/// <summary>快照：环境确认、语义树、弹窗、前台、可选截图与脱敏。</summary>
+internal sealed class SnapshotBuilder
+{
+    private readonly ISnapshotHost _host;
+    private readonly SemaphoreSlim _snapshotGate = new(1, 1);
+
+    public SnapshotBuilder(ISnapshotHost host) => _host = host;
+
     /// <summary>
     /// 一次调用完成“环境 + 语义树 + 弹窗 + 前台 + 可选截图”。
     /// 相比 get_environment + get_ui_tree + find_element 的三次往返，token 和延迟都更低。
@@ -67,9 +92,9 @@ internal sealed partial class SessionManager
         double scale,
         bool annotate)
     {
-        DisplayInfo display = EnsureEnvironmentFast();
-        PruneDeadApps();
-        TrackedApp app = FindLiveTrackedApp(pid)
+        DisplayInfo display = _host.EnsureDisplay();
+        _host.PruneApps();
+        TrackedApp app = _host.FindApp(pid)
             ?? throw new ToolException(
                 "E_NO_TARGET",
                 pid is null
@@ -78,20 +103,20 @@ internal sealed partial class SessionManager
                 new JsonObject { ["pid"] = pid });
 
         IntPtr hwnd = WindowManager.GetActivePopup(app.Hwnd);
-        RequireWindowOnDisplay(display, hwnd, "snapshot");
+        _host.RequireOnDisplay(display, hwnd, "snapshot");
 
         int depth = Math.Clamp(maxDepth, 1, 10);
-        int nodes = Math.Clamp(maxNodes, 1, Math.Min(1024, ElementRefCapacity));
+        int nodes = Math.Clamp(maxNodes, 1, Math.Min(1024, _host.RefCapacity));
         long started = Environment.TickCount64;
 
-        UiaTreeResult result = Uia.BuildTree(
+        UiaTreeResult result = _host.Uia.BuildTree(
             hwnd,
             rootRuntimeId: string.Empty,
             maxDepth: depth,
             interactiveOnly: interactiveOnly,
             maxNodes: nodes,
             timeBudgetMs: 3000,
-            isCancelled: CancellationProbe());
+            isCancelled: _host.CancellationProbe());
 
         bool emptyRetried = false;
         bool effectiveInteractiveOnly = interactiveOnly;
@@ -102,14 +127,14 @@ internal sealed partial class SessionManager
         {
             Thread.Sleep(200);
 
-            UiaTreeResult retry = Uia.BuildTree(
+            UiaTreeResult retry = _host.Uia.BuildTree(
                 hwnd,
                 rootRuntimeId: string.Empty,
                 maxDepth: Math.Max(depth, 4),
                 interactiveOnly: false,
                 maxNodes: nodes,
                 timeBudgetMs: 3000,
-                isCancelled: CancellationProbe());
+                isCancelled: _host.CancellationProbe());
 
             if (retry.Root is not null && retry.Nodes > result.Nodes)
             {
@@ -124,16 +149,16 @@ internal sealed partial class SessionManager
             throw new ToolException(
                 "E_ELEMENT_NOT_FOUND",
                 result.Reason == "root_not_found" ? "树根控件已不存在" : "无法读取语义树",
-                new JsonObject { ["reason"] = result.Reason, ["snapshot_id"] = SnapshotId });
+                new JsonObject { ["reason"] = result.Reason, ["snapshot_id"] = _host.SnapshotId });
         }
 
         string rootRef = string.Empty;
         JsonObject tree;
         string snapshotId;
 
-        lock (_refs.SyncRoot)
+        lock (_host.Refs.SyncRoot)
         {
-            snapshotId = BeginSnapshot();
+            snapshotId = _host.BeginSnapshot();
             tree = ConvertTreeNode(result.Root, hwnd, ref rootRef);
         }
 
@@ -154,7 +179,7 @@ internal sealed partial class SessionManager
             ["interactive_only"] = effectiveInteractiveOnly,
             ["max_depth"] = depth,
             ["max_nodes_effective"] = nodes,
-            ["ref_capacity"] = ElementRefCapacity,
+            ["ref_capacity"] = _host.RefCapacity,
             ["elapsed_ms"] = Math.Round((double)(Environment.TickCount64 - started), 1),
             ["window"] = new JsonObject
             {
@@ -185,7 +210,7 @@ internal sealed partial class SessionManager
 
         MetricsRegistry.RecordSnapshot(result.Nodes);
 
-        if (maxNodes > Math.Min(1024, ElementRefCapacity))
+        if (maxNodes > Math.Min(1024, _host.RefCapacity))
         {
             data["max_nodes_clamped"] = true;
         }
@@ -230,13 +255,13 @@ internal sealed partial class SessionManager
                 {
                     var controls = new JsonArray();
 
-                    lock (_refs.SyncRoot)
+                    lock (_host.Refs.SyncRoot)
                     {
                         foreach (UiaElementInfo info in msaa.Items)
                         {
                             var control = new JsonObject
                             {
-                                ["ref"] = RegisterElement(info, dialog.Hwnd),
+                                ["ref"] = _host.RegisterElement(info, dialog.Hwnd),
                                 ["name"] = info.Name,
                                 ["control_type"] = info.ControlTypeName,
                                 ["bounds"] = new JsonObject
@@ -300,21 +325,18 @@ internal sealed partial class SessionManager
 
         var windows = new JsonArray();
 
-        lock (_gate)
+        foreach (TrackedApp tracked in _host.OwnedApps())
         {
-            foreach (TrackedApp tracked in _apps.Where(IsOwned))
+            windows.Add((JsonNode)new JsonObject
             {
-                windows.Add((JsonNode)new JsonObject
-                {
-                    ["pid"] = tracked.Pid,
-                    ["hwnd"] = tracked.Hwnd.ToInt64(),
-                    ["title"] = IsLiveTrackedApp(tracked)
-                        ? WindowManager.GetTitle(tracked.Hwnd)
-                        : tracked.Title,
-                    ["alive"] = IsLiveTrackedApp(tracked),
-                    ["owned"] = tracked.Owned,
-                });
-            }
+                ["pid"] = tracked.Pid,
+                ["hwnd"] = tracked.Hwnd.ToInt64(),
+                ["title"] = _host.IsLive(tracked)
+                    ? WindowManager.GetTitle(tracked.Hwnd)
+                    : tracked.Title,
+                ["alive"] = _host.IsLive(tracked),
+                ["owned"] = tracked.Owned,
+            });
         }
 
         data["windows"] = windows;
@@ -325,10 +347,7 @@ internal sealed partial class SessionManager
 
         if (foregroundInfo is not null)
         {
-            lock (_gate)
-            {
-                foregroundTracked = _apps.Any(item => IsOwned(item) && item.Pid == foregroundInfo.Pid);
-            }
+            foregroundTracked = _host.OwnedApps().Any(item => item.Pid == foregroundInfo.Pid);
         }
 
         data["foreground"] = foregroundInfo is null
@@ -355,7 +374,7 @@ internal sealed partial class SessionManager
 
                 // 直接用源帧做叠加，再缩放编码；网格让模型估坐标时有参照。
                 (byte[] bgra, int captureWidth, int captureHeight) =
-                    CaptureRegion(display.X, display.Y, display.Width, display.Height);
+                    _host.CaptureRegion(display.X, display.Y, display.Width, display.Height);
 
                 double effectiveScale = Math.Clamp(scale, 0.1, 1.0);
                 int thickness = Math.Max(2, (int)Math.Ceiling(2 / effectiveScale));
@@ -421,9 +440,9 @@ internal sealed partial class SessionManager
             else
             {
                 // 快照截图不写帧缓存；preview 与主图同帧，且不阻塞 _refGate（已在锁外）。
-                CaptureResult capture = CaptureScreenEx(
-                    null, null, null, null, Math.Clamp(scale, 0.1, 1.0), savePath: null,
-                    storeFrame: false, previewScale: Math.Max(Limits.MinScale, scale * Limits.PreviewScale));
+                SessionManager.CaptureResult capture = _host.CaptureForSnapshot(
+                    Math.Clamp(scale, 0.1, 1.0),
+                    Math.Max(Limits.MinScale, scale * Limits.PreviewScale));
 
                 png = capture.Png;
                 previewPng = capture.PreviewPng;
@@ -447,6 +466,75 @@ internal sealed partial class SessionManager
         }
 
         return new SnapshotResult(data, png, previewPng, previewMeta);
+    }
+
+    internal JsonObject ConvertTreeNode(UiaTreeNode node, IntPtr hwnd, ref string rootRef)
+    {
+        UiaElementInfo info = node.Info;
+        string reference = _host.RegisterElement(info, hwnd);
+
+        if (string.IsNullOrEmpty(rootRef))
+        {
+            rootRef = reference;
+        }
+
+        var json = new JsonObject
+        {
+            ["ref"] = reference,
+            ["control_type"] = info.ControlTypeName,
+        };
+
+        if (!string.IsNullOrEmpty(info.Name))
+        {
+            json["name"] = info.Name.Length > 200 ? info.Name[..200] : info.Name;
+        }
+
+        if (!string.IsNullOrEmpty(info.AutomationId))
+        {
+            json["automation_id"] = info.AutomationId;
+        }
+
+        if (!info.Password && !string.IsNullOrEmpty(info.Value))
+        {
+            json["value"] = info.Value.Length > 200 ? info.Value[..200] : info.Value;
+        }
+
+        json["bounds"] = new JsonObject
+        {
+            ["x"] = info.Left,
+            ["y"] = info.Top,
+            ["width"] = info.Width,
+            ["height"] = info.Height,
+        };
+
+        if (!info.Enabled)
+        {
+            json["enabled"] = false;
+        }
+
+        if (info.Offscreen)
+        {
+            json["offscreen"] = true;
+        }
+
+        if (info.Focused)
+        {
+            json["focused"] = true;
+        }
+
+        if (node.Children.Count > 0)
+        {
+            var children = new JsonArray();
+            foreach (UiaTreeNode child in node.Children)
+            {
+                string unused = string.Empty;
+                children.Add(ConvertTreeNode(child, hwnd, ref unused));
+            }
+
+            json["children"] = children;
+        }
+
+        return json;
     }
 
     private static void CollectAnnotations(
