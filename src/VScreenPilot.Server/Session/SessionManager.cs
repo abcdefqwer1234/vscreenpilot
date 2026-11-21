@@ -18,7 +18,7 @@ namespace VScreenPilot.Session;
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
-internal sealed partial class SessionManager : IDisposable, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost
+internal sealed partial class SessionManager : IDisposable, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, IFocusHost
 {
     private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
@@ -70,13 +70,7 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
         set => _display.State.PositionFallback = value;
     }
 
-    private volatile bool _focusGuardPaused;
-    private volatile bool _focusGuardRunning;
-    private readonly object _focusActionGate = new();
-    private Thread? _focusGuardThread;
-    private IntPtr _lastUserForeground;
-    private long _nextFocusRestoreTicks;
-    private long _focusGuardResumeAtTicks;
+
 
     /* --- 视觉/断言共用工具（实现见 VisualSupport） --- */
     private static void RequireRegionInDisplay(
@@ -274,6 +268,7 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
         _elements = new ElementOperations(this);
         _screenText = new ScreenTextService(this);
         _capture = new ScreenCaptureService(this);
+        _focus = new FocusGuard(this);
         _log.ClientIdProvider = () => Clients.CurrentId;
         AppLauncher.CleanupStaleProfiles();
         SweepOldArtifacts();
