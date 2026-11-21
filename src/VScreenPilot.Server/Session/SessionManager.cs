@@ -75,29 +75,6 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
 
 
 
-    /* --- 视觉/断言共用工具（实现见 VisualSupport） --- */
-    private static void RequireRegionInDisplay(
-        DisplayInfo display, int x, int y, int width, int height, string label) =>
-        VisualSupport.RequireRegionInDisplay(display, x, y, width, height, label);
-
-    private static (int X, int Y, int Width, int Height) ParseRegion(JsonElement region) =>
-        VisualSupport.ParseRegion(region);
-
-    private static double ChangedRatio(byte[] current, byte[] baseline, int tolerance) =>
-        VisualSupport.ChangedRatio(current, baseline, tolerance);
-
-    private static bool ColorMatches(
-        byte[] bgra, int offset, byte r, byte g, byte b, int tolerance) =>
-        VisualSupport.ColorMatches(bgra, offset, r, g, b, tolerance);
-
-    private static string ToHex(byte[] bgra, int offset) => VisualSupport.ToHex(bgra, offset);
-
-    private static JsonObject RegionJson(int x, int y, int width, int height) =>
-        VisualSupport.RegionJson(x, y, width, height);
-
-    private static bool TryParseHex(string value, out byte r, out byte g, out byte b) =>
-        VisualSupport.TryParseHex(value, out r, out g, out b);
-
     private void OnDisplayReady(DisplayInfo display)
     {
         _cursorGuard?.Dispose();
