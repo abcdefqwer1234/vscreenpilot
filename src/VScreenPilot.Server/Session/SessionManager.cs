@@ -18,7 +18,7 @@ namespace VScreenPilot.Session;
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
-internal sealed partial class SessionManager : IDisposable
+internal sealed partial class SessionManager : IDisposable, IElementFinderHost
 {
     private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
@@ -52,6 +52,7 @@ internal sealed partial class SessionManager : IDisposable
     private readonly AppReleaser _releaser;
     private readonly AppLauncher _launcher;
     private readonly InputRouter _input;
+    private readonly ElementFinder _finder;
     private CursorGuard? _cursorGuard;
     // 每调用一个异步流：并发工具不会互相清掉取消令牌（旧实现是单个字段）。
     private readonly AsyncLocal<CancellationTokenSource?> _cancellation = new();
@@ -260,6 +261,7 @@ internal sealed partial class SessionManager : IDisposable
         _launcher = new AppLauncher(this);
         _input = new InputRouter(this);
         _visual = new VisualMatchService(this);
+        _finder = new ElementFinder(this);
         _log.ClientIdProvider = () => Clients.CurrentId;
         AppLauncher.CleanupStaleProfiles();
         SweepOldArtifacts();
@@ -1045,4 +1047,18 @@ internal sealed partial class SessionManager : IDisposable
         _display.Vdd.Dispose();
         _stateStore.Clear();
     }
+
+    TrackedApp? IElementFinderHost.FindApp(int? pid) => FindLiveTrackedApp(pid);
+
+    DisplayInfo IElementFinderHost.EnsureDisplay() => EnsureEnvironment();
+
+    void IElementFinderHost.RequireOnDisplay(DisplayInfo display, IntPtr hwnd, string label) =>
+        RequireWindowOnDisplay(display, hwnd, label);
+
+    UiaHost IElementFinderHost.Uia => Uia;
+
+    string IElementFinderHost.EnsureSnapshot() => EnsureSnapshot();
+
+    string IElementFinderHost.RegisterElement(UiaElementInfo info, IntPtr hwnd) =>
+        RegisterElement(info, hwnd);
 }
