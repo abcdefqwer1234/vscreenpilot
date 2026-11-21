@@ -267,7 +267,7 @@ internal sealed partial class McpTransport
         string? role = OptionalString(arguments, "role");
         string prefer = OptionalString(arguments, "prefer") ?? "auto";
 
-        return ToolResponse.Text(_session.FindElement(
+        return ToolResponseWriter.FromView(_session.FindElement(
             name, controlType, automationId, nameMatch, index, all, maxResults,
             includeOffscreen, pid, role, prefer));
     }
@@ -282,7 +282,7 @@ internal sealed partial class McpTransport
         string? format = OptionalString(arguments, "format");
         bool newSnapshot = OptionalBool(arguments, "new_snapshot", false);
 
-        return ToolResponse.Text(
+        return ToolResponseWriter.FromView(
             _session.GetUiTree(maxDepth, interactiveOnly, maxNodes, root, pid, format, newSnapshot));
     }
 
@@ -306,7 +306,7 @@ internal sealed partial class McpTransport
         string? mode = OptionalString(arguments, "mode");
         bool allowDestructive = OptionalBool(arguments, "allow_destructive", false);
 
-        return ToolResponse.Text(_session.SetElementValue(
+        return ToolResponseWriter.FromView(_session.SetElementValue(
             reference, value, allowKeyboard, mode, allowDestructive));
     }
 

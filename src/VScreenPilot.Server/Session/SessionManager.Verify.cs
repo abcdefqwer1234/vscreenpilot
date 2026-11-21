@@ -9,13 +9,14 @@ using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
+using VScreenPilot.Views;
 using static VScreenPilot.Mcp.JsonArgReader;
 
 namespace VScreenPilot.Session;
 
 internal sealed partial class SessionManager
 {
-    public JsonObject FindElement(
+    public object FindElement(
         string? name,
         string? controlType,
         string? automationId,
@@ -168,26 +169,22 @@ internal sealed partial class SessionManager
 
         if (all)
         {
-            var elements = new JsonArray();
+            var elements = new List<FindElementItemView>();
 
             foreach (UiaElementInfo item in matches.Take(maxResults))
             {
-                JsonObject element = ElementPresenter.ToCompactJson(item);
-                element["ref"] = RegisterElement(item, HwndFor(item));
-                elements.Add(element);
+                elements.Add(ElementPresenter.ToFindItem(item, RegisterElement(item, HwndFor(item))));
             }
 
-            return new JsonObject
-            {
-                ["count"] = elements.Count,
-                ["total"] = matches.Count,
-                ["truncated"] = findTruncated || matches.Count > maxResults,
-                ["name_match"] = nameMatch,
-                ["role"] = role,
-                ["prefer"] = preferMode,
-                ["snapshot_id"] = snapshotId,
-                ["elements"] = elements,
-            };
+            return new FindElementsView(
+                elements.Count,
+                matches.Count,
+                findTruncated || matches.Count > maxResults,
+                nameMatch,
+                role,
+                preferMode,
+                snapshotId,
+                elements);
         }
 
         if (index < 0 || index >= matches.Count)
@@ -199,16 +196,25 @@ internal sealed partial class SessionManager
         }
 
         UiaElementInfo info = matches[index];
-        JsonObject result = ElementPresenter.ToCompactJson(info);
-        result["ref"] = RegisterElement(info, HwndFor(info));
-        result["name_match"] = nameMatch;
-        result["role"] = role;
-        result["prefer"] = preferMode;
-        result["index"] = index;
-        result["count"] = matches.Count;
-        result["truncated"] = findTruncated;
-        result["snapshot_id"] = snapshotId;
-        return result;
+        ElementView element = ElementPresenter.ToView(info, compact: true);
+
+        return new FindElementView(
+            element.Name,
+            element.AutomationId,
+            element.ControlType,
+            element.Bounds,
+            element.Enabled,
+            element.Offscreen,
+            element.Focused,
+            element.Value,
+            RegisterElement(info, HwndFor(info)),
+            nameMatch,
+            role,
+            preferMode,
+            index,
+            matches.Count,
+            findTruncated,
+            snapshotId);
     }
 
     /// <summary>

@@ -34,6 +34,23 @@ internal static class ElementPresenter
             compact ? null : (!info.Password && !string.IsNullOrEmpty(info.Text) ? info.Text : null));
     }
 
+    /// <summary>find_element 条目：compact 字段 + ref，保持旧字段顺序。</summary>
+    public static FindElementItemView ToFindItem(UiaElementInfo info, string reference)
+    {
+        ElementView view = ToView(info, compact: true);
+
+        return new FindElementItemView(
+            view.Name,
+            view.AutomationId,
+            view.ControlType,
+            view.Bounds,
+            view.Enabled,
+            view.Offscreen,
+            view.Focused,
+            view.Value,
+            reference);
+    }
+
     public static JsonObject ToCompactJson(UiaElementInfo info)
     {
         var json = new JsonObject

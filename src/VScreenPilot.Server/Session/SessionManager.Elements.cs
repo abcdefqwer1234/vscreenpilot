@@ -182,7 +182,7 @@ internal sealed partial class SessionManager
     /* 工具：get_ui_tree                                                   */
     /* ------------------------------------------------------------------ */
 
-    public JsonObject GetUiTree(
+    public UiTreeView GetUiTree(
         int? maxDepth, bool? interactiveOnly, int? maxNodes, string? root, int? pid,
         string? format = null, bool newSnapshot = false)
     {
@@ -281,56 +281,37 @@ internal sealed partial class SessionManager
         }
 
         WindowInfo? window = WindowManager.FromHandle(hwnd);
-        var json = new JsonObject
-        {
-            ["root_ref"] = rootRef,
-            ["tree"] = tree,
-            ["nodes"] = result.Nodes,
-            ["visited"] = result.Visited,
-            ["pruned"] = result.Pruned,
-            ["truncated"] = result.Truncated,
-            ["interactive_only"] = interactive,
-            ["max_depth"] = depth,
-            ["max_depth_reached"] = result.MaxDepthReached,
-            ["elapsed_ms"] = result.ElapsedMs,
-            ["ref_capacity"] = ElementRefCapacity,
-            ["max_nodes_effective"] = effectiveNodes,
-            ["snapshot_id"] = snapshotId,
-            ["new_snapshot"] = newSnapshot,
-        };
 
-        if (nodes != (maxNodes ?? 300))
-        {
-            json["max_nodes_clamped"] = true;
-        }
-
-        if (string.Equals(format, "text", StringComparison.OrdinalIgnoreCase))
-        {
-            json["text"] = SnapshotTextFormatter.Render(tree, includeValues: true);
-        }
-
-        if (result.Reason is not null)
-        {
-            json["truncated_reason"] = result.Reason;
-        }
-
-        if (window is not null)
-        {
-            json["window"] = new JsonObject
-            {
-                ["hwnd"] = window.Hwnd.ToInt64(),
-                ["pid"] = window.Pid,
-                ["title"] = window.Title,
-            };
-        }
-
-        return json;
+        return new UiTreeView(
+            rootRef,
+            tree,
+            result.Nodes,
+            result.Visited,
+            result.Pruned,
+            result.Truncated,
+            interactive,
+            depth,
+            result.MaxDepthReached,
+            result.ElapsedMs,
+            ElementRefCapacity,
+            effectiveNodes,
+            snapshotId,
+            newSnapshot,
+            Backend: null,
+            nodes != (maxNodes ?? 300) ? true : null,
+            result.Reason,
+            string.Equals(format, "text", StringComparison.OrdinalIgnoreCase)
+                ? SnapshotTextFormatter.Render(tree, includeValues: true)
+                : null,
+            window is null
+                ? null
+                : new TreeWindowView(window.Hwnd.ToInt64(), window.Pid, window.Title));
     }
 
     /// <summary>
     /// MSAA 对话框没有 UIA 树；把控件展开成一层扁平树，ref 可直接 invoke/click/get_text。
     /// </summary>
-    private JsonObject BuildMsaaTree(
+    private UiTreeView BuildMsaaTree(
         ElementRefEntry rootEntry, IntPtr hwnd, int ordinal, int maxNodes, string? format)
     {
         MsaaFindResult found = Uia.InvokeMsaa(() => MsaaService.FindElements(
@@ -376,32 +357,28 @@ internal sealed partial class SessionManager
             ["children"] = children,
         };
 
-        var json = new JsonObject
-        {
-            ["root_ref"] = rootEntry.Ref,
-            ["tree"] = tree,
-            ["nodes"] = count + 1,
-            ["truncated"] = found.Truncated,
-            ["interactive_only"] = true,
-            ["max_depth"] = 1,
-            ["max_nodes_effective"] = maxNodes,
-            ["ref_capacity"] = ElementRefCapacity,
-            ["snapshot_id"] = snapshotId,
-            ["new_snapshot"] = false,
-            ["backend"] = "msaa",
-        };
-
-        if (found.Truncated)
-        {
-            json["truncated_reason"] = "msaa_limit";
-        }
-
-        if (string.Equals(format, "text", StringComparison.OrdinalIgnoreCase))
-        {
-            json["text"] = SnapshotTextFormatter.Render(tree, includeValues: true);
-        }
-
-        return json;
+        return new UiTreeView(
+            rootEntry.Ref,
+            tree,
+            count + 1,
+            Visited: null,
+            Pruned: null,
+            found.Truncated,
+            InteractiveOnly: true,
+            MaxDepth: 1,
+            MaxDepthReached: null,
+            ElapsedMs: null,
+            ElementRefCapacity,
+            maxNodes,
+            snapshotId,
+            NewSnapshot: false,
+            Backend: "msaa",
+            MaxNodesClamped: null,
+            found.Truncated ? "msaa_limit" : null,
+            string.Equals(format, "text", StringComparison.OrdinalIgnoreCase)
+                ? SnapshotTextFormatter.Render(tree, includeValues: true)
+                : null,
+            Window: null);
     }
 
     /* ------------------------------------------------------------------ */
@@ -641,7 +618,7 @@ internal sealed partial class SessionManager
         }
     }
 
-    public JsonObject SetElementValue(
+    public SetElementValueView SetElementValue(
         string reference, string value, bool allowKeyboard, string? mode = null, bool allowDestructive = false)
     {
         DisplayInfo display = EnsureEnvironment();
@@ -687,29 +664,35 @@ internal sealed partial class SessionManager
                     "left", 1, "message");
 
                 TypeTextView typed = TypeText(value, null, verify: true, chunkChars: 32, channel: "auto");
-                return new JsonObject
-                {
-                    ["ref"] = probe.Ref,
-                    ["method"] = "msaa+keyboard",
-                    ["mode"] = mode ?? "auto",
-                    ["verified"] = typed.Verified,
-                    ["written"] = value,
-                    ["value"] = typed.ObservedLength,
-                    ["refreshed"] = false,
-                };
+                return new SetElementValueView(
+                    probe.Ref,
+                    "msaa+keyboard",
+                    mode ?? "auto",
+                    Destructive: null,
+                    typed.Verified,
+                    value,
+                    typed.ObservedLength is null ? null : JsonValue.Create(typed.ObservedLength.Value),
+                    Refreshed: false,
+                    Chunks: null,
+                    DurationMs: null,
+                    ObservedLength: null,
+                    Warning: null);
             }
 
             string? observed = Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
-            return new JsonObject
-            {
-                ["ref"] = probe.Ref,
-                ["method"] = "msaa",
-                ["mode"] = mode ?? "auto",
-                ["verified"] = string.Equals(observed, value, StringComparison.Ordinal),
-                ["written"] = value,
-                ["value"] = observed,
-                ["refreshed"] = false,
-            };
+            return new SetElementValueView(
+                probe.Ref,
+                "msaa",
+                mode ?? "auto",
+                Destructive: null,
+                string.Equals(observed, value, StringComparison.Ordinal),
+                value,
+                observed is null ? null : JsonValue.Create(observed),
+                Refreshed: false,
+                Chunks: null,
+                DurationMs: null,
+                ObservedLength: null,
+                Warning: null);
         }
 
         using UiaElementHandle handle = ResolveElementHandle(reference, display, out ElementRefEntry entry, out bool refreshed);
@@ -807,17 +790,19 @@ internal sealed partial class SessionManager
         if (result.Supported)
         {
             bool verified = string.Equals(result.Value ?? string.Empty, value, StringComparison.Ordinal);
-            return new JsonObject
-            {
-                ["ref"] = entry.Ref,
-                ["method"] = "value_pattern",
-                ["mode"] = effectiveMode,
-                ["destructive"] = destructiveInsert,
-                ["verified"] = verified,
-                ["written"] = value,
-                ["value"] = result.Value,
-                ["refreshed"] = refreshed,
-            };
+            return new SetElementValueView(
+                entry.Ref,
+                "value_pattern",
+                effectiveMode,
+                destructiveInsert,
+                verified,
+                value,
+                result.Value is null ? null : JsonValue.Create(result.Value),
+                refreshed,
+                Chunks: null,
+                DurationMs: null,
+                ObservedLength: null,
+                Warning: null);
         }
 
         if (!allowKeyboard)
@@ -874,7 +859,7 @@ internal sealed partial class SessionManager
             refreshed);
     }
 
-    private JsonObject SetElementValueByKeyboard(
+    private SetElementValueView SetElementValueByKeyboard(
         DisplayInfo display,
         UiaElementHandle handle,
         ElementRefEntry entry,
@@ -988,32 +973,21 @@ internal sealed partial class SessionManager
             string? after = handle.GetText(65536);
             bool verified = write.Verified;
 
-            var result = new JsonObject
-            {
-                ["ref"] = entry.Ref,
-                ["method"] = "keyboard",
-                ["mode"] = effectiveMode,
-                ["destructive"] = replace,
-                ["verified"] = verified,
-                ["written"] = value,
-                ["refreshed"] = refreshed,
-                ["chunks"] = write.Chunks,
-                ["duration_ms"] = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
-            };
-
-            if (after is not null)
-            {
-                result["value"] = after;
-                result["observed_length"] = after.Length;
-            }
-
-            if (!verified)
-            {
-                result["warning"] =
-                    "键盘写入未能通过 TextPattern/ValuePattern 回读确认；请用 get_element_text 或截图复核";
-            }
-
-            return result;
+            return new SetElementValueView(
+                entry.Ref,
+                "keyboard",
+                effectiveMode,
+                replace,
+                verified,
+                value,
+                after is null ? null : JsonValue.Create(after),
+                refreshed,
+                write.Chunks,
+                Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
+                after?.Length,
+                !verified
+                    ? "键盘写入未能通过 TextPattern/ValuePattern 回读确认；请用 get_element_text 或截图复核"
+                    : null);
         }
         finally
         {

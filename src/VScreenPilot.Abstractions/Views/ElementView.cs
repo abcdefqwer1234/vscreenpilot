@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace VScreenPilot.Views;
@@ -68,3 +69,30 @@ public sealed record InvokeElementView(
     [property: JsonPropertyName("element")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     ElementView? Element);
+
+/// <summary>`set_element_value` 的输出视图；msaa / msaa+keyboard / value_pattern / keyboard 共用。</summary>
+public sealed record SetElementValueView(
+    [property: JsonPropertyName("ref")] string Ref,
+    [property: JsonPropertyName("method")] string Method,
+    [property: JsonPropertyName("mode")] string Mode,
+    [property: JsonPropertyName("destructive")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? Destructive,
+    [property: JsonPropertyName("verified")] bool Verified,
+    [property: JsonPropertyName("written")] string Written,
+    [property: JsonPropertyName("value")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    JsonNode? Value,
+    [property: JsonPropertyName("refreshed")] bool Refreshed,
+    [property: JsonPropertyName("chunks")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    int? Chunks,
+    [property: JsonPropertyName("duration_ms")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    double? DurationMs,
+    [property: JsonPropertyName("observed_length")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    int? ObservedLength,
+    [property: JsonPropertyName("warning")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Warning);
