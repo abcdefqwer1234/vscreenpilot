@@ -18,7 +18,7 @@ namespace VScreenPilot.Session;
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
-internal sealed partial class SessionManager : IDisposable, IElementFinderHost
+internal sealed partial class SessionManager : IDisposable, IElementFinderHost, IRegionVerifierHost
 {
     private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
@@ -53,6 +53,7 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost
     private readonly AppLauncher _launcher;
     private readonly InputRouter _input;
     private readonly ElementFinder _finder;
+    private readonly RegionVerifier _regionVerifier;
     private CursorGuard? _cursorGuard;
     // 每调用一个异步流：并发工具不会互相清掉取消令牌（旧实现是单个字段）。
     private readonly AsyncLocal<CancellationTokenSource?> _cancellation = new();
@@ -262,6 +263,7 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost
         _input = new InputRouter(this);
         _visual = new VisualMatchService(this);
         _finder = new ElementFinder(this);
+        _regionVerifier = new RegionVerifier(this);
         _log.ClientIdProvider = () => Clients.CurrentId;
         AppLauncher.CleanupStaleProfiles();
         SweepOldArtifacts();
@@ -1061,4 +1063,19 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost
 
     string IElementFinderHost.RegisterElement(UiaElementInfo info, IntPtr hwnd) =>
         RegisterElement(info, hwnd);
+
+    DisplayInfo IRegionVerifierHost.EnsureDisplay() => EnsureEnvironmentFast();
+
+    (byte[] Bgra, int Width, int Height) IRegionVerifierHost.CaptureRegion(
+        int x, int y, int width, int height) => CaptureRegion(x, y, width, height);
+
+    FrameSnapshot? IRegionVerifierHost.FindFrame(string frameId) => FindFrame(frameId);
+
+    FrameSnapshot? IRegionVerifierHost.FindLatestFrame(int x, int y, int width, int height) =>
+        FindLatestFrame(x, y, width, height);
+
+    IReadOnlyList<FrameSnapshot> IRegionVerifierHost.Frames() =>
+        _frames.Snapshot();
+
+    FrameSnapshot? IRegionVerifierHost.LatestFrame() => _frames.Latest();
 }
