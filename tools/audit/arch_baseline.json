@@ -1,36 +1,12 @@
 {
-  "generated_at": "2026-11-21T20:26:30Z",
+  "generated_at": "2026-11-21T20:35:43Z",
   "source": {
-    "files": 165,
-    "lines": 31832,
-    "max_file": 783,
-    "files_gt_600": 6,
+    "files": 178,
+    "lines": 32095,
+    "max_file": 598,
+    "files_gt_600": 0,
     "files_gt_800": 0,
     "top_files": [
-      {
-        "lines": 783,
-        "path": "src/VScreenPilot.Server/Session/VirtualDisplayController.cs"
-      },
-      {
-        "lines": 741,
-        "path": "src/VScreenPilot.Server/Session/SessionManager.cs"
-      },
-      {
-        "lines": 724,
-        "path": "src/VScreenPilot.Server/Mcp/McpTransport.cs"
-      },
-      {
-        "lines": 680,
-        "path": "src/VScreenPilot.Server/Session/SnapshotBuilder.cs"
-      },
-      {
-        "lines": 661,
-        "path": "src/VScreenPilot.Server/Tools/ToolHandlers.cs"
-      },
-      {
-        "lines": 638,
-        "path": "src/VScreenPilot.Server/Session/VisualMatchService.cs"
-      },
       {
         "lines": 598,
         "path": "src/VScreenPilot.Automation/Ui/MsaaService.cs"
@@ -48,12 +24,36 @@
         "path": "src/VScreenPilot.Automation/Perception/TemplateMatcher.cs"
       },
       {
+        "lines": 470,
+        "path": "src/VScreenPilot.Server/Session/SessionManager.Lifecycle.cs"
+      },
+      {
         "lines": 463,
         "path": "src/VScreenPilot.Server/Infrastructure/LogRing.cs"
       },
       {
         "lines": 453,
         "path": "src/VScreenPilot.Platform/Display/VddDevice.cs"
+      },
+      {
+        "lines": 450,
+        "path": "src/VScreenPilot.Server/Session/ElementOperations.Value.cs"
+      },
+      {
+        "lines": 436,
+        "path": "src/VScreenPilot.Server/Tools/ToolExecutor.cs"
+      },
+      {
+        "lines": 427,
+        "path": "src/VScreenPilot.Server/Session/EnvironmentReporter.cs"
+      },
+      {
+        "lines": 418,
+        "path": "src/VScreenPilot.Server/Session/AppReleaser.cs"
+      },
+      {
+        "lines": 415,
+        "path": "src/VScreenPilot.Server/Session/AppLauncher.Launch.cs"
       }
     ]
   },
@@ -78,8 +78,8 @@
       },
       {
         "lines": 139,
-        "path": "src/VScreenPilot.Server/Session/VisualMatchService.cs",
-        "line": 121,
+        "path": "src/VScreenPilot.Server/Session/VisualMatchService.Color.cs",
+        "line": 17,
         "name": "MatchColor"
       },
       {
