@@ -22,11 +22,11 @@ internal sealed partial class SessionManager : IInputHost
 
     CancellationToken IInputHost.Cancellation => Cancellation;
 
-    ElementRefEntry IInputHost.RequireElement(string reference) => RequireElementEntry(reference);
+    ElementRefEntry IInputHost.RequireElement(string reference) => _resolver.Require(reference);
 
     UiaElementHandle IInputHost.ResolveHandle(
         string reference, DisplayInfo display, out ElementRefEntry entry, out bool refreshed) =>
-        ResolveElementHandle(reference, display, out entry, out refreshed);
+        _resolver.Resolve(reference, display, out entry, out refreshed);
 
     TrackedApp? IInputHost.FindTrackedAppAtWindow(uint targetPid, uint rootPid)
     {

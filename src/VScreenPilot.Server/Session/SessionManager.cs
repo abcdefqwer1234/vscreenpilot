@@ -18,7 +18,7 @@ namespace VScreenPilot.Session;
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
-internal sealed partial class SessionManager : IDisposable, IElementFinderHost, IRegionVerifierHost, IWaitHost
+internal sealed partial class SessionManager : IDisposable, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost
 {
     private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
@@ -55,6 +55,8 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
     private readonly ElementFinder _finder;
     private readonly RegionVerifier _regionVerifier;
     private readonly WaitService _waits;
+    private readonly ElementResolver _resolver;
+    private readonly ElementOperations _elements;
     private CursorGuard? _cursorGuard;
     // 每调用一个异步流：并发工具不会互相清掉取消令牌（旧实现是单个字段）。
     private readonly AsyncLocal<CancellationTokenSource?> _cancellation = new();
@@ -266,6 +268,8 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
         _finder = new ElementFinder(this);
         _regionVerifier = new RegionVerifier(this);
         _waits = new WaitService(this);
+        _resolver = new ElementResolver(this);
+        _elements = new ElementOperations(this);
         _log.ClientIdProvider = () => Clients.CurrentId;
         AppLauncher.CleanupStaleProfiles();
         SweepOldArtifacts();
@@ -1115,4 +1119,86 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
 
     void IWaitHost.ReportProgress(int done, int total, string message) =>
         ToolProgress.Report(done, total, message);
+
+    ElementRefStore IElementResolverHost.Refs => _refs;
+
+    UiaHost IElementResolverHost.Uia => _uiaHost;
+
+    string IElementResolverHost.CurrentClientId => Clients.CurrentId;
+
+    string IElementResolverHost.SnapshotId => SnapshotId;
+
+    bool IElementResolverHost.IsTrackedPid(int pid)
+    {
+        lock (_gate)
+        {
+            return _apps.Any(app => IsOwned(app) && app.Pid == pid && IsLiveTrackedApp(app));
+        }
+    }
+
+    LogRing IElementResolverHost.Log => _log;
+
+    void IElementResolverHost.RequireOnDisplay(DisplayInfo display, IntPtr hwnd, string label) =>
+        RequireWindowOnDisplay(display, hwnd, label);
+
+    DisplayInfo IElementOperationsHost.EnsureDisplay() => EnsureEnvironment();
+
+    UiaHost IElementOperationsHost.Uia => _uiaHost;
+
+    ElementResolver IElementOperationsHost.Resolver => _resolver;
+
+    ElementRefStore IElementOperationsHost.Refs => _refs;
+
+    int IElementOperationsHost.RefCapacity => ElementRefCapacity;
+
+    bool IElementOperationsHost.IsCancelled => Cancellation.IsCancellationRequested;
+
+    LogRing IElementOperationsHost.Log => _log;
+
+    TrackedApp? IElementOperationsHost.FindApp(int? pid) => FindLiveTrackedApp(pid);
+
+    TrackedApp? IElementOperationsHost.OwnedAppForPid(int pid)
+    {
+        lock (_gate)
+        {
+            return _apps.FirstOrDefault(
+                item => IsOwned(item) && item.Pid == pid && IsLiveTrackedApp(item));
+        }
+    }
+
+    void IElementOperationsHost.RequireOnDisplay(DisplayInfo display, IntPtr hwnd, string label) =>
+        RequireWindowOnDisplay(display, hwnd, label);
+
+    void IElementOperationsHost.RequirePointInTrackedApp(
+        DisplayInfo display, int x, int y, string label) =>
+        RequirePointInTrackedApp(display, x, y, label);
+
+    ClickView IElementOperationsHost.Click(
+        int x, int y, string button, int clicks, string mode,
+        bool keepForeground, bool observe, bool fallbackInput) =>
+        Click(x, y, button, clicks, mode, keepForeground, observe, fallbackInput);
+
+    TypeTextView IElementOperationsHost.TypeText(
+        string text, int? pid, bool verify, int chunkChars, string channel) =>
+        TypeText(text, pid, verify, chunkChars, channel);
+
+    TextWriteResult IElementOperationsHost.WriteTextVerified(
+        TrackedApp app, UiaElementHandle handle, string value, bool replace, int timeoutMs) =>
+        _input.WriteTextVerified(app, handle, value, replace, timeoutMs);
+
+    bool IElementOperationsHost.EnsureForeground(TrackedApp app) => EnsureForeground(app);
+
+    void IElementOperationsHost.PauseFocusGuard() => PauseFocusGuard();
+
+    void IElementOperationsHost.ResumeFocusGuard() => ResumeFocusGuard();
+
+    void IElementOperationsHost.RestoreForeground(IntPtr previous) => RestoreForeground(previous);
+
+    void IElementOperationsHost.ResetUia() => ResetUia();
+
+    JsonObject IElementOperationsHost.ConvertTreeNode(
+        UiaTreeNode node, IntPtr hwnd, ref string rootRef) =>
+        _snapshots.ConvertTreeNode(node, hwnd, ref rootRef);
+
+    Func<bool> IElementOperationsHost.CancellationProbe() => CancellationProbe();
 }
