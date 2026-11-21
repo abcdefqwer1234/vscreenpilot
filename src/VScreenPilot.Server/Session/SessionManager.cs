@@ -36,15 +36,10 @@ internal sealed partial class SessionManager : IDisposable
     private readonly LogRing _log;
     private readonly StateStore _stateStore;
     private readonly JobObject _job;
-    private readonly VddDevice _vdd = new();
     private readonly TrackedAppRegistry _apps;
     private readonly bool _allowScript;
     private readonly string[] _appAllowlist;
 
-    private DisplayInfo? _virtualDisplay;
-    private string _displayDevice = string.Empty;
-    private int _displayIndex = -1;
-    private bool _initialized;
     private int _disposed;
 
     private readonly FrameStore _frames = new();
@@ -55,28 +50,17 @@ internal sealed partial class SessionManager : IDisposable
     private bool _jobUnavailableLogged;
 
     private readonly UiaHost _uiaHost = new();
+    private readonly VirtualDisplayController _display;
     private CursorGuard? _cursorGuard;
     // 每调用一个异步流：并发工具不会互相清掉取消令牌（旧实现是单个字段）。
     private readonly AsyncLocal<CancellationTokenSource?> _cancellation = new();
     private long _epoch;
-    private long _lastGeometryCheckTicks;
-    private bool _selfHealed;
-    private int _selfHealCount;
-    private string? _lastSelfHealReason;
-    private bool _adoptedOrphan;
-    private bool _displayPositionFallback;
 
     internal bool DisplayPositionFallback
     {
-        get => _displayPositionFallback;
-        set => _displayPositionFallback = value;
+        get => _display.State.PositionFallback;
+        set => _display.State.PositionFallback = value;
     }
-    private int _displayRecreateCount;
-    private int _vddReopenCount;
-
-    private int _recoveredDisplayIndex = -1;
-    private string _recoveredDisplayDevice = string.Empty;
-    private int _recoveredPid;
 
     private volatile bool _focusGuardPaused;
     private volatile bool _focusGuardRunning;
@@ -85,6 +69,19 @@ internal sealed partial class SessionManager : IDisposable
     private IntPtr _lastUserForeground;
     private long _nextFocusRestoreTicks;
     private long _focusGuardResumeAtTicks;
+
+    private void OnDisplayReady(DisplayInfo display)
+    {
+        _cursorGuard?.Dispose();
+        _cursorGuard = new CursorGuard(display, _log.Info, _log.Warn);
+        _cursorGuard.Start();
+    }
+
+    private void OnDisplayRemoved()
+    {
+        _cursorGuard?.Dispose();
+        _cursorGuard = null;
+    }
 
     private UiaHost Uia => _uiaHost;
 
@@ -220,6 +217,15 @@ internal sealed partial class SessionManager : IDisposable
         _apps = new TrackedAppRegistry(_gate);
         _snapshots = new SnapshotBuilder(this);
         _environment = new EnvironmentReporter(this);
+        _display = new VirtualDisplayController(
+            _gate, log, ProfileName,
+            () => Volatile.Read(ref _disposed) != 0,
+            OnDisplayReady,
+            OnDisplayRemoved,
+            SaveState,
+            VirtualWidth,
+            VirtualHeight,
+            VirtualRefresh);
         _log = log;
         _stateStore = stateStore;
         _job = job;
@@ -236,9 +242,9 @@ internal sealed partial class SessionManager : IDisposable
 
     public bool AllowScript => _allowScript;
 
-    public bool Initialized => _initialized;
+    public bool Initialized => _display.State.Initialized;
 
-    public DisplayInfo? VirtualDisplay => _virtualDisplay;
+    public DisplayInfo? VirtualDisplay => _display.State.VirtualDisplay;
 
     public IReadOnlyList<TrackedApp> Apps => _apps.Snapshot();
 
@@ -387,387 +393,9 @@ internal sealed partial class SessionManager : IDisposable
     /// 读路径的快速入口：已挂载就直接返回，不拿 _gate，也不重算拓扑。
     /// 真正失效时再回落到 EnsureEnvironment 自愈。
     /// </summary>
-    public DisplayInfo EnsureEnvironmentFast()
-    {
-        DisplayInfo? display = _virtualDisplay;
+    public DisplayInfo EnsureEnvironmentFast() => _display.EnsureFast();
 
-        return display is { Attached: true } && _vdd.IsOpen
-            ? display
-            : EnsureEnvironment();
-    }
-
-    /// <summary>按需构造虚拟屏；幂等，必要时自愈。</summary>
-    public DisplayInfo EnsureEnvironment()
-    {
-        lock (_gate)
-        {
-            if (Volatile.Read(ref _disposed) != 0)
-            {
-                throw new ToolException("E_RELEASED", "会话已结束，无法重新建立虚拟屏");
-            }
-
-            if (_virtualDisplay is { Attached: true } current &&
-                _vdd.IsOpen &&
-                GeometryStillValid(current))
-            {
-                return current;
-            }
-
-            string? selfHealReason = null;
-
-            VddDeviceStatus status = VddDevice.QueryStatus();
-            if (status != VddDeviceStatus.Ok)
-            {
-                throw new ToolException("E_DRIVER", $"Parsec VDD 驱动状态异常: {status}");
-            }
-
-            if (_vdd.NeedsReopen)
-            {
-                _log.Warn(
-                    $"VDD 心跳连续失败 ({_vdd.ConsecutiveUpdateFailures})，重新打开设备");
-                _vdd.Dispose();
-                _vddReopenCount++;
-                selfHealReason = "vdd_reopen";
-            }
-
-            if (!_vdd.TryOpen(out int openError))
-            {
-                throw new ToolException("E_DRIVER_OPEN", $"打开 VDD 设备失败 (Win32 {openError})");
-            }
-
-            _vdd.StartKeepAlive();
-
-            bool configured = false;
-            bool displayAdded = false;
-            string? targetDevice = null;
-            DisplayInfo? existing = OwnDisplay();
-
-            if (existing is null)
-            {
-                DisplayInfo? attached = DisplayTopology.FindParsecDisplay();
-
-                // 已经有其他 live profile 认领的屏不能接管；否则会抢别人的屏。
-                if (attached is not null && !IsDisplayOwnedByOther(attached.DeviceName))
-                {
-                    bool matchesRecovered = !string.IsNullOrWhiteSpace(_recoveredDisplayDevice) &&
-                                            string.Equals(
-                                                attached.DeviceName,
-                                                _recoveredDisplayDevice,
-                                                StringComparison.OrdinalIgnoreCase);
-
-                    // 不认领“来源不明”的屏；只有自己的崩溃 state 匹配才允许。
-                    // 另一个 profile 正在启动（registry 已存在但 display_device 还没写）时，
-                    // 不要抢它的屏，也不要直接失败，直接申请一块新的。
-                    if (matchesRecovered)
-                    {
-                        existing = attached;
-                    }
-                    else if (HasOtherLiveProfile())
-                    {
-                        existing = null;
-                    }
-                    else if (!string.Equals(ProfileName, "default", StringComparison.Ordinal))
-                    {
-                        throw new ToolException(
-                            "E_ORPHAN_DISPLAY",
-                            "检测到未归属的虚拟显示器；非默认 profile 不自动接管，避免抢其他 profile 的屏",
-                            new JsonObject
-                            {
-                                ["display"] = attached.ToString(),
-                                ["profile"] = ProfileName,
-                            },
-                            retryable: true,
-                            hint: "确认该屏无人使用后手动摘除，或使用默认 profile/独立 VM",
-                            stage: "display");
-                    }
-                    else
-                    {
-                        existing = attached;
-                    }
-                }
-            }
-
-            if (existing is not null && _displayIndex < 0)
-            {
-                if (_recoveredDisplayIndex >= 0)
-                {
-                    _log.Warn(
-                        $"检测到孤儿虚拟屏，按上次记录接管 " +
-                        $"(index={_recoveredDisplayIndex}, device={_recoveredDisplayDevice}, " +
-                        $"pid={_recoveredPid})");
-                    _displayIndex = _recoveredDisplayIndex;
-                    configured = TryActivateDisplay(existing.DeviceName, out string? adoptFailure);
-
-                    if (configured)
-                    {
-                        _displayDevice = existing.DeviceName;
-                        _adoptedOrphan = true;
-                        selfHealReason = "orphan_adopted";
-                        _log.Info($"孤儿虚拟屏已接管: {existing}");
-                    }
-                    else
-                    {
-                        _log.Warn($"孤儿虚拟屏接管失败 ({adoptFailure})，尝试重置");
-                        RemoveDisplayAfterEnsureFailure(displayAdded);
-                        selfHealReason = "orphan_reclaimed";
-                    }
-                }
-                else
-                {
-                    // 进程异常退出后驱动通常约 1s 自动回收；给一个短窗口再决定。
-                    if (!DisplayTopology.WaitForNoParsecDisplay(TimeSpan.FromSeconds(2)))
-                    {
-                        throw new ToolException(
-                            "E_ORPHAN_DISPLAY",
-                            "检测到未归属的虚拟显示器，且无上次会话记录可供安全接管",
-                            new JsonObject { ["display"] = existing.ToString() });
-                    }
-
-                    _log.Info("孤儿虚拟屏已被驱动自动回收");
-                    existing = DisplayTopology.FindParsecDisplay();
-                }
-
-                // 一次会话只按上次记录接管一次，避免旧索引在后续重建时被误用。
-                _recoveredDisplayIndex = -1;
-                _recoveredDisplayDevice = string.Empty;
-            }
-
-            if (existing is not null)
-            {
-                targetDevice = existing.DeviceName;
-            }
-
-            // 显示索引仍归本会话，但拓扑丢失/几何被改（睡眠、驱动回收、用户改设置）。
-            if (existing is not null && _displayIndex >= 0)
-            {
-                _log.Warn($"虚拟屏状态异常 ({existing})，尝试恢复");
-
-                if (!configured)
-                {
-                    configured = TryActivateDisplay(existing.DeviceName, out string? failure);
-
-                    if (!configured)
-                    {
-                        _log.Warn($"恢复失败 ({failure})，重建虚拟屏");
-                        RemoveDisplayAfterEnsureFailure(displayAdded);
-                        _displayRecreateCount++;
-                        selfHealReason = "display_recreated";
-                    }
-                    else if (selfHealReason is null)
-                    {
-                        selfHealReason = "geometry_changed";
-                    }
-                }
-            }
-            else if (existing is null && _displayIndex >= 0)
-            {
-                // 驱动已回收设备：索引失效，直接丢弃后重新创建，避免对旧索引反复重试。
-                _log.Warn("虚拟屏已被驱动回收，重新创建");
-                ForgetDisplay();
-                _displayRecreateCount++;
-                selfHealReason = "display_reclaimed";
-            }
-
-            if (!configured && _displayIndex < 0)
-            {
-                // ADD 与“解析新屏 device”必须整体串行：只锁 ADD 时，两个 profile 可能在
-                // 解析阶段把同一块刚挂上的屏都认成自己的（后写 registry 的会覆盖前者）。
-                Mutex? allocation = TryAcquireDisplayAllocation(out bool allocationHeld);
-
-                try
-                {
-                    // Parsec 驱动在 REMOVE 后约 3-5 秒内会拒绝 ADD；重试并等待本次新变可用的屏。
-                    // 不能用“设备名是否出现过”判断：驱动会复用已有 detached 适配器的名字（本机 DISPLAY5~20）。
-                    HashSet<string> beforeLive = DisplayTopology.LiveParsecDevices();
-
-                    int[] delays = { 0, 500, 1000, 1500, 2000 };
-
-                    foreach (int delay in delays)
-                    {
-                        if (delay > 0)
-                        {
-                            Thread.Sleep(delay);
-                        }
-
-                        _displayIndex = _vdd.AddDisplay();
-
-                        if (_displayIndex >= 0)
-                        {
-                            displayAdded = true;
-                            break;
-                        }
-
-                        if (DisplayTopology.PickNewLiveParsec(
-                                DisplayTopology.List(), beforeLive, IsDisplayOwnedByOther) is not null)
-                        {
-                            _log.Warn("驱动拒绝 ADD，但检测到本次新变可用的 Parsec 屏，按已创建处理");
-                            break;
-                        }
-
-                        _log.Warn("驱动拒绝创建虚拟显示器，准备重试");
-                    }
-
-                    if (_displayIndex < 0 &&
-                        DisplayTopology.PickNewLiveParsec(
-                            DisplayTopology.List(), beforeLive, IsDisplayOwnedByOther) is null)
-                    {
-                        throw new ToolException(
-                            "E_DISPLAY_ADD",
-                            "驱动拒绝创建虚拟显示器",
-                            new JsonObject
-                            {
-                                ["before_live"] = DescribeDevices(beforeLive),
-                                ["after_live"] = DescribeDevices(DisplayTopology.LiveParsecDevices()),
-                            },
-                            retryable: true,
-                            hint: "驱动 REMOVE 后需要 3-5 秒冷却；稍后重试或重启驱动",
-                            stage: "display");
-                    }
-
-                    if (string.IsNullOrWhiteSpace(targetDevice))
-                    {
-                        if (!DisplayTopology.WaitForNewLiveParsecDisplay(
-                                beforeLive,
-                                TimeSpan.FromSeconds(3),
-                                out DisplayInfo? added,
-                                IsDisplayOwnedByOther) ||
-                            added is null)
-                        {
-                            JsonObject details = new()
-                            {
-                                ["display_index"] = _displayIndex,
-                                ["before_live"] = DescribeDevices(beforeLive),
-                                ["after_live"] = DescribeDevices(DisplayTopology.LiveParsecDevices()),
-                            };
-
-                            _log.Warn($"新建虚拟屏未转可用: {details.ToJsonString()}");
-                            RemoveDisplayAfterEnsureFailure(displayAdded);
-                            throw new ToolException(
-                                "E_DISPLAY_ADD",
-                                "新建的虚拟显示器未出现在拓扑中",
-                                details,
-                                retryable: true,
-                                hint: "确认 Parsec VDD 正常；detached 适配器不算已存在，若仍失败请提供 details",
-                                stage: "display");
-                        }
-
-                        targetDevice = added.DeviceName;
-                        _log.Info($"新建虚拟屏已可用: {added}");
-                    }
-                }
-                finally
-                {
-                    ReleaseDisplayAllocation(allocation, allocationHeld);
-                }
-            }
-
-            if (!configured)
-            {
-                if (string.IsNullOrWhiteSpace(targetDevice))
-                {
-                    RemoveDisplayAfterEnsureFailure(displayAdded);
-                    throw new ToolException("E_DISPLAY_ADD", "无法确定本次虚拟屏的 device");
-                }
-
-                configured = TryActivateDisplay(targetDevice, out string? failure);
-
-                if (!configured)
-                {
-                    RemoveDisplayAfterEnsureFailure(displayAdded);
-                    throw new ToolException(
-                        "E_DISPLAY_MODE",
-                        "虚拟显示器模式/坐标未稳定",
-                        new JsonObject { ["detail"] = failure });
-                }
-            }
-
-            DisplayInfo? activated = DisplayTopology.FindParsecDisplayByDevice(targetDevice);
-            if (activated is null)
-            {
-                RemoveDisplayAfterEnsureFailure(displayAdded);
-                throw new ToolException("E_DISPLAY_ADD", "虚拟显示器激活后消失");
-            }
-
-            _virtualDisplay = activated;
-            _displayDevice = activated.DeviceName;
-            _initialized = true;
-
-            if (selfHealReason is not null)
-            {
-                NoteSelfHeal(selfHealReason);
-            }
-
-            _cursorGuard?.Dispose();
-            _cursorGuard = new CursorGuard(_virtualDisplay, _log.Info, _log.Warn);
-            _cursorGuard.Start();
-
-            _log.Info($"环境就绪: {_virtualDisplay}");
-            SaveState();
-            return _virtualDisplay;
-        }
-    }
-
-    /// <summary>
-    /// 不同 profile 同时启动时串行化“ADD + 解析 device”，避免抢同一个 slot 或同一块新屏。
-    /// 拿不到锁时返回 null（降级为不串行）；设备身份校验仍会防止认领错屏。
-    /// </summary>
-    private static Mutex? TryAcquireDisplayAllocation(out bool held)
-    {
-        held = false;
-
-        try
-        {
-            var allocation = new Mutex(false, @"Local\VScreenPilot_DisplayAlloc");
-
-            try
-            {
-                held = allocation.WaitOne(TimeSpan.FromSeconds(15));
-            }
-            catch (AbandonedMutexException)
-            {
-                held = true;
-            }
-
-            return allocation;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static void ReleaseDisplayAllocation(Mutex? allocation, bool held)
-    {
-        if (allocation is null)
-        {
-            return;
-        }
-
-        try
-        {
-            if (held)
-            {
-                allocation.ReleaseMutex();
-            }
-        }
-        catch (Exception exception)
-        {
-            // 释放失败不应覆盖原始错误。
-            _ = exception;
-        }
-        finally
-        {
-            allocation.Dispose();
-        }
-    }
-
-    private void NoteSelfHeal(string reason)
-    {
-        _selfHealed = true;
-        _selfHealCount++;
-        _lastSelfHealReason = reason;
-        _log.Info($"自愈 [{reason}] 累计={_selfHealCount}");
-    }
+    public DisplayInfo EnsureEnvironment() => _display.Ensure();
 
     /// <summary>
     /// 在释放/预热等低负载节点裁剪工作集。不是定时看门狗，只按事件触发。
@@ -832,165 +460,6 @@ internal sealed partial class SessionManager : IDisposable
             Math.Round(after / 1048576.0, 1),
             Trimmed: after > 0 && after < before,
             Emptied: emptied);
-    }
-
-    private bool GeometryStillValid(DisplayInfo current)
-    {
-        long now = Environment.TickCount64;
-        if (now - Interlocked.Read(ref _lastGeometryCheckTicks) < 1000)
-        {
-            return true;
-        }
-
-        Interlocked.Exchange(ref _lastGeometryCheckTicks, now);
-
-        DisplayInfo? actual = OwnDisplay();
-        if (actual is null)
-        {
-            _log.Warn("虚拟屏已从拓扑中消失，准备重建");
-            return false;
-        }
-
-        (int x, int y) = ExpectedPosition();
-        bool matches = actual.Width == VirtualWidth &&
-                       actual.Height == VirtualHeight &&
-                       actual.X == x &&
-                       actual.Y == y;
-
-        if (matches)
-        {
-            _virtualDisplay = actual;
-        }
-        else
-        {
-            _log.Warn($"虚拟屏几何被改变: {actual}，期望 {VirtualWidth}x{VirtualHeight} at ({x},{y})");
-        }
-
-        return matches;
-    }
-
-    private (int X, int Y) ExpectedPosition()
-    {
-        DisplayInfo? primary = DisplayTopology.FindPrimary();
-
-        if (primary is null)
-        {
-            return (_virtualDisplay?.X ?? 0, _virtualDisplay?.Y ?? 0);
-        }
-
-        // 多 profile 不能都放在主屏右侧同一点：默认 profile 偏移 0，
-        // 其他 profile 用稳定哈希取 1..7 个屏宽，避免互相覆盖。
-        int offset = DisplayOffset();
-
-        return (primary.X + primary.Width + offset, primary.Y);
-    }
-
-    private int DisplayOffset()
-    {
-        string? raw = Environment.GetEnvironmentVariable("VSP_DISPLAY_OFFSET");
-
-        if (int.TryParse(raw, out int configured))
-        {
-            return Math.Clamp(configured, 0, 20000);
-        }
-
-        // 选择“第一个真正空闲的槽位”，避免第 8 个 profile 与前面的重叠。
-        // 计算时排除本会话自己的 Parsec 屏，否则每次启动都会把上次的位置当成占用而漂移。
-        DisplayInfo? own = OwnDisplay();
-        var occupied = new HashSet<int>();
-
-        foreach (DisplayInfo display in DisplayTopology.List())
-        {
-            if (own is not null &&
-                string.Equals(display.DeviceName, own.DeviceName, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            occupied.Add(display.X);
-        }
-
-        DisplayInfo? primary = DisplayTopology.FindPrimary();
-        int originX = primary is null ? 0 : primary.X + primary.Width;
-        int preferredSlot = 0;
-
-        if (!string.Equals(ProfileName, "default", StringComparison.Ordinal))
-        {
-            int hash = 17;
-
-            foreach (char ch in ProfileName)
-            {
-                hash = unchecked(hash * 31 + ch) & 0x7FFFFFFF;
-            }
-
-            preferredSlot = hash % 8;
-        }
-
-        for (int step = 0; step < 8; step++)
-        {
-            int slot = (preferredSlot + step) % 8;
-
-            if (!occupied.Contains(originX + slot * VirtualWidth))
-            {
-                return slot * VirtualWidth;
-            }
-        }
-
-        return preferredSlot * VirtualWidth;
-    }
-
-    private bool TryActivateDisplay(string deviceName, out string? failure)
-    {
-        failure = null;
-        DisplayPositionFallback = false;
-        (int x, int y) = ExpectedPosition();
-
-        int setResult = DisplayTopology.SetModeAndPosition(
-            deviceName, VirtualWidth, VirtualHeight, VirtualRefresh, x, y, out int applyResult);
-
-        if (!DisplayTopology.WaitUntil(
-                () => DisplayTopology.FindParsecDisplayByDevice(deviceName) is { Attached: true },
-                TimeSpan.FromSeconds(2)))
-        {
-            int extendResult = DisplayTopology.ExtendDesktop();
-            _log.Warn($"SetDisplayConfig(EXTEND)={extendResult}，重试设置虚拟屏模式");
-            setResult = DisplayTopology.SetModeAndPosition(
-                deviceName, VirtualWidth, VirtualHeight, VirtualRefresh, x, y, out applyResult);
-        }
-
-        bool settled = DisplayTopology.WaitUntil(
-            () =>
-            {
-                DisplayInfo? display = DisplayTopology.FindParsecDisplayByDevice(deviceName);
-                return display is not null &&
-                       display.Width == VirtualWidth &&
-                       display.Height == VirtualHeight &&
-                       display.X == x &&
-                       display.Y == y;
-            },
-            TimeSpan.FromSeconds(3));
-
-        if (!settled)
-        {
-            DisplayInfo? current = DisplayTopology.FindParsecDisplayByDevice(deviceName);
-
-            // Windows/VDD 可能忽略 dmPosition，把新屏固定在主屏右侧。
-            // 只要分辨率正确且已挂载，就接受实际坐标（否则整个 profile 直接不可用）。
-            if (current is { Attached: true } &&
-                current.Width == VirtualWidth &&
-                current.Height == VirtualHeight)
-            {
-                DisplayPositionFallback = true;
-                failure =
-                    $"position_not_applied expected=({x},{y}) actual=({current.X},{current.Y})";
-                _log.Warn($"虚拟屏位置未生效，接受实际坐标 ({current.X},{current.Y})");
-                return true;
-            }
-
-            failure = $"set={setResult} apply={applyResult} current={current?.ToString() ?? "not found"}";
-        }
-
-        return settled;
     }
 
     public EnvironmentView GetEnvironment(bool ensure = false) =>
@@ -1180,7 +649,7 @@ internal sealed partial class SessionManager : IDisposable
                 if (forceAllClients)
                 {
                     _uiaBlockedPids.Clear();
-                    _selfHealed = false;
+                    _display.State.SelfHealed = false;
                 }
                 else
                 {
@@ -1190,15 +659,15 @@ internal sealed partial class SessionManager : IDisposable
                 if (keepDisplayEffective)
                 {
                     // 会话级常驻：只归还窗口/关闭本会话应用，不摘屏，避免再次黑屏。
-                    _initialized = _virtualDisplay is { Attached: true };
+                    _display.State.Initialized = _display.State.VirtualDisplay is { Attached: true };
                     SaveState();
                 }
                 else
                 {
                     removed = TryRemoveDisplay();
-                    _vdd.StopKeepAlive();
-                    _vdd.Dispose();
-                    _initialized = false;
+                    _display.Vdd.StopKeepAlive();
+                    _display.Vdd.Dispose();
+                    _display.State.Initialized = false;
                     _stateStore.Clear();
                 }
 
@@ -1624,123 +1093,11 @@ internal sealed partial class SessionManager : IDisposable
         }
     }
 
-    private void ForgetDisplay()
-    {
-        _displayIndex = -1;
-        _displayDevice = string.Empty;
-        _virtualDisplay = null;
-    }
+    private void ForgetDisplay() => _display.Forget();
 
-    private DisplayInfo? OwnDisplay()
-    {
-        DisplayInfo? byDevice = DisplayTopology.FindParsecDisplayByDevice(_displayDevice);
+    private DisplayInfo? OwnDisplay() => _display.OwnDisplay();
 
-        if (byDevice is not null)
-        {
-            return byDevice;
-        }
-
-        return _virtualDisplay is { Attached: true }
-            ? DisplayTopology.FindParsecDisplayByDevice(_virtualDisplay.DeviceName)
-            : null;
-    }
-
-    private static bool HasOtherLiveProfile() =>
-        InstanceRegistry.ListAll().Any(entry => entry.Pid != Environment.ProcessId);
-
-    private static bool IsDisplayOwnedByOther(string? deviceName)
-    {
-        if (string.IsNullOrWhiteSpace(deviceName))
-        {
-            return false;
-        }
-
-        return InstanceRegistry.ListAll()
-            .Concat(InstanceRegistry.ListStateEntries())
-            .Any(entry =>
-                entry.Pid != Environment.ProcessId &&
-                string.Equals(entry.DisplayDevice, deviceName, StringComparison.OrdinalIgnoreCase));
-    }
-
-    /// <summary>把设备名转成稳定排序的 JSON 数组，便于日志和错误 details。</summary>
-    private static JsonArray DescribeDevices(IEnumerable<string> devices)
-    {
-        var array = new JsonArray();
-        foreach (string device in devices.OrderBy(item => item, StringComparer.OrdinalIgnoreCase))
-        {
-            array.Add(device);
-        }
-
-        return array;
-    }
-
-    /// <summary>
-    /// EnsureEnvironment 失败时：若是本次刚 ADD 的屏，index 一定属于本会话，可直接回收；
-    /// 否则走带 device 校验的 TryRemoveDisplay，避免误摘其他 profile。
-    /// </summary>
-    private void RemoveDisplayAfterEnsureFailure(bool displayAdded)
-    {
-        if (displayAdded && _displayIndex >= 0)
-        {
-            try
-            {
-                _vdd.RemoveDisplay(_displayIndex);
-            }
-            catch (Exception exception)
-            {
-                _log.Warn($"回收本次新建虚拟屏失败: {exception.Message}");
-            }
-
-            _displayIndex = -1;
-            _displayDevice = string.Empty;
-            _virtualDisplay = null;
-            return;
-        }
-
-        TryRemoveDisplay();
-    }
-
-    private bool TryRemoveDisplay()
-    {
-        _cursorGuard?.Dispose();
-        _cursorGuard = null;
-
-        bool removed = false;
-        string device = _displayDevice;
-
-        if (_displayIndex >= 0 && _vdd.IsOpen)
-        {
-            // index 可能被驱动复用；摘除前必须确认它仍对应本会话的 device。
-            DisplayInfo? own = string.IsNullOrWhiteSpace(device)
-                ? null
-                : DisplayTopology.FindParsecDisplayByDevice(device);
-
-            if (string.IsNullOrWhiteSpace(device))
-            {
-                // 没有 device 身份时不能按 index 猜；否则可能摘掉其他 profile 的屏。
-                _log.Warn($"没有本会话 device 记录，跳过按 index={_displayIndex} 摘除");
-            }
-            else if (own is null)
-            {
-                _log.Warn($"虚拟屏 {device} 已不在拓扑中，跳过按 index 摘除");
-            }
-            else
-            {
-                removed = _vdd.RemoveDisplay(_displayIndex);
-                if (!removed)
-                {
-                    _log.Warn($"摘除虚拟屏失败 (index={_displayIndex})，等待驱动回收");
-                }
-
-                DisplayTopology.WaitForDisplayGone(device, TimeSpan.FromSeconds(3));
-            }
-        }
-
-        _displayIndex = -1;
-        _displayDevice = string.Empty;
-        _virtualDisplay = null;
-        return removed;
-    }
+    private bool TryRemoveDisplay() => _display.TryRemove();
 
     public void SaveState()
     {
@@ -1750,12 +1107,12 @@ internal sealed partial class SessionManager : IDisposable
             {
                 Pid = Environment.ProcessId,
                 StartedAt = ProcessStartTime(),
-                DisplayIndex = _displayIndex,
-                DisplayDevice = _virtualDisplay?.DeviceName ?? _displayDevice,
-                X = _virtualDisplay?.X ?? 0,
-                Y = _virtualDisplay?.Y ?? 0,
-                Width = _virtualDisplay?.Width ?? 0,
-                Height = _virtualDisplay?.Height ?? 0,
+                DisplayIndex = _display.State.Index,
+                DisplayDevice = _display.State.VirtualDisplay?.DeviceName ?? _display.State.DeviceName,
+                X = _display.State.VirtualDisplay?.X ?? 0,
+                Y = _display.State.VirtualDisplay?.Y ?? 0,
+                Width = _display.State.VirtualDisplay?.Width ?? 0,
+                Height = _display.State.VirtualDisplay?.Height ?? 0,
             };
 
             foreach (TrackedApp app in _apps.Snapshot())
@@ -1791,9 +1148,9 @@ internal sealed partial class SessionManager : IDisposable
             return;
         }
 
-        _recoveredPid = state.Pid;
-        _recoveredDisplayIndex = state.DisplayIndex;
-        _recoveredDisplayDevice = state.DisplayDevice;
+        _display.State.RecoveredPid = state.Pid;
+        _display.State.RecoveredIndex = state.DisplayIndex;
+        _display.State.RecoveredDevice = state.DisplayDevice;
 
         if (state.DisplayIndex >= 0)
         {
@@ -1807,8 +1164,8 @@ internal sealed partial class SessionManager : IDisposable
         if (state.Pid > 0 && IsVScreenPilotProcess(state.Pid, state.StartedAt))
         {
             _log.Warn($"上次会话进程仍在运行 (pid={state.Pid})，跳过全部恢复");
-            _recoveredDisplayIndex = -1;
-            _recoveredDisplayDevice = string.Empty;
+            _display.State.RecoveredIndex = -1;
+            _display.State.RecoveredDevice = string.Empty;
             return;
         }
 
@@ -2043,11 +1400,11 @@ internal sealed partial class SessionManager : IDisposable
             try
             {
                 // 超时兜底也只能摘“自己的 device”，不能按可能被复用的 index 盲摘。
-                if (_displayIndex >= 0 &&
-                    !string.IsNullOrWhiteSpace(_displayDevice) &&
-                    DisplayTopology.FindParsecDisplayByDevice(_displayDevice) is not null)
+                if (_display.State.Index >= 0 &&
+                    !string.IsNullOrWhiteSpace(_display.State.DeviceName) &&
+                    DisplayTopology.FindParsecDisplayByDevice(_display.State.DeviceName) is not null)
                 {
-                    _vdd.RemoveDisplay(_displayIndex);
+                    _display.Vdd.RemoveDisplay(_display.State.Index);
                 }
             }
             catch (Exception exception)
@@ -2069,7 +1426,7 @@ internal sealed partial class SessionManager : IDisposable
         }
 
         _job.Dispose();
-        _vdd.Dispose();
+        _display.Vdd.Dispose();
         _stateStore.Clear();
     }
 }

@@ -14,9 +14,9 @@ internal sealed partial class SessionManager : IEnvironmentHost
 
     object IEnvironmentHost.Gate => _gate;
 
-    VddDevice IEnvironmentHost.Vdd => _vdd;
+    VddDevice IEnvironmentHost.Vdd => _display.Vdd;
 
-    bool IEnvironmentHost.Initialized => _initialized;
+    bool IEnvironmentHost.Initialized => _display.State.Initialized;
 
     string IEnvironmentHost.ProfileName => ProfileName;
 
@@ -38,23 +38,23 @@ internal sealed partial class SessionManager : IEnvironmentHost
 
     UiaHost IEnvironmentHost.Uia => Uia;
 
-    bool IEnvironmentHost.SelfHealed => _selfHealed;
+    bool IEnvironmentHost.SelfHealed => _display.State.SelfHealed;
 
-    int IEnvironmentHost.SelfHealCount => _selfHealCount;
+    int IEnvironmentHost.SelfHealCount => _display.State.SelfHealCount;
 
-    string? IEnvironmentHost.LastSelfHealReason => _lastSelfHealReason;
+    string? IEnvironmentHost.LastSelfHealReason => _display.State.LastSelfHealReason;
 
-    bool IEnvironmentHost.AdoptedOrphan => _adoptedOrphan;
+    bool IEnvironmentHost.AdoptedOrphan => _display.State.AdoptedOrphan;
 
-    int IEnvironmentHost.DisplayRecreateCount => _displayRecreateCount;
+    int IEnvironmentHost.DisplayRecreateCount => _display.State.RecreateCount;
 
-    int IEnvironmentHost.VddReopenCount => _vddReopenCount;
+    int IEnvironmentHost.VddReopenCount => _display.State.VddReopenCount;
 
-    bool IEnvironmentHost.DisplayPositionFallback => _displayPositionFallback;
+    bool IEnvironmentHost.DisplayPositionFallback => _display.State.PositionFallback;
 
-    int IEnvironmentHost.DisplayIndex => _displayIndex;
+    int IEnvironmentHost.DisplayIndex => _display.State.Index;
 
-    string IEnvironmentHost.DisplayDevice => _displayDevice;
+    string IEnvironmentHost.DisplayDevice => _display.State.DeviceName;
 
     DisplayInfo IEnvironmentHost.Ensure() => EnsureEnvironment();
 
