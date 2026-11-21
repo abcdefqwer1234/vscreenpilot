@@ -344,7 +344,7 @@ internal sealed partial class McpTransport
             }
         }
 
-        return ToolResponse.Text(_session.ReadScreenText(
+        return ToolResponseWriter.FromView(_session.ReadScreenText(
             x, y, width, height,
             OptionalString(arguments, "query"),
             OptionalInt(arguments, "max_lines", 50)));

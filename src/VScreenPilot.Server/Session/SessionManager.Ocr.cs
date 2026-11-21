@@ -14,7 +14,7 @@ internal sealed partial class SessionManager
     /// <summary>
     /// OCR 读取屏幕文本。坐标返回的是虚拟屏绝对坐标，可直接用于 click。
     /// </summary>
-    public JsonObject ReadScreenText(
+    public ScreenTextView ReadScreenText(
         int? x, int? y, int? width, int? height, string? query, int maxLines)
     {
         DisplayInfo display = EnsureEnvironmentFast();
@@ -76,15 +76,15 @@ internal sealed partial class SessionManager
         }
     }
 
-    private static JsonObject BuildTextResult(
+    private static ScreenTextView BuildTextResult(
         List<ScreenTextLine> lines,
         int originX, int originY, int width, int height,
         string? query, int maxLines,
         string engine, string language,
         Stopwatch stopwatch)
     {
-        var all = new JsonArray();
-        var matches = new JsonArray();
+        var all = new List<ScreenTextLineView>();
+        var matches = new List<ScreenTextLineView>();
         int limit = Math.Clamp(maxLines, 1, 200);
         int redactions = 0;
 
@@ -92,22 +92,18 @@ internal sealed partial class SessionManager
         {
             string redacted = PrivacyRedactor.RedactEmails(line.Text, ref redactions);
 
-            var item = new JsonObject
-            {
-                ["text"] = redacted,
-                ["bounds"] = new JsonObject
-                {
-                    ["x"] = originX + line.Left,
-                    ["y"] = originY + line.Top,
-                    ["width"] = line.Width,
-                    ["height"] = line.Height,
-                },
-            };
+            var item = new ScreenTextLineView(
+                redacted,
+                new BoundsView(
+                    originX + line.Left,
+                    originY + line.Top,
+                    line.Width,
+                    line.Height));
 
             if (!string.IsNullOrWhiteSpace(query) &&
                 OcrTextMatches(line.Text, query!))
             {
-                matches.Add(item.DeepClone());
+                matches.Add(item);
             }
 
             if (all.Count < limit)
@@ -116,25 +112,17 @@ internal sealed partial class SessionManager
             }
         }
 
-        return new JsonObject
-        {
-            ["engine"] = engine,
-            ["language"] = language,
-            ["lines"] = all,
-            ["matches"] = matches,
-            ["count"] = lines.Count,
-            ["returned"] = all.Count,
-            ["truncated"] = lines.Count > all.Count,
-            ["privacy_redactions"] = redactions,
-            ["region"] = new JsonObject
-            {
-                ["x"] = originX,
-                ["y"] = originY,
-                ["width"] = width,
-                ["height"] = height,
-            },
-            ["duration_ms"] = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 1),
-        };
+        return new ScreenTextView(
+            engine,
+            language,
+            all,
+            matches,
+            lines.Count,
+            all.Count,
+            lines.Count > all.Count,
+            redactions,
+            new BoundsView(originX, originY, width, height),
+            Math.Round(stopwatch.Elapsed.TotalMilliseconds, 1));
     }
 
     /// <summary>OCR 定位 + 点击 + 前后差异，供 click_ref 找不到元素的画布应用使用。</summary>
