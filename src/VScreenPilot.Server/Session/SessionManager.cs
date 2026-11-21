@@ -737,7 +737,7 @@ internal sealed partial class SessionManager : IDisposable
             }
 
             _cursorGuard?.Dispose();
-            _cursorGuard = new CursorGuard(_virtualDisplay, _log);
+            _cursorGuard = new CursorGuard(_virtualDisplay, _log.Info, _log.Warn);
             _cursorGuard.Start();
 
             _log.Info($"环境就绪: {_virtualDisplay}");

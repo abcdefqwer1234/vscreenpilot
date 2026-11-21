@@ -1,5 +1,4 @@
 using VScreenPilot.Platform.Displays;
-using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
 
 namespace VScreenPilot.Session;
@@ -13,14 +12,15 @@ internal sealed class CursorGuard : IDisposable
     private readonly DisplayInfo _virtualDisplay;
     private readonly IReadOnlyList<DisplayInfo> _physicalDisplays;
     private readonly int _fallbackX;
-    private readonly LogRing _log;
+    private readonly Action<string> _info;
+    private readonly Action<string> _warn;
 
     private Thread? _thread;
     private volatile bool _running;
     private volatile bool _paused;
     private long _lastLogTimestamp;
 
-    public CursorGuard(DisplayInfo virtualDisplay, LogRing log)
+    public CursorGuard(DisplayInfo virtualDisplay, Action<string> info, Action<string> warn)
     {
         _virtualDisplay = virtualDisplay;
         _fallbackX = Math.Max(0, virtualDisplay.X - 1);
@@ -28,7 +28,8 @@ internal sealed class CursorGuard : IDisposable
             .Where(display => display.Attached && !display.IsParsec &&
                               display.Width > 0 && display.Height > 0)
             .ToList();
-        _log = log;
+        _info = info;
+        _warn = warn;
     }
 
     public void Start()
@@ -46,7 +47,7 @@ internal sealed class CursorGuard : IDisposable
             Priority = ThreadPriority.BelowNormal,
         };
         _thread.Start();
-        _log.Info($"光标护栏启动: 虚拟屏 x={_virtualDisplay.X}, 回弹目标=最近物理屏");
+        _info($"光标护栏启动: 虚拟屏 x={_virtualDisplay.X}, 回弹目标=最近物理屏");
     }
 
     public void Pause() => _paused = true;
@@ -89,7 +90,7 @@ internal sealed class CursorGuard : IDisposable
                 if (now - Interlocked.Read(ref _lastLogTimestamp) > 5000)
                 {
                     Interlocked.Exchange(ref _lastLogTimestamp, now);
-                    _log.Warn($"光标进入虚拟屏 ({cursor.X},{cursor.Y})，已弹回 ({targetX},{targetY})");
+                    _warn($"光标进入虚拟屏 ({cursor.X},{cursor.Y})，已弹回 ({targetX},{targetY})");
                 }
             }
             catch
