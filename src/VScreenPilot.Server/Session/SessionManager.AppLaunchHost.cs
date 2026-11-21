@@ -29,7 +29,7 @@ internal sealed partial class SessionManager : IAppLaunchHost
 
     bool IAppLaunchHost.IsOwned(TrackedApp app) => IsOwned(app);
 
-    bool IAppLaunchHost.IsLive(TrackedApp app) => IsLiveTrackedApp(app);
+    bool IAppLaunchHost.IsLive(TrackedApp app) => TrackedAppTracker.IsLive(app);
 
     void IAppLaunchHost.RestoreForeground(IntPtr previous, bool logFailure) =>
         RestoreForeground(previous, logFailure);

@@ -40,7 +40,7 @@ internal sealed partial class SessionManager : IFocusHost
             return _apps.Any(app =>
                 string.Equals(app.OwnerClientId, holder, StringComparison.Ordinal) &&
                 app.Pid == (int)pid &&
-                IsLiveTrackedApp(app));
+                TrackedAppTracker.IsLive(app));
         }
     }
 
@@ -55,7 +55,7 @@ internal sealed partial class SessionManager : IFocusHost
 
         lock (_gate)
         {
-            return _apps.Any(app => app.Pid == (int)pid && IsLiveTrackedApp(app));
+            return _apps.Any(app => app.Pid == (int)pid && TrackedAppTracker.IsLive(app));
         }
     }
 

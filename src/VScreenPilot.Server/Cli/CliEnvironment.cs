@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
+using VScreenPilot.Diagnostics;
 using VScreenPilot.Session;
 
 namespace VScreenPilot.Cli;
@@ -30,12 +31,7 @@ internal static class CliEnvironment
             ["log_file"] = log.FilePath,
             ["state_file"] = state.FilePath,
             ["state"] = state.Describe(),
-            ["artifacts"] = new JsonObject
-            {
-                ["root"] = SessionManager.ArtifactRootFor(profile),
-                ["retention_days"] = ArtifactStore.ResolveRetentionDays(
-                    Environment.GetEnvironmentVariable(SessionManager.ArtifactRetentionEnv)),
-            },
+            ["artifacts"] = ArtifactSummary.Describe(profile),
         };
 
         if (ensure)

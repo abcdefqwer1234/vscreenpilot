@@ -230,12 +230,7 @@ internal static class DoctorReportBuilder
         StateStore stateStore = new(log);
         result["state_file"] = stateStore.FilePath;
         result["state"] = stateStore.Describe();
-        result["artifacts"] = new JsonObject
-        {
-            ["root"] = SessionManager.ArtifactRootFor(profile),
-            ["retention_days"] = ArtifactStore.ResolveRetentionDays(
-                Environment.GetEnvironmentVariable(SessionManager.ArtifactRetentionEnv)),
-        };
+        result["artifacts"] = ArtifactSummary.Describe(profile);
 
         checks.Add((JsonNode)new JsonObject
         {

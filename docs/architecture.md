@@ -1,117 +1,116 @@
 # 架构说明
 
-> 目标：把“能跑”变成“可探测、可归因、可验证”。本文描述当前实现与后续替换点。
+> 状态：第二轮重构 R2 进行中（以 `refactor/r2` HEAD 为准）。
+> 数字口径：`python tools/audit/arch_metrics.py`；行数用 `ReadAllLines`/`splitlines()`，不含 `obj/`、`bin/`。
+> 冻结清单：`docs/refactor-invariants.md`。第一轮验收：`docs/全局重构执行报告.md`。第二轮方案：`docs/第二轮全局重构方案.md`。
 
-## 1. 分层与程序集
-
-重构后按编译期边界拆成 4 个程序集，引用方向只能自上而下：
+## 1. 程序集与依赖
 
 ```
-Server ──────> Automation ──────> Platform ──────> Abstractions
-   │                │                  │
-   └────────────────┴──────────────────┴──────────> Abstractions
+Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
+        │                     │              │
+        └─────────────────────┴──────────────┴──────> Abstractions
 ```
 
 | 程序集 | 目标框架 | 职责 |
 |---|---|---|
-| `VScreenPilot.Abstractions` | `net10.0` | 错误模型（`ErrorCatalog`/`ToolException`）、JSON 参数读取、序列化口径（`VspJson`）、输出视图（`Views/*`）、版本信息、进程内指标 |
-| `VScreenPilot.Platform` | `net10.0-windows` | Win32/COM 原语、显示拓扑与 VDD、窗口枚举、输入注入/消息输入/键位/剪贴板、Job 对象、管道完整性校验 |
-| `VScreenPilot.Automation` | `net10.0-windows10.0.19041.0` | UIA/MSAA、屏幕捕获与 PNG、OCR、模板匹配（会话组件正在从 Server 迁入） |
-| `VScreenPilot.Server` | 可执行 | MCP 传输与工具层、会话编排、CLI、IPC、组合根 |
+| `VScreenPilot.Abstractions` | `net10.0` | 错误模型（`ErrorCatalog`/`ToolException`/`ToolDetails`）、`JsonArgReader`、`VspJson`、`Views/*`、`BuildInfo`、`MetricsRegistry` |
+| `VScreenPilot.Platform` | `net10.0-windows` | Win32/COM 原语、显示拓扑、VDD 设备、窗口枚举、输入注入/消息/键位/剪贴板、`JobObject`、`IntegrityCheck` |
+| `VScreenPilot.Automation` | `net10.0-windows10.0.19041.0` | UIA/MSAA worker、屏幕捕获、PNG、OCR、模板匹配、脚本运行；**0 个 public 类型**，只经 IVT 暴露 |
+| `VScreenPilot.Server`（`AssemblyName=VScreenPilot`） | `net10.0-windows10.0.19041.0` | MCP 传输与工具层、会话组合根、CLI、IPC、诊断、审计入口 |
 
-约束由 `tests/VScreenPilot.Tests.Contract/ArchitectureTests.cs` 断言：`Abstractions` 不引用任何内部工程，`Platform` 只引用 `Abstractions`，`Automation` 不引用 `Server` 与 MCP SDK。`AutomationHasNoSystemTextJsonNodes` 已启用并通过：`System.Text.Json.Nodes` 已清零。
+`InternalsVisibleTo` 现状（也是 allowlist，架构测试锁定）：
 
-层内分工：
+| 来源 | 目标 |
+|---|---|
+| Abstractions | `VScreenPilot`、`VScreenPilot.Automation`、`Tests.Unit`、`Tests.Contract` |
+| Platform | `VScreenPilot`、`VScreenPilot.Automation`、`VddProbe`、`Tests.Unit`、`Tests.Contract` |
+| Automation | `VScreenPilot`、`Tests.Unit`、`Tests.Contract` |
+| Server | `Tests.Unit`、`Tests.Contract` |
 
-```
-MCP 传输层   官方 ModelContextProtocol SDK（stdio；协议协商/分帧/取消/进度由 SDK 负责）
-             多客户端：首个进程优先 spawn 独立 daemon（PipeHost），失败回退进程内 daemon；后续进程用 StdioProxy 转发
-工具层       McpTransport（协议适配）+ ToolRegistry/ToolDescriptor（目录与 schema）
-             + ToolExecutor（策略驱动的租约/写锁/超时/epoch）+ ToolHandlers（参数解析与调用）
-会话层       SessionManager：剩余编排与门面（元素/断言/视觉/OCR/焦点）
-             SnapshotBuilder / EnvironmentReporter / VirtualDisplayController /
-             AppLauncher / AppReleaser / InputRouter
-             ClientSessionRegistry：per-client 上下文；ClientPathPolicy：路径与截图落盘边界
-感知层       ScreenCapture（复用 GDI 资源）/ PngWriter（池化 + Up 过滤）/ PngReader / TemplateMatcher
-平台层       Interop（Win32/COM）、DisplayTopology、VddDevice、JobObject、CursorGuard、InstanceRegistry
-```
+约束由 `tests/VScreenPilot.Tests.Contract/ArchitectureTests.cs` 与 `ArchitectureFitnessTests.cs` 断言：
 
-> 过渡状态：`Session/*` 仍留在 `Server`，因为它依赖 `LogRing`/`InstanceRegistry`/`StateStore`/`TraceLog`，而 `Automation` 不能反向引用 `Server`。
-> `Automation` 已接收无 Server 依赖的会话组件（`ArtifactStore`、`FrameStore`、`SessionGuard`、`ClientSessionRegistry`、`ClientPathPolicy`、`ElementRefStore`、`TrackedApp`、`TrackedAppRegistry` 等）。
-> `Server/Session` 另有 `SnapshotBuilder`、`EnvironmentReporter`、`VirtualDisplayController`、`AppLauncher`、`AppReleaser`、`InputRouter`；它们依赖会话锁与 Server 基础设施，暂不迁入 `Automation`。
-> 不变量清单见 `docs/refactor-invariants.md`。
+1. 引用方向单向；`Automation` 不引用 Server/MCP SDK；`Platform` 只引用 Abstractions。
+2. 一个命名空间只属于一个程序集；现有 5 个 SPLIT 先 allowlist，只允许减少。
+3. IVT 必须在表内；新增即失败。
+4. `Automation` 禁止 `System.Text.Json.Nodes`。
 
+## 2. 目录与命名空间
 
-## 2. 并发模型
+命名空间与目录同名；跨程序集同名命名空间是待清理债务：
 
-- **只读观察不排队**：`snapshot`、`capture_screen`、`find_element`、`get_ui_tree`、
-  `wait_for`、`assert_region`、`match_visual`、`get_log` 不获取写锁，因此长等待
-  不会让“看一眼屏幕”返回 `E_BUSY`。
-- **写操作串行**：`click`、`gesture`、`type_text`、`press_keys`、`invoke_element`、
-  `set_element_value`、`launch_or_place_app`、`release_environment`、`run_script`
-  通过 `WriteScheduler` 串行；`E_BUSY` 带 `holder` 与 `retry_after_ms`。
-- **超时不释放写锁**：卡在 UIA 的 handler 仍在操作 UI，锁等它真正结束后再释放。
-- **会话代际（epoch）**：`release_environment` 先递增 epoch；旧 handler 的结果被丢弃，
-  返回 `E_CANCELLED`，避免“清空集合后旧 handler 继续写”。
-- **每调用取消**：`AsyncLocal<CancellationTokenSource>`，并发工具不会互相清取消。
-- **UIA 串行**：`UiaHost` 用专用 MTA 线程串行执行 `UiaService` 的服务级调用（建树、查找、读取焦点）；
-  超时后 `ResetUia` 只退休当前代际并让新调用走新线程，旧线程把手上的 COM 调用做完再释放。
-  MSAA 与 `UiaElementHandle` 的 Focus/Invoke/GetText/SetValue/Dispose 也通过 `InvokeMsaa`/`InvokeOn` 回到同一 worker。
-- **MSAA 回退**：单个窗口 UIA 完全不可见时，`MsaaService` 用 `IAccessible` 枚举子控件；
-  Word `bosa_sdm_msword` 对话框走这条路径。
-- **UWP**：顶层类是 `ApplicationFrameWindow`，内容进程没有独立 HWND；UIA 从 frame 取树，
-  ref 归属按 HWND 的进程校验，避免跨进程误判。
-- **多客户端共享**：首个 MCP 进程优先 spawn 独立 `--daemon`（Job breakaway，失败回退进程内 daemon），
-  由它启动 `PipeHost`/`ctl`；后续进程只做 `StdioProxy`。每个连接有独立 `ClientContext`
-  （refs/apps/epoch/帧/artifacts/路径基准）；`ScreenLease` 保证同一时刻只有一个客户端执行 GUI/视觉操作，
-  其他客户端得到 `E_SCREEN_LEASED`，空闲后 daemon 按 `VSP_DAEMON_IDLE_MS` 退出。
+| 命名空间 | 当前分布 | 归属 |
+|---|---|---|
+| `VScreenPilot.Session` | Server 43 + Automation 6 | 目标 Server 独占 |
+| `VScreenPilot.Infrastructure` | Abstractions 2 + Platform 2 + Server 10 | 目标 Abstractions 独占 |
+| `VScreenPilot.Mcp` | Abstractions 4 + Server 10 | 目标 Server 独占（契约另立命名空间） |
+| `VScreenPilot.Ui` | Automation 2 + Server 1 | 目标 Server 独占 |
+| `VScreenPilot.Apps` | Automation 1 + Platform 1 | 目标 Server 独占 |
 
-## 3. 快照模型
+其余命名空间单归属：`VScreenPilot.Uia`、`Perception`、`Scripting`、`Platform.*`、`Views`、`Cli`、`Ipc`、`Tools`、`Input`、`Composition`、`Diagnostics`。
 
-`snapshot` 一次返回：
+## 3. 启动、组合根与会话
 
-- `snapshot_id`：快照作用域；`snapshot`（或 `get_ui_tree(new_snapshot=true)`）推进代际，旧代保留一代用于报错；
-- `tree`：结构化树；`text`：行式紧凑格式（`- Button "保存" [e12] {disabled}`）；
-- `windows[]`：本会话应用；
-- `dialogs[]`：owned windows（经典 `#32770`、Office `bosa_sdm_msword`、`#32768` 菜单）；
-- `foreground`：仅对本会话窗口返回标题；
-- 可选 `screenshot`（默认 0.5 缩放）。
+- 入口：`Program.Main` 解析 `--version` / `--doctor` / `--cli` / `--daemon` / `--profile` 等，然后进入 `ServerHost`。
+- 组合根：`SessionManager`（17 个 partial / 1,774 行）。它持有会话锁、显示控制器、应用注册表、元素 ref、UIA 宿主、写调度器与日志。
+- 已知双 wiring：`Program` 与 `ServerHost` 各构造一次 `SessionManager`；R3 再合并。
+- 组件通过 `I*Host` 反向依赖门面：18 个接口、187 个成员，最大 `IInputHost` 26。组件不做跨组件 `new`。
+- 会话组件（Server/Session）：
+  - 显示：`VirtualDisplayController`
+  - 应用：`AppLauncher`、`AppReleaser`、`TrackedAppTracker`、`AppAllowlistPolicy`、`SessionStateKeeper`
+  - 输入：`InputRouter`、`FocusGuard`
+  - 元素：`ElementFinder`、`ElementResolver`、`ElementOperations`
+  - 快照/环境：`SnapshotBuilder`、`EnvironmentReporter`、`EnvironmentReleaser`
+  - 断言/等待/视觉：`RegionVerifier`、`WaitService`、`VisualMatchService`、`ScreenTextService`
+  - 维护：`MaintenanceService`
 
-`find_element`/`get_ui_tree` 复用当前代并返回 `snapshot_id`，不会让刚拿到的 ref 失效。
-ref 只在该代内有效；跨代使用返回 `E_STALE_SNAPSHOT`，未知/被淘汰返回 `E_ELEMENT_STALE`。
+## 4. 工具层与 MCP
 
-## 4. 输入通道
+- 22 个工具定义在 `src/VScreenPilot.Server/Tools/Definitions/*.json`，由 `ToolCatalog` 加载（113 行）；顺序按 `Ordinal`。
+- `ToolDescriptor`/`ToolPolicy`/`ToolRegistry` 负责 schema、权限、超时与并发策略；`ToolHandlers` 负责参数解析与调用。
+- `ToolExecutor` 统一处理写锁、屏幕租约、超时、取消与 epoch；`ToolContext` 仍持有 `SessionManager`。
+- 错误统一走 `ToolException` + `ErrorCatalog`；错误包字段、错误码、`docs` 锚点是冻结契约。
+- 内容块顺序固定：`text` → `structuredContent` → `image` → `resource_link`。
+- 传输：官方 `ModelContextProtocol` SDK（stdio）；首个进程可 spawn 独立 daemon，后续进程经 `StdioProxy` 转发。
 
-`channel=auto` 的选择顺序：
+## 5. 并发模型
 
-1. UIA pattern（Invoke/Value），不移动光标；
-2. 窗口消息（client 区；DPI-unaware 目标先做 Per-Monitor 转换）；
-3. `channel=input`：SendInput，绝对坐标带 `MOUSEEVENTF_VIRTUALDESK`；
-4. 长文本（≥200 字）默认走剪贴板 `Ctrl+V`，保存/还原文本剪贴板；
-5. 非客户区（标题栏/边框/系统按钮）在 message/auto 下明确返回
-   `E_INPUT_UNSUPPORTED`，提示改用 `channel=input`。
+- **只读不排队**：`snapshot`、`capture_screen`、`find_element`、`get_ui_tree`、`wait_for`、`assert_region`、`match_visual`、`get_log`。
+- **写操作串行**：`click`、`gesture`、`type_text`、`press_keys`、`invoke_element`、`set_element_value`、`launch_or_place_app`、`release_environment`、`run_script`；忙时 `E_BUSY` + `holder` + `retry_after_ms`。
+- **超时不释放写锁**：handler 真正结束后才释放。
+- **epoch**：`release_environment` 校验通过后递增；在途结果返回 `E_CANCELLED`。
+- **每调用取消**：`AsyncLocal<CancellationTokenSource>`。
+- **UIA 单 MTA worker**：`UiaHost` 串行执行服务级调用；MSAA 与句柄操作经 `InvokeMsaa`/`InvokeOn` 回到同一 worker。没有自动换代，卡死时 `ResetUia` 是唯一恢复入口。
+- **多客户端**：每连接独立 `ClientContext`；`ScreenLease` 保证同一时刻只有一个客户端做 GUI/视觉操作。
+- 限流 300 突发 / 100 每秒；写等待 30s，`release_environment` 6s；release 读锁 3s。
 
-系统键按语义拦截：任何含 `Win`、`Alt+Tab`、`Ctrl+Alt+Tab`、`Alt+Esc` 的组合默认拒绝。
+## 6. 感知与输入
 
-## 5. 感知与内存
+- `ScreenCapture` 复用 screen DC / memory DC / DIB；`PngWriter` 用 `ArrayPool`，默认 `VSP_PNG_FILTER=up`。
+- 帧缓存 8 帧 / 32MB；大图默认落 artifact，返回 `vsp://artifacts/...`。
+- `channel=auto`：UIA pattern → 窗口消息（仅客户区）→ SendInput（需 `fallback_input` 或 `VSP_INPUT_AUTOFALLBACK=1`）。
+- 非客户区在 message/auto 下返回 `E_INPUT_UNSUPPORTED`；`Win`、`Alt+Tab` 等系统键默认拒绝。
+- 长文本（>500 字）走剪贴板并保存/还原。
+- UWP：`ApplicationFrameWindow` 归属 frame host，内容进程只做 UIA 归属校验。
 
-- `ScreenCapture` 复用 screen DC / memory DC / DIB（最多 4 个尺寸），不再每帧新建 3.7MB DIB；
-- `PngWriter` 使用 `ArrayPool` 扫描线与行缓冲，缩放与行转换一遍完成；
-- 默认 `VSP_PNG_FILTER=up`（可用 `adaptive`/`none`）；UI 截图体积通常降 2–4 倍；
-- 帧缓存 8 张 / 32MB；`capture_screen` 全屏默认 `scale=0.5`；
-- 大图默认落 artifact 目录并返回 `vsp://artifacts/...`，不默认内联 Base64。
+## 7. 测试与审计
 
-## 6. 已知未完成（下一阶段）
+| 闸门 | 内容 | 位置 |
+|---|---|---|
+| 单元 | 196 用例；视图序列化、策略、路径、拓扑、租约、组件 fake | `tests/VScreenPilot.Tests.Unit` |
+| 契约 | 16 用例；schema 快照、架构方向、命名空间/IVT/棘轮 | `tests/VScreenPilot.Tests.Contract` |
+| 架构度量 | `arch_metrics.py --selftest/--check`（文件/方法/宿主/SPLIT/catch/测试数） | `.github/workflows/ci.yml` |
+| 基线 diff | `capture_baseline.py` + `compare_baseline.py --only server.json --only errors.json` | CI `smoke` |
+| GUI / protocol | 13/14、30/30；需要 VDD | 自托管 nightly |
+| stability / UIA | 14/14、3/3；`bench_stability.py`、`bench_uia_stress.py` | 自托管 nightly |
 
-- **会话组件化**：`SessionManager` 仍 4,408 行、20 个 partial；元素操作/断言/视觉/OCR/焦点护栏尚未拆，薄门面目标（≤600 行）未达成。
-- **领域视图**：22 个工具中 5 个已走强类型视图，其余仍由 handler 直接拼 `JsonObject`（P3）。
-- **UIA 收尾**：服务级、MSAA 与句柄操作都已进 `UiaHost` 的 MTA worker；`ResetUia` 仍是退休入口，`UiaService._sync` 锁仍保留（单 worker 下冗余）。
-- **全屏截图**：复用资源 + 去 `CAPTUREBLT` + 大图不内联后，服务端 P95 已降至 ~56ms；
-  早期“1.2–1.4s”是内联大 PNG 的回传成本，已由 preview/artifact 方案消除。
-  Windows.Graphics.Capture（`CreateForMonitor` + D3D11 staging readback）仍是后续后端优化。
-- **UIA 收尾**：服务级、MSAA 与句柄操作均已进 `UiaHost`；剩余 `ResetUia`/锁清理与卡死注入压测。
-- **MSAA 第二后端**：已接入，按窗口回退；Word 查找替换可读/可触发。
-- **UWP**：`ApplicationFrameWindow` 已解析；REG-14 通过。
-- **OCR**：已接入 Windows.Media.Ocr（`read_screen_text` / `click_text`）。
-- **CDP 通道 / WGC**：未实现；需要 WebSocket/DOM 适配器、D3D11 staging readback。
-- **多会话输入所有权**：`--profile` 已隔离互斥体/状态/artifact；同一时刻仍只有一个前台窗口。
+已知失败：`GUI-15`（应用被杀后按 exe 重定位到另一个同名窗口）保持既有语义。
+
+## 8. 已知债务与 R3
+
+- 9 个文件 >600：`InputRouter` 1,552、`AppLauncher` 1,242、`ElementOperations` 940、`VirtualDisplayController` 757、`SessionManager.cs` 746、`McpTransport` 721、`ToolHandlers` 659、`SnapshotBuilder` 645、`VisualMatchService` 609。
+- 16 个方法 >150，最大 `AppLauncher.Launch` 542；27 个 ≥120。
+- 无类型 `catch` 37 处（其中无日志 34 处）；83 处宽捕获只写 `Debug.WriteLine`。
+- 18 个组件只有 5 个有直接单测；编排主要靠 Python 审计。
+- 5 个 SPLIT 命名空间（见 §2）；`ToolContext` 仍持有门面；`Program`/`ServerHost` 双 wiring。
+- R2 目标：3 个组件拆分、16 个方法 ≤150、文件 ≤800、SPLIT ≤2、catch 收口；R3 再降到 ≤600 / ≤120 并清理剩余 partial。

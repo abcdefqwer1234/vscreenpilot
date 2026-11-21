@@ -49,7 +49,7 @@ internal sealed partial class SessionManager : ISnapshotHost
 
     IReadOnlyList<TrackedApp> ISnapshotHost.OwnedApps() => _apps.Where(IsOwned);
 
-    bool ISnapshotHost.IsLive(TrackedApp app) => IsLiveTrackedApp(app);
+    bool ISnapshotHost.IsLive(TrackedApp app) => TrackedAppTracker.IsLive(app);
 
     (byte[] Bgra, int Width, int Height) ISnapshotHost.CaptureRegion(
         int x, int y, int width, int height) => CaptureRegion(x, y, width, height);

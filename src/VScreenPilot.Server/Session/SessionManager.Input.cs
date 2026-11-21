@@ -182,7 +182,7 @@ internal sealed partial class SessionManager
             tracked = _apps.FirstOrDefault(
                 app => IsOwned(app) &&
                        (app.Pid == (int)targetPid || app.Pid == (int)rootPid) &&
-                       IsLiveTrackedApp(app));
+                       TrackedAppTracker.IsLive(app));
         }
 
         if (tracked is not null)

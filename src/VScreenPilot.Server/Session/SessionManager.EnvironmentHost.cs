@@ -34,7 +34,7 @@ internal sealed partial class SessionManager : IEnvironmentHost
 
     bool IEnvironmentHost.IsOwned(TrackedApp app) => IsOwned(app);
 
-    bool IEnvironmentHost.IsLive(TrackedApp app) => IsLiveTrackedApp(app);
+    bool IEnvironmentHost.IsLive(TrackedApp app) => TrackedAppTracker.IsLive(app);
 
     UiaHost IEnvironmentHost.Uia => Uia;
 

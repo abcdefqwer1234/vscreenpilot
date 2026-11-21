@@ -123,7 +123,7 @@ internal sealed partial class SessionManager
         {
             return _apps.Any(app =>
                 string.Equals(app.OwnerClientId, clientId, StringComparison.Ordinal) &&
-                IsLiveTrackedApp(app));
+                TrackedAppTracker.IsLive(app));
         }
     }
 
@@ -132,7 +132,7 @@ internal sealed partial class SessionManager
     {
         lock (_gate)
         {
-            return _apps.Any(app => IsOwned(app) && IsLiveTrackedApp(app));
+            return _apps.Any(app => IsOwned(app) && TrackedAppTracker.IsLive(app));
         }
     }
 

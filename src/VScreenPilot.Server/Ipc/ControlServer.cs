@@ -266,7 +266,7 @@ internal sealed class ControlServer : IDisposable
                     ["pid"] = app.Pid,
                     ["hwnd"] = app.Hwnd.ToInt64(),
                     ["title"] = title,
-                    ["alive"] = SessionManager.IsLiveTrackedApp(app),
+                    ["alive"] = TrackedAppTracker.IsLive(app),
                     ["owner_client_id"] = app.OwnerClientId,
                 };
 

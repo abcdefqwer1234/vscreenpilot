@@ -196,13 +196,7 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
     }
 
     /// <summary>截图/快照的 profile 根目录；按会话再建时间戳子目录。</summary>
-    public string ArtifactRoot => ArtifactRootFor(ProfileName);
-
-    public static string ArtifactRootFor(string profile) => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "VScreenPilot",
-        "artifacts",
-        profile);
+    public string ArtifactRoot => ArtifactStore.RootFor(ProfileName);
 
     private string CreateArtifactDirectory(string clientId)
     {
@@ -284,8 +278,6 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
     /// 条目仍可用：窗口存在且仍属于登记时的进程。
     /// 窗口关闭后 PID 可能被系统复用，只比较 PID 会把外来窗口误判成本会话应用。
     /// </summary>
-    internal static bool IsLiveTrackedApp(TrackedApp app) => TrackedAppTracker.IsLive(app);
-
     private TrackedApp? LastLiveTrackedApp() => _tracker.LastLive();
 
     private void PruneDeadApps() => _tracker.Prune();
@@ -501,7 +493,7 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
     {
         lock (_gate)
         {
-            return _apps.Where(app => IsOwned(app) && IsLiveTrackedApp(app)).ToList();
+            return _apps.Where(app => IsOwned(app) && TrackedAppTracker.IsLive(app)).ToList();
         }
     }
 
@@ -532,7 +524,7 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
     {
         lock (_gate)
         {
-            return _apps.Any(app => IsOwned(app) && app.Pid == pid && IsLiveTrackedApp(app));
+            return _apps.Any(app => IsOwned(app) && app.Pid == pid && TrackedAppTracker.IsLive(app));
         }
     }
 
@@ -562,7 +554,7 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
         lock (_gate)
         {
             return _apps.FirstOrDefault(
-                item => IsOwned(item) && item.Pid == pid && IsLiveTrackedApp(item));
+                item => IsOwned(item) && item.Pid == pid && TrackedAppTracker.IsLive(item));
         }
     }
 

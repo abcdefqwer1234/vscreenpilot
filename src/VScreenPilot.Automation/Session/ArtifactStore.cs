@@ -12,6 +12,13 @@ internal sealed partial class ArtifactStore
 {
     internal const string RetentionEnv = "VSP_ARTIFACT_RETENTION_DAYS";
 
+    /// <summary>artifact 根目录：%LOCALAPPDATA%\VScreenPilot\artifacts\&lt;profile&gt;。</summary>
+    internal static string RootFor(string profile) => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "VScreenPilot",
+        "artifacts",
+        profile);
+
     internal const int DefaultRetentionDays = 7;
 
     private readonly string _root;

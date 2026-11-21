@@ -4,10 +4,6 @@ namespace VScreenPilot.Session;
 
 internal sealed partial class SessionManager
 {
-    internal const string ArtifactRetentionEnv = ArtifactStore.RetentionEnv;
-
-    internal const int DefaultArtifactRetentionDays = ArtifactStore.DefaultRetentionDays;
-
     private readonly MaintenanceService _maintenance;
 
     private void StartMaintenance() => _maintenance.Start();
