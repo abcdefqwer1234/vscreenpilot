@@ -631,7 +631,7 @@ internal sealed partial class McpTransport
             lastError is null ? null : ToLogView(lastError),
             source is "file" or "both" ? fileEntries : null);
 
-        return ToolResponse.Text(VspJson.ToNode(view));
+        return ToolResponseWriter.FromView(view);
     }
 
 
@@ -649,7 +649,7 @@ internal sealed partial class McpTransport
             ?? throw new ToolException("E_INVALID_ARG", "run_script 需要 code");
 
         int timeoutMs = OptionalInt(arguments, "timeout_ms", 30000);
-        return ToolResponse.Text(VspJson.ToNode(_session.RunScript(code, timeoutMs)));
+        return ToolResponseWriter.FromView(_session.RunScript(code, timeoutMs));
     }
 
 }
