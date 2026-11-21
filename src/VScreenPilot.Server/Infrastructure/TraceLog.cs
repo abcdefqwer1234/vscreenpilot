@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Nodes;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Server.Infrastructure;
 
@@ -36,8 +37,9 @@ internal sealed class TraceLog : IDisposable
                 AutoFlush = true,
             };
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             // 追踪失败不能影响主流程（例如只读用户目录）。
             _writer = null;
         }
@@ -88,14 +90,14 @@ internal sealed class TraceLog : IDisposable
                 catch (Exception exception)
                 {
                     // 正在写入的文件删不掉，下一轮再试。
-                    System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                    LogSink.Debug($"忽略异常: {exception.Message}");
                 }
             }
         }
         catch (Exception exception)
         {
             // 清理失败不影响追踪。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 
@@ -121,7 +123,7 @@ internal sealed class TraceLog : IDisposable
             catch (Exception exception)
             {
                 // 忽略磁盘写入失败。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
         }
     }
@@ -171,7 +173,7 @@ internal sealed class TraceLog : IDisposable
             catch (Exception exception)
             {
                 // 忽略。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
         }
     }

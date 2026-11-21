@@ -4,6 +4,7 @@ using System.Text;
 using Interop.UIAutomationClient;
 using VScreenPilot.Interop;
 using VScreenPilot.Errors;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Uia;
 
@@ -205,7 +206,7 @@ internal sealed partial class UiaService : IDisposable
         catch (Exception exception)
         {
             // provider 卡死时释放可能失败；交给 GC。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         try
@@ -215,7 +216,7 @@ internal sealed partial class UiaService : IDisposable
         catch (Exception exception)
         {
             // 已显式忽略：尽力而为的清理/探测失败不影响主流程。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         try
@@ -225,7 +226,7 @@ internal sealed partial class UiaService : IDisposable
         catch (Exception exception)
         {
             // 已显式忽略：尽力而为的清理/探测失败不影响主流程。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
     private readonly IUIAutomationCacheRequest _elementCache;
@@ -269,7 +270,7 @@ internal sealed partial class UiaService : IDisposable
             }
             catch (COMException exception){
                 // 旧系统不支持 IUIAutomation2 时保持默认值。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
         }
 

@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Ipc;
 
@@ -293,7 +294,7 @@ internal static class DaemonSpawner
         catch (Exception exception)
         {
             // daemon 退出时管道关闭。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 }

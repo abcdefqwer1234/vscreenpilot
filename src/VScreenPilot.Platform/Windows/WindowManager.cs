@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using VScreenPilot.Interop;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Platform.Windows;
 
@@ -52,7 +53,7 @@ internal static class WindowManager
             catch (Exception exception)
             {
                 // 枚举过程中的个别窗口失败不影响整体。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
 
             return true;
@@ -95,7 +96,7 @@ internal static class WindowManager
             catch (Exception exception)
             {
                 // 单个窗口枚举失败不影响其他候选。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
 
             return true;
@@ -157,7 +158,7 @@ internal static class WindowManager
             catch (Exception exception)
             {
                 // 枚举中的个别窗口失败不影响整体。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
 
             return true;
@@ -270,7 +271,7 @@ internal static class WindowManager
             catch (Exception exception)
             {
                 // 单个窗口失败不影响枚举。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
 
             return true;
@@ -404,8 +405,9 @@ internal static class WindowManager
             using var process = Process.GetProcessById(pid);
             return process.MainModule?.FileName ?? string.Empty;
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return string.Empty;
         }
     }

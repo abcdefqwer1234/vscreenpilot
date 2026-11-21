@@ -1,3 +1,4 @@
+using VScreenPilot.Platform.Logging;
 namespace VScreenPilot.Platform.Security;
 
 /// <summary>
@@ -13,8 +14,9 @@ public static class Elevation
             var principal = new System.Security.Principal.WindowsPrincipal(identity);
             return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return false;
         }
     }

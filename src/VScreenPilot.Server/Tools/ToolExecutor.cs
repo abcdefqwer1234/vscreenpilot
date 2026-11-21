@@ -7,6 +7,7 @@ using VScreenPilot.Session;
 using static VScreenPilot.Json.JsonArgReader;
 using VScreenPilot.Errors;
 using VScreenPilot.Json;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Mcp;
 
@@ -198,7 +199,7 @@ internal sealed class ToolExecutor
                 }
                 catch (ObjectDisposedException exception){
                     // 已经结束。
-                    System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                    LogSink.Debug($"忽略异常: {exception.Message}");
                 }
                 _ = handlerTask!.ContinueWith(
                     _ => callCts?.Dispose(), TaskScheduler.Default);
@@ -285,7 +286,7 @@ internal sealed class ToolExecutor
             }
             catch (ObjectDisposedException exception){
                 // 已经结束。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
 
             if (callCts is not null && handlerTask is not null && !handlerTask.IsCompleted)

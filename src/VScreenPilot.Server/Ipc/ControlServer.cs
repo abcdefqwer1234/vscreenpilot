@@ -13,6 +13,7 @@ using static VScreenPilot.Json.JsonArgReader;
 using VScreenPilot.Platform.Ipc;
 using VScreenPilot.Platform.Windows;
 using VScreenPilot.Errors;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Ipc;
 
@@ -147,8 +148,9 @@ internal sealed class ControlServer : IDisposable
         {
             request = JsonNode.Parse(line) as JsonObject;
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             request = null;
         }
 
@@ -204,7 +206,7 @@ internal sealed class ControlServer : IDisposable
                     catch (Exception exception)
                     {
                         // 退出路径忽略。
-                        System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                        LogSink.Debug($"忽略异常: {exception.Message}");
                     }
                 }, CancellationToken.None);
             }
@@ -262,7 +264,7 @@ internal sealed class ControlServer : IDisposable
                 catch (Exception exception)
                 {
                     // 窗口已失效时保留登记时的标题。
-                    System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                    LogSink.Debug($"忽略异常: {exception.Message}");
                 }
 
                 var item = new JsonObject
@@ -481,8 +483,9 @@ internal sealed class ControlServer : IDisposable
             using var process = System.Diagnostics.Process.GetCurrentProcess();
             return Math.Round(process.WorkingSet64 / 1048576.0, 1);
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return 0;
         }
     }
@@ -494,8 +497,9 @@ internal sealed class ControlServer : IDisposable
             using var process = System.Diagnostics.Process.GetCurrentProcess();
             return process.HandleCount;
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return 0;
         }
     }
@@ -513,7 +517,7 @@ internal sealed class ControlServer : IDisposable
         }
         catch (ObjectDisposedException exception){
             // 已经取消。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         // 不立即 Dispose：HandleAsync 可能还在创建 linked token；进程退出时由 OS 回收。

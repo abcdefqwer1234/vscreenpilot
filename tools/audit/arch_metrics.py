@@ -36,7 +36,7 @@ CONTROL = {
     "return", "new", "throw", "base", "this", "when", "nameof", "typeof",
     "sizeof", "checked", "unchecked",
 }
-LOG_TOKENS = ("log.", "_log", "Log(", "Log.", "Trace.", "Debug.", "Console.", "Warn(", "Error(")
+LOG_TOKENS = ("log.", "_log", "Log(", "Log.", "LogSink.", "Trace.", "Debug.", "Console.", "Warn(", "Error(")
 
 
 def source_files(root: str):

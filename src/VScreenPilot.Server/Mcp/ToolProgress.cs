@@ -1,3 +1,4 @@
+using VScreenPilot.Platform.Logging;
 namespace VScreenPilot.Mcp;
 
 /// <summary>
@@ -31,7 +32,7 @@ internal static class ToolProgress
         catch (Exception exception)
         {
             // progress 失败不能影响工具本身。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 

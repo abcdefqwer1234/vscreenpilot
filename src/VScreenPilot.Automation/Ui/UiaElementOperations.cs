@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Interop.UIAutomationClient;
 using VScreenPilot.Interop;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Uia;
 
@@ -194,7 +195,7 @@ internal sealed partial class UiaService
                     }
                     catch (COMException exception){
                         // 单个 provider 读文本失败不影响其余候选。
-                        System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                        LogSink.Debug($"忽略异常: {exception.Message}");
                     }
                     finally
                     {

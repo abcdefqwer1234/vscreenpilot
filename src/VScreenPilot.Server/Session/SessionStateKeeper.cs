@@ -4,6 +4,7 @@ using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Platform.Windows;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -165,8 +166,9 @@ internal sealed class SessionStateKeeper
             return Math.Abs(
                 (process.StartTime.ToUniversalTime() - expected.UtcDateTime).TotalSeconds) <= 5;
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return false;
         }
     }

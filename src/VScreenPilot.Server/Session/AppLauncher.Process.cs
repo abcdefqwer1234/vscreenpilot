@@ -14,6 +14,7 @@ using VScreenPilot.Views;
 using VScreenPilot.Platform.Processes;
 using VScreenPilot.Platform.Windows;
 using VScreenPilot.Errors;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -90,8 +91,9 @@ internal sealed partial class AppLauncher
         {
             fullPath = _host.ResolvePath(path);
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             fullPath = path;
         }
 
@@ -100,8 +102,9 @@ internal sealed partial class AppLauncher
         {
             processes = Process.GetProcessesByName(name);
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return null;
         }
 
@@ -136,8 +139,9 @@ internal sealed partial class AppLauncher
                         nameFallback ??= process;
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
+                    LogSink.Debug($"忽略异常: {exception.Message}");
                     nameFallback ??= process;
                 }
             }
@@ -155,8 +159,9 @@ internal sealed partial class AppLauncher
 
             return chosen;
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             foreach (Process process in processes)
             {
                 process.Dispose();
@@ -174,8 +179,9 @@ internal sealed partial class AppLauncher
             return modulePath is not null &&
                    string.Equals(Path.GetFullPath(modulePath), fullPath, StringComparison.OrdinalIgnoreCase);
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return false;
         }
     }
@@ -201,7 +207,7 @@ internal sealed partial class AppLauncher
         catch (Exception exception)
         {
             // 清理失败不影响启动。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 

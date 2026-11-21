@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using VScreenPilot.Platform.Interop;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Platform.Displays;
 
@@ -314,11 +315,11 @@ public static class DisplayTopology
         }
         catch (DllNotFoundException exception){
             // 已显式忽略：预期异常，不影响主流程。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
         catch (EntryPointNotFoundException exception){
             // 已显式忽略：预期异常，不影响主流程。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         return 0;

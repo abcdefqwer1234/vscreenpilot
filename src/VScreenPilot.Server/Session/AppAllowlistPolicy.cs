@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using VScreenPilot.Mcp;
 using VScreenPilot.Errors;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -45,7 +46,7 @@ internal sealed class AppAllowlistPolicy
             catch (Exception exception)
             {
                 // 忽略无效路径。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
         }
 

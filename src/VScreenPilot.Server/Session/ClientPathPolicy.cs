@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using VScreenPilot.Mcp;
 using VScreenPilot.Errors;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -60,7 +61,7 @@ internal sealed class ClientPathPolicy
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException){
             // 文件尚不存在/无权限读取链接：保留原路径，后续 CreateNew 会给出明确 IO 错误。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         // 文件本身不存在时，父目录仍可能是 junction；逐级解析，防止写到允许根之外。
@@ -121,7 +122,7 @@ internal sealed class ClientPathPolicy
             catch (Exception exception) when (
                 exception is IOException or UnauthorizedAccessException){
                 // 无权限读取链接时继续向上；最终仍会受 IsUnder 限制。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
 
             directory = Path.GetDirectoryName(directory);

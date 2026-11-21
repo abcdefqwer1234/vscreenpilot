@@ -13,6 +13,7 @@ using VScreenPilot.Uia;
 using VScreenPilot.Views;
 using VScreenPilot.Platform.Processes;
 using VScreenPilot.Platform.Windows;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -137,7 +138,7 @@ internal sealed class EnvironmentReporter
             catch (Exception exception)
             {
                 // 进程句柄被回收时忽略；字段保持缺省，不影响诊断的其他部分。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
 
             var session = new SessionView

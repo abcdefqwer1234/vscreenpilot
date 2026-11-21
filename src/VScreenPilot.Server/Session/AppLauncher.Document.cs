@@ -14,6 +14,7 @@ using VScreenPilot.Views;
 using VScreenPilot.Platform.Processes;
 using VScreenPilot.Platform.Windows;
 using VScreenPilot.Errors;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -39,7 +40,7 @@ internal sealed partial class AppLauncher
             }
             catch (System.Runtime.InteropServices.COMException exception){
                 // Word 正在切换文档，稍后重试。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
 
             Thread.Sleep(150);
@@ -99,7 +100,7 @@ internal sealed partial class AppLauncher
         }
         catch (System.Runtime.InteropServices.COMException exception){
             // 开始屏幕的 UIA 提供程序不稳定时按“找不到磁贴”处理。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         return null;

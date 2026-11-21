@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using VScreenPilot.Platform.Security;
 using VScreenPilot.Ipc;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Server.Infrastructure;
 
@@ -82,8 +83,9 @@ internal sealed class InstanceRegistry
             Directory.CreateDirectory(directory);
             _path = Path.Combine(directory, $"{profile}.json");
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             _path = null;
         }
     }
@@ -118,7 +120,7 @@ internal sealed class InstanceRegistry
         catch (Exception exception)
         {
             // 诊断信息写不进不影响主流程。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 
@@ -145,7 +147,7 @@ internal sealed class InstanceRegistry
         catch (Exception exception)
         {
             // 忽略。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 
@@ -158,8 +160,9 @@ internal sealed class InstanceRegistry
         {
             started = process.StartTime.ToUniversalTime().ToString("O");
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             started = DateTimeOffset.UtcNow.ToString("O");
         }
 
@@ -206,7 +209,7 @@ internal sealed class InstanceRegistry
         catch (Exception exception)
         {
             // 诊断失败忽略。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         return result;
@@ -273,14 +276,14 @@ internal sealed class InstanceRegistry
                 catch (Exception exception)
                 {
                     // 单个 state 损坏不影响其他。
-                    System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                    LogSink.Debug($"忽略异常: {exception.Message}");
                 }
             }
         }
         catch (Exception exception)
         {
             // 忽略。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         return result;
@@ -320,8 +323,9 @@ internal sealed class InstanceRegistry
                 Version = "0.1.0-or-older",
             };
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return null;
         }
     }
@@ -337,8 +341,9 @@ internal sealed class InstanceRegistry
         {
             return Entry.FromJson(JsonNode.Parse(File.ReadAllText(path)));
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return null;
         }
     }
@@ -367,8 +372,9 @@ internal sealed class InstanceRegistry
             return Math.Abs(
                 (process.StartTime.ToUniversalTime() - expected.UtcDateTime).TotalSeconds) <= 5;
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return false;
         }
     }

@@ -14,6 +14,7 @@ using VScreenPilot.Views;
 using VScreenPilot.Platform.Processes;
 using VScreenPilot.Platform.Windows;
 using VScreenPilot.Errors;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -51,8 +52,9 @@ internal sealed partial class AppLauncher
 
                 Thread.Sleep(150);
             }
-            catch
+            catch (Exception exception)
             {
+                LogSink.Debug($"忽略异常: {exception.Message}");
                 // 进程可能在分配前已经退出/转交。
                 Thread.Sleep(150);
             }

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using VScreenPilot.Session;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Server.Infrastructure;
 
@@ -236,7 +237,7 @@ public sealed class StateStore : ISessionStateStore
         catch (Exception exception)
         {
             // 忽略。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 }

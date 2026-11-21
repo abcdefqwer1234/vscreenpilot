@@ -5,6 +5,7 @@ using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Mcp;
 using VScreenPilot.Session;
 using VScreenPilot.Platform.Ipc;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Ipc;
 
@@ -195,7 +196,7 @@ internal sealed class PipeHost : IDisposable
         }
         catch (OperationCanceledException exception){
             // 进程退出/管道断开。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
         catch (Exception exception)
         {
@@ -227,7 +228,7 @@ internal sealed class PipeHost : IDisposable
         catch (Exception exception)
         {
             // 客户端可能已经断开。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
         finally
         {
@@ -248,7 +249,7 @@ internal sealed class PipeHost : IDisposable
         }
         catch (ObjectDisposedException exception){
             // 已经取消。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         // 不在 Dispose 立即释放 CTS：连接任务仍可能在创建 linked token；

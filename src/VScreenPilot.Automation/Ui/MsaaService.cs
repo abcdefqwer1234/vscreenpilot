@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using VScreenPilot.Interop;
 using VScreenPilot.Uia;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Uia;
 
@@ -353,7 +354,7 @@ internal static class MsaaService
                 catch (Exception exception) when (
                     exception is InvalidCastException or FormatException or OverflowException){
                     // 非 child-id / IAccessible 的 VARIANT：跳过，不影响其它控件。
-                    System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                    LogSink.Debug($"忽略异常: {exception.Message}");
                 }
             }
 
@@ -502,7 +503,7 @@ internal static class MsaaService
             catch (Exception exception)
             {
                 // 已显式忽略：尽力而为的清理/探测失败不影响主流程。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
         }
     }

@@ -1,6 +1,7 @@
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Session;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Composition;
 
@@ -22,7 +23,7 @@ internal static class ParentProcessWatcher
             }
             catch (ArgumentException exception){
                 // 父进程在进入监听前已经退出。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
             catch (Exception exception)
             {

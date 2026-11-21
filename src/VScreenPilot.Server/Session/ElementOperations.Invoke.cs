@@ -16,6 +16,7 @@ using static VScreenPilot.Json.JsonArgReader;
 using VScreenPilot.Platform.Windows;
 using VScreenPilot.Errors;
 using VScreenPilot.Json;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -222,7 +223,7 @@ internal sealed partial class ElementOperations
             catch (Exception exception) when (
                 exception is COMException or InvalidOperationException){
                 // 部分 WinForms/WPF 控件不支持 SetFocus；继续用 Enter 尝试。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
 
             Thread.Sleep(80);

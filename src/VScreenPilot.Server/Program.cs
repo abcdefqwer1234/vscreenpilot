@@ -17,6 +17,7 @@ using VScreenPilot.Json;
 using VScreenPilot.Mcp;
 using VScreenPilot.Session;
 using VScreenPilot.Platform.Processes;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot;
 
@@ -33,7 +34,7 @@ internal static class Program
         catch (Exception exception)
         {
             // 某些宿主没有可用的控制台编码，不影响 stdio。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         if (HasFlag(args, "--help") || HasFlag(args, "-h"))
@@ -62,6 +63,9 @@ internal static class Program
 
         string profile = Profile.Resolve();
         var log = new LogRing();
+        LogSink.Configure(Path.Combine(
+            Path.GetDirectoryName(log.FilePath) ?? AppContext.BaseDirectory,
+            $"trace-{profile}.log"));
         TraceLog? trace = null;
 
         string? cliCommand = GetOption(args, "--cli");
@@ -137,7 +141,7 @@ internal static class Program
                 catch (Exception exception)
                 {
                     // 子进程可能已自行退出。
-                    System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                    LogSink.Debug($"忽略异常: {exception.Message}");
                 }
             }
         }

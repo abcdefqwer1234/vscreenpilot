@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using VScreenPilot.Errors;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Mcp;
 
@@ -114,7 +115,7 @@ internal sealed class WriteScheduler : IDisposable
             }
             catch (ObjectDisposedException exception){
                 // 进程退出时忽略。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
         }
     }

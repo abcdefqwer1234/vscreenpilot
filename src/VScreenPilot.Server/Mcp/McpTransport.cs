@@ -14,6 +14,7 @@ using VScreenPilot.Session;
 using VScreenPilot.Views;
 using static VScreenPilot.Json.JsonArgReader;
 using VScreenPilot.Errors;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Mcp;
 
@@ -327,7 +328,7 @@ internal sealed partial class McpTransport
         catch (Exception exception)
         {
             // artifact 目录不可用时返回空列表，不影响工具调用。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         return ValueTask.FromResult(new ListResourcesResult
@@ -435,7 +436,7 @@ internal sealed partial class McpTransport
         catch (Exception exception)
         {
             // 生成失败就退回原图；资源读取仍然可用。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 
@@ -596,7 +597,7 @@ internal sealed partial class McpTransport
         catch (Exception exception)
         {
             // 进度是尽力而为。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 
@@ -633,7 +634,7 @@ internal sealed partial class McpTransport
                     catch (Exception exception)
                     {
                         // 非 JSON 文本。
-                        System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                        LogSink.Debug($"忽略异常: {exception.Message}");
                     }
                 }
             }

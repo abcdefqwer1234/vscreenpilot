@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Mcp;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Ipc;
 
@@ -32,8 +33,9 @@ internal static class StdioProxy
             {
                 cwd = Path.GetFullPath(cwd);
             }
-            catch
+            catch (Exception exception)
             {
+                LogSink.Debug($"忽略异常: {exception.Message}");
                 cwd = Environment.CurrentDirectory;
             }
 
@@ -169,7 +171,7 @@ internal static class StdioProxy
         catch (Exception exception)
         {
             // 无控制台时忽略。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         return 3;

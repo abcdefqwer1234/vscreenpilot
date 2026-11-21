@@ -18,6 +18,7 @@ using static VScreenPilot.Json.JsonArgReader;
 using ObserveSignature = VScreenPilot.Verification.ObserveSampler.Signature;
 using VScreenPilot.Platform.Windows;
 using VScreenPilot.Errors;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -215,7 +216,7 @@ internal sealed partial class InputRouter
         catch (Exception exception)
         {
             // 读不到就当作空剪贴板。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         try
@@ -233,7 +234,7 @@ internal sealed partial class InputRouter
             catch (Exception exception)
             {
                 // 还原失败不影响输入结果。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
         }
 

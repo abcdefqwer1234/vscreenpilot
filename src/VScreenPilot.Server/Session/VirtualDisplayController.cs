@@ -6,6 +6,7 @@ using VScreenPilot.Interop;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Mcp;
 using VScreenPilot.Errors;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -440,8 +441,9 @@ internal sealed class VirtualDisplayController
 
             return allocation;
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return null;
         }
     }
@@ -463,7 +465,7 @@ internal sealed class VirtualDisplayController
         catch (Exception exception)
         {
             // 释放失败不应覆盖原始错误。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
         finally
         {

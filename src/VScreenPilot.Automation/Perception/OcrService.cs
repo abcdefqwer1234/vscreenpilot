@@ -2,6 +2,7 @@
 using Windows.Media.Ocr;
 using Windows.Security.Cryptography;
 using VScreenPilot.Infrastructure;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Perception;
 
@@ -160,8 +161,9 @@ internal sealed class OcrService
             language = created.RecognizerLanguage?.LanguageTag ?? key;
             return true;
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             engine = null;
             language = string.Empty;
             return false;

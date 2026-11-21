@@ -3,6 +3,7 @@ using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Platform.Windows;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -150,7 +151,7 @@ internal sealed class FocusGuard
             catch (Exception exception)
             {
                 // 焦点护栏失败不能影响主流程。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
         }
     }

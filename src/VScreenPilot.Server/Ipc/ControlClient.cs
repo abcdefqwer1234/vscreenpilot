@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Text;
 using System.Text.Json.Nodes;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Ipc;
 
@@ -21,8 +22,9 @@ internal static class ControlClient
                 pipe = new NamedPipeClientStream(
                     ".", PipeNames.Ctl(profile), PipeDirection.InOut, PipeOptions.Asynchronous);
             }
-            catch
+            catch (Exception exception)
             {
+                LogSink.Debug($"忽略异常: {exception.Message}");
                 return null;
             }
 
@@ -38,8 +40,9 @@ internal static class ControlClient
                 Thread.Sleep(100);
                 continue;
             }
-            catch
+            catch (Exception exception)
             {
+                LogSink.Debug($"忽略异常: {exception.Message}");
                 pipe.Dispose();
                 return null;
             }
@@ -67,8 +70,9 @@ internal static class ControlClient
                     string? line = read.Result;
                     return line is null ? null : JsonNode.Parse(line) as JsonObject;
                 }
-                catch
+                catch (Exception exception)
                 {
+                    LogSink.Debug($"忽略异常: {exception.Message}");
                     return null;
                 }
             }

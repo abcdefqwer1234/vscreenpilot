@@ -18,6 +18,7 @@ using static VScreenPilot.Json.JsonArgReader;
 using ObserveSignature = VScreenPilot.Verification.ObserveSampler.Signature;
 using VScreenPilot.Platform.Windows;
 using VScreenPilot.Errors;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -80,8 +81,9 @@ internal sealed partial class InputRouter
 
             return result;
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             BlockUiaPid(pid);
             return false;
         }

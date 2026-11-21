@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Nodes;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Ipc;
 
@@ -62,8 +63,9 @@ internal static class Handshake
         {
             return Path.GetFullPath(value, basePath);
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return basePath;
         }
     }
@@ -155,8 +157,9 @@ internal static class Handshake
                 json["capabilities"]?["allow_unsafe_script"]?.GetValue<bool>() ?? false,
                 allowlist.ToArray());
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return null;
         }
     }

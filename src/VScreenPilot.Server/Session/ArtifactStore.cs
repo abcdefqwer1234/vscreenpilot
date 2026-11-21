@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -150,7 +151,7 @@ internal sealed partial class ArtifactStore
                         catch (Exception exception)
                         {
                             // 刚有新连接写入时删不掉，下一轮再试。
-                            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                            LogSink.Debug($"忽略异常: {exception.Message}");
                         }
                     }
                 }

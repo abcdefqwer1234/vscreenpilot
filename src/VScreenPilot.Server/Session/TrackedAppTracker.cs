@@ -4,6 +4,7 @@ using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Platform.Windows;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -150,8 +151,9 @@ internal sealed class TrackedAppTracker
             using Process process = Process.GetProcessById(pid);
             return process.StartTime.ToUniversalTime() >= startedAt.ToUniversalTime().AddSeconds(-2);
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return false;
         }
     }

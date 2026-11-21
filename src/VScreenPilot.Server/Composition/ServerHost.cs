@@ -8,6 +8,7 @@ using VScreenPilot.Mcp;
 using VScreenPilot.Options;
 using VScreenPilot.Session;
 using VScreenPilot.Platform.Processes;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Composition;
 
@@ -143,7 +144,7 @@ internal sealed class ServerHost : IDisposable
         }
         catch (PlatformNotSupportedException exception){
             // Windows 上部分场景不支持，忽略。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         try

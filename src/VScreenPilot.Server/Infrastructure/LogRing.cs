@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json.Nodes;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Server.Infrastructure;
 
@@ -50,8 +51,9 @@ public sealed class LogRing : IDisposable
             _fileDate = DateTime.Today;
             _filePath = BuildPath(_fileDate);
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             _directory = null;
             _filePath = null;
         }
@@ -91,7 +93,7 @@ public sealed class LogRing : IDisposable
         catch (Exception exception)
         {
             // 归属解析失败不影响日志。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         var entry = new LogEntry(DateTimeOffset.Now, level, message, clientId);
@@ -117,7 +119,7 @@ public sealed class LogRing : IDisposable
         }
         catch (InvalidOperationException exception){
             // Dispose 之后仍有日志，丢弃即可。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 
@@ -188,7 +190,7 @@ public sealed class LogRing : IDisposable
         catch (Exception exception)
         {
             // 清理失败不影响日志写入。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 
@@ -233,8 +235,9 @@ public sealed class LogRing : IDisposable
                         OpenWriter(ref stream, ref writer);
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
+                    LogSink.Debug($"忽略异常: {exception.Message}");
                     // 日志失败不能影响主流程；尝试重新打开文件。
                     CloseWriter(ref stream, ref writer);
                 }
@@ -243,7 +246,7 @@ public sealed class LogRing : IDisposable
         catch (Exception exception)
         {
             // 文件不可用时静默降级为仅内存日志。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
         finally
         {
@@ -275,7 +278,7 @@ public sealed class LogRing : IDisposable
         catch (Exception exception)
         {
             // 忽略。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         try
@@ -285,7 +288,7 @@ public sealed class LogRing : IDisposable
         catch (Exception exception)
         {
             // 忽略。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         writer = null;
@@ -315,7 +318,7 @@ public sealed class LogRing : IDisposable
         catch (Exception exception)
         {
             // 轮转失败时继续写当前文件。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 
@@ -386,8 +389,9 @@ public sealed class LogRing : IDisposable
 
             return lines.TakeLast(Math.Clamp(count, 1, 500)).ToArray();
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return Array.Empty<string>();
         }
     }
@@ -450,7 +454,7 @@ public sealed class LogRing : IDisposable
             }
             catch (ObjectDisposedException exception){
                 // 已释放。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
         }
 

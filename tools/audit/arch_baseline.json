@@ -1,22 +1,22 @@
 {
-  "generated_at": "2026-11-21T19:38:48Z",
+  "generated_at": "2026-11-21T19:40:30Z",
   "source": {
-    "files": 162,
-    "lines": 31032,
-    "max_file": 759,
+    "files": 163,
+    "lines": 31186,
+    "max_file": 761,
     "files_gt_600": 6,
     "files_gt_800": 0,
     "top_files": [
       {
-        "lines": 759,
+        "lines": 761,
         "path": "src/VScreenPilot.Server/Session/VirtualDisplayController.cs"
       },
       {
-        "lines": 740,
+        "lines": 741,
         "path": "src/VScreenPilot.Server/Session/SessionManager.cs"
       },
       {
-        "lines": 723,
+        "lines": 724,
         "path": "src/VScreenPilot.Server/Mcp/McpTransport.cs"
       },
       {
@@ -32,11 +32,11 @@
         "path": "src/VScreenPilot.Server/Session/VisualMatchService.cs"
       },
       {
-        "lines": 597,
+        "lines": 598,
         "path": "src/VScreenPilot.Automation/Ui/MsaaService.cs"
       },
       {
-        "lines": 571,
+        "lines": 572,
         "path": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs"
       },
       {
@@ -44,15 +44,15 @@
         "path": "src/VScreenPilot.Server/Session/AppLauncher.Launch.cs"
       },
       {
+        "lines": 525,
+        "path": "src/VScreenPilot.Server/Ipc/ControlServer.cs"
+      },
+      {
         "lines": 524,
         "path": "src/VScreenPilot.Automation/Perception/TemplateMatcher.cs"
       },
       {
-        "lines": 521,
-        "path": "src/VScreenPilot.Server/Ipc/ControlServer.cs"
-      },
-      {
-        "lines": 459,
+        "lines": 463,
         "path": "src/VScreenPilot.Server/Infrastructure/LogRing.cs"
       }
     ]
@@ -79,19 +79,19 @@
       {
         "lines": 330,
         "path": "src/VScreenPilot.Server/Session/VirtualDisplayController.cs",
-        "line": 89,
+        "line": 90,
         "name": "Ensure"
       },
       {
         "lines": 295,
         "path": "src/VScreenPilot.Server/Tools/ToolExecutor.cs",
-        "line": 54,
+        "line": 55,
         "name": "ExecuteAsync"
       },
       {
         "lines": 294,
         "path": "src/VScreenPilot.Server/Session/EnvironmentReporter.cs",
-        "line": 57,
+        "line": 58,
         "name": "GetEnvironment"
       },
       {
@@ -109,7 +109,7 @@
       {
         "lines": 241,
         "path": "src/VScreenPilot.Server/Diagnostics/DoctorReportBuilder.cs",
-        "line": 18,
+        "line": 19,
         "name": "Run"
       },
       {
@@ -271,6 +271,9 @@
       "VScreenPilot.Platform.Ipc": [
         "VScreenPilot.Platform"
       ],
+      "VScreenPilot.Platform.Logging": [
+        "VScreenPilot.Platform"
+      ],
       "VScreenPilot.Platform.Processes": [
         "VScreenPilot.Platform"
       ],
@@ -362,11 +365,11 @@
     }
   ],
   "catches": {
-    "typed_wide": 134,
+    "typed_wide": 173,
     "typed_narrow": 85,
-    "untyped": 37,
-    "untyped_silent": 37,
-    "debug_only": 83
+    "untyped": 0,
+    "untyped_silent": 0,
+    "debug_only": 0
   },
   "tests": {
     "fact": 161,

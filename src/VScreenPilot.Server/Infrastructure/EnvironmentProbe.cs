@@ -1,4 +1,5 @@
 using VScreenPilot.Interop;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Server.Infrastructure;
 
@@ -12,8 +13,9 @@ internal static class EnvironmentProbe
             using var process = System.Diagnostics.Process.GetCurrentProcess();
             return process.StartTime.ToString("O");
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return DateTimeOffset.Now.ToString("O");
         }
     }

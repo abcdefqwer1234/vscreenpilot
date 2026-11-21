@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using VScreenPilot.Mcp;
 using VScreenPilot.Errors;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Server.Infrastructure;
 
@@ -69,7 +70,7 @@ internal static class InputLease
             }
             catch (ApplicationException exception){
                 // 不是当前线程持有；忽略。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
 
             mutex.Dispose();

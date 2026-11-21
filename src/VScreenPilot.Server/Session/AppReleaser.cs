@@ -7,6 +7,7 @@ using VScreenPilot.Interop;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
 using VScreenPilot.Platform.Windows;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -218,7 +219,7 @@ internal sealed class AppReleaser
         catch (Exception exception) when (
             exception is COMException or InvalidOperationException or ArgumentException){
             // 继续走 WM_CLOSE/超时策略。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         return false;
@@ -289,8 +290,9 @@ internal sealed class AppReleaser
             using var process = System.Diagnostics.Process.GetProcessById(pid);
             return !process.HasExited;
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return false;
         }
     }
@@ -328,8 +330,9 @@ internal sealed class AppReleaser
             return WindowManager.ListTopLevel().Any(
                 w => w.Pid == pid && w.Hwnd != exclude && !string.IsNullOrWhiteSpace(w.Title));
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return false;
         }
     }
@@ -347,7 +350,7 @@ internal sealed class AppReleaser
         catch (Exception exception)
         {
             // 进程可能已退出。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 
@@ -393,7 +396,7 @@ internal sealed class AppReleaser
         catch (Exception exception)
         {
             // 进程可能已退出或无法读取模块路径。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 
@@ -409,7 +412,7 @@ internal sealed class AppReleaser
         catch (Exception exception)
         {
             // Edge 可能仍持有锁，留给下次启动清理。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 }

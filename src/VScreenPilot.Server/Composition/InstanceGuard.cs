@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Composition;
 
@@ -38,7 +39,7 @@ internal static class InstanceGuard
                     catch (Exception exception)
                     {
                         // 忽略。
-                        System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                        LogSink.Debug($"忽略异常: {exception.Message}");
                     }
 
                     return false;
@@ -53,7 +54,7 @@ internal static class InstanceGuard
             catch (Exception exception)
             {
                 // 继续尝试下一个命名空间。
-                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+                LogSink.Debug($"忽略异常: {exception.Message}");
             }
         }
 
@@ -101,7 +102,7 @@ internal static class InstanceGuard
         catch (Exception exception)
         {
             // 无控制台时忽略。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         log.Warn($"实例已被占用: {error}");

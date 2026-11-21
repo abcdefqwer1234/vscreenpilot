@@ -1,3 +1,4 @@
+using VScreenPilot.Platform.Logging;
 namespace VScreenPilot.Server.Infrastructure;
 
 /// <summary>全局命名互斥体，保证同一会话只有一个 Server 实例。</summary>
@@ -75,7 +76,7 @@ public sealed class MutexGuard : IDisposable
         catch (Exception exception)
         {
             // 忽略。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         _mutex.Dispose();

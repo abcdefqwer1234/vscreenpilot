@@ -3,6 +3,7 @@ using System.Security.Principal;
 using System.Text;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Ipc;
 
@@ -31,8 +32,9 @@ internal static class PipeNames
             byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(sid));
             return Convert.ToHexString(hash, 0, 4).ToLowerInvariant();
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return "user";
         }
     }

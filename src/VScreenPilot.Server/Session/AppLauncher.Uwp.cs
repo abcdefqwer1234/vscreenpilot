@@ -14,6 +14,7 @@ using VScreenPilot.Views;
 using VScreenPilot.Platform.Processes;
 using VScreenPilot.Platform.Windows;
 using VScreenPilot.Errors;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -95,8 +96,9 @@ internal sealed partial class AppLauncher
             using var process = Process.GetProcessById(pid);
             return process.ProcessName;
         }
-        catch
+        catch (Exception exception)
         {
+            LogSink.Debug($"忽略异常: {exception.Message}");
             return string.Empty;
         }
     }

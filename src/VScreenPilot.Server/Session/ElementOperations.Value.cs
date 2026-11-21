@@ -16,6 +16,7 @@ using static VScreenPilot.Json.JsonArgReader;
 using VScreenPilot.Platform.Windows;
 using VScreenPilot.Errors;
 using VScreenPilot.Json;
+using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
@@ -390,7 +391,7 @@ internal sealed partial class ElementOperations
         catch (Exception exception) when (
             exception is System.Runtime.InteropServices.COMException or InvalidOperationException){
             // Word 正文的 Edit/Body 不支持 UIA SetFocus；退化到消息点击元素中心。
-            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         UiaElementInfo info = handle.Info;
