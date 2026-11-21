@@ -18,3 +18,18 @@ public sealed record ScreenTextView(
     [property: JsonPropertyName("privacy_redactions")] int PrivacyRedactions,
     [property: JsonPropertyName("region")] BoundsView Region,
     [property: JsonPropertyName("duration_ms")] double DurationMs);
+
+/// <summary>`click_text` 的输出视图。</summary>
+public sealed record ClickTextView(
+    [property: JsonPropertyName("found")] bool Found,
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("x")] int X,
+    [property: JsonPropertyName("y")] int Y,
+    [property: JsonPropertyName("bounds")] BoundsView Bounds,
+    [property: JsonPropertyName("ambiguous")] bool Ambiguous,
+    [property: JsonPropertyName("matches")] IReadOnlyList<ScreenTextLineView> Matches,
+    [property: JsonPropertyName("method")] string Method,
+    [property: JsonPropertyName("observed")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    ObservedView? Observed,
+    [property: JsonPropertyName("privacy_redactions")] int PrivacyRedactions);

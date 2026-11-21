@@ -415,7 +415,7 @@ internal sealed partial class McpTransport
             }
         }
 
-        return ToolResponse.Text(_session.ClickText(
+        return ToolResponseWriter.FromView(_session.ClickText(
             text, keepForeground, observe, channel, requireUnique,
             x, y, width, height, fallbackInput));
     }

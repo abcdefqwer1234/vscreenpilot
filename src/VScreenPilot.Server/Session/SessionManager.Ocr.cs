@@ -126,7 +126,7 @@ internal sealed partial class SessionManager
     }
 
     /// <summary>OCR 定位 + 点击 + 前后差异，供 click_ref 找不到元素的画布应用使用。</summary>
-    public JsonObject ClickText(
+    public ClickTextView ClickText(
         string text, bool keepForeground = false, bool observe = true,
         string channel = "auto", bool requireUnique = false,
         int? regionX = null, int? regionY = null,
@@ -213,7 +213,7 @@ internal sealed partial class SessionManager
                 new JsonObject
                 {
                     ["text"] = text,
-                    ["matches"] = DescribeMatches(matches, left, top),
+                    ["matches"] = VspJson.ToNode(DescribeMatches(matches, left, top)),
                 },
                 retryable: true,
                 hint: "缩小 region、使用更长的查询词，或显式 require_unique=false",
@@ -232,35 +232,31 @@ internal sealed partial class SessionManager
         int clickRedactions = 0;
         string clickedText = PrivacyRedactor.RedactEmails(match.Text, ref clickRedactions);
 
-        return new JsonObject
-        {
-            ["found"] = true,
-            ["text"] = clickedText,
-            ["x"] = clickX,
-            ["y"] = clickY,
-            ["bounds"] = RegionJson(left + match.Left, top + match.Top, match.Width, match.Height),
-            ["ambiguous"] = matches.Count > 1,
-            ["matches"] = DescribeMatches(matches, left, top),
-            ["method"] = click.Method,
-            ["observed"] = click.Observed is null ? null : VspJson.ToNode(click.Observed),
-            ["privacy_redactions"] = clickRedactions,
-        };
+        return new ClickTextView(
+            true,
+            clickedText,
+            clickX,
+            clickY,
+            new BoundsView(left + match.Left, top + match.Top, match.Width, match.Height),
+            matches.Count > 1,
+            DescribeMatches(matches, left, top),
+            click.Method,
+            click.Observed,
+            clickRedactions);
     }
 
-    private static JsonArray DescribeMatches(
+    private static List<ScreenTextLineView> DescribeMatches(
         List<ScreenTextLine> matches, int originX, int originY)
     {
-        var array = new JsonArray();
+        var array = new List<ScreenTextLineView>();
         int redactions = 0;
 
         foreach (ScreenTextLine line in matches.Take(8))
         {
-            array.Add((JsonNode)new JsonObject
-            {
-                ["text"] = PrivacyRedactor.RedactEmails(line.Text, ref redactions),
-                ["bounds"] = RegionJson(
-                    originX + line.Left, originY + line.Top, line.Width, line.Height),
-            });
+            array.Add(new ScreenTextLineView(
+                PrivacyRedactor.RedactEmails(line.Text, ref redactions),
+                new BoundsView(
+                    originX + line.Left, originY + line.Top, line.Width, line.Height)));
         }
 
         return array;
