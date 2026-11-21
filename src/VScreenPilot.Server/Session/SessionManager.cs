@@ -18,7 +18,7 @@ namespace VScreenPilot.Session;
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
-internal sealed partial class SessionManager : IDisposable, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, IFocusHost, ITrackedAppHost
+internal sealed partial class SessionManager : IDisposable, ISessionStateHost, IAppAllowlistHost, IEnvironmentReleaserHost, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, IFocusHost, ITrackedAppHost
 {
     private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
@@ -39,7 +39,8 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
     private readonly JobObject _job;
     private readonly TrackedAppRegistry _apps;
     private readonly bool _allowScript;
-    private readonly string[] _appAllowlist;
+    private readonly AppAllowlistPolicy _allowlist;
+    private readonly EnvironmentReleaser _releaserService;
 
     private int _disposed;
 
@@ -54,6 +55,7 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
     private readonly InputRouter _input;
     private readonly ElementFinder _finder;
     private readonly TrackedAppTracker _tracker;
+    private readonly SessionStateKeeper _stateKeeper;
     private readonly RegionVerifier _regionVerifier;
     private readonly WaitService _waits;
     private readonly ElementResolver _resolver;
@@ -243,7 +245,6 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
         _stateStore = stateStore;
         _job = job;
         _allowScript = allowScript;
-        _appAllowlist = ReadAppAllowlist();
 
         _paths = new ClientPathPolicy(Clients);
         _apps = new TrackedAppRegistry(_gate);
@@ -271,6 +272,9 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
         _capture = new ScreenCaptureService(this);
         _focus = new FocusGuard(this);
         _tracker = new TrackedAppTracker(this);
+        _stateKeeper = new SessionStateKeeper(this);
+        _allowlist = new AppAllowlistPolicy(this);
+        _releaserService = new EnvironmentReleaser(this);
         _log.ClientIdProvider = () => Clients.CurrentId;
         AppLauncher.CleanupStaleProfiles();
         SweepOldArtifacts();
@@ -386,245 +390,10 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
 
     public ReleaseReport ReleaseEnvironment(
         bool keepDisplay, string onDirty = "abort", bool allowDataLoss = false,
-        bool forceRemoveDisplay = false, bool forceAllClients = false)
-    {
-        lock (_gate)
-        {
-            var closed = new List<int>();
-            var restored = new List<int>();
-            var forced = new List<int>();
-            var kept = new List<int>();
-            var saved = new List<int>();
-            var discarded = new List<int>();
-            var warnings = new JsonArray();
-            bool removed = false;
+        bool forceRemoveDisplay = false, bool forceAllClients = false) =>
+        _releaserService.Release(
+            keepDisplay, onDirty, allowDataLoss, forceRemoveDisplay, forceAllClients);
 
-            onDirty = (onDirty ?? "abort").Trim().ToLowerInvariant();
-
-            if (onDirty is not ("force" or "discard" or "save" or "abort"))
-            {
-                throw new ToolException(
-                    "E_INVALID_ARG",
-                    $"未知 on_dirty: {onDirty}（可选 force/discard/save/abort）");
-            }
-
-            if (onDirty is "force" or "discard" && !allowDataLoss)
-            {
-                throw new ToolException(
-                    "E_DATA_LOSS_REQUIRED",
-                    $"on_dirty={onDirty} 会丢弃未保存内容，需要显式 allow_data_loss=true",
-                    new JsonObject { ["on_dirty"] = onDirty },
-                    retryable: true,
-                    hint: "先保存；确认可丢弃后传 allow_data_loss=true，或改用 on_dirty=save/abort",
-                    stage: "release");
-            }
-
-            // 校验通过后再推进代际：一次被拒绝的 release 不应让在途结果作废。
-            IncrementEpoch();
-
-            // abort 的语义是“保留未保存窗口”。如果同时摘掉虚拟屏，窗口会被留在
-            // 已不存在的显示器坐标上，因此这里强制保留屏，并明确告知调用方。
-            bool keepDisplayEffective = keepDisplay;
-
-            if (onDirty == "abort" && !keepDisplayEffective)
-            {
-                keepDisplayEffective = true;
-                warnings.Add("on_dirty=abort 需要保留虚拟屏，已忽略 keep_display=false");
-            }
-
-            if (!keepDisplayEffective && Clients.ActiveCount > 1 && !forceRemoveDisplay)
-            {
-                keepDisplayEffective = true;
-                warnings.Add("其他客户端仍在使用虚拟屏，已忽略 keep_display=false");
-            }
-
-            try
-            {
-                IEnumerable<TrackedApp> releaseApps = forceAllClients
-                    ? _apps.Snapshot()
-                    : _apps.Where(IsOwned);
-
-                foreach (TrackedApp app in releaseApps.Reverse().ToList())
-                {
-                    try
-                    {
-                        if (app.Hwnd != IntPtr.Zero && NativeMethods.IsWindow(app.Hwnd))
-                        {
-                            if (app.Owned && app.CloseWindowOnRelease)
-                            {
-                                string outcome = CloseTrackedApp(app, onDirty, out string? warning);
-
-                                switch (outcome)
-                                {
-                                    case "closed":
-                                        closed.Add(app.Pid);
-                                        break;
-                                    case "saved":
-                                        saved.Add(app.Pid);
-                                        closed.Add(app.Pid);
-                                        break;
-                                    case "discarded":
-                                        discarded.Add(app.Pid);
-                                        closed.Add(app.Pid);
-                                        break;
-                                    case "forced":
-                                        forced.Add(app.Pid);
-                                        closed.Add(app.Pid);
-                                        break;
-                                    default:
-                                        kept.Add(app.Pid);
-                                        break;
-                                }
-
-                                if (warning is not null)
-                                {
-                                    warnings.Add(warning);
-                                }
-                            }
-                            else if (app.PlacementSaved)
-                            {
-                                // 接管（非本会话启动）的窗口只归位、不关闭。
-                                WindowManager.SetPlacement(app.Hwnd, app.Placement);
-                                restored.Add(app.Pid);
-                                kept.Add(app.Pid);
-                            }
-
-                            if (app.StartedProcess && app.TempProfile is not null)
-                            {
-                                AppReleaser.KillProcessTreeIfMatches(app.Pid, app.ExePath);
-                                forced.Add(app.Pid);
-                            }
-                        }
-
-                        if (app.TempProfile is not null)
-                        {
-                            // 窗口已关闭但进程可能仍在后台（Edge 常驻），按 exe 路径核对后再杀，
-                            // 避免 PID 复用误杀无关进程。
-                            if (app.StartedProcess &&
-                                (app.Hwnd == IntPtr.Zero || !NativeMethods.IsWindow(app.Hwnd)))
-                            {
-                                AppReleaser.KillProcessTreeIfMatches(app.Pid, app.ExePath);
-                            }
-
-                            AppReleaser.TryDeleteDirectory(app.TempProfile);
-                        }
-                        else if (app.CloseWindowOnRelease && app.DedicatedProcess &&
-                                 app.StartedProcess &&
-                                 (app.Hwnd == IntPtr.Zero || !NativeMethods.IsWindow(app.Hwnd)))
-                        {
-                            // 专用实例的窗口被用户先关掉时，回收可能残留的进程。
-                            AppReleaser.KillProcessTreeIfMatches(app.Pid, app.ExePath);
-                        }
-                    }
-                    catch (ArgumentException)
-                    {
-                        if (app.StartedProcess)
-                        {
-                            closed.Add(app.Pid);
-                        }
-                    }
-                    catch (Exception exception)
-                    {
-                        _log.Warn($"清理应用 {app.Pid} 失败: {exception.Message}");
-                        warnings.Add($"清理 {app.Pid} 失败: {exception.Message}");
-                    }
-                }
-            }
-            finally
-            {
-                // keep_foreground 可能暂停了焦点护栏；释放时恢复，避免用户前台一直留在虚拟屏。
-                ResumeFocusGuard();
-
-                // abort 的语义是“保留未保存窗口”，因此必须保留跟踪信息：
-                // 否则后续 release 无法关闭/归位这些窗口，虚拟屏上会留下工具看不见的孤儿。
-                if (onDirty != "abort")
-                {
-                    _apps.RemoveAll(app => forceAllClients || IsOwned(app));
-                }
-
-                // 注意：这里已持 _gate；不要再拿 _refGate（Ref 路径的锁顺序是 _refGate -> _gate）。
-                // MCP 层用 session 读写锁保证 release 不与 find/tree 并发。
-                string releaseClient = Clients.CurrentId;
-
-                if (forceAllClients)
-                {
-                    _refs.ClearUnsafe();
-                }
-                else
-                {
-                    _refs.DropClientUnsafe(releaseClient);
-                }
-
-                // 基线帧是整屏 BGRA（约 3.7MB）；只清当前客户端的帧，避免 A release 清掉 B 的基线。
-                                if (forceAllClients)
-                {
-                    _frames.Clear();
-                }
-                else
-                {
-                    _frames.RemoveClient(releaseClient);
-                }
-            
-                if (forceAllClients)
-                {
-                    _input.ClearBlocked();
-                    _display.State.SelfHealed = false;
-                }
-                else
-                {
-                    _input.UnblockClient(releaseClient);
-                }
-
-                if (keepDisplayEffective)
-                {
-                    // 会话级常驻：只归还窗口/关闭本会话应用，不摘屏，避免再次黑屏。
-                    _display.State.Initialized = _display.State.VirtualDisplay is { Attached: true };
-                    SaveState();
-                }
-                else
-                {
-                    removed = TryRemoveDisplay();
-                    _display.Vdd.StopKeepAlive();
-                    _display.Vdd.Dispose();
-                    _display.State.Initialized = false;
-                    _stateStore.Clear();
-                }
-
-                _log.Info(
-                    $"环境已释放 (displayRemoved={removed}, kept={keepDisplayEffective})");
-            }
-
-            MemoryView memory = TrimIdleMemory("release");
-
-            var closedSet = closed.ToHashSet();
-
-            return new ReleaseReport(
-                Released: true,
-                DisplayRemoved: removed,
-                DisplayKept: keepDisplayEffective,
-                OnDirty: onDirty,
-                RestoredPids: restored.Distinct().ToArray(),
-                ClosedPids: closed.Distinct().ToArray(),
-                ForcedPids: forced.Distinct().ToArray(),
-                KeptPids: kept.Where(pid => !closedSet.Contains(pid)).Distinct().ToArray(),
-                SavedPids: saved.Distinct().ToArray(),
-                DiscardedPids: discarded.Distinct().ToArray(),
-                Memory: memory,
-                Warnings: warnings.Select(item => item!.GetValue<string>()).ToArray());
-        }
-    }
-
-    private static JsonArray ToJsonArray(IEnumerable<int> values)
-    {
-        var array = new JsonArray();
-        foreach (int value in values.Distinct())
-        {
-            // 避免 JsonArray.Add<T> 在 AOT 下触发 int 的反射元数据。
-            array.Add(JsonNode.Parse(value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
-        }
-
-        return array;
-    }
 
     private string CloseTrackedApp(TrackedApp app, string policy, out string? warning) =>
         _releaser.Close(app, policy, out warning);
@@ -635,237 +404,12 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
 
     private bool TryRemoveDisplay() => _display.TryRemove();
 
-    public void SaveState()
-    {
-        lock (_gate)
-        {
-            var state = new SessionState
-            {
-                Pid = Environment.ProcessId,
-                StartedAt = EnvironmentProbe.ProcessStartTime(),
-                DisplayIndex = _display.State.Index,
-                DisplayDevice = _display.State.VirtualDisplay?.DeviceName ?? _display.State.DeviceName,
-                X = _display.State.VirtualDisplay?.X ?? 0,
-                Y = _display.State.VirtualDisplay?.Y ?? 0,
-                Width = _display.State.VirtualDisplay?.Width ?? 0,
-                Height = _display.State.VirtualDisplay?.Height ?? 0,
-            };
+    public void SaveState() => _stateKeeper.Save();
 
-            foreach (TrackedApp app in _apps.Snapshot())
-            {
-                state.Apps.Add(new AppState
-                {
-                    Pid = app.Pid,
-                    ExePath = app.ExePath,
-                    Title = app.Title,
-                    Hwnd = app.Hwnd.ToInt64(),
-                    LaunchedByUs = app.StartedProcess,
-                    ShowCmd = app.Placement.showCmd,
-                    MinX = app.Placement.minPosition.X,
-                    MinY = app.Placement.minPosition.Y,
-                    MaxX = app.Placement.maxPosition.X,
-                    MaxY = app.Placement.maxPosition.Y,
-                    Left = app.Placement.normalPosition.Left,
-                    Top = app.Placement.normalPosition.Top,
-                    Right = app.Placement.normalPosition.Right,
-                    Bottom = app.Placement.normalPosition.Bottom,
-                });
-            }
+    private void RecoverFromPreviousCrash() => _stateKeeper.Recover();
 
-            _stateStore.Save(state);
-        }
-    }
+    private void EnsureAppAllowed(string? path) => _allowlist.Ensure(path);
 
-    private void RecoverFromPreviousCrash()
-    {
-        SessionState? state = _stateStore.Load();
-        if (state is null || state.Pid == Environment.ProcessId)
-        {
-            return;
-        }
-
-        _display.State.RecoveredPid = state.Pid;
-        _display.State.RecoveredIndex = state.DisplayIndex;
-        _display.State.RecoveredDevice = state.DisplayDevice;
-
-        if (state.DisplayIndex >= 0)
-        {
-            _log.Info(
-                $"发现上次会话状态: pid={state.Pid}, displayIndex={state.DisplayIndex}, " +
-                $"device={state.DisplayDevice}, apps={state.Apps.Count}");
-        }
-
-        // 互斥体保证不会有两个 VScreenPilot；若旧 pid 仍对应同名且启动时间匹配的进程，
-        // 说明它还没退干净，此时不冒险接管它的屏，也不恢复/清空 state。
-        if (state.Pid > 0 && IsVScreenPilotProcess(state.Pid, state.StartedAt))
-        {
-            _log.Warn($"上次会话进程仍在运行 (pid={state.Pid})，跳过全部恢复");
-            _display.State.RecoveredIndex = -1;
-            _display.State.RecoveredDevice = string.Empty;
-            return;
-        }
-
-        foreach (AppState app in state.Apps)
-        {
-            var hwnd = new IntPtr(app.Hwnd);
-            if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
-            {
-                continue;
-            }
-
-            // 句柄可能已被系统复用：必须确认仍属于记录中的进程。
-            _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint ownerPid);
-            if (ownerPid != (uint)app.Pid)
-            {
-                _log.Warn($"崩溃恢复跳过已复用的窗口句柄 0x{app.Hwnd:X} (pid={app.Pid})");
-                continue;
-            }
-
-            var placement = new NativeMethods.WINDOWPLACEMENT
-            {
-                length = Marshal.SizeOf<NativeMethods.WINDOWPLACEMENT>(),
-                flags = 0,
-                showCmd = app.ShowCmd,
-                minPosition = new NativeMethods.POINT { X = app.MinX, Y = app.MinY },
-                maxPosition = new NativeMethods.POINT { X = app.MaxX, Y = app.MaxY },
-                normalPosition = new NativeMethods.RECT
-                {
-                    Left = app.Left,
-                    Top = app.Top,
-                    Right = app.Right,
-                    Bottom = app.Bottom,
-                },
-            };
-
-            if (WindowManager.SetPlacement(hwnd, placement))
-            {
-                _log.Info($"崩溃恢复: 已还原窗口 (pid={app.Pid})");
-            }
-        }
-
-        _stateStore.Clear();
-    }
-
-    /// <summary>
-    /// 可选的启动白名单：VSP_APP_ALLOWLIST 用分号分隔目录。
-    /// 未配置时保持原有“允许任意 exe”的行为；配置后只允许白名单目录下的完整路径。
-    /// </summary>
-    private static string[] ReadAppAllowlist()
-    {
-        string? raw = Environment.GetEnvironmentVariable("VSP_APP_ALLOWLIST");
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return Array.Empty<string>();
-        }
-
-        var roots = new List<string>();
-
-        foreach (string part in raw.Split(
-                     ';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            try
-            {
-                roots.Add(Path.GetFullPath(part).TrimEnd(
-                    Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-            }
-            catch (Exception exception)
-            {
-                // 忽略无效路径。
-                _ = exception;
-            }
-        }
-
-        return roots.ToArray();
-    }
-
-    private void EnsureAppAllowed(string? path)
-    {
-        string[] clientAllowlist = Clients.Current?.AppAllowlist ?? Array.Empty<string>();
-        bool hasClientRule = Clients.Current is not null && clientAllowlist.Length > 0;
-        bool hasGlobalRule = _appAllowlist.Length > 0;
-
-        if (!hasClientRule && !hasGlobalRule)
-        {
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return;
-        }
-
-        string fullPath;
-
-        try
-        {
-            fullPath = _paths.Resolve(path);
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            throw new ToolException("E_INVALID_ARG", $"应用路径无效: {exception.Message}");
-        }
-
-        bool clientOk = !hasClientRule || clientAllowlist.Any(root => IsUnder(fullPath, root));
-        bool globalOk = !hasGlobalRule || _appAllowlist.Any(root => IsUnder(fullPath, root));
-
-        if (clientOk && globalOk)
-        {
-            return;
-        }
-
-        // 两层规则取交集：客户端自己的白名单只能收紧 daemon 的全局白名单，不能绕过它。
-        string[] failedRoots = !clientOk ? clientAllowlist : _appAllowlist;
-        var allowedRoots = new JsonArray();
-        foreach (string root in failedRoots)
-        {
-            allowedRoots.Add(root);
-        }
-
-        throw new ToolException(
-            "E_APP_NOT_ALLOWED",
-            "该应用不在 VSP_APP_ALLOWLIST 白名单内，拒绝启动",
-            new JsonObject
-            {
-                ["path"] = fullPath,
-                ["scope"] = !clientOk ? "client" : "global",
-                ["allowed_roots"] = allowedRoots,
-            });
-    }
-
-    private static bool IsVScreenPilotProcess(int pid, string startedAt)
-    {
-        try
-        {
-            using var process = System.Diagnostics.Process.GetProcessById(pid);
-            bool nameMatches = string.Equals(
-                process.ProcessName, "VScreenPilot", StringComparison.OrdinalIgnoreCase);
-
-            if (string.IsNullOrWhiteSpace(startedAt) ||
-                !DateTimeOffset.TryParse(startedAt, out DateTimeOffset expected))
-            {
-                return nameMatches;
-            }
-
-            // 以启动时间为准：dotnet 运行、改名 exe 也能识别；避免 PID 复用误判。
-            return Math.Abs(
-                (process.StartTime.ToUniversalTime() - expected.UtcDateTime).TotalSeconds) <= 5;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>路径是否位于根目录下（大小写不敏感，供应用白名单使用）。</summary>
-    private static bool IsUnder(string path, string root)
-    {
-        string normalizedRoot = Path.GetFullPath(root)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        return path.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase) ||
-               path.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-    }
 
     public void Dispose()
     {
@@ -1115,4 +659,95 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
     MetricsRegistry IEnvironmentHost.Metrics => Metrics;
 
     void IScreenTextHost.RecordOcr() => Metrics.RecordOcr();
+
+    object ISessionStateHost.Gate => _gate;
+
+    StateStore ISessionStateHost.Store => _stateStore;
+
+    DisplayStateStore ISessionStateHost.DisplayState => _display.State;
+
+    TrackedAppRegistry ISessionStateHost.Apps => _apps;
+
+    LogRing ISessionStateHost.Log => _log;
+
+    string[] IAppAllowlistHost.ClientRoots => Clients.Current?.AppAllowlist ?? Array.Empty<string>();
+
+    string IAppAllowlistHost.ResolvePath(string path) => _paths.Resolve(path);
+
+    object IEnvironmentReleaserHost.Gate => _gate;
+
+    void IEnvironmentReleaserHost.IncrementEpoch() => IncrementEpoch();
+
+    int IEnvironmentReleaserHost.ActiveClientCount => Clients.ActiveCount;
+
+    string IEnvironmentReleaserHost.CurrentClientId => Clients.CurrentId;
+
+    TrackedAppRegistry IEnvironmentReleaserHost.Apps => _apps;
+
+    bool IEnvironmentReleaserHost.IsOwned(TrackedApp app) => IsOwned(app);
+
+    string IEnvironmentReleaserHost.CloseTrackedApp(
+        TrackedApp app, string policy, out string? warning) =>
+        CloseTrackedApp(app, policy, out warning);
+
+    void IEnvironmentReleaserHost.ResumeFocusGuard() => ResumeFocusGuard();
+
+    void IEnvironmentReleaserHost.ClearElementRefs(bool allClients)
+    {
+        if (allClients)
+        {
+            _refs.ClearUnsafe();
+        }
+        else
+        {
+            _refs.DropClientUnsafe(Clients.CurrentId);
+        }
+    }
+
+    void IEnvironmentReleaserHost.ClearFrames(bool allClients)
+    {
+        if (allClients)
+        {
+            _frames.Clear();
+        }
+        else
+        {
+            _frames.RemoveClient(Clients.CurrentId);
+        }
+    }
+
+    void IEnvironmentReleaserHost.ClearInputBlock(bool allClients)
+    {
+        if (allClients)
+        {
+            _input.ClearBlocked();
+        }
+        else
+        {
+            _input.UnblockClient(Clients.CurrentId);
+        }
+    }
+
+    void IEnvironmentReleaserHost.MarkDisplaySelfHealedFalse() => _display.State.SelfHealed = false;
+
+    void IEnvironmentReleaserHost.MarkDisplayInitialized(bool initialized) =>
+        _display.State.Initialized = initialized;
+
+    bool IEnvironmentReleaserHost.DisplayAttached => _display.State.VirtualDisplay is { Attached: true };
+
+    bool IEnvironmentReleaserHost.TryRemoveDisplay() => TryRemoveDisplay();
+
+    void IEnvironmentReleaserHost.StopAndDisposeVdd()
+    {
+        _display.Vdd.StopKeepAlive();
+        _display.Vdd.Dispose();
+    }
+
+    void IEnvironmentReleaserHost.ClearStateStore() => _stateStore.Clear();
+
+    void IEnvironmentReleaserHost.SaveState() => SaveState();
+
+    MemoryView IEnvironmentReleaserHost.TrimIdleMemory(string reason) => TrimIdleMemory(reason);
+
+    LogRing IEnvironmentReleaserHost.Log => _log;
 }
