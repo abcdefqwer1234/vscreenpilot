@@ -6,6 +6,7 @@ using VScreenPilot.Platform.Displays;
 using VScreenPilot.Input;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
+using VScreenPilot.Ui;
 using VScreenPilot.Uia;
 
 namespace VScreenPilot.Session;
@@ -581,7 +582,7 @@ internal sealed partial class SessionManager
 
         if (string.Equals(format, "text", StringComparison.OrdinalIgnoreCase))
         {
-            json["text"] = SnapshotFormat.Render(tree, includeValues: true);
+            json["text"] = SnapshotTextFormatter.Render(tree, includeValues: true);
         }
 
         if (result.Reason is not null)
@@ -673,7 +674,7 @@ internal sealed partial class SessionManager
 
         if (string.Equals(format, "text", StringComparison.OrdinalIgnoreCase))
         {
-            json["text"] = SnapshotFormat.Render(tree, includeValues: true);
+            json["text"] = SnapshotTextFormatter.Render(tree, includeValues: true);
         }
 
         return json;

@@ -1,13 +1,13 @@
 using System.Text;
 using System.Text.Json.Nodes;
 
-namespace VScreenPilot.Session;
+namespace VScreenPilot.Ui;
 
 /// <summary>
 /// 行式紧凑快照格式。比嵌套 JSON 少 3–5 倍 token，并且保留 ref/状态/值。
 /// 例：- Button "保存" [e12] {disabled}
 /// </summary>
-internal static class SnapshotFormat
+internal static class SnapshotTextFormatter
 {
     public static string Render(JsonObject root, bool includeValues, int maxChars = 24000)
     {

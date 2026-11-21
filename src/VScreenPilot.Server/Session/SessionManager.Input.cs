@@ -9,6 +9,7 @@ using VScreenPilot.Infrastructure;
 using VScreenPilot.Input;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
+using ObserveSignature = VScreenPilot.Verification.ObserveSampler.Signature;
 using VScreenPilot.Uia;
 using static VScreenPilot.Mcp.JsonArgReader;
 

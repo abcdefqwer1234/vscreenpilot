@@ -7,6 +7,7 @@ using VScreenPilot.Interop;
 using VScreenPilot.Json;
 using VScreenPilot.Diagnostics;
 using VScreenPilot.Mcp;
+using VScreenPilot.Ui;
 using VScreenPilot.Perception;
 using VScreenPilot.Uia;
 
@@ -136,7 +137,7 @@ internal sealed partial class SessionManager
             tree = ConvertTreeNode(result.Root, hwnd, ref rootRef);
         }
 
-        string text = SnapshotFormat.Render(tree, includeValues);
+        string text = SnapshotTextFormatter.Render(tree, includeValues);
         int redactions = 0;
         text = PrivacyRedactor.RedactEmails(text, ref redactions);
 

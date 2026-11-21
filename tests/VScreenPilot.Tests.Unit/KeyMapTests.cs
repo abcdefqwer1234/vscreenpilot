@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using VScreenPilot.Input;
 using VScreenPilot.Session;
+using VScreenPilot.Ui;
 using Xunit;
 
 namespace VScreenPilot.Tests;
@@ -57,7 +58,7 @@ public sealed class SnapshotFormatTests
             ["children"] = new JsonArray(child),
         };
 
-        string text = SnapshotFormat.Render(root, includeValues: true);
+        string text = SnapshotTextFormatter.Render(root, includeValues: true);
 
         Assert.Contains("Window \"文档1 - Word\" [e1]", text);
         Assert.Contains("  - Button \"保存\"", text);
@@ -75,7 +76,7 @@ public sealed class SnapshotFormatTests
             ["name"] = "a\nb",
         };
 
-        string text = SnapshotFormat.Render(node, includeValues: false);
+        string text = SnapshotTextFormatter.Render(node, includeValues: false);
         Assert.Contains("a\\nb", text);
     }
 }
