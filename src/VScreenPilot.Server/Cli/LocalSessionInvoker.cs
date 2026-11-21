@@ -40,7 +40,7 @@ internal static class LocalSessionInvoker
                         includeValues: true,
                         includeScreenshot: false,
                         scale: 0.5);
-                    result = snapshot.Data;
+                    result = VspJson.ToNode(snapshot.Data).AsObject();
                     break;
 
                 case "screen":

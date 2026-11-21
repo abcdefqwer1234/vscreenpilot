@@ -71,31 +71,35 @@ internal sealed partial class McpTransport
 
         if (result.Png is null)
         {
-            return ToolResponse.Text(result.Data);
+            return ToolResponseWriter.FromView(result.Data);
         }
 
         if (result.Png.Length <= Limits.InlineLimitBytes)
         {
-            return ToolResponse.Text(result.Data).AddImage(result.Png);
+            return ToolResponseWriter.FromView(result.Data).AddImage(result.Png);
         }
 
         // 大图先落盘、把路径写进 data，再序列化；否则 Text() 之后追加的字段不会进入响应。
         string artifactUri;
         string artifactName;
+        SnapshotView data = result.Data;
 
         try
         {
             (string path, string uri) = WriteArtifact(result.Png, "snapshot", result.PreviewPng);
             artifactUri = uri;
             artifactName = Path.GetFileName(path);
-            result.Data["screenshot_path"] = path;
-            result.Data["screenshot_uri"] = uri;
-            result.Data["screenshot_resource_uri"] = uri;
+            data = result.Data with
+            {
+                ScreenshotPath = path,
+                ScreenshotUri = uri,
+                ScreenshotResourceUri = uri,
+            };
         }
         catch (Exception exception)
         {
-            result.Data["screenshot_error"] = exception.Message;
-            return ToolResponse.Text(result.Data);
+            data = result.Data with { ScreenshotError = exception.Message };
+            return ToolResponseWriter.FromView(data);
         }
 
         bool hasPreview = result.PreviewPng is not null;
@@ -103,10 +107,10 @@ internal sealed partial class McpTransport
         if (hasPreview)
         {
             // preview 与主图来自同一帧，不再二次截屏。
-            result.Data["screenshot_preview"] = result.PreviewMeta;
+            data = data with { ScreenshotPreview = result.PreviewMeta };
         }
 
-        ToolResponse response = ToolResponse.Text(result.Data)
+        ToolResponse response = ToolResponseWriter.FromView(data)
             .AddResourceLink(artifactUri, artifactName, "image/png", result.Png.Length);
 
         if (!hasPreview)

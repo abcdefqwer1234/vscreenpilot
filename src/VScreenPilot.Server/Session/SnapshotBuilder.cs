@@ -9,11 +9,12 @@ using VScreenPilot.Mcp;
 using VScreenPilot.Ui;
 using VScreenPilot.Perception;
 using VScreenPilot.Uia;
+using VScreenPilot.Views;
 
 namespace VScreenPilot.Session;
 
 internal sealed record SnapshotResult(
-    JsonObject Data, byte[]? Png, byte[]? PreviewPng, JsonObject? PreviewMeta);
+    SnapshotView Data, byte[]? Png, byte[]? PreviewPng, JsonObject? PreviewMeta);
 
 /// <summary>快照构建所需的最小宿主接口；由 <see cref="SessionManager"/> 实现。</summary>
 internal interface ISnapshotHost
@@ -467,7 +468,57 @@ internal sealed class SnapshotBuilder : IDisposable
             data["privacy_redactions"] = redactions;
         }
 
-        return new SnapshotResult(data, png, previewPng, previewMeta);
+        return new SnapshotResult(ToView(data), png, previewPng, previewMeta);
+    }
+
+    /// <summary>把组装完成的 JsonObject 收敛成强类型视图；子树保持原样。</summary>
+    private static SnapshotView ToView(JsonObject data)
+    {
+        JsonObject window = (JsonObject)data["window"]!;
+        JsonNode? dialogs = data["dialogs"];
+        JsonNode? windows = data["windows"];
+        JsonNode? foreground = data["foreground"];
+        JsonNode? annotations = data["annotations"];
+        JsonNode? screenshot = data["screenshot"];
+        JsonNode? preview = data["screenshot_preview"];
+        string? emptyReason = data["empty_reason"]?.GetValue<string>();
+
+        return new SnapshotView(
+            data["snapshot_id"]!.GetValue<string>(),
+            data["root_ref"]!.GetValue<string>(),
+            (JsonObject)data["tree"]!,
+            data["text"]!.GetValue<string>(),
+            data["nodes"]!.GetValue<int>(),
+            data["visited"]!.GetValue<int>(),
+            data["pruned"]!.GetValue<int>(),
+            data["truncated"]!.GetValue<bool>(),
+            data["interactive_only"]!.GetValue<bool>(),
+            data["max_depth"]!.GetValue<int>(),
+            data["max_nodes_effective"]!.GetValue<int>(),
+            data["ref_capacity"]!.GetValue<int>(),
+            data["elapsed_ms"]!.GetValue<double>(),
+            new SnapshotWindowView(
+                window["hwnd"]!.GetValue<long>(),
+                window["pid"]!.GetValue<int>(),
+                window["title"]!.GetValue<string>(),
+                window["exe"] is JsonValue exe ? exe.GetValue<string>() : null),
+            data["privacy_redactions"]?.GetValue<int>(),
+            data["empty_retry"]?.GetValue<bool>(),
+            emptyReason,
+            data["max_nodes_clamped"]?.GetValue<bool>(),
+            data["truncated_reason"]?.GetValue<string>(),
+            dialogs,
+            data["root_hwnd"]?.GetValue<long>(),
+            data["root_is_dialog"]?.GetValue<bool>(),
+            windows,
+            foreground,
+            annotations,
+            screenshot,
+            ScreenshotPath: null,
+            ScreenshotUri: null,
+            ScreenshotResourceUri: null,
+            ScreenshotError: null,
+            ScreenshotPreview: preview);
     }
 
     internal JsonObject ConvertTreeNode(UiaTreeNode node, IntPtr hwnd, ref string rootRef)

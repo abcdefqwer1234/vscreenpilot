@@ -272,14 +272,14 @@ internal sealed class ControlServer : IDisposable
 
                 try
                 {
-                    JsonObject data = _session.Snapshot(
+                    JsonObject data = VspJson.ToNode(_session.Snapshot(
                         app.Pid,
                         maxDepth,
                         interactive,
                         maxNodes,
                         includeValues: true,
                         includeScreenshot: false,
-                        scale: 0.5).Data;
+                        scale: 0.5).Data).AsObject();
                     item["snapshot_id"] = data["snapshot_id"]?.DeepClone();
                     item["tree"] = data["tree"]?.DeepClone();
                     item["nodes"] = data["nodes"]?.DeepClone();
