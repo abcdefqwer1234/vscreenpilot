@@ -19,7 +19,7 @@ Server ──────> Automation ──────> Platform ────�
 | `VScreenPilot.Automation` | `net10.0-windows10.0.19041.0` | UIA/MSAA、屏幕捕获与 PNG、OCR、模板匹配（会话组件正在从 Server 迁入） |
 | `VScreenPilot.Server` | 可执行 | MCP 传输与工具层、会话编排、CLI、IPC、组合根 |
 
-约束由 `tests/VScreenPilot.Tests.Contract/ArchitectureTests.cs` 断言：`Abstractions` 不引用任何内部工程，`Platform` 只引用 `Abstractions`，`Automation` 不引用 `Server` 与 MCP SDK。`AutomationHasNoSystemTextJsonNodes` 仍为 Skip：`Automation` 尚有 13 个文件使用 `System.Text.Json.Nodes`，待 P4/P5 收尾。
+约束由 `tests/VScreenPilot.Tests.Contract/ArchitectureTests.cs` 断言：`Abstractions` 不引用任何内部工程，`Platform` 只引用 `Abstractions`，`Automation` 不引用 `Server` 与 MCP SDK。`AutomationHasNoSystemTextJsonNodes` 已启用并通过：`System.Text.Json.Nodes` 已清零。
 
 层内分工：
 
@@ -56,7 +56,7 @@ MCP 传输层   官方 ModelContextProtocol SDK（stdio；协议协商/分帧/�
 - **每调用取消**：`AsyncLocal<CancellationTokenSource>`，并发工具不会互相清取消。
 - **UIA 串行**：`UiaHost` 用专用 MTA 线程串行执行 `UiaService` 的服务级调用（建树、查找、读取焦点）；
   超时后 `ResetUia` 只退休当前代际并让新调用走新线程，旧线程把手上的 COM 调用做完再释放。
-  `UiaElementHandle` 的 Focus/Invoke/GetText 仍由 `UiaService._sync` 串行（MTA 对象可跨线程使用）。
+  MSAA 与 `UiaElementHandle` 的 Focus/Invoke/GetText/SetValue/Dispose 也通过 `InvokeMsaa`/`InvokeOn` 回到同一 worker。
 - **MSAA 回退**：单个窗口 UIA 完全不可见时，`MsaaService` 用 `IAccessible` 枚举子控件；
   Word `bosa_sdm_msword` 对话框走这条路径。
 - **UWP**：顶层类是 `ApplicationFrameWindow`，内容进程没有独立 HWND；UIA 从 frame 取树，
@@ -103,13 +103,13 @@ ref 只在该代内有效；跨代使用返回 `E_STALE_SNAPSHOT`，未知/被�
 
 ## 6. 已知未完成（下一阶段）
 
-- **会话组件化**：`SessionManager` 仍 4,433 行、20 个 partial；元素操作/断言/视觉/OCR/焦点护栏尚未拆，薄门面目标（≤600 行）未达成。
+- **会话组件化**：`SessionManager` 仍 4,408 行、20 个 partial；元素操作/断言/视觉/OCR/焦点护栏尚未拆，薄门面目标（≤600 行）未达成。
 - **领域视图**：22 个工具中 5 个已走强类型视图，其余仍由 handler 直接拼 `JsonObject`（P3）。
-- **UIA 句柄亲和**：服务级调用已进 `UiaHost` 的 MTA worker；句柄级操作仍走 `UiaService._sync`。
+- **UIA 收尾**：服务级、MSAA 与句柄操作都已进 `UiaHost` 的 MTA worker；`ResetUia` 仍是退休入口，`UiaService._sync` 锁仍保留（单 worker 下冗余）。
 - **全屏截图**：复用资源 + 去 `CAPTUREBLT` + 大图不内联后，服务端 P95 已降至 ~56ms；
   早期“1.2–1.4s”是内联大 PNG 的回传成本，已由 preview/artifact 方案消除。
   Windows.Graphics.Capture（`CreateForMonitor` + D3D11 staging readback）仍是后续后端优化。
-- **MSAA 与句柄亲和**：MSAA 仍在调用线程执行（17 处直接调用），`UiaElementHandle` 的 Focus/Invoke/GetText 仍走 `UiaService._sync`，尚未并入 `UiaHost` 队列。
+- **UIA 收尾**：服务级、MSAA 与句柄操作均已进 `UiaHost`；剩余 `ResetUia`/锁清理与卡死注入压测。
 - **MSAA 第二后端**：已接入，按窗口回退；Word 查找替换可读/可触发。
 - **UWP**：`ApplicationFrameWindow` 已解析；REG-14 通过。
 - **OCR**：已接入 Windows.Media.Ocr（`read_screen_text` / `click_text`）。
