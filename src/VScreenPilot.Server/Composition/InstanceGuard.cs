@@ -34,9 +34,10 @@ internal static class InstanceGuard
                     {
                         mutex.ReleaseMutex();
                     }
-                    catch
+                    catch (Exception exception)
                     {
                         // 忽略。
+                        _ = exception;
                     }
 
                     return false;
@@ -48,9 +49,10 @@ internal static class InstanceGuard
             {
                 inaccessible = true;
             }
-            catch
+            catch (Exception exception)
             {
                 // 继续尝试下一个命名空间。
+                _ = exception;
             }
         }
 
@@ -95,9 +97,10 @@ internal static class InstanceGuard
             Console.Error.WriteLine("    2) 任务管理器结束 owner.pid（需相同权限）");
             Console.Error.WriteLine(payload.ToJsonString());
         }
-        catch
+        catch (Exception exception)
         {
             // 无控制台时忽略。
+            _ = exception;
         }
 
         log.Warn($"实例已被占用: {error}");

@@ -186,9 +186,10 @@ internal sealed partial class UiaService
         {
             Marshal.ReleaseComObject(comObject);
         }
-        catch
+        catch (Exception exception)
         {
             // 释放失败不影响结果，交给 GC 兜底。
+            _ = exception;
         }
     }
 

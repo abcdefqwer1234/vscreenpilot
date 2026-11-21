@@ -499,8 +499,10 @@ internal static class MsaaService
             {
                 Marshal.ReleaseComObject(instance);
             }
-            catch
+            catch (Exception exception)
             {
+                // 已显式忽略：尽力而为的清理/探测失败不影响主流程。
+                _ = exception;
             }
         }
     }

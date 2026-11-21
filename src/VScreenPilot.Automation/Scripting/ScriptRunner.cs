@@ -128,9 +128,10 @@ internal sealed class ScriptRunner
                 {
                     process.Kill(entireProcessTree: true);
                 }
-                catch
+                catch (Exception exception)
                 {
                     // 进程可能已退出。
+                    _ = exception;
                 }
 
                 process.WaitForExit(2000);
@@ -163,9 +164,10 @@ internal sealed class ScriptRunner
             {
                 Directory.Delete(root, recursive: true);
             }
-            catch
+            catch (Exception exception)
             {
                 // 临时目录清理失败不影响结果。
+                _ = exception;
             }
         }
 
@@ -242,9 +244,10 @@ internal sealed class ScriptRunner
                     }
                 }
             }
-            catch
+            catch (Exception exception)
             {
                 // 进程被杀时读取可能中断，保留已读内容。
+                _ = exception;
             }
 
             if (truncated)

@@ -28,9 +28,10 @@ internal static class ToolProgress
         {
             reporter(current, total, message);
         }
-        catch
+        catch (Exception exception)
         {
             // progress 失败不能影响工具本身。
+            _ = exception;
         }
     }
 

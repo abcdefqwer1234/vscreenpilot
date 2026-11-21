@@ -49,9 +49,10 @@ internal static class WindowManager
                     hwnd, (int)pid, title, className.ToString(), rect,
                     Visible: true, Owned: owned));
             }
-            catch
+            catch (Exception exception)
             {
                 // 枚举过程中的个别窗口失败不影响整体。
+                _ = exception;
             }
 
             return true;
@@ -91,9 +92,10 @@ internal static class WindowManager
                     result.Add(info);
                 }
             }
-            catch
+            catch (Exception exception)
             {
                 // 单个窗口枚举失败不影响其他候选。
+                _ = exception;
             }
 
             return true;
@@ -152,9 +154,10 @@ internal static class WindowManager
                     }
                 }
             }
-            catch
+            catch (Exception exception)
             {
                 // 枚举中的个别窗口失败不影响整体。
+                _ = exception;
             }
 
             return true;
@@ -264,9 +267,10 @@ internal static class WindowManager
                     result.Add(Describe(hwnd, GetTitle(hwnd)));
                 }
             }
-            catch
+            catch (Exception exception)
             {
                 // 单个窗口失败不影响枚举。
+                _ = exception;
             }
 
             return true;

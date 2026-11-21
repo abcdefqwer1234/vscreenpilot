@@ -72,9 +72,10 @@ public sealed class MutexGuard : IDisposable
         {
             _mutex.ReleaseMutex();
         }
-        catch
+        catch (Exception exception)
         {
             // 忽略。
+            _ = exception;
         }
 
         _mutex.Dispose();

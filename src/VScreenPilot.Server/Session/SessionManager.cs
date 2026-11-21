@@ -772,9 +772,10 @@ internal sealed partial class SessionManager : IDisposable
                 allocation.ReleaseMutex();
             }
         }
-        catch
+        catch (Exception exception)
         {
             // 释放失败不应覆盖原始错误。
+            _ = exception;
         }
         finally
         {
@@ -1094,9 +1095,10 @@ internal sealed partial class SessionManager : IDisposable
                 workingSetMb = Math.Round(process.WorkingSet64 / 1048576.0, 1);
                 handles = process.HandleCount;
             }
-            catch
+            catch (Exception exception)
             {
                 // 进程句柄被回收时忽略；字段保持缺省，不影响诊断的其他部分。
+                _ = exception;
             }
 
             var session = new SessionView
@@ -1866,9 +1868,10 @@ internal sealed partial class SessionManager : IDisposable
                 process.Kill(entireProcessTree: true);
             }
         }
-        catch
+        catch (Exception exception)
         {
             // 进程可能已退出。
+            _ = exception;
         }
     }
 
@@ -1911,9 +1914,10 @@ internal sealed partial class SessionManager : IDisposable
 
             process.Kill(entireProcessTree: true);
         }
-        catch
+        catch (Exception exception)
         {
             // 进程可能已退出或无法读取模块路径。
+            _ = exception;
         }
     }
 
@@ -1926,9 +1930,10 @@ internal sealed partial class SessionManager : IDisposable
                 Directory.Delete(path, recursive: true);
             }
         }
-        catch
+        catch (Exception exception)
         {
             // Edge 可能仍持有锁，留给下次启动清理。
+            _ = exception;
         }
     }
 
@@ -2183,9 +2188,10 @@ internal sealed partial class SessionManager : IDisposable
                 roots.Add(Path.GetFullPath(part).TrimEnd(
                     Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
             }
-            catch
+            catch (Exception exception)
             {
                 // 忽略无效路径。
+                _ = exception;
             }
         }
 
@@ -2378,9 +2384,10 @@ internal sealed partial class SessionManager : IDisposable
                 _retiredUia.Clear();
             }
         }
-        catch
+        catch (Exception exception)
         {
             // 退出路径上的释放失败不影响进程结束。
+            _ = exception;
         }
 
         _job.Dispose();

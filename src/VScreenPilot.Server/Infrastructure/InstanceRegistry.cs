@@ -114,9 +114,10 @@ internal sealed class InstanceRegistry
             File.WriteAllText(temp, entry.ToJson().ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
             File.Move(temp, _path, overwrite: true);
         }
-        catch
+        catch (Exception exception)
         {
             // 诊断信息写不进不影响主流程。
+            _ = exception;
         }
     }
 
@@ -140,9 +141,10 @@ internal sealed class InstanceRegistry
 
             File.Delete(_path);
         }
-        catch
+        catch (Exception exception)
         {
             // 忽略。
+            _ = exception;
         }
     }
 
@@ -200,9 +202,10 @@ internal sealed class InstanceRegistry
                 }
             }
         }
-        catch
+        catch (Exception exception)
         {
             // 诊断失败忽略。
+            _ = exception;
         }
 
         return result;
@@ -266,15 +269,17 @@ internal sealed class InstanceRegistry
                         Ready = false,
                     });
                 }
-                catch
+                catch (Exception exception)
                 {
                     // 单个 state 损坏不影响其他。
+                    _ = exception;
                 }
             }
         }
-        catch
+        catch (Exception exception)
         {
             // 忽略。
+            _ = exception;
         }
 
         return result;

@@ -222,9 +222,10 @@ internal sealed class PipeHost : IDisposable
                 ["message"] = message,
             }, cancellationToken).ConfigureAwait(false);
         }
-        catch
+        catch (Exception exception)
         {
             // 客户端可能已经断开。
+            _ = exception;
         }
         finally
         {

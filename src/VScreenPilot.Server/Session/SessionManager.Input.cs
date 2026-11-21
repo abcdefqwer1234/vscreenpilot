@@ -1260,9 +1260,10 @@ internal sealed partial class SessionManager
         {
             previous = ClipboardText.Capture();
         }
-        catch
+        catch (Exception exception)
         {
             // 读不到就当作空剪贴板。
+            _ = exception;
         }
 
         try
@@ -1277,9 +1278,10 @@ internal sealed partial class SessionManager
             {
                 ClipboardText.Restore(previous);
             }
-            catch
+            catch (Exception exception)
             {
                 // 还原失败不影响输入结果。
+                _ = exception;
             }
         }
 

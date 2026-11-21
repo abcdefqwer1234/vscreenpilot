@@ -289,9 +289,10 @@ internal static class DaemonSpawner
                 }
             }
         }
-        catch
+        catch (Exception exception)
         {
             // daemon 退出时管道关闭。
+            _ = exception;
         }
     }
 }

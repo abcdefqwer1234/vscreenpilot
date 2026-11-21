@@ -88,9 +88,10 @@ public sealed class LogRing : IDisposable
         {
             clientId = ClientIdProvider?.Invoke();
         }
-        catch
+        catch (Exception exception)
         {
             // 归属解析失败不影响日志。
+            _ = exception;
         }
 
         var entry = new LogEntry(DateTimeOffset.Now, level, message, clientId);
@@ -184,9 +185,10 @@ public sealed class LogRing : IDisposable
                 }
             }
         }
-        catch
+        catch (Exception exception)
         {
             // 清理失败不影响日志写入。
+            _ = exception;
         }
     }
 
@@ -238,9 +240,10 @@ public sealed class LogRing : IDisposable
                 }
             }
         }
-        catch
+        catch (Exception exception)
         {
             // 文件不可用时静默降级为仅内存日志。
+            _ = exception;
         }
         finally
         {
@@ -269,18 +272,20 @@ public sealed class LogRing : IDisposable
         {
             writer?.Dispose();
         }
-        catch
+        catch (Exception exception)
         {
             // 忽略。
+            _ = exception;
         }
 
         try
         {
             stream?.Dispose();
         }
-        catch
+        catch (Exception exception)
         {
             // 忽略。
+            _ = exception;
         }
 
         writer = null;
@@ -307,9 +312,10 @@ public sealed class LogRing : IDisposable
                 }
             }
         }
-        catch
+        catch (Exception exception)
         {
             // 轮转失败时继续写当前文件。
+            _ = exception;
         }
     }
 

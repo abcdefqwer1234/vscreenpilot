@@ -80,9 +80,10 @@ internal static class DoctorReportBuilder
                 ["handles"] = process.HandleCount,
             };
         }
-        catch
+        catch (Exception exception)
         {
             // 诊断字段缺失不影响其余结果。
+            _ = exception;
         }
 
         string driverStatus;

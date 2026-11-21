@@ -93,9 +93,10 @@ internal sealed class CursorGuard : IDisposable
                     _warn($"光标进入虚拟屏 ({cursor.X},{cursor.Y})，已弹回 ({targetX},{targetY})");
                 }
             }
-            catch
+            catch (Exception exception)
             {
                 // 护栏失败不能影响主流程。
+                _ = exception;
             }
         }
     }

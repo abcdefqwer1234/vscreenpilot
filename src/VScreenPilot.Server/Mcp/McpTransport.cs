@@ -322,9 +322,10 @@ internal sealed class McpTransport
                 nextCursor = (offset + resources.Count).ToString();
             }
         }
-        catch
+        catch (Exception exception)
         {
             // artifact 目录不可用时返回空列表，不影响工具调用。
+            _ = exception;
         }
 
         return ValueTask.FromResult(new ListResourcesResult
@@ -429,9 +430,10 @@ internal sealed class McpTransport
                 bgra, image.Width, image.Height, Limits.PreviewScale, out _, out _);
             File.WriteAllBytes(previewPath, preview);
         }
-        catch
+        catch (Exception exception)
         {
             // 生成失败就退回原图；资源读取仍然可用。
+            _ = exception;
         }
     }
 
@@ -589,9 +591,10 @@ internal sealed class McpTransport
                     ["message"] = message,
                 });
         }
-        catch
+        catch (Exception exception)
         {
             // 进度是尽力而为。
+            _ = exception;
         }
     }
 
@@ -625,9 +628,10 @@ internal sealed class McpTransport
                         code = parsed?["code"]?.GetValue<string>();
                         stage = parsed?["stage"]?.GetValue<string>();
                     }
-                    catch
+                    catch (Exception exception)
                     {
                         // 非 JSON 文本。
+                        _ = exception;
                     }
                 }
             }

@@ -271,25 +271,30 @@ internal sealed partial class UiaService : IDisposable
                 Marshal.ReleaseComObject(_trueCondition);
             }
         }
-        catch
+        catch (Exception exception)
         {
             // provider 卡死时释放可能失败；交给 GC。
+            _ = exception;
         }
 
         try
         {
             Marshal.ReleaseComObject(_elementCache);
         }
-        catch
+        catch (Exception exception)
         {
+            // 已显式忽略：尽力而为的清理/探测失败不影响主流程。
+            _ = exception;
         }
 
         try
         {
             Marshal.FinalReleaseComObject(_automation);
         }
-        catch
+        catch (Exception exception)
         {
+            // 已显式忽略：尽力而为的清理/探测失败不影响主流程。
+            _ = exception;
         }
     }
     private readonly IUIAutomationCacheRequest _elementCache;

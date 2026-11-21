@@ -232,9 +232,10 @@ public sealed class StateStore
                 File.Delete(_path);
             }
         }
-        catch
+        catch (Exception exception)
         {
             // 忽略。
+            _ = exception;
         }
     }
 }

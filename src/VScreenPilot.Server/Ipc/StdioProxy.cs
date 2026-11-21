@@ -142,9 +142,10 @@ internal static class StdioProxy
             {
                 Console.Error.WriteLine($"VScreenPilot: 代理失败: {exception.Message}");
             }
-            catch
+            catch (Exception writeError)
             {
                 // 无控制台时忽略。
+                _ = writeError;
             }
 
             return 3;
@@ -164,9 +165,10 @@ internal static class StdioProxy
         {
             Console.Error.WriteLine($"VScreenPilot: {message}");
         }
-        catch
+        catch (Exception exception)
         {
             // 无控制台时忽略。
+            _ = exception;
         }
 
         return 3;

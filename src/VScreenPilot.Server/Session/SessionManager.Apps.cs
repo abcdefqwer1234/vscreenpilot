@@ -1220,9 +1220,10 @@ internal sealed partial class SessionManager
                 }
             }
         }
-        catch
+        catch (Exception exception)
         {
             // 清理失败不影响启动。
+            _ = exception;
         }
     }
 }

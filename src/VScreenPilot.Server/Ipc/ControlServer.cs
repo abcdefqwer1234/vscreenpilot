@@ -195,9 +195,10 @@ internal sealed class ControlServer : IDisposable
                     {
                         _shutdown();
                     }
-                    catch
+                    catch (Exception exception)
                     {
                         // 退出路径忽略。
+                        _ = exception;
                     }
                 }, CancellationToken.None);
             }
@@ -252,9 +253,10 @@ internal sealed class ControlServer : IDisposable
                         title = WindowManager.GetTitle(app.Hwnd);
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     // 窗口已失效时保留登记时的标题。
+                    _ = exception;
                 }
 
                 var item = new JsonObject

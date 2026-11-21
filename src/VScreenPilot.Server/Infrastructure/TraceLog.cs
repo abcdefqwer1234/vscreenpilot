@@ -85,15 +85,17 @@ internal sealed class TraceLog : IDisposable
                 {
                     files[index].Delete();
                 }
-                catch
+                catch (Exception exception)
                 {
                     // 正在写入的文件删不掉，下一轮再试。
+                    _ = exception;
                 }
             }
         }
-        catch
+        catch (Exception exception)
         {
             // 清理失败不影响追踪。
+            _ = exception;
         }
     }
 
@@ -116,9 +118,10 @@ internal sealed class TraceLog : IDisposable
             {
                 _writer?.WriteLine(line);
             }
-            catch
+            catch (Exception exception)
             {
                 // 忽略磁盘写入失败。
+                _ = exception;
             }
         }
     }
@@ -165,9 +168,10 @@ internal sealed class TraceLog : IDisposable
             {
                 _writer?.Dispose();
             }
-            catch
+            catch (Exception exception)
             {
                 // 忽略。
+                _ = exception;
             }
         }
     }

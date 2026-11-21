@@ -28,9 +28,10 @@ internal static class Program
         {
             Console.OutputEncoding = new UTF8Encoding(false);
         }
-        catch
+        catch (Exception exception)
         {
             // 某些宿主没有可用的控制台编码，不影响 stdio。
+            _ = exception;
         }
 
         if (HasFlag(args, "--help") || HasFlag(args, "-h"))
@@ -131,9 +132,10 @@ internal static class Program
                         spawned.Kill(entireProcessTree: true);
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
                     // 子进程可能已自行退出。
+                    _ = exception;
                 }
             }
         }

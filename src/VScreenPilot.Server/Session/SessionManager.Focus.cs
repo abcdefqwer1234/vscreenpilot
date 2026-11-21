@@ -169,9 +169,10 @@ internal sealed partial class SessionManager
                     RestoreForeground(target, logFailure: false);
                 }
             }
-            catch
+            catch (Exception exception)
             {
                 // 焦点护栏失败不能影响主流程。
+                _ = exception;
             }
         }
     }
