@@ -1,68 +1,21 @@
-using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 using VScreenPilot.Ui;
 
 namespace VScreenPilot.Session;
 
-/// <summary>
-/// 一次 MCP 连接（或 CLI 合成客户端）的上下文。
-/// refs/apps/epoch 等会在后续 partial 中按 Id 隔离；Cwd/Roots 用于 P-33 路径语义。
-/// </summary>
-internal sealed class ClientContext
-{
-    public string Id { get; init; } = "c0";
-    public string Name { get; init; } = "local";
-    public string Cwd { get; init; } = Environment.CurrentDirectory;
-    public IReadOnlyList<string> Roots { get; init; } = Array.Empty<string>();
-    public int ProxyPid { get; init; }
-    public string Version { get; init; } = string.Empty;
-    public DateTimeOffset ConnectedAt { get; init; } = DateTimeOffset.UtcNow;
-    public bool AllowScript { get; init; }
-    public bool AllowUnsafeScript { get; init; }
-    public bool IncludeAllApps { get; init; }
-    public string[] AppAllowlist { get; init; } = Array.Empty<string>();
-    public long Epoch;
-}
-
 internal sealed partial class SessionManager
 {
-    private static readonly AsyncLocal<ClientContext?> ClientContextSlot = new();
-    private static readonly ConcurrentDictionary<string, ClientContext> ClientsById =
-        new(StringComparer.Ordinal);
-    private static int _activeClients;
-
-    public static int ActiveClientCount => Volatile.Read(ref _activeClients);
-
     /// <summary>租约/状态由 McpServer 提供，避免 SessionManager 反向依赖 MCP 层。</summary>
     internal Func<string?>? LeaseHolderProvider { get; set; }
 
     internal Func<JsonObject>? ScreenLeaseProvider { get; set; }
-
-    internal static void ClientEntered(ClientContext client)
-    {
-        if (ClientsById.TryAdd(client.Id, client))
-        {
-            Interlocked.Increment(ref _activeClients);
-        }
-    }
-
-    internal static void ClientLeft(string clientId)
-    {
-        if (ClientsById.TryRemove(clientId, out _))
-        {
-            Interlocked.Decrement(ref _activeClients);
-        }
-    }
-
-    internal static string? FindClientCwd(string clientId) =>
-        ClientsById.TryGetValue(clientId, out ClientContext? client) ? client.Cwd : null;
 
     internal JsonArray ClientSummariesJson(bool includeCwd = false)
     {
         var array = new JsonArray();
         string? holder = LeaseHolderProvider?.Invoke();
 
-        foreach (ClientContext client in ClientsById.Values
+        foreach (ClientContext client in Clients.All
                      .OrderBy(item => item.Id, StringComparer.Ordinal))
         {
             var json = new JsonObject
@@ -90,43 +43,6 @@ internal sealed partial class SessionManager
         }
 
         return array;
-    }
-
-    public static ClientContext? CurrentClient => ClientContextSlot.Value;
-
-    public static string CurrentClientId => CurrentClient?.Id ?? "c0";
-
-    public static string CurrentCwd => CurrentClient?.Cwd ?? Environment.CurrentDirectory;
-
-    public static IReadOnlyList<string> CurrentRoots =>
-        CurrentClient?.Roots ?? Array.Empty<string>();
-
-    public static IDisposable UseClient(ClientContext context)
-    {
-        ClientContext? previous = ClientContextSlot.Value;
-        ClientContextSlot.Value = context;
-        return new ClientScope(previous);
-    }
-
-    private sealed class ClientScope : IDisposable
-    {
-        private readonly ClientContext? _previous;
-
-        public ClientScope(ClientContext? previous) => _previous = previous;
-
-        public void Dispose() => ClientContextSlot.Value = _previous;
-    }
-
-    internal static string ResolvePath(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return path;
-        }
-
-        return Path.IsPathRooted(path)
-            ? Path.GetFullPath(path)
-            : Path.GetFullPath(path, Path.GetFullPath(CurrentCwd));
     }
 
     /// <summary>只清指定客户端的 refs/快照/帧/artifact 映射；ctl 管理员视图也用它保持只读。</summary>
@@ -166,7 +82,7 @@ internal sealed partial class SessionManager
             return true;
         }
 
-        using (UseClient(client ?? new ClientContext
+        using (Clients.Use(client ?? new ClientContext
                {
                    Id = clientId,
                    Cwd = Environment.CurrentDirectory,
@@ -221,6 +137,6 @@ internal sealed partial class SessionManager
     }
 
     private bool IsOwned(TrackedApp app) =>
-        CurrentClient?.IncludeAllApps == true ||
-        string.Equals(app.OwnerClientId, CurrentClientId, StringComparison.Ordinal);
+        Clients.Current?.IncludeAllApps == true ||
+        string.Equals(app.OwnerClientId, Clients.CurrentId, StringComparison.Ordinal);
 }

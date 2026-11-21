@@ -241,7 +241,7 @@ internal sealed class ServerHost : IDisposable
             host.StartDaemonPipes(entry, profile);
             host.WarmUp(entry, "daemon_warm", "独立 daemon ");
 
-            log.Info($"独立 daemon 已启动 profile={profile} clients={SessionManager.ActiveClientCount}");
+            log.Info($"独立 daemon 已启动 profile={profile} clients={host.ActiveClients}");
 
             int idleMs = VspOptions.FromEnvironment().DaemonIdleMs;
             bool hadClient = false;

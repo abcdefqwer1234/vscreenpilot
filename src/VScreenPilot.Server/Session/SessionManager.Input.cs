@@ -1002,7 +1002,7 @@ internal sealed partial class SessionManager
     {
         lock (_gate)
         {
-            string clientId = CurrentClientId;
+            string clientId = Clients.CurrentId;
 
             if (!_uiaBlockedPids.TryGetValue(clientId, out HashSet<int>? blocked))
             {
@@ -1018,7 +1018,7 @@ internal sealed partial class SessionManager
     {
         lock (_gate)
         {
-            if (_uiaBlockedPids.TryGetValue(CurrentClientId, out HashSet<int>? blocked) &&
+            if (_uiaBlockedPids.TryGetValue(Clients.CurrentId, out HashSet<int>? blocked) &&
                 blocked.Contains(pid))
             {
                 return false;

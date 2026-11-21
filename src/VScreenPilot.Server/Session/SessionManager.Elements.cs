@@ -22,19 +22,19 @@ internal sealed partial class SessionManager
     private readonly SemaphoreSlim _snapshotGate = new(1, 1);
 
     /// <summary>最近一次 snapshot 的 id；ref 只在该快照内有效。</summary>
-    public string SnapshotId => _refs.CurrentSnapshotId(CurrentClientId);
+    public string SnapshotId => _refs.CurrentSnapshotId(Clients.CurrentId);
 
     /// <summary>当前快照 id；没有则创建第一个。</summary>
-    public string EnsureSnapshot() => _refs.EnsureSnapshot(CurrentClientId);
+    public string EnsureSnapshot() => _refs.EnsureSnapshot(Clients.CurrentId);
 
     private void ClearSnapshotState(string? clientId) => _refs.ClearSnapshots(clientId);
 
     /// <summary>开始新快照：推进代际并清掉更早一代的 ref。</summary>
-    public string BeginSnapshot() => _refs.BeginSnapshot(CurrentClientId);
+    public string BeginSnapshot() => _refs.BeginSnapshot(Clients.CurrentId);
 
     /// <summary>登记元素并返回稳定的会话内引用（只对外暴露 ref）。</summary>
     public string RegisterElement(UiaElementInfo info, IntPtr hwnd) =>
-        _refs.Register(CurrentClientId, info, hwnd);
+        _refs.Register(Clients.CurrentId, info, hwnd);
 
     private ElementRefEntry RequireElementEntry(string reference)
     {
@@ -45,7 +45,7 @@ internal sealed partial class SessionManager
             throw new ToolException("E_INVALID_ARG", "element_ref 不能为空");
         }
 
-        ElementRefEntry? entry = _refs.TryResolve(CurrentClientId, key, out bool stale);
+        ElementRefEntry? entry = _refs.TryResolve(Clients.CurrentId, key, out bool stale);
 
         if (stale)
         {

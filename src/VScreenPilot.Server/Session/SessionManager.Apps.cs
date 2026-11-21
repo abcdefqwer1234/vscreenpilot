@@ -114,7 +114,7 @@ internal sealed partial class SessionManager
             bool hasDirectory = Path.IsPathRooted(path) ||
                                 path.Contains('\\') ||
                                 path.Contains('/');
-            string launchPath = hasDirectory ? ResolvePath(path) : path;
+            string launchPath = hasDirectory ? _paths.Resolve(path) : path;
             EnsureAppAllowed(launchPath);
 
             if (File.Exists(launchPath) == false && hasDirectory)
@@ -140,7 +140,7 @@ internal sealed partial class SessionManager
                     FileName = launchPath,
                     UseShellExecute = false,
                     WorkingDirectory = string.IsNullOrEmpty(workingDirectory)
-                        ? CurrentCwd
+                        ? Clients.CurrentCwd
                         : workingDirectory,
                 };
 
@@ -256,7 +256,7 @@ internal sealed partial class SessionManager
                         FileName = launchPath,
                         UseShellExecute = false,
                         WorkingDirectory = string.IsNullOrEmpty(workingDirectory)
-                            ? CurrentCwd
+                            ? Clients.CurrentCwd
                             : workingDirectory,
                     };
 
@@ -339,7 +339,7 @@ internal sealed partial class SessionManager
                         ["hwnd"] = window.Hwnd.ToInt64(),
                         ["pid"] = window.Pid,
                         ["owner_client_id"] = foreign.OwnerClientId,
-                        ["owner_cwd"] = FindClientCwd(foreign.OwnerClientId),
+                        ["owner_cwd"] = Clients.FindCwd(foreign.OwnerClientId),
                     },
                     retryable: true,
                     hint: "让该客户端 release_environment，或为当前客户端启动一个独立实例",
@@ -351,7 +351,7 @@ internal sealed partial class SessionManager
                 tracked = new TrackedApp
                 {
                     Pid = window.Pid,
-                    OwnerClientId = CurrentClientId,
+                    OwnerClientId = Clients.CurrentId,
                     ExePath = WindowManager.GetProcessPath(window.Pid),
                     ContentPid = contentPid,
                     ContentExePath = contentPath,
@@ -751,7 +751,7 @@ internal sealed partial class SessionManager
         return arguments ?? string.Empty;
     }
 
-    private static Process? FindRunningProcess(string path)
+    private Process? FindRunningProcess(string path)
     {
         string name = Path.GetFileNameWithoutExtension(path);
         if (string.IsNullOrWhiteSpace(name))
@@ -762,7 +762,7 @@ internal sealed partial class SessionManager
         string fullPath;
         try
         {
-            fullPath = ResolvePath(path);
+            fullPath = _paths.Resolve(path);
         }
         catch
         {

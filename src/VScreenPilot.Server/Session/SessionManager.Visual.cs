@@ -257,7 +257,7 @@ internal sealed partial class SessionManager
                     "E_INVALID_ARG", "template 模式需要 target=Base64 PNG 或 target_path=.png");
             }
 
-            string fullPath = ValidatePngPath(targetPath, "target_path");
+            string fullPath = _paths.ValidatePngPath(targetPath, "target_path");
 
             try
             {

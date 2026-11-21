@@ -15,11 +15,11 @@ internal sealed partial class SessionManager
             code,
             timeoutMs,
             new ScriptRunContext(
-                AllowScript: CurrentClient?.AllowScript ?? _allowScript,
-                AllowUnsafeScript: CurrentClient is null
+                AllowScript: Clients.Current?.AllowScript ?? _allowScript,
+                AllowUnsafeScript: Clients.Current is null
                     ? Infrastructure.EnvFlags.IsTruthyLoose(
                         Environment.GetEnvironmentVariable("VSP_ALLOW_UNSAFE_SCRIPT"))
-                    : CurrentClient.AllowUnsafeScript,
+                    : Clients.Current.AllowUnsafeScript,
                 AssignToJob: process => _job.Assign(process),
                 Warn: _log.Warn,
                 Cancellation: Cancellation));

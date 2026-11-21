@@ -74,7 +74,7 @@ internal sealed partial class SessionManager
 
         if (!string.IsNullOrWhiteSpace(savePath))
         {
-            string fullPath = ValidateSavePath(savePath);
+            string fullPath = _paths.ValidateSavePath(savePath);
 
             try
             {
@@ -122,7 +122,7 @@ internal sealed partial class SessionManager
             Backend: "gdi",
             SlowCapture: stopwatch.Elapsed.TotalMilliseconds > 500,
             Baseline: new BaselineView(left, top, capturedWidth, capturedHeight),
-            Path: string.IsNullOrWhiteSpace(savePath) ? null : ValidateSavePath(savePath));
+            Path: string.IsNullOrWhiteSpace(savePath) ? null : _paths.ValidateSavePath(savePath));
 
         return new CaptureResult(png, meta, previewPng, previewMeta);
     }
@@ -154,128 +154,16 @@ internal sealed partial class SessionManager
 
     /// <summary>保存最近几帧，供 assert_region/pixel_diff 按区域或 frame_id 引用。</summary>
     internal string StoreFrame(byte[] bgra, int width, int height, int x, int y) =>
-        _frames.Store(bgra, width, height, x, y, CurrentClientId);
+        _frames.Store(bgra, width, height, x, y, Clients.CurrentId);
 
     internal FrameSnapshot? FindFrame(string frameId) =>
-        _frames.FindById(CurrentClientId, frameId);
+        _frames.FindById(Clients.CurrentId, frameId);
 
     internal FrameSnapshot? FindLatestFrame(int x, int y, int width, int height) =>
-        _frames.FindLatest(CurrentClientId, x, y, width, height);
+        _frames.FindLatest(Clients.CurrentId, x, y, width, height);
 
     /// <summary>
     /// 截图/模板落盘只允许当前工作目录或系统临时目录下的 .png，
     /// 防止工具覆盖用户文档。
     /// </summary>
-    internal static string ValidateSavePath(string savePath) => ValidatePngPath(savePath, "save_path");
-
-    internal static string ValidatePngPath(string path, string label)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            throw new ToolException("E_INVALID_ARG", $"{label} 不能为空");
-        }
-
-        string fullPath;
-
-        try
-        {
-            // P-33：相对 save_path/target_path 必须按调用方 cwd 解析，不能用 daemon cwd。
-            fullPath = ResolvePath(path);
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            throw new ToolException("E_INVALID_ARG", $"{label} 无效: {exception.Message}");
-        }
-
-        // 解析符号链接/junction，避免用“工作目录内的链接”绕过根目录限制。
-        try
-        {
-            FileSystemInfo? target = File.ResolveLinkTarget(fullPath, returnFinalTarget: true);
-
-            if (target is not null)
-            {
-                fullPath = target.FullName;
-            }
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            // 文件尚不存在/无权限读取链接：保留原路径，后续 CreateNew 会给出明确 IO 错误。
-        }
-
-        // 文件本身不存在时，父目录仍可能是 junction；逐级解析，防止写到允许根之外。
-        fullPath = ResolveParentLinks(fullPath);
-
-        if (!string.Equals(Path.GetExtension(fullPath), ".png", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ToolException("E_INVALID_ARG", $"{label} 只允许 .png 文件");
-        }
-
-        string tempRoot = Path.GetTempPath();
-        var allowedRoots = new List<string> { CurrentCwd };
-        foreach (string root in CurrentRoots)
-        {
-            if (!string.IsNullOrWhiteSpace(root))
-            {
-                allowedRoots.Add(root);
-            }
-        }
-
-        allowedRoots.Add(Path.GetFullPath(tempRoot));
-
-        if (!allowedRoots.Any(root => IsUnder(fullPath, root)))
-        {
-            var rootsJson = new JsonArray();
-            foreach (string root in allowedRoots.Distinct(StringComparer.OrdinalIgnoreCase))
-            {
-                rootsJson.Add(root);
-            }
-
-            throw new ToolException(
-                "E_INVALID_ARG",
-                $"{label} 只能落在调用方工作目录或系统临时目录内",
-                new JsonObject
-                {
-                    ["path"] = fullPath,
-                    ["allowed_roots"] = rootsJson,
-                });
-        }
-
-        return fullPath;
-    }
-
-    private static string ResolveParentLinks(string fullPath)
-    {
-        string? directory = Path.GetDirectoryName(fullPath);
-
-        while (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
-        {
-            try
-            {
-                if (Directory.ResolveLinkTarget(directory, returnFinalTarget: true) is DirectoryInfo target)
-                {
-                    return Path.Combine(
-                        target.FullName, Path.GetRelativePath(directory, fullPath));
-                }
-            }
-            catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException)
-            {
-                // 无权限读取链接时继续向上；最终仍会受 IsUnder 限制。
-            }
-
-            directory = Path.GetDirectoryName(directory);
-        }
-
-        return fullPath;
-    }
-
-    private static bool IsUnder(string path, string root)
-    {
-        string normalizedRoot = Path.GetFullPath(root)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        return path.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase) ||
-               path.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-    }
 }

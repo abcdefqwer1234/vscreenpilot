@@ -44,7 +44,7 @@ internal sealed class McpServer
         session.LeaseHolderProvider = () => session.Lease.HolderId;
         session.ScreenLeaseProvider = () => session.Lease.Describe();
         session.Lease.LogSink = log.Info;
-        session.Lease.ClientCwdProvider = static id => SessionManager.FindClientCwd(id);
+        session.Lease.ClientCwdProvider = id => session.Clients.FindCwd(id);
     }
 
     private readonly WriteScheduler _scheduler;
@@ -171,7 +171,7 @@ internal sealed class McpServer
 
         try
         {
-            SessionManager.ClientEntered(effectiveClient);
+            _session.Clients.Enter(effectiveClient);
             await builder.Build().RunAsync(cancellationToken).ConfigureAwait(false);
             return 0;
         }
@@ -205,7 +205,7 @@ internal sealed class McpServer
                 ScheduleClientCleanup(_client, clientId);
             }
 
-            SessionManager.ClientLeft(clientId);
+            _session.Clients.Leave(clientId);
             _trace?.Write("session_end", new JsonObject { ["client_id"] = clientId });
 
             if (_ownsTrace)
@@ -299,7 +299,7 @@ internal sealed class McpServer
     {
         using IDisposable? clientScope = _client is null
             ? null
-            : SessionManager.UseClient(_client);
+            : _session.Clients.Use(_client);
         var resources = new List<Resource>();
         int offset = 0;
         string? cursor = context.Params?.Cursor;
@@ -357,7 +357,7 @@ internal sealed class McpServer
     {
         using IDisposable? clientScope = _client is null
             ? null
-            : SessionManager.UseClient(_client);
+            : _session.Clients.Use(_client);
         string uri = context.Params?.Uri ?? string.Empty;
 
         if (!uri.StartsWith(ArtifactPrefix, StringComparison.Ordinal))
@@ -518,7 +518,7 @@ internal sealed class McpServer
     {
         using IDisposable? clientScope = _client is null
             ? null
-            : SessionManager.UseClient(_client);
+            : _session.Clients.Use(_client);
         long epoch = _session.Epoch;
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         WriteScheduler.Lease? lease = null;
@@ -2000,7 +2000,7 @@ internal sealed class McpServer
 
         if (data["display_kept"]?.GetValue<bool>() == true)
         {
-            data["display_kept_reason"] = SessionManager.ActiveClientCount > 1
+            data["display_kept_reason"] = _session.Clients.ActiveCount > 1
                 ? "other_clients"
                 : onDirty == "abort" ? "on_dirty_abort" : "requested";
         }

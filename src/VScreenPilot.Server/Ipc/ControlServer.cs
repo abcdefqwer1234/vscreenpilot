@@ -158,7 +158,7 @@ internal sealed class ControlServer : IDisposable
 
         try
         {
-            using IDisposable controlScope = SessionManager.UseClient(new ClientContext
+            using IDisposable controlScope = _session.Clients.Use(new ClientContext
             {
                 Id = "ctl",
                 Name = "control",
@@ -363,7 +363,7 @@ internal sealed class ControlServer : IDisposable
             ["mcp_pipe"] = PipeNames.Mcp(_session.ProfileName),
             ["initialized"] = _session.Initialized,
             ["apps"] = _session.Apps.Count,
-            ["clients"] = SessionManager.ActiveClientCount,
+            ["clients"] = _session.Clients.ActiveCount,
             ["client_list"] = _session.ClientSummariesJson(includeCwd: true),
             ["screen_lease"] = _session.Lease.Describe(),
             ["working_set_mb"] = CurrentWorkingSetMb(),
@@ -392,12 +392,12 @@ internal sealed class ControlServer : IDisposable
 
     private JsonObject Stop(bool force, out bool shutdownRequested)
     {
-        if (!force && SessionManager.ActiveClientCount > 0)
+        if (!force && _session.Clients.ActiveCount > 0)
         {
             throw new ToolException(
                 "E_CLIENTS_ACTIVE",
-                $"仍有 {SessionManager.ActiveClientCount} 个 MCP 客户端连接，拒绝停止",
-                new JsonObject { ["clients"] = SessionManager.ActiveClientCount },
+                $"仍有 {_session.Clients.ActiveCount} 个 MCP 客户端连接，拒绝停止",
+                new JsonObject { ["clients"] = _session.Clients.ActiveCount },
                 retryable: true,
                 hint: "关闭这些客户端，或使用 --cli stop --force",
                 stage: "control");

@@ -27,6 +27,11 @@ internal sealed partial class SessionManager : IDisposable
 
     private readonly object _gate = new();
 
+    /// <summary>本会话的客户端登记处；每个 SessionManager 一份，不使用进程级静态。</summary>
+    internal ClientSessionRegistry Clients { get; } = new();
+
+    private readonly ClientPathPolicy _paths;
+
     private readonly SessionGuard _guard = new();
     private readonly LogRing _log;
     private readonly StateStore _stateStore;
@@ -155,13 +160,13 @@ internal sealed partial class SessionManager : IDisposable
     public void SetCancellation(CancellationTokenSource? source) => _cancellation.Value = source;
 
     /// <summary>会话代际：release_environment 之后递增，旧 handler 的结果会被丢弃。</summary>
-    public long Epoch => CurrentClient is { } client
+    public long Epoch => Clients.Current is { } client
         ? Interlocked.Read(ref client.Epoch)
         : Interlocked.Read(ref _epoch);
 
     private void IncrementEpoch()
     {
-        if (CurrentClient is { } client)
+        if (Clients.Current is { } client)
         {
             Interlocked.Increment(ref client.Epoch);
         }
@@ -198,7 +203,7 @@ internal sealed partial class SessionManager : IDisposable
     {
         get
         {
-            string clientId = CurrentClientId;
+            string clientId = Clients.CurrentId;
 
             lock (_artifactGate)
             {
@@ -236,12 +241,13 @@ internal sealed partial class SessionManager : IDisposable
     public SessionManager(
         LogRing log, StateStore stateStore, JobObject job, bool allowScript = false)
     {
+        _paths = new ClientPathPolicy(Clients);
         _log = log;
         _stateStore = stateStore;
         _job = job;
         _allowScript = allowScript;
         _appAllowlist = ReadAppAllowlist();
-        _log.ClientIdProvider = static () => CurrentClientId;
+        _log.ClientIdProvider = () => Clients.CurrentId;
         CleanupStaleProfiles();
         SweepOldArtifacts();
         RecoverFromPreviousCrash();
@@ -1050,7 +1056,7 @@ internal sealed partial class SessionManager : IDisposable
 
             var clientRoots = new List<string>();
 
-            foreach (string root in CurrentRoots)
+            foreach (string root in Clients.CurrentRoots)
             {
                 if (!string.IsNullOrWhiteSpace(root))
                 {
@@ -1061,7 +1067,7 @@ internal sealed partial class SessionManager : IDisposable
             JsonArray clientList = ClientSummariesJson();
             int otherClients = clientList.Count;
 
-            if (CurrentClient is null || !CurrentClient.IncludeAllApps)
+            if (Clients.Current is null || !Clients.Current.IncludeAllApps)
             {
                 otherClients = Math.Max(0, otherClients - 1);
             }
@@ -1069,7 +1075,7 @@ internal sealed partial class SessionManager : IDisposable
             int? proxyPid = null;
             string? clientVersion = null;
 
-            if (CurrentClient is { ProxyPid: > 0 } currentClient)
+            if (Clients.Current is { ProxyPid: > 0 } currentClient)
             {
                 proxyPid = currentClient.ProxyPid;
 
@@ -1110,8 +1116,8 @@ internal sealed partial class SessionManager : IDisposable
                 JobObject = _job.Status,
                 Role = "daemon",
                 DaemonPid = Environment.ProcessId,
-                ClientId = CurrentClientId,
-                ClientCwd = CurrentCwd,
+                ClientId = Clients.CurrentId,
+                ClientCwd = Clients.CurrentCwd,
                 ClientRoots = clientRoots,
                 ProxyPid = proxyPid,
                 ClientVersion = clientVersion,
@@ -1217,7 +1223,7 @@ internal sealed partial class SessionManager : IDisposable
             }
 
             var apps = new List<AppView>();
-            bool includeOwner = CurrentClient?.IncludeAllApps == true;
+            bool includeOwner = Clients.Current?.IncludeAllApps == true;
 
             foreach (TrackedApp app in _apps.Where(IsOwned))
             {
@@ -1349,7 +1355,7 @@ internal sealed partial class SessionManager : IDisposable
                 warnings.Add("on_dirty=abort 需要保留虚拟屏，已忽略 keep_display=false");
             }
 
-            if (!keepDisplayEffective && ActiveClientCount > 1 && !forceRemoveDisplay)
+            if (!keepDisplayEffective && Clients.ActiveCount > 1 && !forceRemoveDisplay)
             {
                 keepDisplayEffective = true;
                 warnings.Add("其他客户端仍在使用虚拟屏，已忽略 keep_display=false");
@@ -1461,7 +1467,7 @@ internal sealed partial class SessionManager : IDisposable
 
                 // 注意：这里已持 _gate；不要再拿 _refGate（Ref 路径的锁顺序是 _refGate -> _gate）。
                 // MCP 层用 session 读写锁保证 release 不与 find/tree 并发。
-                string releaseClient = CurrentClientId;
+                string releaseClient = Clients.CurrentId;
 
                 if (forceAllClients)
                 {
@@ -2188,8 +2194,8 @@ internal sealed partial class SessionManager : IDisposable
 
     private void EnsureAppAllowed(string? path)
     {
-        string[] clientAllowlist = CurrentClient?.AppAllowlist ?? Array.Empty<string>();
-        bool hasClientRule = CurrentClient is not null && clientAllowlist.Length > 0;
+        string[] clientAllowlist = Clients.Current?.AppAllowlist ?? Array.Empty<string>();
+        bool hasClientRule = Clients.Current is not null && clientAllowlist.Length > 0;
         bool hasGlobalRule = _appAllowlist.Length > 0;
 
         if (!hasClientRule && !hasGlobalRule)
@@ -2206,7 +2212,7 @@ internal sealed partial class SessionManager : IDisposable
 
         try
         {
-            fullPath = ResolvePath(path);
+            fullPath = _paths.Resolve(path);
         }
         catch (Exception exception) when (
             exception is ArgumentException or NotSupportedException or PathTooLongException)
@@ -2288,6 +2294,16 @@ internal sealed partial class SessionManager : IDisposable
 
         NativeMethods.CloseDesktop(desktop);
         return true;
+    }
+
+    /// <summary>路径是否位于根目录下（大小写不敏感，供应用白名单使用）。</summary>
+    private static bool IsUnder(string path, string root)
+    {
+        string normalizedRoot = Path.GetFullPath(root)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        return path.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
     private static int GetMonitorCount()
