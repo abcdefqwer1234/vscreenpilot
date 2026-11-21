@@ -108,8 +108,6 @@ internal sealed class ScreenLease
         }
     }
 
-    public void ReleaseHolder(string clientId) => ReleaseHolderIfIdle(clientId);
-
     /// <summary>
     /// 显式归还：忽略在途计数，只要 holder 是自己就清空。
     /// release_environment 的工具调用本身持有一个租约，不能用

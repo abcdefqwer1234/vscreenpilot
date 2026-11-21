@@ -18,7 +18,7 @@ public sealed class ScreenLeaseTests
         }
 
         // 同一客户端空闲后仍持有 TTL 租约；显式 release 才转给下一个客户端。
-        lease.ReleaseHolder("c1");
+        lease.ReleaseHolderIfIdle("c1");
         using IDisposable second = lease.Acquire("c2", "click");
         Assert.True(lease.Describe()["held"]?.GetValue<bool>());
     }
@@ -46,7 +46,7 @@ public sealed class ScreenLeaseTests
             {
                 await Task.Delay(100);
                 first.Dispose();
-                lease.ReleaseHolder("c1");
+                lease.ReleaseHolderIfIdle("c1");
             });
 
             using IDisposable second = lease.Acquire("c2", "click");
