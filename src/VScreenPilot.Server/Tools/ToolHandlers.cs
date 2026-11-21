@@ -381,7 +381,7 @@ internal sealed partial class McpTransport
     }
 
     private ToolResponse Gesture(JsonElement arguments) =>
-        ToolResponse.Text(_session.Gesture(arguments));
+        ToolResponseWriter.FromView(_session.Gesture(arguments));
 
     private ToolResponse ClickText(JsonElement arguments)
     {
@@ -429,7 +429,7 @@ internal sealed partial class McpTransport
         int chunkChars = OptionalInt(arguments, "chunk_chars", 32);
         string channel = OptionalString(arguments, "channel") ?? "auto";
 
-        return ToolResponse.Text(_session.TypeText(text, pid, verify, chunkChars, channel));
+        return ToolResponseWriter.FromView(_session.TypeText(text, pid, verify, chunkChars, channel));
     }
 
     private ToolResponse PressKeys(JsonElement arguments)
@@ -454,14 +454,14 @@ internal sealed partial class McpTransport
                 keys.Add(item.GetString() ?? string.Empty);
             }
 
-            return ToolResponse.Text(
+            return ToolResponseWriter.FromView(
                 _session.PressKeySequence(keys, keepForeground, pid, allowSystemKeys, observe));
         }
 
         string keysText = OptionalString(arguments, "keys")
             ?? throw new ToolException("E_INVALID_ARG", "press_keys 需要 keys 或 sequence");
 
-        return ToolResponse.Text(
+        return ToolResponseWriter.FromView(
             _session.PressKeys(keysText, keepForeground, pid, allowSystemKeys, observe));
     }
 

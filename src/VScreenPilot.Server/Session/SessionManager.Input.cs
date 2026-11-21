@@ -3,6 +3,7 @@ using VScreenPilot.Apps;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
+using VScreenPilot.Views;
 using VScreenPilot.Platform.Displays;
 using System.Text.Json.Nodes;
 
@@ -19,16 +20,16 @@ internal sealed partial class SessionManager
         bool keepForeground = false, bool observe = true, bool fallbackInput = false) =>
         _input.Click(x, y, button, clicks, mode, keepForeground, observe, fallbackInput);
 
-    public JsonObject TypeText(
+    public TypeTextView TypeText(
         string text, int? pid = null, bool verify = true, int chunkChars = 32, string? channel = null) =>
         _input.TypeText(text, pid, verify, chunkChars, channel);
 
-    public JsonObject PressKeys(
+    public PressKeysView PressKeys(
         string keys, bool keepForeground = false, int? pid = null,
         bool allowSystemKeys = false, bool observe = true) =>
         _input.PressKeys(keys, keepForeground, pid, allowSystemKeys, observe);
 
-    public JsonObject PressKeySequence(
+    public PressKeysView PressKeySequence(
         IReadOnlyList<string> keys,
         bool keepForeground = false,
         int? pid = null,
@@ -36,7 +37,7 @@ internal sealed partial class SessionManager
         bool observe = true) =>
         _input.PressKeySequence(keys, keepForeground, pid, allowSystemKeys, observe);
 
-    public JsonObject Gesture(JsonElement arguments) => _input.Gesture(arguments);
+    public GestureView Gesture(JsonElement arguments) => _input.Gesture(arguments);
 
     private bool EnsureForeground(TrackedApp app)
     {

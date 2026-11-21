@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+using VScreenPilot.Views;
 using VScreenPilot.Platform.Displays;
 
 namespace VScreenPilot.Verification;
@@ -75,7 +75,7 @@ internal sealed class ObserveSampler
             cells, Grid, Hash(cells), left, top, captureWidth, captureHeight);
     }
 
-    public static JsonObject? Build(Signature? before, Signature? after, double milliseconds)
+    public static ObservedView? Build(Signature? before, Signature? after, double milliseconds)
     {
         if (before is null || after is null)
         {
@@ -101,23 +101,15 @@ internal sealed class ObserveSampler
         int total = before.Grid * before.Grid;
         double ratio = Math.Round((double)changed / Math.Max(1, total), 4);
 
-        return new JsonObject
-        {
-            ["changed"] = ratio >= ChangeThreshold,
-            ["ratio"] = ratio,
-            ["threshold"] = ChangeThreshold,
-            ["grid"] = before.Grid,
-            ["before"] = before.Hash,
-            ["after"] = after.Hash,
-            ["ms"] = Math.Round(milliseconds, 1),
-            ["region"] = new JsonObject
-            {
-                ["x"] = before.X,
-                ["y"] = before.Y,
-                ["width"] = before.Width,
-                ["height"] = before.Height,
-            },
-        };
+        return new ObservedView(
+            ratio >= ChangeThreshold,
+            ratio,
+            ChangeThreshold,
+            before.Grid,
+            before.Hash,
+            after.Hash,
+            Math.Round(milliseconds, 1),
+            new RegionView(before.X, before.Y, before.Width, before.Height));
     }
 
     private static string Hash(byte[] cells)

@@ -705,15 +705,15 @@ internal sealed partial class SessionManager
                     bounds.Value.Top + bounds.Value.Height / 2,
                     "left", 1, "message");
 
-                JsonObject typed = TypeText(value, null, verify: true, chunkChars: 32, channel: "auto");
+                TypeTextView typed = TypeText(value, null, verify: true, chunkChars: 32, channel: "auto");
                 return new JsonObject
                 {
                     ["ref"] = probe.Ref,
                     ["method"] = "msaa+keyboard",
                     ["mode"] = mode ?? "auto",
-                    ["verified"] = typed["verified"]?.GetValue<bool>() ?? false,
+                    ["verified"] = typed.Verified,
                     ["written"] = value,
-                    ["value"] = typed["observed_length"],
+                    ["value"] = typed.ObservedLength,
                     ["refreshed"] = false,
                 };
             }

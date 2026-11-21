@@ -2,11 +2,13 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using VScreenPilot.Views;
 using Interop.UIAutomationClient;
 using VScreenPilot.Apps;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Input;
+using VScreenPilot.Json;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
 using VScreenPilot.Ui;
@@ -48,7 +50,7 @@ internal interface IInputHost
     void RestoreForeground(IntPtr previous, bool logFailure = true);
     bool IsInputDesktopAvailable();
     ObserveSignature CaptureSignature(DisplayInfo display, int x, int y, int width, int height);
-    JsonObject? BuildObserved(ObserveSignature? before, ObserveSignature? after, double milliseconds);
+    ObservedView? BuildObserved(ObserveSignature? before, ObserveSignature? after, double milliseconds);
     void PauseFocusGuard(int leaseMs = 0);
     void ResumeFocusGuard();
     TextWriteResult WriteTextVerified(
@@ -427,7 +429,7 @@ internal sealed class InputRouter
         ObserveSignature? observeAfter = observeBefore is null
             ? null
             : _host.CaptureSignature(display, x - 60, y - 60, 120, 120);
-        JsonObject? observed = _host.BuildObserved(
+        ObservedView? observed = _host.BuildObserved(
             observeBefore, observeAfter, observeWatch.Elapsed.TotalMilliseconds);
 
         var result = new JsonObject
@@ -440,13 +442,13 @@ internal sealed class InputRouter
             ["method"] = method,
             ["inject_ms"] = Math.Round(injectMs, 2),
             ["duration_ms"] = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
-            ["verified"] = observed?["changed"]?.GetValue<bool>() ?? false,
+            ["verified"] = observed?.Changed ?? false,
             ["keep_foreground"] = keepForeground,
         };
 
         if (observed is not null)
         {
-            result["observed"] = observed;
+            result["observed"] = VspJson.ToNode(observed);
         }
 
         if (detail is not null)
@@ -462,7 +464,7 @@ internal sealed class InputRouter
         return result;
     }
 
-    public JsonObject TypeText(
+    public TypeTextView TypeText(
         string text, int? pid = null, bool verify = true, int chunkChars = 32, string? channel = null)
     {
         if (text.Length > 100_000)
@@ -632,28 +634,26 @@ internal sealed class InputRouter
                     }
                 }
 
-                return new JsonObject
-                {
-                    ["typed"] = write.Typed,
-                    ["length"] = text.Length,
-                    ["target_pid"] = app.Pid,
-                    ["chunks"] = write.Chunks,
-                    ["chunk_chars"] = effectiveChunk,
-                    ["text_supported"] = write.TextSupported,
-                    ["verified"] = write.Verified,
-                    ["method"] = patternUsed
+                return new TypeTextView(
+                    write.Typed,
+                    text.Length,
+                    app.Pid,
+                    write.Chunks,
+                    effectiveChunk,
+                    write.TextSupported,
+                    write.Verified,
+                    patternUsed
                         ? "uia-value-pattern"
                         : useClipboard
                             ? "clipboard+ctrl-v"
                             : verify ? "sendinput+verify" : "sendinput",
-                    ["channel"] = patternUsed ? "pattern" : useClipboard ? "clipboard" : "keys",
-                    ["inject_ms"] = Math.Round(write.InjectMs, 2),
-                    ["duration_ms"] = Math.Round(write.DurationMs, 2),
-                    ["observed_length"] = write.ObservedLength,
-                    ["warning"] = write.Verified
+                    patternUsed ? "pattern" : useClipboard ? "clipboard" : "keys",
+                    Math.Round(write.InjectMs, 2),
+                    Math.Round(write.DurationMs, 2),
+                    write.ObservedLength,
+                    write.Verified
                         ? null
-                        : "输入未能通过 TextPattern/ValuePattern 回读确认；请用 get_element_text 或截图复核",
-                };
+                        : "输入未能通过 TextPattern/ValuePattern 回读确认；请用 get_element_text 或截图复核");
             }
             finally
             {
@@ -666,7 +666,7 @@ internal sealed class InputRouter
         }
     }
 
-    public JsonObject PressKeys(
+    public PressKeysView PressKeys(
         string keys, bool keepForeground = false, int? pid = null,
         bool allowSystemKeys = false, bool observe = true) =>
         PressKeySequence(new[] { keys }, keepForeground, pid, allowSystemKeys, observe);
@@ -675,7 +675,7 @@ internal sealed class InputRouter
     /// 在一次前台租约内发送多个按键序列，供菜单导航（Alt+D → Down → Enter 等）使用。
     /// keepForeground=true 时不归还用户前台，避免菜单在后续调用前被关闭。
     /// </summary>
-    public JsonObject PressKeySequence(
+    public PressKeysView PressKeySequence(
         IReadOnlyList<string> keys,
         bool keepForeground = false,
         int? pid = null,
@@ -756,26 +756,18 @@ internal sealed class InputRouter
                 ObserveSignature? observeAfter = observeBefore is null
                     ? null
                     : _host.CaptureSignature(display, display.X, display.Y, display.Width, display.Height);
-                JsonObject? observed = _host.BuildObserved(
+                ObservedView? observed = _host.BuildObserved(
                     observeBefore, observeAfter, stopwatch.Elapsed.TotalMilliseconds);
 
-                var result = new JsonObject
-                {
-                    ["keys"] = string.Join(",", keys),
-                    ["count"] = keys.Count,
-                    ["target_pid"] = app.Pid,
-                    ["inject_ms"] = Math.Round(injectMs, 2),
-                    ["duration_ms"] = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
-                    ["keep_foreground"] = keepForeground,
-                };
-
-                if (observed is not null)
-                {
-                    result["observed"] = observed;
-                    result["verified"] = observed["changed"]?.GetValue<bool>() ?? false;
-                }
-
-                return result;
+                return new PressKeysView(
+                    string.Join(",", keys),
+                    keys.Count,
+                    app.Pid,
+                    Math.Round(injectMs, 2),
+                    Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
+                    keepForeground,
+                    observed,
+                    observed?.Changed);
             }
             finally
             {
@@ -794,7 +786,7 @@ internal sealed class InputRouter
         }
     }
 
-    public JsonObject Gesture(JsonElement arguments)
+    public GestureView Gesture(JsonElement arguments)
     {
         DisplayInfo display = _host.Ensure();
 
@@ -883,35 +875,39 @@ internal sealed class InputRouter
                     RestoreFocusAfterClick(previousForeground);
                 }
 
-                var dragResult = new JsonObject
-                {
-                    ["type"] = "drag",
-                    ["from"] = new JsonObject { ["x"] = fromX, ["y"] = fromY },
-                    ["to"] = new JsonObject { ["x"] = toX, ["y"] = toY },
-                    ["button"] = button,
-                    ["method"] = useInput ? "input" : "message",
-                    ["detail"] = detail,
-                    ["verified"] = false,
-                    ["inject_ms"] = Math.Round(injectMs, 2),
-                    ["duration_ms"] = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
-                };
+                var dragResult = new GestureView(
+                    "drag",
+                    new PointView(fromX, fromY),
+                    new PointView(toX, toY),
+                    null,
+                    null,
+                    button,
+                    useInput ? "input" : "message",
+                    detail,
+                    false,
+                    Math.Round(injectMs, 2),
+                    Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
+                    null,
+                    null);
 
                 if (!useInput)
                 {
-                    dragResult["hint"] =
-                        "窗口消息拖拽可能被应用忽略；如无效请改用 mode=input，并用截图/断言验证";
+                    dragResult = dragResult with
+                    {
+                        Hint = "窗口消息拖拽可能被应用忽略；如无效请改用 mode=input，并用截图/断言验证",
+                    };
                 }
 
                 ObserveSignature? dragAfter = dragBefore is null
                     ? null
                     : _host.CaptureSignature(display, dragLeft, dragTop, dragWidth, dragHeight);
-                JsonObject? dragObserved = _host.BuildObserved(
+                ObservedView? dragObserved = _host.BuildObserved(
                     dragBefore, dragAfter, stopwatch.Elapsed.TotalMilliseconds);
 
                 if (dragObserved is not null)
                 {
-                    dragResult["observed"] = dragObserved;
-                    dragResult["verified"] = dragObserved["changed"]?.GetValue<bool>() ?? false;
+                    dragResult = dragResult with { Observed = dragObserved, Verified = dragObserved.Changed };
+                    
                 }
 
                 return dragResult;
@@ -984,34 +980,39 @@ internal sealed class InputRouter
                     RestoreFocusAfterClick(previousForeground);
                 }
 
-                var scrollResult = new JsonObject
-                {
-                    ["type"] = "scroll",
-                    ["dx"] = dx,
-                    ["dy"] = dy,
-                    ["method"] = useInput ? "input" : "message",
-                    ["detail"] = detail,
-                    ["verified"] = false,
-                    ["inject_ms"] = Math.Round(injectMs, 2),
-                    ["duration_ms"] = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
-                };
+                var scrollResult = new GestureView(
+                    "scroll",
+                    null,
+                    null,
+                    dx,
+                    dy,
+                    null,
+                    useInput ? "input" : "message",
+                    detail,
+                    false,
+                    Math.Round(injectMs, 2),
+                    Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
+                    null,
+                    null);
 
                 if (!useInput)
                 {
-                    scrollResult["hint"] =
-                        "窗口消息滚轮可能被未聚焦的应用忽略，请用 assert_region/wait_for 验证";
+                    scrollResult = scrollResult with
+                    {
+                        Hint = "窗口消息滚轮可能被未聚焦的应用忽略，请用 assert_region/wait_for 验证",
+                    };
                 }
 
                 ObserveSignature? scrollAfter = scrollBefore is null
                     ? null
                     : _host.CaptureSignature(display, x.Value - 120, y.Value - 120, 240, 240);
-                JsonObject? scrollObserved = _host.BuildObserved(
+                ObservedView? scrollObserved = _host.BuildObserved(
                     scrollBefore, scrollAfter, stopwatch.Elapsed.TotalMilliseconds);
 
                 if (scrollObserved is not null)
                 {
-                    scrollResult["observed"] = scrollObserved;
-                    scrollResult["verified"] = scrollObserved["changed"]?.GetValue<bool>() ?? false;
+                    scrollResult = scrollResult with { Observed = scrollObserved, Verified = scrollObserved.Changed };
+                    
                 }
 
                 return scrollResult;
@@ -1054,16 +1055,20 @@ internal sealed class InputRouter
                     RestoreFocusAfterClick(previousForeground);
                 }
 
-                return new JsonObject
-                {
-                    ["type"] = "move",
-                    ["to"] = new JsonObject { ["x"] = toX, ["y"] = toY },
-                    ["method"] = useInput ? "input" : "message",
-                    ["detail"] = detail,
-                    ["verified"] = false,
-                    ["inject_ms"] = Math.Round(injectMs, 2),
-                    ["duration_ms"] = Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
-                };
+                return new GestureView(
+                    "move",
+                    null,
+                    new PointView(toX, toY),
+                    null,
+                    null,
+                    null,
+                    useInput ? "input" : "message",
+                    detail,
+                    false,
+                    Math.Round(injectMs, 2),
+                    Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
+                    null,
+                    null);
             }
 
             default:

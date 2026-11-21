@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+using VScreenPilot.Views;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Verification;
 using ObserveSignature = VScreenPilot.Verification.ObserveSampler.Signature;
@@ -20,7 +20,7 @@ internal sealed partial class SessionManager
         DisplayInfo display, int x, int y, int width, int height) =>
         Sampler.Capture(display, x, y, width, height);
 
-    private static JsonObject? BuildObserved(
+    private static ObservedView? BuildObserved(
         ObserveSignature? before, ObserveSignature? after, double milliseconds) =>
         ObserveSampler.Build(before, after, milliseconds);
 }

@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using VScreenPilot.Views;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Ui;
@@ -64,7 +65,7 @@ internal sealed partial class SessionManager : IInputHost
         DisplayInfo display, int x, int y, int width, int height) =>
         CaptureSignature(display, x, y, width, height);
 
-    JsonObject? IInputHost.BuildObserved(
+    ObservedView? IInputHost.BuildObserved(
         ObserveSignature? before, ObserveSignature? after, double milliseconds) =>
         BuildObserved(before, after, milliseconds);
 
