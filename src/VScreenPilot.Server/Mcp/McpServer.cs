@@ -2139,7 +2139,7 @@ internal sealed class McpServer
             ?? throw new ToolException("E_INVALID_ARG", "run_script 需要 code");
 
         int timeoutMs = OptionalInt(arguments, "timeout_ms", 30000);
-        return ToolResponse.Text(_session.RunScript(code, timeoutMs));
+        return ToolResponse.Text(VspJson.ToNode(_session.RunScript(code, timeoutMs)));
     }
 
 }
