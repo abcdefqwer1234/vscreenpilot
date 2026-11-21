@@ -11,41 +11,6 @@ using VScreenPilot.Uia;
 
 namespace VScreenPilot.Session;
 
-internal sealed class ElementRefEntry
-{
-    public required string Ref { get; init; }
-    public required string Key { get; init; }
-    public string OwnerClientId { get; init; } = "c0";
-
-    /// <summary>创建该 ref 时的快照代际；跨代使用返回 E_STALE_SNAPSHOT。</summary>
-    public long Generation { get; set; }
-    public string RuntimeId { get; set; } = string.Empty;
-    public int Pid { get; init; }
-    public IntPtr Hwnd { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public string AutomationId { get; set; } = string.Empty;
-    public string ControlTypeName { get; set; } = string.Empty;
-    public int Left { get; set; }
-    public int Top { get; set; }
-    public int Right { get; set; }
-    public int Bottom { get; set; }
-    public long LastUsedTicks { get; set; }
-
-    public void Update(UiaElementInfo info, IntPtr hwnd)
-    {
-        RuntimeId = info.RuntimeId;
-        Hwnd = hwnd;
-        Name = info.Name;
-        AutomationId = info.AutomationId;
-        ControlTypeName = info.ControlTypeName;
-        Left = info.Left;
-        Top = info.Top;
-        Right = info.Right;
-        Bottom = info.Bottom;
-        LastUsedTicks = Environment.TickCount64;
-    }
-}
-
 internal sealed partial class SessionManager
 {
     // 保留当前代 + 上一代（max_nodes 1024），避免新快照把自己的 ref 挤掉。
@@ -163,7 +128,7 @@ internal sealed partial class SessionManager
             PruneExpiredElements();
 
             string clientId = CurrentClientId;
-            string key = clientId + "\u0000" + ElementKey(info, hwnd);
+            string key = ElementRefEntry.BuildKey(clientId, info, hwnd);
             long generation = _snapshotGenerationByClient.TryGetValue(clientId, out long current)
                 ? current
                 : 0;
@@ -202,11 +167,6 @@ internal sealed partial class SessionManager
             return reference;
         }
     }
-
-    private static string ElementKey(UiaElementInfo info, IntPtr hwnd) =>
-        !string.IsNullOrEmpty(info.RuntimeId)
-            ? $"{info.ProcessId}:{hwnd.ToInt64():X}:{info.RuntimeId}"
-            : $"{info.ProcessId}:{hwnd.ToInt64():X}:{info.ControlType}:{info.AutomationId}:{info.Name}:{info.Left},{info.Top}";
 
     private void PruneExpiredElements()
     {

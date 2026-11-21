@@ -7,6 +7,7 @@ using VScreenPilot.Apps;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Interop;
 using VScreenPilot.Mcp;
+using VScreenPilot.Ui;
 using VScreenPilot.Uia;
 using static VScreenPilot.Mcp.JsonArgReader;
 

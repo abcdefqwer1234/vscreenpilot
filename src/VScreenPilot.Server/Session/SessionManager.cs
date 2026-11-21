@@ -8,6 +8,7 @@ using VScreenPilot.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Diagnostics;
 using VScreenPilot.Mcp;
+using VScreenPilot.Ui;
 using VScreenPilot.Uia;
 using VScreenPilot.Views;
 
