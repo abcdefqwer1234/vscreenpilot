@@ -1,6 +1,6 @@
 # 架构说明
 
-> 状态：第二轮重构 R2 进行中（以 `refactor/r2` HEAD 为准）。
+> 状态：第二轮重构 R2 进行中（以 `refactor/r2` HEAD 为准；进度见 `docs/第二轮重构执行报告.md`）。
 > 数字口径：`python tools/audit/arch_metrics.py`；行数用 `ReadAllLines`/`splitlines()`，不含 `obj/`、`bin/`。
 > 冻结清单：`docs/refactor-invariants.md`。第一轮验收：`docs/全局重构执行报告.md`。第二轮方案：`docs/第二轮全局重构方案.md`。
 
@@ -109,7 +109,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 ## 8. 已知债务与 R3
 
 - 6 个文件 >600：`VirtualDisplayController` 759、`SessionManager.cs` 746、`McpTransport` 721、`ToolHandlers` 659、`SnapshotBuilder` 645、`VisualMatchService` 609（R2-3 已拆 `InputRouter`/`AppLauncher`/`ElementOperations`）。
-- 16 个方法 >150，最大 `AppLauncher.Launch` 542；27 个 ≥120（R2-4 处理中）。
+- 14 个方法 >150，最大 `AppLauncher.Launch` 542；25 个 ≥120（R2-4 已拆 2 个，剩余清单见执行报告）。
 - 无类型 `catch` 37 处（其中无日志 34 处）；83 处宽捕获只写 `Debug.WriteLine`。
 - 18 个组件只有 5 个有直接单测；编排主要靠 Python 审计。
 - SPLIT 命名空间已在 R2-2 清零；`ToolContext` 仍持有门面；`Program`/`ServerHost` 双 wiring。
