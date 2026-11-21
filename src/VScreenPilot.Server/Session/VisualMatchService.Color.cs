@@ -71,6 +71,51 @@ internal sealed partial class VisualMatchService
             List<ColorComponent> components = ConnectedComponents(
                 mask, capturedWidth, capturedHeight, minPixels, () => _host.IsCancelled());
 
+        List<ColorComponent> selected = SelectComponents(
+            components, minPixels, maxAreaRatio, excludeBorder,
+            capturedWidth, capturedHeight, maxResults);
+
+            if (selected.Count == 0)
+            {
+                throw new ToolException(
+                    "E_NO_MATCH",
+                    $"匹配像素存在，但连通区域都小于 min_pixels={minPixels}",
+                    new JsonObject
+                    {
+                        ["target"] = target,
+                        ["matched_pixels"] = matched,
+                        ["min_pixels"] = minPixels,
+                    });
+            }
+
+        List<VisualMatchView> matches = BuildColorViews(selected, regionX, regionY);
+
+            return new MatchVisualView(
+                Mode: string.Empty,
+                ElapsedMs: 0,
+                Point: null, Color: null, Rgb: null,
+                new OptionalBoundsView(regionX, regionY, width, height),
+                target,
+                tolerance,
+                minPixels,
+                maxAreaRatio,
+                excludeBorder,
+                matched,
+                matches.Count,
+                matches,
+                Threshold: null, Template: null, Ambiguous: null, ScoreMargin: null);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(mask);
+        }
+    }
+
+
+    private static List<ColorComponent> SelectComponents(
+        List<ColorComponent> components, int minPixels, double maxAreaRatio,
+        bool excludeBorder, int capturedWidth, int capturedHeight, int maxResults)
+    {
             var selected = components
                 .Where(item => item.Pixels >= minPixels)
                 .Where(item =>
@@ -97,19 +142,12 @@ internal sealed partial class VisualMatchService
                 .Take(maxResults)
                 .ToList();
 
-            if (selected.Count == 0)
-            {
-                throw new ToolException(
-                    "E_NO_MATCH",
-                    $"匹配像素存在，但连通区域都小于 min_pixels={minPixels}",
-                    new JsonObject
-                    {
-                        ["target"] = target,
-                        ["matched_pixels"] = matched,
-                        ["min_pixels"] = minPixels,
-                    });
-            }
+        return selected;
+    }
 
+    private static List<VisualMatchView> BuildColorViews(
+        List<ColorComponent> selected, int regionX, int regionY)
+    {
             var matches = new List<VisualMatchView>();
 
             foreach (ColorComponent component in selected)
@@ -133,25 +171,6 @@ internal sealed partial class VisualMatchService
                     Scale: null));
             }
 
-            return new MatchVisualView(
-                Mode: string.Empty,
-                ElapsedMs: 0,
-                Point: null, Color: null, Rgb: null,
-                new OptionalBoundsView(regionX, regionY, width, height),
-                target,
-                tolerance,
-                minPixels,
-                maxAreaRatio,
-                excludeBorder,
-                matched,
-                matches.Count,
-                matches,
-                Threshold: null, Template: null, Ambiguous: null, ScoreMargin: null);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(mask);
-        }
+        return matches;
     }
-
 }

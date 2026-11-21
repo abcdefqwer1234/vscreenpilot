@@ -29,32 +29,7 @@ internal sealed partial class ElementOperations
 
         if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaChildId))
         {
-            bool invoked = _host.Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaChildId));
-
-            if (!invoked && allowClick)
-            {
-                var bounds = _host.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaChildId));
-
-                if (bounds is not null)
-                {
-                    invoked = MessageInput.Click(
-                        bounds.Value.Left + bounds.Value.Width / 2,
-                        bounds.Value.Top + bounds.Value.Height / 2,
-                        "left", 1, out _);
-                }
-            }
-
-            if (!invoked)
-            {
-                throw new ToolException(
-                    "E_PATTERN_UNSUPPORTED",
-                    "MSAA 控件不支持默认动作；可改用 click 或 allow_click=true",
-                    new JsonObject { ["ref"] = probe.Ref });
-            }
-
-            return new InvokeElementView(
-                probe.Ref, "msaa", Invoked: true, Verified: false, ControlType: null,
-                Refreshed: false, Detail: null, Element: null);
+            return InvokeMsaaElement(probe, msaaHwnd, msaaChildId, allowClick);
         }
 
         UiaElementHandle handle = _host.Resolver.Resolve(reference, display, out ElementRefEntry entry, out bool refreshed);
@@ -251,4 +226,35 @@ internal sealed partial class ElementOperations
         }
     }
 
+
+    private InvokeElementView InvokeMsaaElement(
+        ElementRefEntry probe, IntPtr msaaHwnd, int msaaChildId, bool allowClick)
+    {
+            bool invoked = _host.Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaChildId));
+
+            if (!invoked && allowClick)
+            {
+                var bounds = _host.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaChildId));
+
+                if (bounds is not null)
+                {
+                    invoked = MessageInput.Click(
+                        bounds.Value.Left + bounds.Value.Width / 2,
+                        bounds.Value.Top + bounds.Value.Height / 2,
+                        "left", 1, out _);
+                }
+            }
+
+            if (!invoked)
+            {
+                throw new ToolException(
+                    "E_PATTERN_UNSUPPORTED",
+                    "MSAA 控件不支持默认动作；可改用 click 或 allow_click=true",
+                    new JsonObject { ["ref"] = probe.Ref });
+            }
+
+            return new InvokeElementView(
+                probe.Ref, "msaa", Invoked: true, Verified: false, ControlType: null,
+                Refreshed: false, Detail: null, Element: null);
+    }
 }

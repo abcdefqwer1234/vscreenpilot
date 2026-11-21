@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-11-21T20:40:02Z",
+  "generated_at": "2026-11-21T20:44:13Z",
   "source": {
     "files": 178,
-    "lines": 32148,
+    "lines": 32202,
     "max_file": 598,
     "files_gt_600": 0,
     "files_gt_800": 0,
@@ -58,36 +58,12 @@
     ]
   },
   "methods": {
-    "max": 148,
+    "max": 137,
     "gt_150": 0,
     "ge_200": 0,
-    "ge_120": 11,
+    "ge_120": 7,
     "ge_80": 52,
     "top": [
-      {
-        "lines": 148,
-        "path": "src/VScreenPilot.Automation/Scripting/ScriptRunner.cs",
-        "line": 35,
-        "name": "Run"
-      },
-      {
-        "lines": 145,
-        "path": "src/VScreenPilot.Server/Ipc/StdioProxy.cs",
-        "line": 16,
-        "name": "TryRun"
-      },
-      {
-        "lines": 139,
-        "path": "src/VScreenPilot.Server/Session/VisualMatchService.Color.cs",
-        "line": 17,
-        "name": "MatchColor"
-      },
-      {
-        "lines": 138,
-        "path": "src/VScreenPilot.Server/Session/ElementOperations.Invoke.cs",
-        "line": 25,
-        "name": "InvokeElement"
-      },
       {
         "lines": 137,
         "path": "src/VScreenPilot.Automation/Perception/PngReader.cs",
@@ -135,6 +111,30 @@
         "path": "src/VScreenPilot.Server/Session/ScreenTextService.cs",
         "line": 148,
         "name": "ClickText"
+      },
+      {
+        "lines": 118,
+        "path": "src/VScreenPilot.Server/Session/InputRouter.Text.cs",
+        "line": 31,
+        "name": "WriteTextVerified"
+      },
+      {
+        "lines": 116,
+        "path": "src/VScreenPilot.Server/Session/VirtualDisplayController.Create.cs",
+        "line": 16,
+        "name": "CreateNewDisplay"
+      },
+      {
+        "lines": 115,
+        "path": "src/VScreenPilot.Server/Ipc/ControlServer.cs",
+        "line": 116,
+        "name": "HandleAsync"
+      },
+      {
+        "lines": 113,
+        "path": "src/VScreenPilot.Server/Session/ElementOperations.Invoke.cs",
+        "line": 25,
+        "name": "InvokeElement"
       }
     ]
   },

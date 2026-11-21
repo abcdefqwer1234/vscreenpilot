@@ -49,6 +49,22 @@ internal sealed class ScriptRunner
         EnsureScriptSafe(code, context.AllowUnsafeScript);
         timeoutMs = Math.Clamp(timeoutMs, 1000, 120_000);
 
+        var prepared = PrepareScript(code, timeoutMs);
+        var stopwatch = Stopwatch.StartNew();
+        var (exitCode, stdout, stderr, timedOut) = ExecuteScript(prepared, context, stopwatch, timeoutMs);
+
+        return new ScriptView(
+            Stdout: Truncate(stdout, OutputCap),
+            Stderr: Truncate(stderr, OutputCap),
+            ExitCode: timedOut ? -1 : exitCode,
+            TimedOut: timedOut,
+            DurationMs: stopwatch.ElapsedMilliseconds,
+            Policy: "blocklist",
+            Sandbox: false);
+    }
+
+    private (string Root, string ScriptPath, string Powershell) PrepareScript(string code, int timeoutMs)
+    {
         string root = Path.Combine(
             Path.GetTempPath(), "VScreenPilot", "scripts", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -66,7 +82,13 @@ internal sealed class ScriptRunner
             powershell = "powershell.exe";
         }
 
-        var stopwatch = Stopwatch.StartNew();
+        return (root, scriptPath, powershell);
+    }
+
+    private (int ExitCode, string Stdout, string Stderr, bool TimedOut) ExecuteScript(
+        (string Root, string ScriptPath, string Powershell) prepared,
+        ScriptRunContext context, Stopwatch stopwatch, int timeoutMs)
+    {
         bool timedOut = false;
         int exitCode = -1;
         string stdout = string.Empty;
@@ -76,9 +98,9 @@ internal sealed class ScriptRunner
         {
             var startInfo = new ProcessStartInfo
             {
-                FileName = powershell,
-                Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{scriptPath}\"",
-                WorkingDirectory = root,
+                FileName = prepared.Powershell,
+                Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{prepared.ScriptPath}\"",
+                WorkingDirectory = prepared.Root,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
@@ -162,7 +184,7 @@ internal sealed class ScriptRunner
         {
             try
             {
-                Directory.Delete(root, recursive: true);
+                Directory.Delete(prepared.Root, recursive: true);
             }
             catch (Exception exception)
             {
@@ -171,14 +193,7 @@ internal sealed class ScriptRunner
             }
         }
 
-        return new ScriptView(
-            Stdout: Truncate(stdout, OutputCap),
-            Stderr: Truncate(stderr, OutputCap),
-            ExitCode: timedOut ? -1 : exitCode,
-            TimedOut: timedOut,
-            DurationMs: stopwatch.ElapsedMilliseconds,
-            Policy: "blocklist",
-            Sandbox: false);
+        return (exitCode, stdout, stderr, timedOut);
     }
 
     /// <summary>
