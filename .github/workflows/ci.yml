@@ -99,8 +99,8 @@ jobs:
       - name: Build audit probes
         run: |
           dotnet build tools/VddProbe/VddProbe.csproj -c Release
-          dotnet build tools/TestTool/targets/UiTarget/UiTarget.csproj -c Release -o tools/audit/targets/bin/UiTarget
-          dotnet build tools/audit/targets/ClickProbe/ClickProbe.csproj -c Release -o tools/audit/targets/bin/ClickProbe
+          dotnet publish tools/TestTool/targets/UiTarget/UiTarget.csproj -c Release -r win-x64 --self-contained true -o tools/audit/targets/bin/UiTarget
+          dotnet publish tools/audit/targets/ClickProbe/ClickProbe.csproj -c Release -r win-x64 --self-contained true -o tools/audit/targets/bin/ClickProbe
 
       - name: Protocol / contract / concurrency / capture
         run: |
