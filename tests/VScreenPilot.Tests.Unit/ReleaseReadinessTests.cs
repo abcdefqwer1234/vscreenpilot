@@ -15,17 +15,17 @@ public sealed class ToolCatalogTests
         "set_element_value", "snapshot", "type_text", "wait_for",
     ];
 
-    private static Dictionary<string, McpServer.ToolDefinition> Catalog()
+    private static Dictionary<string, ToolDescriptor> Catalog()
     {
         // trace=false：只构建目录，不读会话、不写 trace。
-        var server = new McpServer(null!, null!, trace: false);
-        return server.BuildTools();
+        var server = new McpTransport(null!, null!, trace: false);
+        return server.BuildTools().All.ToDictionary(item => item.Name);
     }
 
     [Fact]
     public void CatalogMatchesPublishedToolSet()
     {
-        Dictionary<string, McpServer.ToolDefinition> tools = Catalog();
+        Dictionary<string, ToolDescriptor> tools = Catalog();
 
         Assert.Equal(Expected.Length, tools.Count);
         Assert.Equal(
@@ -36,7 +36,7 @@ public sealed class ToolCatalogTests
     [Fact]
     public void EveryToolHasUsableSchemas()
     {
-        foreach ((string name, McpServer.ToolDefinition tool) in Catalog())
+        foreach ((string name, ToolDescriptor tool) in Catalog())
         {
             Assert.False(string.IsNullOrWhiteSpace(tool.Title), name);
             Assert.False(string.IsNullOrWhiteSpace(tool.Description), name);
@@ -53,9 +53,9 @@ public sealed class ToolCatalogTests
     [Fact]
     public void AnnotationsMatchMutatingSet()
     {
-        foreach ((string name, McpServer.ToolDefinition tool) in Catalog())
+        foreach ((string name, ToolDescriptor tool) in Catalog())
         {
-            if (McpServer.MutatingTools.Contains(name))
+            if (tool.Policy.Mutates)
             {
                 Assert.False(tool.ReadOnly, $"{name} 会改变状态，不能标只读");
             }
@@ -72,7 +72,7 @@ public sealed class ToolCatalogTests
     [Fact]
     public void RequiredFieldsAreDeclared()
     {
-        Dictionary<string, McpServer.ToolDefinition> tools = Catalog();
+        Dictionary<string, ToolDescriptor> tools = Catalog();
 
         AssertRequired(tools, "click", "x", "y");
         AssertRequired(tools, "click_ref", "ref");
@@ -88,7 +88,7 @@ public sealed class ToolCatalogTests
     }
 
     private static void AssertRequired(
-        Dictionary<string, McpServer.ToolDefinition> tools, string name, params string[] expected)
+        Dictionary<string, ToolDescriptor> tools, string name, params string[] expected)
     {
         var schema = Assert.IsType<JsonObject>(tools[name].InputSchema);
         var required = Assert.IsType<JsonArray>(schema["required"]);

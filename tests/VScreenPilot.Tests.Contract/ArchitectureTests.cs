@@ -56,7 +56,7 @@ public sealed class ArchitectureTests
     }
 
     /// <summary>
-    /// P3–P4 期间 Automation 仍借用 UiaElementInfo.ToJson；P5 删除 McpServer 门面后必须为 0。
+    /// P3–P4 期间 Automation 仍借用 UiaElementInfo.ToJson；P5 删除 McpTransport 门面后必须为 0。
     /// 该断言先跳过，但已入库，避免遗漏。
     /// </summary>
     [Fact(Skip = "P5：UiaElementInfo 序列化移到 ElementPresenter 后启用")]

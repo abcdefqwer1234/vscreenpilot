@@ -176,7 +176,7 @@ internal static class Program
             var stateStore = new StateStore(log);
             var job = new JobObject();
             var localSession = new SessionManager(log, stateStore, job, allowScript);
-            McpServer.WireProviders(localSession, log);
+            McpTransport.WireProviders(localSession, log);
             return LocalSessionInvoker.Run(cliCommand!, args, localSession, log, job, mutex);
         }
 
@@ -187,7 +187,7 @@ internal static class Program
         var appStateStore = new StateStore(log);
         var appJob = new JobObject();
         var session = new SessionManager(log, appStateStore, appJob, allowScript);
-        McpServer.WireProviders(session, log);
+        McpTransport.WireProviders(session, log);
         trace = new TraceLog();
 
         using var host = new ServerHost(

@@ -1,7 +1,7 @@
 namespace VScreenPilot.Infrastructure;
 
 /// <summary>
-/// 与外部行为相关的阈值。此前分散在 McpServer 与 SessionManager.Snapshot 里，
+/// 与外部行为相关的阈值。此前分散在 McpTransport 与 SessionManager.Snapshot 里，
 /// 改一处忘一处就会造成“工具返回的内联/预览规则不一致”。
 /// </summary>
 internal static class Limits

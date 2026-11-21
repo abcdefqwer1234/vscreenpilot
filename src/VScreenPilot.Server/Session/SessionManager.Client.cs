@@ -5,7 +5,7 @@ namespace VScreenPilot.Session;
 
 internal sealed partial class SessionManager
 {
-    /// <summary>租约/状态由 McpServer 提供，避免 SessionManager 反向依赖 MCP 层。</summary>
+    /// <summary>租约/状态由 McpTransport 提供，避免 SessionManager 反向依赖 MCP 层。</summary>
     internal Func<string?>? LeaseHolderProvider { get; set; }
 
     internal Func<JsonObject>? ScreenLeaseProvider { get; set; }

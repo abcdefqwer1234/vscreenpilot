@@ -19,21 +19,14 @@ namespace VScreenPilot.Mcp;
 /// MCP 服务端：协议/分帧/生命周期交给官方 ModelContextProtocol SDK，
 /// 本类只负责工具目录、参数校验、写操作调度、进度与追踪。
 /// </summary>
-internal sealed class McpServer
+internal sealed class McpTransport
 {
-    internal static readonly HashSet<string> MutatingTools = new(StringComparer.Ordinal)
-    {
-        "click", "click_ref", "click_text", "gesture", "type_text", "press_keys",
-        "invoke_element", "set_element_value", "launch_or_place_app", "release_environment",
-        "run_script",
-    };
-
     private readonly SessionManager _session;
     private readonly LogRing _log;
     private readonly ClientContext? _client;
     private readonly TraceLog? _trace;
     private readonly bool _ownsTrace;
-    private readonly Dictionary<string, ToolDefinition> _tools;
+    private readonly ToolRegistry _tools;
     private int _inflightHandlers;
     /// <summary>
     /// 组合根接线：把会话需要的租约/日志提供者指向本进程的唯一实例。
@@ -56,40 +49,29 @@ internal sealed class McpServer
     private const double RateCapacity = 300;
     private const double RateRefillPerSecond = 100;
 
-    internal sealed record ToolDefinition(
-        string Name,
-        string Title,
-        string Description,
-        JsonNode InputSchema,
-        JsonNode OutputSchema,
-        bool ReadOnly,
-        bool Destructive,
-        int TimeoutMs,
-        Func<JsonElement, ToolResponse> Handler);
-
-    public McpServer(SessionManager session, LogRing log)
+    public McpTransport(SessionManager session, LogRing log)
         : this(session, log, trace: true, client: null, sharedTrace: null)
     {
     }
 
-    internal McpServer(SessionManager session, LogRing log, TraceLog sharedTrace)
+    internal McpTransport(SessionManager session, LogRing log, TraceLog sharedTrace)
         : this(session, log, trace: true, client: null, sharedTrace: sharedTrace)
     {
     }
 
-    internal McpServer(
+    internal McpTransport(
         SessionManager session, LogRing log, ClientContext client, TraceLog sharedTrace)
         : this(session, log, trace: true, client: client, sharedTrace: sharedTrace)
     {
     }
 
     /// <summary>trace=false 供单测检查工具目录；此时不读取会话，也不写 trace 文件。</summary>
-    internal McpServer(SessionManager session, LogRing log, bool trace)
+    internal McpTransport(SessionManager session, LogRing log, bool trace)
         : this(session, log, trace, client: null, sharedTrace: null)
     {
     }
 
-    private McpServer(
+    private McpTransport(
         SessionManager session, LogRing log, bool trace, ClientContext? client, TraceLog? sharedTrace)
     {
         _session = session;
@@ -268,7 +250,7 @@ internal sealed class McpServer
     {
         var list = new List<Tool>(_tools.Count);
 
-        foreach (ToolDefinition definition in _tools.Values.OrderBy(item => item.Name, StringComparer.Ordinal))
+        foreach (ToolDescriptor definition in _tools.All.OrderBy(item => item.Name, StringComparer.Ordinal))
         {
             list.Add(new Tool
             {
@@ -459,7 +441,7 @@ internal sealed class McpServer
         string name = context.Params?.Name ?? string.Empty;
         string requestId = Guid.NewGuid().ToString("N")[..12];
 
-        if (!_tools.TryGetValue(name, out ToolDefinition? tool))
+        if (!_tools.TryGet(name, out ToolDescriptor? tool))
         {
             // SDK 会把 handler 异常转成无结构的 isError 文本；这里主动返回统一错误目录，
             // 客户端和模型都能拿到 code/hint/docs，而不是一句英文。
@@ -509,351 +491,29 @@ internal sealed class McpServer
     }
 
     private async Task<CallToolResult> ExecuteToolAsync(
-        ToolDefinition tool,
+        ToolDescriptor tool,
         JsonElement arguments,
         RequestContext<CallToolRequestParams> context,
         string requestId,
         string? argumentSummary,
         CancellationToken cancellationToken)
     {
-        using IDisposable? clientScope = _client is null
-            ? null
-            : _session.Clients.Use(_client);
-        long epoch = _session.Epoch;
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        WriteScheduler.Lease? lease = null;
-        CancellationTokenSource? callCts = null;
-        bool callCtsTransferred = false;
-        Task<ToolResponse>? handlerTask = null;
-        bool mutating = MutatingTools.Contains(tool.Name);
-        IDisposable? screenLease = null;
-        bool releaseSucceeded = false;
+        var executor = new ToolExecutor(
+            _session,
+            _log,
+            _scheduler,
+            _client,
+            Trace,
+            context.Params?.Meta?["progressToken"] is null
+                ? null
+                : (current, total, message) => ReportProgress(context, current, total, message),
+            () => Interlocked.Increment(ref _inflightHandlers),
+            () => Interlocked.Decrement(ref _inflightHandlers));
 
-        try
-        {
-            string clientId = _client?.Id ?? "c0";
-
-            if (RequiresScreenLease(tool.Name, arguments))
-            {
-                screenLease = _session.Lease.Acquire(clientId, tool.Name);
-
-                if (KeepsForeground(arguments))
-                {
-                    _session.Lease.Extend(clientId, 30_000);
-                    _session.PauseFocusGuard(30_000);
-                }
-            }
-
-            if (mutating)
-            {
-                // release 等 6s：正常写操作应在这之前结束；只有锁定超过 5s 的卡死 handler 才旁路。
-                TimeSpan wait = tool.Name == "release_environment"
-                    ? TimeSpan.FromSeconds(6)
-                    : TimeSpan.FromSeconds(30);
-
-                lease = await _scheduler.AcquireAsync(
-                    tool.Name, wait, cancellationToken,
-                    bypass: tool.Name == "release_environment").ConfigureAwait(false);
-            }
-
-            callCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            callCts.CancelAfter(tool.TimeoutMs);
-            _session.SetCancellation(callCts);
-
-            // 长任务至少给一次“已开始/已完成”进度，客户端不会以为调用挂死。
-            ReportProgress(context, 0, 1, "started");
-
-            handlerTask = Task.Run(() =>
-            {
-                Action<int, int, string>? reporter = context.Params?.Meta?["progressToken"] is null
-                    ? null
-                    : (current, total, message) => ReportProgress(context, current, total, message);
-
-                // release 与只读观察互斥：release 摘屏前先等 snapshot/capture 结束。
-                // wait_for 可能持续 120s，不能持读锁阻塞 release；get_log 不碰显示，也跳过。
-                // 注意：这里用“是否读会话”而不是 readOnlyHint 判断。snapshot/capture_screen
-                // 会换代/写盘，标注上不是只读，但仍然必须受 release 的读锁保护。
-                bool sessionRead = tool.Name is not ("wait_for" or "get_log" or "release_environment");
-                bool sessionWrite = tool.Name == "release_environment";
-                bool writeHeld = false;
-
-                if (sessionRead)
-                {
-                    _session.EnterRead();
-                }
-                else if (sessionWrite)
-                {
-                    writeHeld = _session.TryEnterExclusive(3000);
-
-                    if (!writeHeld)
-                    {
-                        // 不能“等不到锁也继续清理”：只读观察可能正在读 UIA/屏幕，
-                        // 同时摘屏会让它们拿到半清理状态。宁可让调用方重试。
-                        return ToolResponse.Error(
-                            "E_BUSY",
-                            "release_environment 等待只读观察结束超时（3s）",
-                            new JsonObject
-                            {
-                                ["held_by"] = "snapshot/capture/find_element",
-                                ["retry_after_ms"] = 500,
-                            },
-                            retryable: true,
-                            hint: "稍后重试；也可以等当前 snapshot/capture 返回后再 release",
-                            stage: "session");
-                    }
-                }
-
-                using var progress = ToolProgress.Begin(reporter);
-
-                try
-                {
-                    return tool.Handler(arguments);
-                }
-                catch (ToolException exception)
-                {
-                    return ToolResponse.FromException(exception);
-                }
-                catch (Exception exception)
-                {
-                    _log.Error($"工具 {tool.Name} 异常", exception);
-                    return ToolResponse.FromException(exception, $"tool:{tool.Name}");
-                }
-                finally
-                {
-                    if (sessionRead)
-                    {
-                        _session.ExitRead();
-                    }
-                    else if (writeHeld)
-                    {
-                        _session.ExitExclusive();
-                    }
-                }
-            }, CancellationToken.None);
-
-            Interlocked.Increment(ref _inflightHandlers);
-            _ = handlerTask.ContinueWith(
-                _ => Interlocked.Decrement(ref _inflightHandlers),
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
-
-            ToolResponse response;
-
-            try
-            {
-                response = await handlerTask!
-                    .WaitAsync(TimeSpan.FromMilliseconds(tool.TimeoutMs), cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (TimeoutException)
-            {
-                // 写锁不释放：卡住的 handler 仍在操作 UI，不能让另一个写操作重叠。
-                if (lease is not null)
-                {
-                    WriteScheduler.ReleaseWhen(handlerTask!, lease);
-                    lease = null;
-                }
-
-                // 协作式取消：让还在循环里的 handler 尽快停下；CTS 交给 handler 释放，
-                // 否则 using 会先把 token 源 dispose，Cancellation 属性就退化成 None（S5）。
-                try
-                {
-                    callCts?.Cancel();
-                }
-                catch (ObjectDisposedException)
-                {
-                    // 已经结束。
-                }
-                _ = handlerTask!.ContinueWith(
-                    _ => callCts?.Dispose(), TaskScheduler.Default);
-                callCtsTransferred = true;
-
-                if (screenLease is not null)
-                {
-                    IDisposable pendingLease = screenLease;
-                    screenLease = null;
-                    _ = handlerTask!.ContinueWith(
-                        _ => pendingLease.Dispose(), TaskScheduler.Default);
-                }
-
-                _log.Warn($"工具 {tool.Name} 超过 {tool.TimeoutMs}ms 未完成，已请求取消");
-                response = ToolResponse.Error(
-                    "E_TIMEOUT",
-                    $"工具 {tool.Name} 超过 {tool.TimeoutMs}ms 未完成",
-                    new JsonObject { ["tool"] = tool.Name, ["timeout_ms"] = tool.TimeoutMs },
-                    retryable: true,
-                    hint: "可重试；若持续超时，先保存再 release_environment{on_dirty:\"force\",allow_data_loss:true} 重置会话",
-                    stage: "tool");
-            }
-
-            if (_session.Epoch != epoch && tool.Name != "release_environment")
-            {
-                response = ToolResponse.Error(
-                    "E_CANCELLED",
-                    "会话已被 release_environment 重置，本次结果已丢弃",
-                    new JsonObject { ["epoch"] = epoch, ["current_epoch"] = _session.Epoch },
-                    retryable: true,
-                    hint: "重新调用 snapshot/launch_or_place_app",
-                    stage: "session");
-            }
-
-            stopwatch.Stop();
-            response.SetRequestId(requestId);
-
-            if (tool.Name == "release_environment" && !response.IsError)
-            {
-                releaseSucceeded = true;
-            }
-
-            ReportProgress(context, 1, 1, "completed");
-            Trace(tool.Name, requestId, argumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
-            return ToResult(response);
-        }
-        catch (OperationCanceledException)
-        {
-            // 客户端取消：handler 可能仍在注入。写锁交给它，CTS 也交给它释放，
-            // 避免 “已取消但仍在点击” 与新写操作并发（S5 的另一半）。
-            if (lease is not null)
-            {
-                if (handlerTask is not null)
-                {
-                    WriteScheduler.ReleaseWhen(handlerTask, lease);
-                }
-                else
-                {
-                    lease.Dispose();
-                }
-
-                lease = null;
-            }
-
-            if (screenLease is not null)
-            {
-                IDisposable pendingLease = screenLease;
-                screenLease = null;
-
-                if (handlerTask is not null)
-                {
-                    _ = handlerTask.ContinueWith(
-                        _ => pendingLease.Dispose(), TaskScheduler.Default);
-                }
-                else
-                {
-                    pendingLease.Dispose();
-                }
-            }
-
-            try
-            {
-                callCts?.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-                // 已经结束。
-            }
-
-            if (callCts is not null && handlerTask is not null && !handlerTask.IsCompleted)
-            {
-                _ = handlerTask.ContinueWith(_ => callCts?.Dispose(), TaskScheduler.Default);
-                callCtsTransferred = true;
-            }
-
-            throw;
-        }
-        catch (ToolException exception)
-        {
-            var response = ToolResponse.FromException(exception).SetRequestId(requestId);
-            Trace(tool.Name, requestId, argumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
-            return ToResult(response);
-        }
-        catch (Exception exception)
-        {
-            _log.Error($"工具 {tool.Name} 失败", exception);
-            var response = ToolResponse.FromException(exception, $"tool:{tool.Name}")
-                .SetRequestId(requestId);
-            Trace(tool.Name, requestId, argumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
-            return ToResult(response);
-        }
-        finally
-        {
-            _session.SetCancellation(null);
-
-            // 超时后 CTS 的所有权已经交给仍在运行的 handler。
-            if (!callCtsTransferred)
-            {
-                callCts?.Dispose();
-            }
-
-            if (tool.Name == "release_environment")
-            {
-                string releaseClientId = _client?.Id ?? "c0";
-
-                if (releaseSucceeded)
-                {
-                    // 只有真正清理成功才把屏幕交给下一个客户端；失败时仍保留租约。
-                    // 这里不能用 ReleaseHolderIfIdle：本工具自己还持有一个租约（active_calls>=1）。
-                    _session.Lease.ForceRelease(releaseClientId);
-                }
-                else if (handlerTask is { IsCompleted: false })
-                {
-                    // 超时/取消时 handler 可能仍在关闭窗口：等它真正结束再释放租约。
-                    _ = handlerTask.ContinueWith(
-                        _ => _session.Lease.ForceRelease(releaseClientId),
-                        CancellationToken.None,
-                        TaskContinuationOptions.ExecuteSynchronously,
-                        TaskScheduler.Default);
-                }
-            }
-
-            // 释放顺序与获取相反：先写锁，后屏幕租约。
-            lease?.Dispose();
-            screenLease?.Dispose();
-        }
-    }
-
-    private static bool KeepsForeground(JsonElement arguments) =>
-        arguments.ValueKind == JsonValueKind.Object &&
-        arguments.TryGetProperty("keep_foreground", out JsonElement value) &&
-        value.ValueKind == JsonValueKind.True;
-
-    private bool RequiresScreenLease(string tool, JsonElement arguments)
-    {
-        // 只清 refs/租约的 release 不需要租约；有 live apps 时要和 GUI 操作互斥。
-        if (tool == "release_environment")
-        {
-            return _session.HasLiveOwnedApps();
-        }
-
-        if (tool == "get_environment")
-        {
-            // 只读元数据不需要租约；ensure=true 会挂载/修复显示，必须和 GUI 串行。
-            return OptionalBool(arguments, "ensure", false);
-        }
-
-        if (tool is "get_log" or "find_element" or "get_ui_tree" or "get_element_text")
-        {
-            return false;
-        }
-
-        if (tool == "snapshot")
-        {
-            bool screenshot = arguments.TryGetProperty("include_screenshot", out JsonElement value) &&
-                              value.ValueKind == JsonValueKind.True;
-            bool annotate = arguments.TryGetProperty("annotate", out JsonElement annotateValue) &&
-                            annotateValue.ValueKind == JsonValueKind.True;
-            return screenshot || annotate;
-        }
-
-        if (tool == "wait_for")
-        {
-            return arguments.TryGetProperty("condition", out JsonElement condition) &&
-                   condition.TryGetProperty("type", out JsonElement type) &&
-                   type.ValueKind == JsonValueKind.String &&
-                   type.GetString() is "color" or "pixel_diff" or "visual";
-        }
-
-        return true;
+        ToolResponse response = await executor
+            .ExecuteAsync(tool, arguments, requestId, argumentSummary, cancellationToken)
+            .ConfigureAwait(false);
+        return ToResult(response);
     }
 
     private static bool TryAcquireRateLimit(out int retryAfterMs)
@@ -1054,9 +714,9 @@ internal sealed class McpServer
         };
     }
 
-    internal Dictionary<string, ToolDefinition> BuildTools()
+    internal ToolRegistry BuildTools()
     {
-        var tools = new Dictionary<string, ToolDefinition>(StringComparer.Ordinal);
+        var tools = new ToolRegistry();
 
         Add(tools, "get_environment", "Environment",
             "Read virtual display, display topology, foreground window and session state. " +
@@ -1067,7 +727,7 @@ internal sealed class McpServer
             """,
             Out("virtual_display:object", "session:object", "foreground:object", "primary:object", "virtual_screen:object",
                 "client_id:string", "screen_lease:object"),
-            readOnly: false, destructive: false, timeoutMs: 20000, GetEnvironment);
+            policy: new(Lease: ScreenLeaseMode.EnsureOption), readOnly: false, destructive: false, timeoutMs: 20000, GetEnvironment);
 
         Add(tools, "launch_or_place_app", "Launch or attach app",
             "Start an application or attach to an existing window, move it onto the virtual display and maximize it. " +
@@ -1089,7 +749,7 @@ internal sealed class McpServer
             Out("launched:boolean", "new_instance:boolean", "reused:boolean", "pid:integer", "hwnd:integer",
                 "title:string", "maximized:boolean", "document_ready:boolean",
                 "document_ready_reason:string", "dialogs:array", "warnings:array"),
-            readOnly: false, destructive: false, timeoutMs: 90000, LaunchOrPlace);
+            policy: new(Mutates: true), readOnly: false, destructive: false, timeoutMs: 90000, LaunchOrPlace);
 
         Add(tools, "snapshot", "Snapshot",
             "One-call observation: compact semantic tree with refs, tracked windows, owned dialogs, focus and " +
@@ -1110,7 +770,7 @@ internal sealed class McpServer
                 "truncated:boolean", "max_nodes_effective:integer", "ref_capacity:integer",
                 "windows:array", "dialogs:array", "foreground:object", "screenshot:object",
                 "screenshot_path:string", "screenshot_uri:string", "screenshot_preview:object", "annotations:array"),
-            readOnly: false, destructive: false, timeoutMs: 45000, Snapshot);
+            policy: new(Lease: ScreenLeaseMode.SnapshotOptions), readOnly: false, destructive: false, timeoutMs: 45000, Snapshot);
 
         Add(tools, "capture_screen", "Capture screen",
             "Capture the virtual display or a region. Returns a PNG plus meta. If save_path is given it is the only " +
@@ -1133,7 +793,7 @@ internal sealed class McpServer
                 "artifact_path:string", "resource_uri:string", "artifact_uri:string",
                 "inline:boolean", "preview:object", "preview_error:string",
                 "backend:string", "slow_capture:boolean"),
-            readOnly: false, destructive: false, timeoutMs: 30000, CaptureScreen);
+            policy: new(), readOnly: false, destructive: false, timeoutMs: 30000, CaptureScreen);
 
         Add(tools, "find_element", "Find element",
             "Find UI Automation elements and return refs, bounds, state and snapshot_id. Falls back to MSAA when a " +
@@ -1156,7 +816,7 @@ internal sealed class McpServer
             Out("ref:string", "count:integer", "total:integer", "truncated:boolean",
                 "snapshot_id:string", "name:string", "control_type:string", "bounds:object",
                 "enabled:boolean", "offscreen:boolean", "matches:array", "elements:array"),
-            readOnly: true, destructive: false, timeoutMs: 30000, FindElement);
+            policy: new(Lease: ScreenLeaseMode.None), readOnly: true, destructive: false, timeoutMs: 30000, FindElement);
 
         Add(tools, "get_ui_tree", "UI tree",
             "Read the pruned semantic tree of the tracked window. Nodes carry refs. By default it reuses the current " +
@@ -1175,7 +835,7 @@ internal sealed class McpServer
                 "truncated_reason:string", "max_nodes_effective:integer",
                 "max_nodes_clamped:boolean", "ref_capacity:integer", "snapshot_id:string",
                 "new_snapshot:boolean"),
-            readOnly: true, destructive: false, timeoutMs: 30000, GetUiTree);
+            policy: new(Lease: ScreenLeaseMode.None), readOnly: true, destructive: false, timeoutMs: 30000, GetUiTree);
 
         Add(tools, "invoke_element", "Invoke element",
             "Invoke a control by ref. auto tries Invoke/Toggle/SelectionItem/ExpandCollapse/Legacy; pattern=default " +
@@ -1188,7 +848,7 @@ internal sealed class McpServer
               "required":["ref"]}
             """,
             Out("invoked:boolean", "pattern:string", "channel:string", "verified:boolean"),
-            readOnly: false, destructive: true, timeoutMs: 30000, InvokeElement);
+            policy: new(Mutates: true), readOnly: false, destructive: true, timeoutMs: 30000, InvokeElement);
 
         Add(tools, "set_element_value", "Set value",
             "Write a value by ref. ValuePattern first; allow_keyboard=true falls back to typing. Overwriting non-empty " +
@@ -1203,7 +863,7 @@ internal sealed class McpServer
               "required":["ref","value"]}
             """,
             Out("written:string", "value:string", "mode:string", "verified:boolean", "observed_length:integer"),
-            readOnly: false, destructive: true, timeoutMs: 30000, SetElementValue);
+            policy: new(Mutates: true), readOnly: false, destructive: true, timeoutMs: 30000, SetElementValue);
 
         Add(tools, "get_element_text", "Get text",
             "Read text through TextPattern then ValuePattern. Use it to verify what you typed.",
@@ -1214,7 +874,7 @@ internal sealed class McpServer
               "required":["ref"]}
             """,
             Out("text:string", "length:integer", "source:string", "truncated:boolean"),
-            readOnly: true, destructive: false, timeoutMs: 20000, GetElementText);
+            policy: new(Lease: ScreenLeaseMode.None), readOnly: true, destructive: false, timeoutMs: 20000, GetElementText);
 
         Add(tools, "click", "Click",
             "Click at virtual-desktop coordinates. channel=auto tries a UIA element, then a window message; " +
@@ -1236,7 +896,7 @@ internal sealed class McpServer
             Out("x:integer", "y:integer", "button:string", "clicks:integer", "mode:string",
                 "method:string", "inject_ms:number", "duration_ms:number", "verified:boolean",
                 "keep_foreground:boolean", "detail:string", "hint:string", "observed:object"),
-            readOnly: false, destructive: true, timeoutMs: 25000, Click);
+            policy: new(Mutates: true), readOnly: false, destructive: true, timeoutMs: 25000, Click);
 
         Add(tools, "click_ref", "Click element by ref",
             "Click a control by element_ref. auto first tries UIA Invoke/Toggle/Select, then message click " +
@@ -1252,7 +912,7 @@ internal sealed class McpServer
             """,
             Out("clicked:boolean", "ref:string", "channel:string", "pattern:string",
                 "refreshed:boolean", "bounds:object", "observed:object"),
-            readOnly: false, destructive: true, timeoutMs: 20000, ClickRef);
+            policy: new(Mutates: true), readOnly: false, destructive: true, timeoutMs: 20000, ClickRef);
 
         Add(tools, "read_screen_text", "Read screen text (OCR)",
             "OCR the virtual display or a region with the built-in Windows OCR engine. Use it for canvas apps " +
@@ -1268,7 +928,7 @@ internal sealed class McpServer
             """,
             Out("engine:string", "language:string", "lines:array", "matches:array", "count:integer",
                 "returned:integer", "truncated:boolean", "region:object", "duration_ms:number"),
-            readOnly: true, destructive: false, timeoutMs: 60000, ReadScreenText);
+            policy: new(), readOnly: true, destructive: false, timeoutMs: 60000, ReadScreenText);
 
         Add(tools, "click_text", "Click text on screen",
             "OCR the virtual display (or a region), find the first line containing text, click its center and " +
@@ -1290,7 +950,7 @@ internal sealed class McpServer
             """,
             Out("found:boolean", "text:string", "x:integer", "y:integer", "bounds:object",
                 "ambiguous:boolean", "matches:array", "method:string", "observed:object"),
-            readOnly: false, destructive: true, timeoutMs: 60000, ClickText);
+            policy: new(Mutates: true), readOnly: false, destructive: true, timeoutMs: 60000, ClickText);
 
         Add(tools, "gesture", "Gesture",
             "Composite mouse action: drag, scroll or move. Message mode cannot drag across windows; use " +
@@ -1310,7 +970,7 @@ internal sealed class McpServer
             Out("type:string", "from:object", "to:object", "dx:integer", "dy:integer",
                 "button:string", "method:string", "detail:string", "verified:boolean",
                 "inject_ms:number", "duration_ms:number", "observed:object", "hint:string"),
-            readOnly: false, destructive: true, timeoutMs: 35000, Gesture);
+            policy: new(Mutates: true), readOnly: false, destructive: true, timeoutMs: 35000, Gesture);
 
         Add(tools, "type_text", "Type text",
             "Type text into the focused control. auto uses a pattern write, clipboard paste for long text, or " +
@@ -1326,7 +986,7 @@ internal sealed class McpServer
             """,
             Out("typed:integer", "verified:boolean", "channel:string", "inject_ms:number", "duration_ms:number",
                 "observed_length:integer", "chunks:integer"),
-            readOnly: false, destructive: true, timeoutMs: 120000, TypeText);
+            policy: new(Mutates: true), readOnly: false, destructive: true, timeoutMs: 120000, TypeText);
 
         Add(tools, "press_keys", "Press keys",
             "Send a key combination or a sequence inside one foreground lease. System shortcuts (Win+*, Alt+Tab, " +
@@ -1342,7 +1002,7 @@ internal sealed class McpServer
             """,
             Out("keys:string", "count:integer", "target_pid:integer", "inject_ms:number",
                 "duration_ms:number", "keep_foreground:boolean", "verified:boolean", "observed:object"),
-            readOnly: false, destructive: true, timeoutMs: 35000, PressKeys);
+            policy: new(Mutates: true), readOnly: false, destructive: true, timeoutMs: 35000, PressKeys);
 
         Add(tools, "wait_for", "Wait for condition",
             "Poll a condition on the server inside one call. type=element|color|window|pixel_diff|visual|text. " +
@@ -1361,7 +1021,7 @@ internal sealed class McpServer
               ]}}}
             """,
             Out("satisfied:boolean", "elapsed_ms:integer", "last:object"),
-            readOnly: true, destructive: false, timeoutMs: 130000, WaitFor);
+            policy: new(Lease: ScreenLeaseMode.WaitCondition, SessionRead: false), readOnly: true, destructive: false, timeoutMs: 130000, WaitFor);
 
         Add(tools, "assert_region", "Assert region",
             "Assert color coverage or change against a baseline. An explicit baseline_frame_id must match x/y/width/height " +
@@ -1375,7 +1035,7 @@ internal sealed class McpServer
               ]}}}
             """,
             Out("passed:boolean", "changed_ratio:number", "coverage:number", "baseline_frame_id:string"),
-            readOnly: true, destructive: false, timeoutMs: 30000, AssertRegion);
+            policy: new(), readOnly: true, destructive: false, timeoutMs: 30000, AssertRegion);
 
         Add(tools, "match_visual", "Match visual",
             "Locate pixels on the virtual display: color connected components, single pixel, or PNG template match. " +
@@ -1399,7 +1059,7 @@ internal sealed class McpServer
             """,
             Out("found:boolean", "count:integer", "x:integer", "y:integer", "width:integer", "height:integer",
                 "color:string", "matches:array", "threshold:number", "template:object", "scale:number"),
-            readOnly: true, destructive: false, timeoutMs: 60000, MatchVisual);
+            policy: new(), readOnly: true, destructive: false, timeoutMs: 60000, MatchVisual);
 
         Add(tools, "release_environment", "Release environment",
             "End the debug session: restore window placement, close only processes this session started, optionally " +
@@ -1415,7 +1075,7 @@ internal sealed class McpServer
                 "on_dirty:string", "restored_pids:array", "closed_pids:array",
                 "forced_pids:array", "kept_pids:array", "saved_pids:array",
                 "discarded_pids:array", "memory:object", "warnings:array"),
-            readOnly: false, destructive: true, timeoutMs: 90000, ReleaseEnvironment);
+            policy: new(Mutates: true, Lease: ScreenLeaseMode.IfLiveApps, SessionWrite: true, BypassWriteLock: true, WriteTimeoutMs: 6000), readOnly: false, destructive: true, timeoutMs: 90000, ReleaseEnvironment);
 
         Add(tools, "get_log", "Get log",
             "Read recent in-memory or file log entries, filtered by level/contains. Use it after E_INTERNAL or E_TIMEOUT.",
@@ -1428,7 +1088,7 @@ internal sealed class McpServer
               "include_other_clients":{"type":"boolean","description":"Include entries owned by other MCP clients. Default false."}}}
             """,
             Out("source:string", "entries:array", "file_entries:array", "last_error:object"),
-            readOnly: true, destructive: false, timeoutMs: 15000, GetLog);
+            policy: new(Lease: ScreenLeaseMode.None, SessionRead: false), readOnly: true, destructive: false, timeoutMs: 15000, GetLog);
 
         Add(tools, "run_script", "Run script",
             "Run a temporary PowerShell script with the current user token. Disabled unless the server was started " +
@@ -1440,27 +1100,28 @@ internal sealed class McpServer
             """,
             Out("stdout:string", "stderr:string", "exit_code:integer", "duration_ms:number",
                 "timed_out:boolean", "truncated:boolean"),
-            readOnly: false, destructive: true, timeoutMs: 130000, RunScript);
+            policy: new(Mutates: true), readOnly: false, destructive: true, timeoutMs: 130000, RunScript);
 
         return tools;
     }
 
     private static void Add(
-        Dictionary<string, ToolDefinition> tools,
+        ToolRegistry tools,
         string name,
         string title,
         string description,
         string schemaJson,
         JsonNode outputSchema,
+        ToolPolicy policy,
         bool readOnly,
         bool destructive,
         int timeoutMs,
         Func<JsonElement, ToolResponse> handler)
     {
-        tools[name] = new ToolDefinition(
+        tools.Add(new ToolDescriptor(
             name, title, description,
             JsonNode.Parse(schemaJson)!, outputSchema,
-            readOnly, destructive, timeoutMs, handler);
+            readOnly, destructive, timeoutMs, policy, handler));
     }
 
     /// <summary>生成“成功或错误都能通过”的输出 schema：声明字段但不强制 required。</summary>

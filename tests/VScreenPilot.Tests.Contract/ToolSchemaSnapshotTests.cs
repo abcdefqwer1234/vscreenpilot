@@ -12,10 +12,10 @@ public sealed class ToolSchemaSnapshotTests
 {
     private const string BaselineToolCount = "22";
 
-    private static Dictionary<string, McpServer.ToolDefinition> Catalog()
+    private static Dictionary<string, ToolDescriptor> Catalog()
     {
         // trace=false：只构建目录，不读会话、不写 trace。
-        return new McpServer(null!, null!, trace: false).BuildTools();
+        return new McpTransport(null!, null!, trace: false).BuildTools().All.ToDictionary(item => item.Name);
     }
 
     private static string RepoRoot()
@@ -67,12 +67,12 @@ public sealed class ToolSchemaSnapshotTests
     [Fact]
     public void TitlesAndDescriptionsAreFrozen()
     {
-        Dictionary<string, McpServer.ToolDefinition> catalog = Catalog();
+        Dictionary<string, ToolDescriptor> catalog = Catalog();
 
         foreach (JsonNode? tool in BaselineTools())
         {
             string name = tool!["name"]!.GetValue<string>();
-            McpServer.ToolDefinition definition = catalog[name];
+            ToolDescriptor definition = catalog[name];
 
             Assert.Equal(tool["title"]?.GetValue<string>(), definition.Title);
             Assert.Equal(tool["description"]?.GetValue<string>(), definition.Description);
@@ -82,12 +82,12 @@ public sealed class ToolSchemaSnapshotTests
     [Fact]
     public void SchemasAreFrozen()
     {
-        Dictionary<string, McpServer.ToolDefinition> catalog = Catalog();
+        Dictionary<string, ToolDescriptor> catalog = Catalog();
 
         foreach (JsonNode? tool in BaselineTools())
         {
             string name = tool!["name"]!.GetValue<string>();
-            McpServer.ToolDefinition definition = catalog[name];
+            ToolDescriptor definition = catalog[name];
 
             AssertJsonEqual(tool["inputSchema"], definition.InputSchema, $"{name}.inputSchema");
             AssertJsonEqual(tool["outputSchema"], definition.OutputSchema, $"{name}.outputSchema");
@@ -97,12 +97,12 @@ public sealed class ToolSchemaSnapshotTests
     [Fact]
     public void AnnotationsAreFrozen()
     {
-        Dictionary<string, McpServer.ToolDefinition> catalog = Catalog();
+        Dictionary<string, ToolDescriptor> catalog = Catalog();
 
         foreach (JsonNode? tool in BaselineTools())
         {
             string name = tool!["name"]!.GetValue<string>();
-            McpServer.ToolDefinition definition = catalog[name];
+            ToolDescriptor definition = catalog[name];
             JsonNode annotations = tool["annotations"]
                 ?? throw new InvalidOperationException($"{name} 基线缺少 annotations");
 

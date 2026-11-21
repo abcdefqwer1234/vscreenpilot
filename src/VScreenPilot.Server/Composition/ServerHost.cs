@@ -146,7 +146,7 @@ internal sealed class ServerHost : IDisposable
 
         try
         {
-            var server = new McpServer(_session, _log, _trace!);
+            var server = new McpTransport(_session, _log, _trace!);
             int exitCode = server.RunAsync().GetAwaiter().GetResult();
 
             int idleMs = ResolveDaemonIdleMs();
@@ -212,7 +212,7 @@ internal sealed class ServerHost : IDisposable
         var job = new JobObject();
         var stateStore = new StateStore(log);
         var session = new SessionManager(log, stateStore, job, allowScript);
-        McpServer.WireProviders(session, log);
+        McpTransport.WireProviders(session, log);
         var trace = new TraceLog();
         var registry = new InstanceRegistry(profile);
         InstanceRegistry.Entry entry = InstanceRegistry.Create(profile, ready: false);

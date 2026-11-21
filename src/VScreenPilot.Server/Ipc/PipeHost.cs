@@ -7,7 +7,7 @@ using VScreenPilot.Session;
 namespace VScreenPilot.Ipc;
 
 /// <summary>
-/// 首个进程内的 MCP 管道监听：每个连接一个独立 McpServer（独立 client_id），
+/// 首个进程内的 MCP 管道监听：每个连接一个独立 McpTransport（独立 client_id），
 /// 共享同一个 SessionManager。这样第二个 MCP 客户端不再撞全局互斥体。
 /// </summary>
 internal sealed class PipeHost : IDisposable
@@ -187,7 +187,7 @@ internal sealed class PipeHost : IDisposable
 
                 using var limiter = new MessageLimiter(connection, _messageBudget);
                 using var connectionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                var server = new McpServer(_session, _log, client, _trace);
+                var server = new McpTransport(_session, _log, client, _trace);
                 await server.RunAsync(limiter, limiter, connectionCts.Token).ConfigureAwait(false);
             }
         }
