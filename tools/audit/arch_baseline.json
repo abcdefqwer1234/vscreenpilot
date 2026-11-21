@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-11-21T20:22:08Z",
+  "generated_at": "2026-11-21T20:26:30Z",
   "source": {
     "files": 165,
-    "lines": 31767,
+    "lines": 31832,
     "max_file": 783,
     "files_gt_600": 6,
     "files_gt_800": 0,
@@ -366,17 +366,17 @@
   ],
   "catches": {
     "typed_wide": 173,
-    "typed_narrow": 85,
+    "typed_narrow": 87,
     "untyped": 0,
     "untyped_silent": 0,
     "debug_only": 0
   },
   "tests": {
-    "fact": 165,
+    "fact": 166,
     "theory": 10,
-    "methods": 175,
+    "methods": 176,
     "inline_data": 51,
-    "files": 32,
-    "lines": 3302
+    "files": 33,
+    "lines": 3329
   }
 }

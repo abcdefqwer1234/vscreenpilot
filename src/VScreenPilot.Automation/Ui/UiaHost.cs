@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Interop.UIAutomationClient;
+using VScreenPilot.Errors;
 
 namespace VScreenPilot.Uia;
 
@@ -13,18 +14,30 @@ namespace VScreenPilot.Uia;
 /// </summary>
 internal sealed class UiaHost : IDisposable
 {
+    private static readonly TimeSpan DefaultCallTimeout = TimeSpan.FromSeconds(15);
+
     private readonly Func<UiaService> _factory;
+    private readonly TimeSpan _callTimeout;
     private readonly object _gate = new();
     private readonly List<Generation> _retired = new();
     private Generation? _current;
     private int _disposed;
 
     public UiaHost()
-        : this(static () => new UiaService())
+        : this(static () => new UiaService(), DefaultCallTimeout)
     {
     }
 
-    internal UiaHost(Func<UiaService> factory) => _factory = factory;
+    internal UiaHost(Func<UiaService> factory)
+        : this(factory, DefaultCallTimeout)
+    {
+    }
+
+    internal UiaHost(Func<UiaService> factory, TimeSpan callTimeout)
+    {
+        _factory = factory;
+        _callTimeout = callTimeout;
+    }
 
     /// <summary>放弃当前代际；后续调用自动创建新代际。旧代际由自己的工作线程收尾。</summary>
     public bool Retire()
@@ -185,8 +198,8 @@ internal sealed class UiaHost : IDisposable
             return action(owner);
         }
 
-        generation.Ready.Task.GetAwaiter().GetResult();
-        return completion.Task.GetAwaiter().GetResult();
+        WaitReadyOrRetire(generation);
+        return WaitCompletionOrRetire(generation, completion);
     }
 
     private T Invoke<T>(Func<UiaService, T> action)
@@ -212,10 +225,62 @@ internal sealed class UiaHost : IDisposable
                 continue;
             }
 
-            generation.Ready.Task.GetAwaiter().GetResult();
-            return completion.Task.GetAwaiter().GetResult();
+            WaitReadyOrRetire(generation);
+            return WaitCompletionOrRetire(generation, completion);
         }
     }
+
+    /// <summary>代际启动超时：退休当前代际，避免卡在 Ready 上。</summary>
+    private void WaitReadyOrRetire(Generation generation)
+    {
+        try
+        {
+            generation.Ready.Task.WaitAsync(_callTimeout).GetAwaiter().GetResult();
+        }
+        catch (TimeoutException)
+        {
+            RetireIfCurrent(generation);
+            throw CallTimeout();
+        }
+    }
+
+    /// <summary>调用超时：退休当前代际并抛 E_TIMEOUT；旧线程把手上工作做完后自行释放。</summary>
+    private T WaitCompletionOrRetire<T>(Generation generation, TaskCompletionSource<T> completion)
+    {
+        try
+        {
+            return completion.Task.WaitAsync(_callTimeout).GetAwaiter().GetResult();
+        }
+        catch (TimeoutException)
+        {
+            RetireIfCurrent(generation);
+            throw CallTimeout();
+        }
+    }
+
+    private void RetireIfCurrent(Generation generation)
+    {
+        lock (_gate)
+        {
+            if (!ReferenceEquals(_current, generation))
+            {
+                return;
+            }
+
+            _current = null;
+            _retired.Add(generation);
+        }
+
+        generation.Queue.CompleteAdding();
+    }
+
+    private ToolException CallTimeout() =>
+        new(
+            "E_TIMEOUT",
+            $"UI Automation 调用超过 {_callTimeout.TotalSeconds:0} 秒未返回，已退休当前 UIA 代际",
+            retryable: true,
+            hint: "重试；若持续超时，应用可能卡死，可先 release_environment",
+            stage: "uia");
 
     private Generation Current()
     {
