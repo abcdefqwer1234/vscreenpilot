@@ -458,7 +458,7 @@ internal sealed class ElementOperations
             catch (Exception exception) when (
                 exception is COMException or InvalidOperationException){
                 // 部分 WinForms/WPF 控件不支持 SetFocus；继续用 Enter 尝试。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
 
             Thread.Sleep(80);
@@ -897,7 +897,7 @@ internal sealed class ElementOperations
         catch (Exception exception) when (
             exception is System.Runtime.InteropServices.COMException or InvalidOperationException){
             // Word 正文的 Edit/Body 不支持 UIA SetFocus；退化到消息点击元素中心。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         UiaElementInfo info = handle.Info;

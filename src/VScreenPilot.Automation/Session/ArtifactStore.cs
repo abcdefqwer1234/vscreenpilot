@@ -143,7 +143,7 @@ internal sealed partial class ArtifactStore
                         catch (Exception exception)
                         {
                             // 刚有新连接写入时删不掉，下一轮再试。
-                            _ = exception;
+                            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
                         }
                     }
                 }

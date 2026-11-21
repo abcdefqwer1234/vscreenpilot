@@ -1,0 +1,195 @@
+{
+  "name": "gesture",
+  "title": "Gesture",
+  "description": "Composite mouse action: drag, scroll or move. Message mode cannot drag across windows; use mode=input for drags (this tool uses \u0060mode\u0060, not \u0060channel\u0060).",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "type": {
+        "type": "string",
+        "enum": [
+          "drag",
+          "scroll",
+          "move"
+        ]
+      },
+      "from": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ]
+      },
+      "to": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ]
+      },
+      "dx": {
+        "type": "integer"
+      },
+      "dy": {
+        "type": "integer"
+      },
+      "button": {
+        "type": "string",
+        "enum": [
+          "left",
+          "right",
+          "middle"
+        ]
+      },
+      "duration_ms": {
+        "type": "integer",
+        "minimum": 20,
+        "maximum": 5000
+      },
+      "observe": {
+        "type": "boolean",
+        "description": "Default true: capture a before/after diff and return observed.changed."
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "message",
+          "input"
+        ]
+      }
+    },
+    "required": [
+      "type"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "type": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "from": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "to": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "dx": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "dy": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "button": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "method": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "detail": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "verified": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "inject_ms": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "duration_ms": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "observed": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "hint": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": true,
+  "timeoutMs": 35000,
+  "policy": {
+    "mutates": true,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

@@ -148,7 +148,7 @@ internal sealed class FocusGuard
             catch (Exception exception)
             {
                 // 焦点护栏失败不能影响主流程。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
         }
     }

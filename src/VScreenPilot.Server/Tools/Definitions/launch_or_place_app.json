@@ -1,0 +1,137 @@
+{
+  "name": "launch_or_place_app",
+  "title": "Launch or attach app",
+  "description": "Start an application or attach to an existing window, move it onto the virtual display and maximize it. Returns pid/hwnd plus any owned dialogs discovered at attach time. Prefer path for a new instance; window only when you intentionally take over a running app. Single-instance apps may fall back to adopting an existing window: check \u0060reused\u0060 and \u0060warnings\u0060; an adopted window is only moved back on release, never closed. Windows 11 Notepad can restore the previous session\u0027s tabs when launched without args; pass \u0060args\u0060 or confirm the title with snapshot before typing.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Executable path."
+      },
+      "window": {
+        "type": "string",
+        "description": "Attach by window title. Ignores new_instance."
+      },
+      "args": {
+        "type": "string"
+      },
+      "wait_ms": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 60000
+      },
+      "new_instance": {
+        "type": "boolean",
+        "description": "Default true: dedicated/new window."
+      },
+      "ensure_document": {
+        "type": "boolean",
+        "description": "Default true. Word: Ctrl\u002BN. PowerPoint: Ctrl\u002BN then the blank-presentation tile. PowerPoint/Excel report document_ready_reason; apps without modeling return document_ready=null."
+      },
+      "pid": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Attach by process id (most precise)."
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "launched": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "new_instance": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "reused": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "pid": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "hwnd": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "title": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "maximized": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "document_ready": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "document_ready_reason": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "dialogs": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "warnings": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": false,
+  "timeoutMs": 90000,
+  "policy": {
+    "mutates": true,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

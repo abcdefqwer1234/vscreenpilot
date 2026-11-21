@@ -1,0 +1,110 @@
+{
+  "name": "type_text",
+  "title": "Type text",
+  "description": "Type text into the focused control. auto uses a pattern write, clipboard paste for long text, or SendInput as fallback; verify=true reads back through TextPattern/ValuePattern.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "text": {
+        "type": "string"
+      },
+      "pid": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "verify": {
+        "type": "boolean"
+      },
+      "chunk_chars": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 256,
+        "description": "Chunk size in characters; default 32."
+      },
+      "channel": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "pattern",
+          "clipboard",
+          "keys"
+        ]
+      }
+    },
+    "required": [
+      "text"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "typed": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "verified": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "channel": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "inject_ms": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "duration_ms": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "observed_length": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "chunks": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": true,
+  "timeoutMs": 120000,
+  "policy": {
+    "mutates": true,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

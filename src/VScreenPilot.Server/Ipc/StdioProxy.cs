@@ -168,7 +168,7 @@ internal static class StdioProxy
         catch (Exception exception)
         {
             // 无控制台时忽略。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         return 3;

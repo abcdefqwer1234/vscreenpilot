@@ -325,7 +325,7 @@ internal sealed partial class McpTransport
         catch (Exception exception)
         {
             // artifact 目录不可用时返回空列表，不影响工具调用。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         return ValueTask.FromResult(new ListResourcesResult
@@ -433,7 +433,7 @@ internal sealed partial class McpTransport
         catch (Exception exception)
         {
             // 生成失败就退回原图；资源读取仍然可用。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
 
@@ -501,10 +501,8 @@ internal sealed partial class McpTransport
         CancellationToken cancellationToken)
     {
         var executor = new ToolExecutor(
-            _session,
             _log,
             _scheduler,
-            _client,
             Trace,
             context.Params?.Meta?["progressToken"] is null
                 ? null
@@ -512,8 +510,10 @@ internal sealed partial class McpTransport
             () => Interlocked.Increment(ref _inflightHandlers),
             () => Interlocked.Decrement(ref _inflightHandlers));
 
+        var call = new ToolContext(
+            _session, _client, arguments, requestId, argumentSummary, cancellationToken);
         ToolResponse response = await executor
-            .ExecuteAsync(tool, arguments, requestId, argumentSummary, cancellationToken)
+            .ExecuteAsync(tool, call)
             .ConfigureAwait(false);
         return ToResult(response);
     }
@@ -594,7 +594,7 @@ internal sealed partial class McpTransport
         catch (Exception exception)
         {
             // 进度是尽力而为。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
 
@@ -631,7 +631,7 @@ internal sealed partial class McpTransport
                     catch (Exception exception)
                     {
                         // 非 JSON 文本。
-                        _ = exception;
+                        System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
                     }
                 }
             }

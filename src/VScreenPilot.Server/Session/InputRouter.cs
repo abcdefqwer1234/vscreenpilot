@@ -1324,7 +1324,7 @@ internal sealed class InputRouter
         catch (Exception exception)
         {
             // 读不到就当作空剪贴板。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         try
@@ -1342,7 +1342,7 @@ internal sealed class InputRouter
             catch (Exception exception)
             {
                 // 还原失败不影响输入结果。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
         }
 

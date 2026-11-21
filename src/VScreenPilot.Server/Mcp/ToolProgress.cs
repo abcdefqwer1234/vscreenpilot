@@ -31,7 +31,7 @@ internal static class ToolProgress
         catch (Exception exception)
         {
             // progress 失败不能影响工具本身。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
 

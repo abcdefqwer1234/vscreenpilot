@@ -1,0 +1,87 @@
+{
+  "name": "run_script",
+  "title": "Run script",
+  "description": "Run a temporary PowerShell script with the current user token. Disabled unless the server was started with --allow-script. Output is UTF-8 and truncated to 64KB.",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "code"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "timeout_ms": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 120000
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "stdout": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "stderr": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "exit_code": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "duration_ms": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "timed_out": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "truncated": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": true,
+  "timeoutMs": 130000,
+  "policy": {
+    "mutates": true,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

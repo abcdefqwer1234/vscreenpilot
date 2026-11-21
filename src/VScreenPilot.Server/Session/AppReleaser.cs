@@ -216,7 +216,7 @@ internal sealed class AppReleaser
         catch (Exception exception) when (
             exception is COMException or InvalidOperationException or ArgumentException){
             // 继续走 WM_CLOSE/超时策略。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         return false;
@@ -345,7 +345,7 @@ internal sealed class AppReleaser
         catch (Exception exception)
         {
             // 进程可能已退出。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
 
@@ -391,7 +391,7 @@ internal sealed class AppReleaser
         catch (Exception exception)
         {
             // 进程可能已退出或无法读取模块路径。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
 
@@ -407,7 +407,7 @@ internal sealed class AppReleaser
         catch (Exception exception)
         {
             // Edge 可能仍持有锁，留给下次启动清理。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
 }

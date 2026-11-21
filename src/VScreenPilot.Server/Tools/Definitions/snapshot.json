@@ -1,0 +1,175 @@
+{
+  "name": "snapshot",
+  "title": "Snapshot",
+  "description": "One-call observation: compact semantic tree with refs, tracked windows, owned dialogs, focus and optional screenshot. Each call advances the ref generation: refs from an older snapshot return E_STALE_SNAPSHOT. (find_element/get_ui_tree reuse the current generation.)",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "pid": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "max_depth": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "description": "Default 4."
+      },
+      "interactive_only": {
+        "type": "boolean",
+        "description": "Default true."
+      },
+      "max_nodes": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1024,
+        "description": "Default 300; max 1024 (ref capacity)."
+      },
+      "include_screenshot": {
+        "type": "boolean",
+        "description": "Default false; adds a scaled PNG."
+      },
+      "annotate": {
+        "type": "boolean",
+        "description": "Default false; draw element boxes and numbered labels on the screenshot. Implies include_screenshot."
+      },
+      "scale": {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 1,
+        "description": "Screenshot scale, default 0.5."
+      },
+      "include_values": {
+        "type": "boolean",
+        "description": "Include text/value of text controls. Default true."
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "snapshot_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "tree": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "text": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "nodes": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "truncated": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "max_nodes_effective": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "ref_capacity": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "windows": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "dialogs": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "foreground": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "screenshot": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "screenshot_path": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "screenshot_uri": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "screenshot_preview": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "annotations": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": false,
+  "timeoutMs": 45000,
+  "policy": {
+    "mutates": false,
+    "lease": "SnapshotOptions",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

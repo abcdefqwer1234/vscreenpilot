@@ -117,7 +117,7 @@ internal sealed class InstanceRegistry
         catch (Exception exception)
         {
             // 诊断信息写不进不影响主流程。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
 
@@ -144,7 +144,7 @@ internal sealed class InstanceRegistry
         catch (Exception exception)
         {
             // 忽略。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
 
@@ -205,7 +205,7 @@ internal sealed class InstanceRegistry
         catch (Exception exception)
         {
             // 诊断失败忽略。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         return result;
@@ -272,14 +272,14 @@ internal sealed class InstanceRegistry
                 catch (Exception exception)
                 {
                     // 单个 state 损坏不影响其他。
-                    _ = exception;
+                    System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
                 }
             }
         }
         catch (Exception exception)
         {
             // 忽略。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         return result;

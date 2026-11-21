@@ -1,0 +1,106 @@
+{
+  "name": "click_ref",
+  "title": "Click element by ref",
+  "description": "Click a control by element_ref. auto first tries UIA Invoke/Toggle/Select, then message click at the control center; channel=input moves the real cursor. fallback_input=true (or VSP_INPUT_AUTOFALLBACK=1) enables SendInput after UIA/message fail. Prefer this over coordinate clicks.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ref": {
+        "type": "string"
+      },
+      "channel": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "uia",
+          "message",
+          "input"
+        ]
+      },
+      "keep_foreground": {
+        "type": "boolean"
+      },
+      "fallback_input": {
+        "type": "boolean",
+        "description": "Default false. When UIA/message paths fail, move the real cursor and use SendInput."
+      }
+    },
+    "required": [
+      "ref"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "clicked": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "ref": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "channel": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "pattern": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "refreshed": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "bounds": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "observed": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": true,
+  "timeoutMs": 20000,
+  "policy": {
+    "mutates": true,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

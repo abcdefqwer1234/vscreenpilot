@@ -236,7 +236,7 @@ public sealed class StateStore : ISessionStateStore
         catch (Exception exception)
         {
             // 忽略。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
 }

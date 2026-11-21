@@ -59,7 +59,7 @@ internal sealed class ClientPathPolicy
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException){
             // 文件尚不存在/无权限读取链接：保留原路径，后续 CreateNew 会给出明确 IO 错误。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         // 文件本身不存在时，父目录仍可能是 junction；逐级解析，防止写到允许根之外。
@@ -82,7 +82,7 @@ internal sealed class ClientPathPolicy
 
         allowedRoots.Add(Path.GetFullPath(tempRoot));
 
-        if (!allowedRoots.Any(root => IsUnder(fullPath, root)))
+        if (!allowedRoots.Any(root => PathPolicySupport.IsUnder(fullPath, root)))
         {
             var rootsJson = new JsonArray();
             foreach (string root in allowedRoots.Distinct(StringComparer.OrdinalIgnoreCase))
@@ -120,21 +120,12 @@ internal sealed class ClientPathPolicy
             catch (Exception exception) when (
                 exception is IOException or UnauthorizedAccessException){
                 // 无权限读取链接时继续向上；最终仍会受 IsUnder 限制。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
 
             directory = Path.GetDirectoryName(directory);
         }
 
         return fullPath;
-    }
-
-    private static bool IsUnder(string path, string root)
-    {
-        string normalizedRoot = Path.GetFullPath(root)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        return path.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase) ||
-               path.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 }

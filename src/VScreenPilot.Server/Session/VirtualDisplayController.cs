@@ -461,7 +461,7 @@ internal sealed class VirtualDisplayController
         catch (Exception exception)
         {
             // 释放失败不应覆盖原始错误。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
         finally
         {

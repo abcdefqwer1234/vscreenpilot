@@ -1,0 +1,133 @@
+{
+  "name": "get_ui_tree",
+  "title": "UI tree",
+  "description": "Read the pruned semantic tree of the tracked window. Nodes carry refs. By default it reuses the current snapshot generation, so existing refs stay valid; pass new_snapshot=true to invalidate old refs.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "max_depth": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10
+      },
+      "interactive_only": {
+        "type": "boolean"
+      },
+      "max_nodes": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1024
+      },
+      "root": {
+        "type": "string"
+      },
+      "pid": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "json",
+          "text"
+        ],
+        "description": "text is the compact line format."
+      },
+      "new_snapshot": {
+        "type": "boolean",
+        "description": "Advance the ref generation. Default false: keep existing refs valid."
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "tree": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "text": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "nodes": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "truncated": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "truncated_reason": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "max_nodes_effective": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "max_nodes_clamped": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "ref_capacity": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "snapshot_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "new_snapshot": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": true,
+  "destructive": false,
+  "timeoutMs": 30000,
+  "policy": {
+    "mutates": false,
+    "lease": "None",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

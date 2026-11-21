@@ -37,7 +37,7 @@ internal static class InstanceGuard
                     catch (Exception exception)
                     {
                         // 忽略。
-                        _ = exception;
+                        System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
                     }
 
                     return false;
@@ -52,7 +52,7 @@ internal static class InstanceGuard
             catch (Exception exception)
             {
                 // 继续尝试下一个命名空间。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
         }
 
@@ -100,7 +100,7 @@ internal static class InstanceGuard
         catch (Exception exception)
         {
             // 无控制台时忽略。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         log.Warn($"实例已被占用: {error}");

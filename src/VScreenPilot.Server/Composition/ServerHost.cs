@@ -141,7 +141,7 @@ internal sealed class ServerHost : IDisposable
         }
         catch (PlatformNotSupportedException exception){
             // Windows 上部分场景不支持，忽略。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         try

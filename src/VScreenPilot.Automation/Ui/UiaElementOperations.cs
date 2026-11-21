@@ -195,7 +195,7 @@ internal sealed partial class UiaService
                     }
                     catch (COMException exception){
                         // 单个 provider 读文本失败不影响其余候选。
-                        _ = exception;
+                        System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
                     }
                     finally
                     {

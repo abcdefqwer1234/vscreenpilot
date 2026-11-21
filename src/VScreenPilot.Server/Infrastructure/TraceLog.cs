@@ -88,14 +88,14 @@ internal sealed class TraceLog : IDisposable
                 catch (Exception exception)
                 {
                     // 正在写入的文件删不掉，下一轮再试。
-                    _ = exception;
+                    System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
                 }
             }
         }
         catch (Exception exception)
         {
             // 清理失败不影响追踪。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
 
@@ -121,7 +121,7 @@ internal sealed class TraceLog : IDisposable
             catch (Exception exception)
             {
                 // 忽略磁盘写入失败。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
         }
     }
@@ -171,7 +171,7 @@ internal sealed class TraceLog : IDisposable
             catch (Exception exception)
             {
                 // 忽略。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
         }
     }

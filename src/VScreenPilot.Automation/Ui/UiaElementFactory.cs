@@ -30,7 +30,7 @@ internal sealed partial class UiaService
             catch (Exception exception) when (
                 exception is COMException or ArgumentException or InvalidOperationException){
                 // 某些 provider/未走 BuildCache 的元素不支持缓存，退回实时读取。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
 
             // runtime_id 是元素引用的基础；缺失时用实时读取补全。
@@ -188,7 +188,7 @@ internal sealed partial class UiaService
         catch (Exception exception)
         {
             // 释放失败不影响结果，交给 GC 兜底。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
 

@@ -1,0 +1,75 @@
+{
+  "name": "get_element_text",
+  "title": "Get text",
+  "description": "Read text through TextPattern then ValuePattern. Use it to verify what you typed.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ref": {
+        "type": "string"
+      },
+      "max_chars": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 65536
+      }
+    },
+    "required": [
+      "ref"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "text": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "length": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "source": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "truncated": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": true,
+  "destructive": false,
+  "timeoutMs": 20000,
+  "policy": {
+    "mutates": false,
+    "lease": "None",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

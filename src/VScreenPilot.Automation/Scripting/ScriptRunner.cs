@@ -130,7 +130,7 @@ internal sealed class ScriptRunner
                 catch (Exception exception)
                 {
                     // 进程可能已退出。
-                    _ = exception;
+                    System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
                 }
 
                 process.WaitForExit(2000);
@@ -166,7 +166,7 @@ internal sealed class ScriptRunner
             catch (Exception exception)
             {
                 // 临时目录清理失败不影响结果。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
         }
 
@@ -246,7 +246,7 @@ internal sealed class ScriptRunner
             catch (Exception exception)
             {
                 // 进程被杀时读取可能中断，保留已读内容。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
 
             if (truncated)

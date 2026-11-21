@@ -21,7 +21,7 @@ internal static class ParentProcessWatcher
             }
             catch (ArgumentException exception){
                 // 父进程在进入监听前已经退出。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
             catch (Exception exception)
             {

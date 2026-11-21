@@ -1,0 +1,112 @@
+{
+  "name": "press_keys",
+  "title": "Press keys",
+  "description": "Send a key combination or a sequence inside one foreground lease. System shortcuts (Win\u002B*, Alt\u002BTab, Ctrl\u002BEsc and variants) are rejected unless allow_system_keys=true.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "keys": {
+        "type": "string"
+      },
+      "sequence": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "keep_foreground": {
+        "type": "boolean"
+      },
+      "allow_system_keys": {
+        "type": "boolean"
+      },
+      "observe": {
+        "type": "boolean",
+        "description": "Default true: capture a before/after diff and return observed.changed."
+      },
+      "pid": {
+        "type": "integer",
+        "minimum": 1
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "keys": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "count": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "target_pid": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "inject_ms": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "duration_ms": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "keep_foreground": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "verified": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "observed": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": true,
+  "timeoutMs": 35000,
+  "policy": {
+    "mutates": true,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

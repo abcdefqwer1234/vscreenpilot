@@ -75,7 +75,7 @@ public sealed class MutexGuard : IDisposable
         catch (Exception exception)
         {
             // 忽略。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         _mutex.Dispose();

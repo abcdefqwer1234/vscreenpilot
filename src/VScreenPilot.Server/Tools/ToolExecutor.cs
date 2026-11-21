@@ -8,52 +8,53 @@ using static VScreenPilot.Mcp.JsonArgReader;
 namespace VScreenPilot.Mcp;
 
 /// <summary>
+/// 一次工具调用的上下文：会话、客户端与请求级参数。处理器仍绑定在
+/// <see cref="McpTransport"/> 实例上，执行器只依赖本记录，不再持有会话字段。
+/// </summary>
+internal sealed record ToolContext(
+    SessionManager Session,
+    ClientContext? Client,
+    JsonElement Arguments,
+    string RequestId,
+    string? ArgumentSummary,
+    CancellationToken CancellationToken);
+
+/// <summary>
 /// 工具执行器：租约、写调度、超时/取消、epoch 校验与 trace 收口。
 /// 只读取 <see cref="ToolDescriptor.Policy"/>，不维护任何“哪些工具会写”的清单。
 /// </summary>
 internal sealed class ToolExecutor
 {
-    private readonly SessionManager _session;
     private readonly LogRing _log;
     private readonly WriteScheduler _scheduler;
-    private readonly ClientContext? _client;
     private readonly Action<string, string, string?, double, ToolResponse> _trace;
     private readonly Action<int, int, string>? _progress;
     private readonly Action _handlerStarted;
     private readonly Action _handlerFinished;
 
     public ToolExecutor(
-        SessionManager session,
         LogRing log,
         WriteScheduler scheduler,
-        ClientContext? client,
         Action<string, string, string?, double, ToolResponse> trace,
         Action<int, int, string>? progress,
         Action handlerStarted,
         Action handlerFinished)
     {
-        _session = session;
         _log = log;
         _scheduler = scheduler;
-        _client = client;
         _trace = trace;
         _progress = progress;
         _handlerStarted = handlerStarted;
         _handlerFinished = handlerFinished;
     }
 
-    public async Task<ToolResponse> ExecuteAsync(
-        ToolDescriptor tool,
-        JsonElement arguments,
-        string requestId,
-        string? argumentSummary,
-        CancellationToken cancellationToken)
+    public async Task<ToolResponse> ExecuteAsync(ToolDescriptor tool, ToolContext context)
     {
 
-        using IDisposable? clientScope = _client is null
+        using IDisposable? clientScope = context.Client is null
             ? null
-            : _session.Clients.Use(_client);
-        long epoch = _session.Epoch;
+            : context.Session.Clients.Use(context.Client);
+        long epoch = context.Session.Epoch;
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         WriteScheduler.Lease? lease = null;
         CancellationTokenSource? callCts = null;
@@ -66,16 +67,16 @@ internal sealed class ToolExecutor
 
         try
         {
-            string clientId = _client?.Id ?? "c0";
+            string clientId = context.Client?.Id ?? "c0";
 
-            if (RequiresScreenLease(policy, arguments))
+            if (RequiresScreenLease(context, policy))
             {
-                screenLease = _session.Lease.Acquire(clientId, tool.Name);
+                screenLease = context.Session.Lease.Acquire(clientId, tool.Name);
 
-                if (KeepsForeground(arguments))
+                if (KeepsForeground(context.Arguments))
                 {
-                    _session.Lease.Extend(clientId, 30_000);
-                    _session.PauseFocusGuard(30_000);
+                    context.Session.Lease.Extend(clientId, 30_000);
+                    context.Session.PauseFocusGuard(30_000);
                 }
             }
 
@@ -85,13 +86,13 @@ internal sealed class ToolExecutor
                 TimeSpan wait = TimeSpan.FromMilliseconds(policy.WriteTimeoutMs);
 
                 lease = await _scheduler.AcquireAsync(
-                    tool.Name, wait, cancellationToken,
+                    tool.Name, wait, context.CancellationToken,
                     bypass: policy.BypassWriteLock).ConfigureAwait(false);
             }
 
-            callCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            callCts = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken);
             callCts.CancelAfter(tool.TimeoutMs);
-            _session.SetCancellation(callCts);
+            context.Session.SetCancellation(callCts);
 
             // 长任务至少给一次“已开始/已完成”进度，客户端不会以为调用挂死。
             _progress?.Invoke(0, 1, "started");
@@ -110,11 +111,11 @@ internal sealed class ToolExecutor
 
                 if (sessionRead)
                 {
-                    _session.EnterRead();
+                    context.Session.EnterRead();
                 }
                 else if (sessionWrite)
                 {
-                    writeHeld = _session.TryEnterExclusive(3000);
+                    writeHeld = context.Session.TryEnterExclusive(3000);
 
                     if (!writeHeld)
                     {
@@ -138,7 +139,7 @@ internal sealed class ToolExecutor
 
                 try
                 {
-                    return tool.Handler(arguments);
+                    return tool.Handler(context.Arguments);
                 }
                 catch (ToolException exception)
                 {
@@ -153,11 +154,11 @@ internal sealed class ToolExecutor
                 {
                     if (sessionRead)
                     {
-                        _session.ExitRead();
+                        context.Session.ExitRead();
                     }
                     else if (writeHeld)
                     {
-                        _session.ExitExclusive();
+                        context.Session.ExitExclusive();
                     }
                 }
             }, CancellationToken.None);
@@ -174,7 +175,7 @@ internal sealed class ToolExecutor
             try
             {
                 response = await handlerTask!
-                    .WaitAsync(TimeSpan.FromMilliseconds(tool.TimeoutMs), cancellationToken)
+                    .WaitAsync(TimeSpan.FromMilliseconds(tool.TimeoutMs), context.CancellationToken)
                     .ConfigureAwait(false);
             }
             catch (TimeoutException)
@@ -194,7 +195,7 @@ internal sealed class ToolExecutor
                 }
                 catch (ObjectDisposedException exception){
                     // 已经结束。
-                    _ = exception;
+                    System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
                 }
                 _ = handlerTask!.ContinueWith(
                     _ => callCts?.Dispose(), TaskScheduler.Default);
@@ -218,19 +219,19 @@ internal sealed class ToolExecutor
                     stage: "tool");
             }
 
-            if (_session.Epoch != epoch && !policy.SessionWrite)
+            if (context.Session.Epoch != epoch && !policy.SessionWrite)
             {
                 response = ToolResponse.Error(
                     "E_CANCELLED",
                     "会话已被 release_environment 重置，本次结果已丢弃",
-                    new JsonObject { ["epoch"] = epoch, ["current_epoch"] = _session.Epoch },
+                    new JsonObject { ["epoch"] = epoch, ["current_epoch"] = context.Session.Epoch },
                     retryable: true,
                     hint: "重新调用 snapshot/launch_or_place_app",
                     stage: "session");
             }
 
             stopwatch.Stop();
-            response.SetRequestId(requestId);
+            response.SetRequestId(context.RequestId);
 
             if (policy.SessionWrite && !response.IsError)
             {
@@ -238,7 +239,7 @@ internal sealed class ToolExecutor
             }
 
             _progress?.Invoke(1, 1, "completed");
-            _trace(tool.Name, requestId, argumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
+            _trace(tool.Name, context.RequestId, context.ArgumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
             return (response);
         }
         catch (OperationCanceledException)
@@ -281,7 +282,7 @@ internal sealed class ToolExecutor
             }
             catch (ObjectDisposedException exception){
                 // 已经结束。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
 
             if (callCts is not null && handlerTask is not null && !handlerTask.IsCompleted)
@@ -294,21 +295,21 @@ internal sealed class ToolExecutor
         }
         catch (ToolException exception)
         {
-            var response = ToolResponse.FromException(exception).SetRequestId(requestId);
-            _trace(tool.Name, requestId, argumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
+            var response = ToolResponse.FromException(exception).SetRequestId(context.RequestId);
+            _trace(tool.Name, context.RequestId, context.ArgumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
             return (response);
         }
         catch (Exception exception)
         {
             _log.Error($"工具 {tool.Name} 失败", exception);
             var response = ToolResponse.FromException(exception, $"tool:{tool.Name}")
-                .SetRequestId(requestId);
-            _trace(tool.Name, requestId, argumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
+                .SetRequestId(context.RequestId);
+            _trace(tool.Name, context.RequestId, context.ArgumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
             return (response);
         }
         finally
         {
-            _session.SetCancellation(null);
+            context.Session.SetCancellation(null);
 
             // 超时后 CTS 的所有权已经交给仍在运行的 handler。
             if (!callCtsTransferred)
@@ -318,19 +319,19 @@ internal sealed class ToolExecutor
 
             if (policy.SessionWrite)
             {
-                string releaseClientId = _client?.Id ?? "c0";
+                string releaseClientId = context.Client?.Id ?? "c0";
 
                 if (releaseSucceeded)
                 {
                     // 只有真正清理成功才把屏幕交给下一个客户端；失败时仍保留租约。
                     // 这里不能用 ReleaseHolderIfIdle：本工具自己还持有一个租约（active_calls>=1）。
-                    _session.Lease.ForceRelease(releaseClientId);
+                    context.Session.Lease.ForceRelease(releaseClientId);
                 }
                 else if (handlerTask is { IsCompleted: false })
                 {
                     // 超时/取消时 handler 可能仍在关闭窗口：等它真正结束再释放租约。
                     _ = handlerTask.ContinueWith(
-                        _ => _session.Lease.ForceRelease(releaseClientId),
+                        _ => context.Session.Lease.ForceRelease(releaseClientId),
                         CancellationToken.None,
                         TaskContinuationOptions.ExecuteSynchronously,
                         TaskScheduler.Default);
@@ -342,20 +343,20 @@ internal sealed class ToolExecutor
             screenLease?.Dispose();
         }
         }
-    private bool RequiresScreenLease(ToolPolicy policy, JsonElement arguments) => policy.Lease switch
+    private bool RequiresScreenLease(ToolContext context, ToolPolicy policy) => policy.Lease switch
     {
         ScreenLeaseMode.None => false,
         ScreenLeaseMode.Always => true,
-        ScreenLeaseMode.EnsureOption => OptionalBool(arguments, "ensure", false),
-        ScreenLeaseMode.SnapshotOptions => ArgTrue(arguments, "include_screenshot") ||
-                                           ArgTrue(arguments, "annotate"),
+        ScreenLeaseMode.EnsureOption => OptionalBool(context.Arguments, "ensure", false),
+        ScreenLeaseMode.SnapshotOptions => ArgTrue(context.Arguments, "include_screenshot") ||
+                                           ArgTrue(context.Arguments, "annotate"),
         ScreenLeaseMode.WaitCondition =>
-            arguments.ValueKind == JsonValueKind.Object &&
-            arguments.TryGetProperty("condition", out JsonElement condition) &&
+            context.Arguments.ValueKind == JsonValueKind.Object &&
+            context.Arguments.TryGetProperty("condition", out JsonElement condition) &&
             condition.TryGetProperty("type", out JsonElement type) &&
             type.ValueKind == JsonValueKind.String &&
             type.GetString() is "color" or "pixel_diff" or "visual",
-        ScreenLeaseMode.IfLiveApps => _session.HasLiveOwnedApps(),
+        ScreenLeaseMode.IfLiveApps => context.Session.HasLiveOwnedApps(),
         _ => false,
     };
 

@@ -205,7 +205,7 @@ internal sealed partial class UiaService : IDisposable
         catch (Exception exception)
         {
             // provider 卡死时释放可能失败；交给 GC。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         try
@@ -215,7 +215,7 @@ internal sealed partial class UiaService : IDisposable
         catch (Exception exception)
         {
             // 已显式忽略：尽力而为的清理/探测失败不影响主流程。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         try
@@ -225,7 +225,7 @@ internal sealed partial class UiaService : IDisposable
         catch (Exception exception)
         {
             // 已显式忽略：尽力而为的清理/探测失败不影响主流程。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
     private readonly IUIAutomationCacheRequest _elementCache;
@@ -269,7 +269,7 @@ internal sealed partial class UiaService : IDisposable
             }
             catch (COMException exception){
                 // 旧系统不支持 IUIAutomation2 时保持默认值。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
         }
 

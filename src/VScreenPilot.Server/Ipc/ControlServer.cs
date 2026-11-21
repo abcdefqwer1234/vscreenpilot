@@ -200,7 +200,7 @@ internal sealed class ControlServer : IDisposable
                     catch (Exception exception)
                     {
                         // 退出路径忽略。
-                        _ = exception;
+                        System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
                     }
                 }, CancellationToken.None);
             }
@@ -258,7 +258,7 @@ internal sealed class ControlServer : IDisposable
                 catch (Exception exception)
                 {
                     // 窗口已失效时保留登记时的标题。
-                    _ = exception;
+                    System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
                 }
 
                 var item = new JsonObject
@@ -509,7 +509,7 @@ internal sealed class ControlServer : IDisposable
         }
         catch (ObjectDisposedException exception){
             // 已经取消。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         // 不立即 Dispose：HandleAsync 可能还在创建 linked token；进程退出时由 OS 回收。

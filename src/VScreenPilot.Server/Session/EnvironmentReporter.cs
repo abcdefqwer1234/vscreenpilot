@@ -134,7 +134,7 @@ internal sealed class EnvironmentReporter
             catch (Exception exception)
             {
                 // 进程句柄被回收时忽略；字段保持缺省，不影响诊断的其他部分。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
 
             var session = new SessionView

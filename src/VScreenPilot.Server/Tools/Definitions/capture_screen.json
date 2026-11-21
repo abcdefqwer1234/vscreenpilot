@@ -1,0 +1,201 @@
+{
+  "name": "capture_screen",
+  "title": "Capture screen",
+  "description": "Capture the virtual display or a region. Returns a PNG plus meta. If save_path is given it is the only output file; otherwise large frames are written to the session artifact directory and returned as a resource link. inline=true (default) embeds small images and a 0.25x preview for large ones. save_path must be an absolute .png under the working directory or temp.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "region": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ]
+      },
+      "scale": {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 1,
+        "description": "Default 0.5 for full screen, 1 for regions."
+      },
+      "inline": {
+        "type": "boolean",
+        "description": "Embed the PNG in the MCP result. Default true for small images."
+      },
+      "save_path": {
+        "type": "string",
+        "description": "Absolute .png path under cwd or temp."
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "frame_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "x": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "y": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "width": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "height": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "source_width": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "source_height": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "scale": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "png_bytes": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "duration_ms": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "encode_ms": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "path": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "artifact_path": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "resource_uri": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "artifact_uri": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "inline": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "preview": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "preview_error": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "backend": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "slow_capture": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": false,
+  "timeoutMs": 30000,
+  "policy": {
+    "mutates": false,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

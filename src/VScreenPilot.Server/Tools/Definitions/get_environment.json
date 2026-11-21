@@ -1,0 +1,92 @@
+{
+  "name": "get_environment",
+  "title": "Environment",
+  "description": "Read virtual display, display topology, foreground window and session state. foreground is only reported for tracked windows. ensure=true mounts/heals the virtual display first.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ensure": {
+        "type": "boolean",
+        "description": "Mount or heal the virtual display before reading state."
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "virtual_display": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "session": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "foreground": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "primary": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "virtual_screen": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "client_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "screen_lease": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": false,
+  "timeoutMs": 20000,
+  "policy": {
+    "mutates": false,
+    "lease": "EnsureOption",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

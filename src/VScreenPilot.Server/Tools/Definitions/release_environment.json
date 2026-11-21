@@ -1,0 +1,138 @@
+{
+  "name": "release_environment",
+  "title": "Release environment",
+  "description": "End the debug session: restore window placement, close only processes this session started, optionally remove the virtual display. on_dirty controls unsaved content. Default is abort: unsaved windows are kept and the display stays mounted. force/discard require allow_data_loss=true.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "keep_display": {
+        "type": "boolean",
+        "description": "Default true."
+      },
+      "on_dirty": {
+        "type": "string",
+        "enum": [
+          "force",
+          "discard",
+          "save",
+          "abort"
+        ],
+        "description": "Default abort."
+      },
+      "allow_data_loss": {
+        "type": "boolean",
+        "description": "Required for on_dirty=force/discard when a tracked app may have unsaved content."
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "released": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "display_removed": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "display_kept": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "on_dirty": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "restored_pids": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "closed_pids": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "forced_pids": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "kept_pids": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "saved_pids": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "discarded_pids": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "memory": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "warnings": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": true,
+  "timeoutMs": 90000,
+  "policy": {
+    "mutates": true,
+    "lease": "IfLiveApps",
+    "sessionRead": true,
+    "sessionWrite": true,
+    "bypassWriteLock": true,
+    "writeTimeoutMs": 6000
+  }
+}

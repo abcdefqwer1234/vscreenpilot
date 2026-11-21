@@ -1,0 +1,172 @@
+{
+  "name": "click",
+  "title": "Click",
+  "description": "Click at virtual-desktop coordinates. channel=auto tries a UIA element, then a window message; it only falls back to SendInput when fallback_input=true (or VSP_INPUT_AUTOFALLBACK=1). Non-client areas (title bar, caption buttons) and popup menus are handled explicitly. keep_foreground=true pauses the focus guard for 30s.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "x": {
+        "type": "integer"
+      },
+      "y": {
+        "type": "integer"
+      },
+      "button": {
+        "type": "string",
+        "enum": [
+          "left",
+          "right",
+          "middle"
+        ]
+      },
+      "clicks": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "uia",
+          "message",
+          "input"
+        ],
+        "description": "Legacy alias of channel."
+      },
+      "channel": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "uia",
+          "message",
+          "input"
+        ]
+      },
+      "keep_foreground": {
+        "type": "boolean"
+      },
+      "fallback_input": {
+        "type": "boolean",
+        "description": "Default false. When UIA/message paths fail, move the real cursor and use SendInput."
+      },
+      "observe": {
+        "type": "boolean",
+        "description": "Default true: capture a small before/after diff and return observed.changed."
+      }
+    },
+    "required": [
+      "x",
+      "y"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "x": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "y": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "button": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "clicks": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "mode": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "method": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "inject_ms": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "duration_ms": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "verified": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "keep_foreground": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "detail": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "hint": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "observed": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": true,
+  "timeoutMs": 25000,
+  "policy": {
+    "mutates": true,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

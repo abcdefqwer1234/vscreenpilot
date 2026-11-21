@@ -31,7 +31,7 @@ internal static class Program
         catch (Exception exception)
         {
             // 某些宿主没有可用的控制台编码，不影响 stdio。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         if (HasFlag(args, "--help") || HasFlag(args, "-h"))
@@ -135,7 +135,7 @@ internal static class Program
                 catch (Exception exception)
                 {
                     // 子进程可能已自行退出。
-                    _ = exception;
+                    System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
                 }
             }
         }

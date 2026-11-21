@@ -91,7 +91,7 @@ public sealed class LogRing : IDisposable
         catch (Exception exception)
         {
             // 归属解析失败不影响日志。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         var entry = new LogEntry(DateTimeOffset.Now, level, message, clientId);
@@ -117,7 +117,7 @@ public sealed class LogRing : IDisposable
         }
         catch (InvalidOperationException exception){
             // Dispose 之后仍有日志，丢弃即可。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
 
@@ -188,7 +188,7 @@ public sealed class LogRing : IDisposable
         catch (Exception exception)
         {
             // 清理失败不影响日志写入。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
 
@@ -243,7 +243,7 @@ public sealed class LogRing : IDisposable
         catch (Exception exception)
         {
             // 文件不可用时静默降级为仅内存日志。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
         finally
         {
@@ -275,7 +275,7 @@ public sealed class LogRing : IDisposable
         catch (Exception exception)
         {
             // 忽略。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         try
@@ -285,7 +285,7 @@ public sealed class LogRing : IDisposable
         catch (Exception exception)
         {
             // 忽略。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         writer = null;
@@ -315,7 +315,7 @@ public sealed class LogRing : IDisposable
         catch (Exception exception)
         {
             // 轮转失败时继续写当前文件。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
 
@@ -450,7 +450,7 @@ public sealed class LogRing : IDisposable
             }
             catch (ObjectDisposedException exception){
                 // 已释放。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
         }
 

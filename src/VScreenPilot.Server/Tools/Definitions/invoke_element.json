@@ -1,0 +1,90 @@
+{
+  "name": "invoke_element",
+  "title": "Invoke element",
+  "description": "Invoke a control by ref. auto tries Invoke/Toggle/SelectionItem/ExpandCollapse/Legacy; pattern=default focuses and presses Space/Enter (useful for tree nodes).",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ref": {
+        "type": "string"
+      },
+      "pattern": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "invoke",
+          "toggle",
+          "select",
+          "selectionitem",
+          "expand",
+          "expandcollapse",
+          "legacy",
+          "default",
+          "defaultaction",
+          "open"
+        ]
+      },
+      "allow_click": {
+        "type": "boolean",
+        "description": "Allow message click fallback."
+      }
+    },
+    "required": [
+      "ref"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "invoked": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "pattern": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "channel": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "verified": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": true,
+  "timeoutMs": 30000,
+  "policy": {
+    "mutates": true,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

@@ -113,7 +113,7 @@ internal sealed class WriteScheduler : IDisposable
             }
             catch (ObjectDisposedException exception){
                 // 进程退出时忽略。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
         }
     }

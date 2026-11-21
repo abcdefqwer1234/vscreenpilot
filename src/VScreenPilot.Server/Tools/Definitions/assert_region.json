@@ -1,0 +1,145 @@
+{
+  "name": "assert_region",
+  "title": "Assert region",
+  "description": "Assert color coverage or change against a baseline. An explicit baseline_frame_id must match x/y/width/height exactly; mismatch returns E_NO_BASELINE instead of comparing different areas.",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "region",
+      "expectation"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "region": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ]
+      },
+      "expectation": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "color"
+            ],
+            "properties": {
+              "color": {
+                "type": "string"
+              },
+              "coverage": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "tolerance": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "changed"
+            ],
+            "properties": {
+              "changed": {
+                "type": "boolean"
+              },
+              "threshold": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "baseline_frame_id": {
+                "type": "string"
+              },
+              "baseline": {
+                "type": "string",
+                "enum": [
+                  "last_same_region",
+                  "last"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "passed": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "changed_ratio": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "coverage": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "baseline_frame_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": true,
+  "destructive": false,
+  "timeoutMs": 30000,
+  "policy": {
+    "mutates": false,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

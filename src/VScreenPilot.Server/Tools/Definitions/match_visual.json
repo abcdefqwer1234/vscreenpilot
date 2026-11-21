@@ -1,0 +1,191 @@
+{
+  "name": "match_visual",
+  "title": "Match visual",
+  "description": "Locate pixels on the virtual display: color connected components, single pixel, or PNG template match. Template matching is done at capture pixel scale; if the template comes from a different render scale/DPI, pass scales (0.5-2.0, default [1], max 5) to search.",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "mode"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "mode": {
+        "type": "string",
+        "enum": [
+          "template",
+          "color",
+          "pixel"
+        ]
+      },
+      "target": {
+        "description": "color: #RRGGBB; pixel: {x,y}; template: base64 PNG"
+      },
+      "target_path": {
+        "type": "string"
+      },
+      "region": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ]
+      },
+      "tolerance": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255
+      },
+      "threshold": {
+        "type": "number",
+        "minimum": 0.3,
+        "maximum": 1
+      },
+      "scales": {
+        "type": "array",
+        "items": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2
+        },
+        "maxItems": 5,
+        "description": "Template scales to try, e.g. [0.75,1,1.25]; default [1]."
+      },
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "min_pixels": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "max_area_ratio": {
+        "type": "number",
+        "minimum": 0.01,
+        "maximum": 1
+      },
+      "exclude_border": {
+        "type": "boolean"
+      },
+      "require_unique": {
+        "type": "boolean"
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "found": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "count": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "x": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "y": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "width": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "height": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "color": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "matches": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "threshold": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "template": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "scale": {
+        "type": [
+          "number",
+          "null"
+        ]
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": true,
+  "destructive": false,
+  "timeoutMs": 60000,
+  "policy": {
+    "mutates": false,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

@@ -1,0 +1,210 @@
+{
+  "name": "wait_for",
+  "title": "Wait for condition",
+  "description": "Poll a condition on the server inside one call. type=element|color|window|pixel_diff|visual|text. Read-only: it never holds the write lock, so other observations keep working.",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "condition"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "timeout_ms": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 120000
+      },
+      "interval_ms": {
+        "type": "integer",
+        "minimum": 50,
+        "maximum": 2000
+      },
+      "condition": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "const": "element"
+              },
+              "name": {
+                "type": "string"
+              },
+              "control_type": {
+                "type": "string"
+              },
+              "automation_id": {
+                "type": "string"
+              },
+              "pid": {
+                "type": "integer"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "x",
+              "y",
+              "value"
+            ],
+            "properties": {
+              "type": {
+                "const": "color"
+              },
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              },
+              "value": {
+                "type": "string"
+              },
+              "tolerance": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "const": "window"
+              },
+              "title": {
+                "type": "string"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "tracked",
+                  "any"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "region"
+            ],
+            "properties": {
+              "type": {
+                "const": "pixel_diff"
+              },
+              "region": {
+                "type": "object"
+              },
+              "baseline_frame_id": {
+                "type": "string"
+              },
+              "min_changed_ratio": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "const": "visual"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "target": {},
+              "region": {
+                "type": "object"
+              },
+              "threshold": {
+                "type": "number"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "text"
+            ],
+            "properties": {
+              "type": {
+                "const": "text"
+              },
+              "text": {
+                "type": "string"
+              },
+              "region": {
+                "type": "object"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "satisfied": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "elapsed_ms": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "last": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": true,
+  "destructive": false,
+  "timeoutMs": 130000,
+  "policy": {
+    "mutates": false,
+    "lease": "WaitCondition",
+    "sessionRead": false,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

@@ -314,11 +314,11 @@ public static class DisplayTopology
         }
         catch (DllNotFoundException exception){
             // 已显式忽略：预期异常，不影响主流程。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
         catch (EntryPointNotFoundException exception){
             // 已显式忽略：预期异常，不影响主流程。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         return 0;

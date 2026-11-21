@@ -47,6 +47,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Tools\Definitions\*.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="VScreenPilot.Tests.Unit" />
     <InternalsVisibleTo Include="VScreenPilot.Tests.Contract" />
   </ItemGroup>

@@ -68,7 +68,7 @@ internal static class InputLease
             }
             catch (ApplicationException exception){
                 // 不是当前线程持有；忽略。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
 
             mutex.Dispose();

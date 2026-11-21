@@ -1,0 +1,169 @@
+{
+  "name": "find_element",
+  "title": "Find element",
+  "description": "Find UI Automation elements and return refs, bounds, state and snapshot_id. Falls back to MSAA when a window exposes no UIA content (Office legacy dialogs). control_type must be a valid UIA control type. role=document_body maps the document text surface.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "name_match": {
+        "type": "string",
+        "enum": [
+          "exact",
+          "contains",
+          "regex"
+        ]
+      },
+      "control_type": {
+        "type": "string",
+        "description": "UIA control type, e.g. Button, Edit, Document."
+      },
+      "automation_id": {
+        "type": "string"
+      },
+      "role": {
+        "type": "string",
+        "enum": [
+          "document",
+          "document_body"
+        ]
+      },
+      "prefer": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "first",
+          "focused",
+          "largest",
+          "last"
+        ]
+      },
+      "index": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "all": {
+        "type": "boolean"
+      },
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200
+      },
+      "include_offscreen": {
+        "type": "boolean"
+      },
+      "pid": {
+        "type": "integer",
+        "minimum": 1
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "ref": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "count": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "total": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "truncated": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "snapshot_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "control_type": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "bounds": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "enabled": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "offscreen": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "matches": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "elements": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": true,
+  "destructive": false,
+  "timeoutMs": 30000,
+  "policy": {
+    "mutates": false,
+    "lease": "None",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

@@ -448,7 +448,7 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
         catch (Exception exception)
         {
             // 退出路径上的释放失败不影响进程结束。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         _job.Dispose();

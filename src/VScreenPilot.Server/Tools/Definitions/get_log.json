@@ -1,0 +1,96 @@
+{
+  "name": "get_log",
+  "title": "Get log",
+  "description": "Read recent in-memory or file log entries, filtered by level/contains. Use it after E_INTERNAL or E_TIMEOUT.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "tail": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 500
+      },
+      "source": {
+        "type": "string",
+        "enum": [
+          "memory",
+          "file",
+          "both"
+        ]
+      },
+      "level": {
+        "type": "string",
+        "enum": [
+          "DEBUG",
+          "INFO",
+          "WARN",
+          "ERROR"
+        ]
+      },
+      "contains": {
+        "type": "string"
+      },
+      "include_other_clients": {
+        "type": "boolean",
+        "description": "Include entries owned by other MCP clients. Default false."
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "source": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "entries": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "file_entries": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "last_error": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": true,
+  "destructive": false,
+  "timeoutMs": 15000,
+  "policy": {
+    "mutates": false,
+    "lease": "None",
+    "sessionRead": false,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

@@ -1,0 +1,152 @@
+{
+  "name": "click_text",
+  "title": "Click text on screen",
+  "description": "OCR the virtual display (or a region), find the first line containing text, click its center and return the before/after diff. Fallback for canvas apps where click_ref cannot find the element. fallback_input=true (or VSP_INPUT_AUTOFALLBACK=1) enables SendInput after UIA/message fail.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "text": {
+        "type": "string"
+      },
+      "region": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ]
+      },
+      "channel": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "uia",
+          "message",
+          "input"
+        ]
+      },
+      "keep_foreground": {
+        "type": "boolean"
+      },
+      "fallback_input": {
+        "type": "boolean",
+        "description": "Default false. When UIA/message paths fail, move the real cursor and use SendInput."
+      },
+      "require_unique": {
+        "type": "boolean",
+        "description": "Fail with E_MULTIPLE_MATCHES when more than one line matches."
+      },
+      "observe": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "text"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "found": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "text": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "x": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "y": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "bounds": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "ambiguous": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "matches": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "method": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "observed": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": true,
+  "timeoutMs": 60000,
+  "policy": {
+    "mutates": true,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

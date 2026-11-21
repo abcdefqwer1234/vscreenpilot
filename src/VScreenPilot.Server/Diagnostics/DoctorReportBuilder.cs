@@ -83,7 +83,7 @@ internal static class DoctorReportBuilder
         catch (Exception exception)
         {
             // 诊断字段缺失不影响其余结果。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
 
         string driverStatus;

@@ -44,7 +44,7 @@ internal sealed class AppAllowlistPolicy
             catch (Exception exception)
             {
                 // 忽略无效路径。
-                _ = exception;
+                System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
             }
         }
 
@@ -79,8 +79,10 @@ internal sealed class AppAllowlistPolicy
             throw new ToolException("E_INVALID_ARG", $"应用路径无效: {exception.Message}");
         }
 
-        bool clientOk = !hasClientRule || clientAllowlist.Any(root => IsUnder(fullPath, root));
-        bool globalOk = !hasGlobalRule || GlobalRoots.Any(root => IsUnder(fullPath, root));
+        bool clientOk = !hasClientRule ||
+                        clientAllowlist.Any(root => PathPolicySupport.IsUnder(fullPath, root));
+        bool globalOk = !hasGlobalRule ||
+                        GlobalRoots.Any(root => PathPolicySupport.IsUnder(fullPath, root));
 
         if (clientOk && globalOk)
         {
@@ -104,14 +106,5 @@ internal sealed class AppAllowlistPolicy
                 ["scope"] = !clientOk ? "client" : "global",
                 ["allowed_roots"] = allowedRoots,
             });
-    }
-
-    public static bool IsUnder(string path, string root)
-    {
-        string normalizedRoot = Path.GetFullPath(root)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        return path.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase) ||
-               path.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -292,7 +292,7 @@ internal static class DaemonSpawner
         catch (Exception exception)
         {
             // daemon 退出时管道关闭。
-            _ = exception;
+            System.Diagnostics.Debug.WriteLine($"忽略异常: {exception.Message}");
         }
     }
 }
