@@ -45,13 +45,12 @@ internal sealed partial class SessionManager : IDisposable
     private readonly FrameStore _frames = new();
     // 按区域保留更多基线，避免只截另一区域就把当前区域基线挤掉。
     private const int MaxFrames = 8;
-    private readonly Dictionary<string, HashSet<int>> _uiaBlockedPids =
-        new(StringComparer.Ordinal);
 
     private readonly UiaHost _uiaHost = new();
     private readonly VirtualDisplayController _display;
     private readonly AppReleaser _releaser;
     private readonly AppLauncher _launcher;
+    private readonly InputRouter _input;
     private CursorGuard? _cursorGuard;
     // 每调用一个异步流：并发工具不会互相清掉取消令牌（旧实现是单个字段）。
     private readonly AsyncLocal<CancellationTokenSource?> _cancellation = new();
@@ -235,6 +234,7 @@ internal sealed partial class SessionManager : IDisposable
             VirtualRefresh);
         _releaser = new AppReleaser(log, _uiaHost, ResetUia);
         _launcher = new AppLauncher(this);
+        _input = new InputRouter(this);
         _log.ClientIdProvider = () => Clients.CurrentId;
         AppLauncher.CleanupStaleProfiles();
         SweepOldArtifacts();
@@ -652,12 +652,12 @@ internal sealed partial class SessionManager : IDisposable
             
                 if (forceAllClients)
                 {
-                    _uiaBlockedPids.Clear();
+                    _input.ClearBlocked();
                     _display.State.SelfHealed = false;
                 }
                 else
                 {
-                    _uiaBlockedPids.Remove(releaseClient);
+                    _input.UnblockClient(releaseClient);
                 }
 
                 if (keepDisplayEffective)

@@ -51,7 +51,7 @@ internal sealed partial class SessionManager
         lock (_gate)
         {
             _refs.DropClient(clientId);
-            _uiaBlockedPids.Remove(clientId);
+            _input.UnblockClient(clientId);
 
             _frames.RemoveClient(clientId);
 

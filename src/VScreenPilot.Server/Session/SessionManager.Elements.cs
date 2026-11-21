@@ -1004,7 +1004,7 @@ internal sealed partial class SessionManager
             }
 
             Thread.Sleep(30);
-            TextWriteResult write = WriteTextVerified(
+            TextWriteResult write = _input.WriteTextVerified(
                 app, handle, value, replace, timeoutMs: 12000);
 
             string? after = handle.GetText(65536);
