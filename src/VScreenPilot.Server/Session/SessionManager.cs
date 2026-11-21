@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using VScreenPilot.Apps;
 using VScreenPilot.Platform.Displays;
@@ -69,6 +70,29 @@ internal sealed partial class SessionManager : IDisposable
     private IntPtr _lastUserForeground;
     private long _nextFocusRestoreTicks;
     private long _focusGuardResumeAtTicks;
+
+    /* --- 视觉/断言共用工具（实现见 VisualSupport） --- */
+    private static void RequireRegionInDisplay(
+        DisplayInfo display, int x, int y, int width, int height, string label) =>
+        VisualSupport.RequireRegionInDisplay(display, x, y, width, height, label);
+
+    private static (int X, int Y, int Width, int Height) ParseRegion(JsonElement region) =>
+        VisualSupport.ParseRegion(region);
+
+    private static double ChangedRatio(byte[] current, byte[] baseline, int tolerance) =>
+        VisualSupport.ChangedRatio(current, baseline, tolerance);
+
+    private static bool ColorMatches(
+        byte[] bgra, int offset, byte r, byte g, byte b, int tolerance) =>
+        VisualSupport.ColorMatches(bgra, offset, r, g, b, tolerance);
+
+    private static string ToHex(byte[] bgra, int offset) => VisualSupport.ToHex(bgra, offset);
+
+    private static JsonObject RegionJson(int x, int y, int width, int height) =>
+        VisualSupport.RegionJson(x, y, width, height);
+
+    private static bool TryParseHex(string value, out byte r, out byte g, out byte b) =>
+        VisualSupport.TryParseHex(value, out r, out g, out b);
 
     private void OnDisplayReady(DisplayInfo display)
     {
@@ -235,6 +259,7 @@ internal sealed partial class SessionManager : IDisposable
         _releaser = new AppReleaser(log, _uiaHost, ResetUia);
         _launcher = new AppLauncher(this);
         _input = new InputRouter(this);
+        _visual = new VisualMatchService(this);
         _log.ClientIdProvider = () => Clients.CurrentId;
         AppLauncher.CleanupStaleProfiles();
         SweepOldArtifacts();
