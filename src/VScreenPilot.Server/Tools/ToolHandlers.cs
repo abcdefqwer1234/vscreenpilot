@@ -373,7 +373,7 @@ internal sealed partial class McpTransport
         string reference = OptionalString(arguments, "ref")
             ?? throw new ToolException("E_INVALID_ARG", "click_ref 需要 ref");
 
-        return ToolResponse.Text(_session.ClickElementRef(
+        return ToolResponseWriter.FromView(_session.ClickElementRef(
             reference,
             OptionalString(arguments, "channel"),
             OptionalBool(arguments, "keep_foreground", false),

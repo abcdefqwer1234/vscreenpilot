@@ -94,7 +94,7 @@ internal sealed class InputRouter
     }
 
     /// <summary>按 element_ref 点击：优先 UIA pattern，其次消息/输入通道。</summary>
-    public JsonObject ClickElementRef(
+    public ClickRefView ClickElementRef(
         string reference, string? channel, bool keepForeground, bool fallbackInput = false)
     {
         DisplayInfo display = _host.EnsureDisplay();
@@ -140,23 +140,21 @@ internal sealed class InputRouter
                     new JsonObject { ["ref"] = probe.Ref });
             }
 
-            return new JsonObject
-            {
-                ["clicked"] = true,
-                ["ref"] = probe.Ref,
-                ["channel"] = resultChannel,
-                ["refreshed"] = false,
-                ["observed"] = new JsonObject { ["present"] = true },
-                ["bounds"] = bounds is null
-                    ? new JsonObject()
-                    : new JsonObject
-                    {
-                        ["x"] = bounds.Value.Left,
-                        ["y"] = bounds.Value.Top,
-                        ["width"] = bounds.Value.Width,
-                        ["height"] = bounds.Value.Height,
-                    },
-            };
+            return new ClickRefView(
+                Clicked: true,
+                Ref: probe.Ref,
+                Channel: resultChannel,
+                X: null, Y: null, Button: null, Clicks: null, Mode: null, Method: null,
+                Pattern: null, InjectMs: null, DurationMs: null, Verified: null,
+                KeepForeground: null,
+                Refreshed: false,
+                Observed: new ElementObservedView(true, null, null, null, null),
+                Bounds: bounds is null
+                    ? new OptionalBoundsView(null, null, null, null)
+                    : new OptionalBoundsView(
+                        bounds.Value.Left, bounds.Value.Top, bounds.Value.Width, bounds.Value.Height),
+                Detail: null,
+                Hint: null);
         }
 
         using UiaElementHandle handle = _host.ResolveHandle(
@@ -170,20 +168,18 @@ internal sealed class InputRouter
 
             if (invoked)
             {
-                return new JsonObject
-                {
-                    ["clicked"] = true,
-                    ["ref"] = entry.Ref,
-                    ["channel"] = "uia",
-                    ["pattern"] = strategy,
-                    ["refreshed"] = refreshed,
-                    ["observed"] = ObserveAfterAction(entry),
-                    ["bounds"] = new JsonObject
-                    {
-                        ["x"] = info.Left, ["y"] = info.Top,
-                        ["width"] = info.Width, ["height"] = info.Height,
-                    },
-                };
+                return new ClickRefView(
+                    Clicked: true,
+                    Ref: entry.Ref,
+                    Channel: "uia",
+                    X: null, Y: null, Button: null, Clicks: null, Mode: null, Method: null,
+                    Pattern: strategy,
+                    InjectMs: null, DurationMs: null, Verified: null, KeepForeground: null,
+                    Refreshed: refreshed,
+                    Observed: ObserveAfterAction(entry),
+                    Bounds: new OptionalBoundsView(info.Left, info.Top, info.Width, info.Height),
+                    Detail: null,
+                    Hint: null);
             }
 
             if (mode == "uia")
@@ -206,19 +202,33 @@ internal sealed class InputRouter
             centerX, centerY, "left", 1, coordinateMode,
             keepForeground, observe: true, fallbackInput: fallbackInput);
 
-        JsonObject result = VspJson.ToNode(clickResult).AsObject();
-        result["clicked"] = true;
-        result["ref"] = entry.Ref;
-        result["refreshed"] = refreshed;
-        result["observed"] = ObserveAfterAction(entry);
-        return result;
+        return new ClickRefView(
+            Clicked: true,
+            Ref: entry.Ref,
+            Channel: clickResult.Method,
+            X: clickResult.X,
+            Y: clickResult.Y,
+            Button: clickResult.Button,
+            Clicks: clickResult.Clicks,
+            Mode: clickResult.Mode,
+            Method: clickResult.Method,
+            Pattern: null,
+            InjectMs: clickResult.InjectMs,
+            DurationMs: clickResult.DurationMs,
+            Verified: clickResult.Verified,
+            KeepForeground: clickResult.KeepForeground,
+            Refreshed: refreshed,
+            Observed: ObserveAfterAction(entry),
+            Bounds: null,
+            Detail: clickResult.Detail,
+            Hint: clickResult.Hint);
     }
 
     /// <summary>
     /// 动作后的轻量观察：UIA 返回成功不代表应用真的响应了。
     /// 这里只报告控件是否还在/是否可用/是否获得焦点，失败不影响动作结果。
     /// </summary>
-    private JsonObject ObserveAfterAction(ElementRefEntry entry)
+    private ElementObservedView ObserveAfterAction(ElementRefEntry entry)
     {
         try
         {
@@ -228,24 +238,19 @@ internal sealed class InputRouter
 
             if (handle is null)
             {
-                return new JsonObject { ["present"] = false };
+                return new ElementObservedView(false, null, null, null, null);
             }
 
-            return new JsonObject
-            {
-                ["present"] = true,
-                ["enabled"] = handle.Info.Enabled,
-                ["focused"] = handle.Info.Focused,
-                ["offscreen"] = handle.Info.Offscreen,
-            };
+            return new ElementObservedView(
+                true,
+                handle.Info.Enabled,
+                handle.Info.Focused,
+                handle.Info.Offscreen,
+                null);
         }
         catch (Exception exception)
         {
-            return new JsonObject
-            {
-                ["present"] = null,
-                ["error"] = exception.Message,
-            };
+            return new ElementObservedView(null, null, null, null, exception.Message);
         }
     }
 

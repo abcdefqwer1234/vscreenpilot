@@ -109,3 +109,71 @@ public sealed record ClickView(
     [property: JsonPropertyName("hint")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? Hint);
+
+/// <summary>动作后对元素本身的轻量观察（click_ref 使用）。</summary>
+public sealed record ElementObservedView(
+    [property: JsonPropertyName("present")] bool? Present,
+    [property: JsonPropertyName("enabled")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? Enabled,
+    [property: JsonPropertyName("focused")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? Focused,
+    [property: JsonPropertyName("offscreen")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? Offscreen,
+    [property: JsonPropertyName("error")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Error);
+
+/// <summary>`click_ref` 的输出视图；msaa / uia / 坐标降级三条分支共用。</summary>
+public sealed record ClickRefView(
+    [property: JsonPropertyName("clicked")] bool Clicked,
+    [property: JsonPropertyName("ref")] string Ref,
+    [property: JsonPropertyName("channel")] string Channel,
+    [property: JsonPropertyName("x")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    int? X,
+    [property: JsonPropertyName("y")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    int? Y,
+    [property: JsonPropertyName("button")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Button,
+    [property: JsonPropertyName("clicks")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    int? Clicks,
+    [property: JsonPropertyName("mode")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Mode,
+    [property: JsonPropertyName("method")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Method,
+    [property: JsonPropertyName("pattern")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Pattern,
+    [property: JsonPropertyName("inject_ms")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    double? InjectMs,
+    [property: JsonPropertyName("duration_ms")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    double? DurationMs,
+    [property: JsonPropertyName("verified")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? Verified,
+    [property: JsonPropertyName("keep_foreground")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? KeepForeground,
+    [property: JsonPropertyName("refreshed")] bool Refreshed,
+    [property: JsonPropertyName("observed")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    ElementObservedView? Observed,
+    [property: JsonPropertyName("bounds")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    OptionalBoundsView? Bounds,
+    [property: JsonPropertyName("detail")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Detail,
+    [property: JsonPropertyName("hint")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Hint);

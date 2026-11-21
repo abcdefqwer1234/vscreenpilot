@@ -11,7 +11,7 @@ namespace VScreenPilot.Session;
 
 internal sealed partial class SessionManager
 {
-    public JsonObject ClickElementRef(
+    public ClickRefView ClickElementRef(
         string reference, string? channel, bool keepForeground, bool fallbackInput = false) =>
         _input.ClickElementRef(reference, channel, keepForeground, fallbackInput);
 
