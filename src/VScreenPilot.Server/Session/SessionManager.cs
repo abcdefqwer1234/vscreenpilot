@@ -18,7 +18,7 @@ namespace VScreenPilot.Session;
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
-internal sealed partial class SessionManager : IDisposable, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost
+internal sealed partial class SessionManager : IDisposable, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost
 {
     private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
@@ -57,6 +57,7 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
     private readonly WaitService _waits;
     private readonly ElementResolver _resolver;
     private readonly ElementOperations _elements;
+    private readonly ScreenTextService _screenText;
     private CursorGuard? _cursorGuard;
     // 每调用一个异步流：并发工具不会互相清掉取消令牌（旧实现是单个字段）。
     private readonly AsyncLocal<CancellationTokenSource?> _cancellation = new();
@@ -270,6 +271,7 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
         _waits = new WaitService(this);
         _resolver = new ElementResolver(this);
         _elements = new ElementOperations(this);
+        _screenText = new ScreenTextService(this);
         _log.ClientIdProvider = () => Clients.CurrentId;
         AppLauncher.CleanupStaleProfiles();
         SweepOldArtifacts();
@@ -1201,4 +1203,16 @@ internal sealed partial class SessionManager : IDisposable, IElementFinderHost, 
         _snapshots.ConvertTreeNode(node, hwnd, ref rootRef);
 
     Func<bool> IElementOperationsHost.CancellationProbe() => CancellationProbe();
+
+    DisplayInfo IScreenTextHost.EnsureDisplay() => EnsureEnvironmentFast();
+
+    (byte[] Bgra, int Width, int Height) IScreenTextHost.CaptureRegion(
+        int x, int y, int width, int height) => CaptureRegion(x, y, width, height);
+
+    CancellationToken IScreenTextHost.Cancellation => Cancellation;
+
+    ClickView IScreenTextHost.Click(
+        int x, int y, string button, int clicks, string mode,
+        bool keepForeground, bool observe, bool fallbackInput) =>
+        Click(x, y, button, clicks, mode, keepForeground, observe, fallbackInput);
 }

@@ -7,6 +7,13 @@ namespace VScreenPilot.Tests;
 
 public sealed class VerifyViewSerializationTests
 {
+    private static readonly int[] Rgb = { 0xCC, 0xBB, 0xAA };
+
+    private static readonly VisualMatchView[] SingleMatch =
+    {
+        new(1, 2, 3, 4, new PointView(2, 4), null, null, 0.91, 0.91, 1.25),
+    };
+
     [Fact]
     public void AssertColorOmitsChangedFields()
     {
@@ -51,7 +58,7 @@ public sealed class VerifyViewSerializationTests
     public void PixelMatchSerializesPartialRegion()
     {
         var view = new MatchVisualView(
-            "pixel", 0.5, new PointView(10, 20), "#AABBCC", new int[] { 0xCC, 0xBB, 0xAA },
+            "pixel", 0.5, new PointView(10, 20), "#AABBCC", Rgb,
             new OptionalBoundsView(1, 2, null, null),
             null, null, null, null, null, null, null, null, null, null, null, null);
 
@@ -64,13 +71,10 @@ public sealed class VerifyViewSerializationTests
     [Fact]
     public void TemplateMatchCarriesTemplateSizeAndScores()
     {
-        var match = new VisualMatchView(
-            1, 2, 3, 4, new PointView(2, 4), null, null, 0.91, 0.91, 1.25);
-
         var view = new MatchVisualView(
             "template", 3, null, null, null,
             new OptionalBoundsView(0, 0, 100, 100),
-            null, null, null, null, null, null, 1, new[] { match }, 0.88,
+            null, null, null, null, null, null, 1, SingleMatch, 0.88,
             new TemplateSizeView(5, 6), false, 1.0);
 
         Assert.Equal(
