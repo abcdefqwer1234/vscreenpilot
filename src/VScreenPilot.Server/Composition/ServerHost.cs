@@ -87,25 +87,7 @@ internal sealed class ServerHost : IDisposable
                 parentPid.Value, _session, _log, () => _pipeHost.ActiveClients > 0);
         }
 
-        // 启动时后台预热虚拟屏：把不可避免的第一次黑屏挪到客户端启动阶段。
-        if (Environment.GetEnvironmentVariable("VSP_NO_WARMUP") != "1")
-        {
-            _ = Task.Run(() =>
-            {
-                try
-                {
-                    _session.EnsureEnvironment();
-                    _session.TrimIdleMemory("startup_warm");
-                    entry.DisplayDevice = _session.VirtualDisplay?.DeviceName ?? string.Empty;
-                    _registry.Write(entry);
-                    _log.Info("虚拟屏预热完成");
-                }
-                catch (Exception exception)
-                {
-                    _log.Warn($"虚拟屏预热失败，将在首次使用时重试: {exception.Message}");
-                }
-            });
-        }
+        StartWarmup(entry);
 
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
@@ -152,33 +134,7 @@ internal sealed class ServerHost : IDisposable
             var server = new McpTransport(_session, _log, _trace!);
             int exitCode = server.RunAsync().GetAwaiter().GetResult();
 
-            int idleMs = ResolveDaemonIdleMs();
-            DateTime? idleSince = null;
-
-            while (true)
-            {
-                int active = _pipeHost.ActiveClients;
-
-                if (active > 0)
-                {
-                    idleSince = null;
-                }
-                else if (idleMs == 0)
-                {
-                    break;
-                }
-                else
-                {
-                    idleSince ??= DateTime.UtcNow;
-
-                    if (DateTime.UtcNow - idleSince.Value >= TimeSpan.FromMilliseconds(idleMs))
-                    {
-                        break;
-                    }
-                }
-
-                Thread.Sleep(100);
-            }
+            WaitForIdleExit();
 
             return exitCode;
         }
@@ -193,6 +149,63 @@ internal sealed class ServerHost : IDisposable
             _mutex.Dispose();
             _trace?.Dispose();
             _log.Dispose();
+        }
+    }
+
+    private void StartWarmup(InstanceRegistry.Entry entry)
+    {
+        // 启动时后台预热虚拟屏：把不可避免的第一次黑屏挪到客户端启动阶段。
+        if (Environment.GetEnvironmentVariable("VSP_NO_WARMUP") == "1")
+        {
+            return;
+        }
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                _session.EnsureEnvironment();
+                _session.TrimIdleMemory("startup_warm");
+                entry.DisplayDevice = _session.VirtualDisplay?.DeviceName ?? string.Empty;
+                _registry.Write(entry);
+                _log.Info("虚拟屏预热完成");
+            }
+            catch (Exception exception)
+            {
+                _log.Warn($"虚拟屏预热失败，将在首次使用时重试: {exception.Message}");
+            }
+        });
+    }
+
+    /// <summary>没有活跃客户端时按 VSP_DAEMON_IDLE_MS 退出；0 表示立即退出。</summary>
+    private void WaitForIdleExit()
+    {
+        int idleMs = ResolveDaemonIdleMs();
+        DateTime? idleSince = null;
+
+        while (true)
+        {
+            int active = _pipeHost.ActiveClients;
+
+            if (active > 0)
+            {
+                idleSince = null;
+            }
+            else if (idleMs == 0)
+            {
+                return;
+            }
+            else
+            {
+                idleSince ??= DateTime.UtcNow;
+
+                if (DateTime.UtcNow - idleSince.Value >= TimeSpan.FromMilliseconds(idleMs))
+                {
+                    return;
+                }
+            }
+
+            Thread.Sleep(100);
         }
     }
 

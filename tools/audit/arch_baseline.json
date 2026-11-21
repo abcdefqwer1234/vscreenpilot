@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-11-21T20:35:43Z",
+  "generated_at": "2026-11-21T20:40:02Z",
   "source": {
     "files": 178,
-    "lines": 32095,
+    "lines": 32148,
     "max_file": 598,
     "files_gt_600": 0,
     "files_gt_800": 0,
@@ -28,16 +28,16 @@
         "path": "src/VScreenPilot.Server/Session/SessionManager.Lifecycle.cs"
       },
       {
+        "lines": 468,
+        "path": "src/VScreenPilot.Server/Session/ElementOperations.Value.cs"
+      },
+      {
         "lines": 463,
         "path": "src/VScreenPilot.Server/Infrastructure/LogRing.cs"
       },
       {
         "lines": 453,
         "path": "src/VScreenPilot.Platform/Display/VddDevice.cs"
-      },
-      {
-        "lines": 450,
-        "path": "src/VScreenPilot.Server/Session/ElementOperations.Value.cs"
       },
       {
         "lines": 436,
@@ -61,8 +61,8 @@
     "max": 148,
     "gt_150": 0,
     "ge_200": 0,
-    "ge_120": 14,
-    "ge_80": 53,
+    "ge_120": 11,
+    "ge_80": 52,
     "top": [
       {
         "lines": 148,
@@ -103,7 +103,7 @@
       {
         "lines": 132,
         "path": "src/VScreenPilot.Server/Session/ElementOperations.Value.cs",
-        "line": 239,
+        "line": 257,
         "name": "SetElementValueByKeyboard"
       },
       {
@@ -120,21 +120,21 @@
       },
       {
         "lines": 126,
-        "path": "src/VScreenPilot.Server/Session/SnapshotBuilder.cs",
-        "line": 92,
-        "name": "SnapshotCore"
-      },
-      {
-        "lines": 126,
         "path": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs",
         "line": 402,
         "name": "FindByFingerprint"
       },
       {
-        "lines": 125,
-        "path": "src/VScreenPilot.Server/Session/ElementOperations.cs",
-        "line": 59,
-        "name": "GetUiTree"
+        "lines": 120,
+        "path": "src/VScreenPilot.Server/Session/SnapshotBuilder.cs",
+        "line": 92,
+        "name": "SnapshotCore"
+      },
+      {
+        "lines": 119,
+        "path": "src/VScreenPilot.Server/Session/ScreenTextService.cs",
+        "line": 148,
+        "name": "ClickText"
       }
     ]
   },

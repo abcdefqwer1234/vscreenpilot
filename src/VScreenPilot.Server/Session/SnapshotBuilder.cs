@@ -119,13 +119,7 @@ internal sealed partial class SnapshotBuilder : IDisposable
         UiaTreeResult result = BuildTree(
             hwnd, depth, nodes, interactiveOnly, out bool emptyRetried, out bool effectiveInteractiveOnly);
 
-        if (result.Root is null)
-        {
-            throw new ToolException(
-                "E_ELEMENT_NOT_FOUND",
-                result.Reason == "root_not_found" ? "树根控件已不存在" : "无法读取语义树",
-                new JsonObject { ["reason"] = result.Reason, ["snapshot_id"] = _host.SnapshotId });
-        }
+        RequireRoot(result);
 
         string rootRef = string.Empty;
         JsonObject tree;
@@ -134,7 +128,7 @@ internal sealed partial class SnapshotBuilder : IDisposable
         lock (_host.Refs.SyncRoot)
         {
             snapshotId = _host.BeginSnapshot();
-            tree = ConvertTreeNode(result.Root, hwnd, ref rootRef);
+            tree = ConvertTreeNode(result.Root!, hwnd, ref rootRef);
         }
 
         string text = SnapshotTextFormatter.Render(tree, includeValues);
@@ -215,6 +209,18 @@ internal sealed partial class SnapshotBuilder : IDisposable
 
         return new SnapshotResult(ToView(data), png, previewPng, previewMeta);
     }
+
+    private void RequireRoot(UiaTreeResult result)
+    {
+        if (result.Root is null)
+        {
+            throw new ToolException(
+                "E_ELEMENT_NOT_FOUND",
+                result.Reason == "root_not_found" ? "树根控件已不存在" : "无法读取语义树",
+                new JsonObject { ["reason"] = result.Reason, ["snapshot_id"] = _host.SnapshotId });
+        }
+    }
+
 
     private UiaTreeResult BuildTree(
         IntPtr hwnd, int depth, int nodes, bool interactiveOnly,

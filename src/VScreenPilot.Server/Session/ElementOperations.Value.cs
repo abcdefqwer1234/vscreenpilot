@@ -187,7 +187,25 @@ internal sealed partial class ElementOperations
                 });
         }
 
-        UiaSetValueResult result = handle.SetValue(value);
+        return FinishUiaWrite(
+            handle.SetValue(value), handle, entry, info, display, value,
+            allowKeyboard, effectiveMode, destructiveInsert, refreshed, allowDestructive, mode);
+    }
+
+    private SetElementValueView FinishUiaWrite(
+        UiaSetValueResult result,
+        UiaElementHandle handle,
+        ElementRefEntry entry,
+        UiaElementInfo info,
+        DisplayInfo display,
+        string value,
+        bool allowKeyboard,
+        string effectiveMode,
+        bool destructiveInsert,
+        bool refreshed,
+        bool allowDestructive,
+        string? mode)
+    {
 
         if (result.Failure is not null)
         {

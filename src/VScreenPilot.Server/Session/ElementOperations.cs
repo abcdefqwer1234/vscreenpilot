@@ -66,59 +66,11 @@ internal sealed partial class ElementOperations
         bool interactive = interactiveOnly ?? true;
         int effectiveNodes = nodes;
 
-        IntPtr hwnd;
-        string rootRuntimeId;
+        (IntPtr hwnd, string rootRuntimeId, UiTreeView? early) = ResolveRoot(root, pid, nodes, format);
 
-        if (!string.IsNullOrWhiteSpace(root))
+        if (early is not null)
         {
-            // MSAA ref 不是 UIA runtime_id，不能走 ResolveElementHandle；单独展开成扁平树。
-            ElementRefEntry msaaEntry = _host.Resolver.Require(root);
-
-            if (MsaaService.TryParse(msaaEntry.RuntimeId, out IntPtr msaaHwnd, out int msaaOrdinal))
-            {
-                return BuildMsaaTree(msaaEntry, msaaHwnd, msaaOrdinal, nodes, format);
-            }
-
-            // 走完整的 ref 校验：pid 仍在会话、窗口在虚拟屏、runtime_id 失效时按指纹重定位。
-            DisplayInfo display = _host.EnsureDisplay();
-            using (UiaElementHandle handle = _host.Resolver.Resolve(
-                       root, display, out ElementRefEntry entry, out bool refreshed))
-            {
-                hwnd = entry.Hwnd;
-                rootRuntimeId = handle.Info.RuntimeId;
-
-                if (refreshed)
-                {
-                    _host.Log.Info($"get_ui_tree 树根 {entry.Ref} 已按指纹重定位");
-                }
-            }
-
-            if (string.IsNullOrEmpty(rootRuntimeId))
-            {
-                throw new ToolException(
-                    "E_ELEMENT_STALE",
-                    "该 element_ref 缺少 runtime_id，无法作为树根，请重新 find_element",
-                    new JsonObject { ["ref"] = root });
-            }
-        }
-        else
-        {
-            TrackedApp? app = _host.FindApp(pid);
-
-            if (app is null)
-            {
-                throw new ToolException(
-                    "E_NO_TARGET",
-                    pid is null
-                        ? "没有已接管的应用窗口，请先 launch_or_place_app"
-                        : $"pid={pid} 不是本会话中存活的应用",
-                    new JsonObject { ["pid"] = pid });
-            }
-
-            hwnd = WindowManager.GetActivePopup(app.Hwnd);
-            DisplayInfo display = _host.EnsureDisplay();
-            _host.RequireOnDisplay(display, hwnd, "get_ui_tree");
-            rootRuntimeId = string.Empty;
+            return early;
         }
 
         // 建树不持 _refGate：UIA 最坏 3s，不能把 ref 解析/其它观察一起堵住。
@@ -181,6 +133,70 @@ internal sealed partial class ElementOperations
                 ? null
                 : new TreeWindowView(window.Hwnd.ToInt64(), window.Pid, window.Title));
     }
+
+    /// <summary>解析 get_ui_tree 的树根：MSAA ref、UIA ref 或当前应用窗口。</summary>
+    private (IntPtr Hwnd, string RootRuntimeId, UiTreeView? Early) ResolveRoot(
+        string? root, int? pid, int nodes, string? format)
+    {
+        IntPtr hwnd;
+        string rootRuntimeId;
+
+        if (!string.IsNullOrWhiteSpace(root))
+        {
+            // MSAA ref 不是 UIA runtime_id，不能走 ResolveElementHandle；单独展开成扁平树。
+            ElementRefEntry msaaEntry = _host.Resolver.Require(root);
+
+            if (MsaaService.TryParse(msaaEntry.RuntimeId, out IntPtr msaaHwnd, out int msaaOrdinal))
+            {
+                return (IntPtr.Zero, string.Empty, BuildMsaaTree(msaaEntry, msaaHwnd, msaaOrdinal, nodes, format));
+            }
+
+            // 走完整的 ref 校验：pid 仍在会话、窗口在虚拟屏、runtime_id 失效时按指纹重定位。
+            DisplayInfo display = _host.EnsureDisplay();
+            using (UiaElementHandle handle = _host.Resolver.Resolve(
+                       root, display, out ElementRefEntry entry, out bool refreshed))
+            {
+                hwnd = entry.Hwnd;
+                rootRuntimeId = handle.Info.RuntimeId;
+
+                if (refreshed)
+                {
+                    _host.Log.Info($"get_ui_tree 树根 {entry.Ref} 已按指纹重定位");
+                }
+            }
+
+            if (string.IsNullOrEmpty(rootRuntimeId))
+            {
+                throw new ToolException(
+                    "E_ELEMENT_STALE",
+                    "该 element_ref 缺少 runtime_id，无法作为树根，请重新 find_element",
+                    new JsonObject { ["ref"] = root });
+            }
+        }
+        else
+        {
+            TrackedApp? app = _host.FindApp(pid);
+
+            if (app is null)
+            {
+                throw new ToolException(
+                    "E_NO_TARGET",
+                    pid is null
+                        ? "没有已接管的应用窗口，请先 launch_or_place_app"
+                        : $"pid={pid} 不是本会话中存活的应用",
+                    new JsonObject { ["pid"] = pid });
+            }
+
+            hwnd = WindowManager.GetActivePopup(app.Hwnd);
+            DisplayInfo display = _host.EnsureDisplay();
+            _host.RequireOnDisplay(display, hwnd, "get_ui_tree");
+            rootRuntimeId = string.Empty;
+        }
+
+
+        return (hwnd, rootRuntimeId, null);
+    }
+
 
     /// <summary>
     /// MSAA 对话框没有 UIA 树；把控件展开成一层扁平树，ref 可直接 invoke/click/get_text。
