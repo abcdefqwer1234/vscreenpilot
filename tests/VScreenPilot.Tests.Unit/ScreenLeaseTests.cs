@@ -44,7 +44,7 @@ public sealed class ScreenLeaseTests
         {
             _ = Task.Run(async () =>
             {
-                await Task.Delay(100);
+                await Task.Delay(100).ConfigureAwait(false);
                 first.Dispose();
                 lease.ReleaseHolderIfIdle("c1");
             });

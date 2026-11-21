@@ -66,12 +66,14 @@ internal sealed class ControlServer : IDisposable
         {
             try
             {
+#pragma warning disable CA2007 // await using 无法附加 ConfigureAwait；管道等待随后显式 ConfigureAwait(false)
                 await using var pipe = new NamedPipeServerStream(
                     _pipeName,
                     PipeDirection.InOut,
                     MaxInstances,
                     PipeTransmissionMode.Byte,
                     PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+#pragma warning restore CA2007
 
                 await pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
 
