@@ -18,6 +18,19 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
+/// <summary>元素写值参数；用 init 属性避免长参数列表。</summary>
+internal sealed record ElementWriteRequest
+{
+    public UiaElementHandle Handle { get; init; } = null!;
+    public ElementRefEntry Entry { get; init; } = null!;
+    public UiaElementInfo Info { get; init; } = null!;
+    public DisplayInfo Display { get; init; } = null!;
+    public string Value { get; init; } = string.Empty;
+    public bool Refreshed { get; init; }
+    public string? Mode { get; init; }
+    public bool AllowDestructive { get; init; }
+}
+
 /// <summary>ValueOps：ElementOperations 的拆分子集。</summary>
 internal sealed class ElementValueOps
 {
@@ -161,8 +174,17 @@ internal sealed class ElementValueOps
                     });
             }
 
-            return _host.KeyboardValueOps.SetElementValueByKeyboard(
-                display, handle, entry, value, refreshed, effectiveMode, allowDestructive);
+            return _host.KeyboardValueOps.SetElementValueByKeyboard(new ElementWriteRequest
+            {
+                Handle = handle,
+                Entry = entry,
+                Info = info,
+                Display = display,
+                Value = value,
+                Refreshed = refreshed,
+                Mode = effectiveMode,
+                AllowDestructive = allowDestructive,
+            });
         }
 
         // ValuePattern 的 SetValue 是整值覆盖。mode=insert 在普通控件上走这条路径，
@@ -190,23 +212,29 @@ internal sealed class ElementValueOps
         }
 
         return FinishUiaWrite(
-            handle.SetValue(value), handle, entry, info, display, value,
-            allowKeyboard, effectiveMode, destructiveInsert, refreshed, allowDestructive, mode);
+            handle.SetValue(value),
+            new ElementWriteRequest
+            {
+                Handle = handle,
+                Entry = entry,
+                Info = info,
+                Display = display,
+                Value = value,
+                Refreshed = refreshed,
+                Mode = mode,
+                AllowDestructive = allowDestructive,
+            },
+            allowKeyboard,
+            effectiveMode,
+            destructiveInsert);
     }
 
     private SetElementValueView FinishUiaWrite(
         UiaSetValueResult result,
-        UiaElementHandle handle,
-        ElementRefEntry entry,
-        UiaElementInfo info,
-        DisplayInfo display,
-        string value,
+        ElementWriteRequest request,
         bool allowKeyboard,
         string effectiveMode,
-        bool destructiveInsert,
-        bool refreshed,
-        bool allowDestructive,
-        string? mode)
+        bool destructiveInsert)
     {
 
         if (result.Failure is not null)
@@ -214,7 +242,7 @@ internal sealed class ElementValueOps
             throw new ToolException(
                 "E_UIA",
                 $"ValuePattern 写值失败: {result.Failure}",
-                new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
+                new JsonObject { ["ref"] = request.Entry.Ref, ["element"] = ElementPresenter.ToJson(request.Info) });
         }
 
         if (result.Supported && result.ReadOnly)
@@ -222,21 +250,21 @@ internal sealed class ElementValueOps
             throw new ToolException(
                 "E_ELEMENT_READONLY",
                 "控件为只读，无法通过 ValuePattern 写入",
-                new JsonObject { ["ref"] = entry.Ref, ["value"] = result.Value });
+                new JsonObject { ["ref"] = request.Entry.Ref, ["value"] = result.Value });
         }
 
         if (result.Supported)
         {
-            bool verified = string.Equals(result.Value ?? string.Empty, value, StringComparison.Ordinal);
+            bool verified = string.Equals(result.Value ?? string.Empty, request.Value, StringComparison.Ordinal);
             return new SetElementValueView(
-                entry.Ref,
+                request.Entry.Ref,
                 "value_pattern",
                 effectiveMode,
                 destructiveInsert,
                 verified,
-                value,
+                request.Value,
                 result.Value is null ? null : JsonValue.Create(result.Value),
-                refreshed,
+                request.Refreshed,
                 Chunks: null,
                 DurationMs: null,
                 ObservedLength: null,
@@ -248,10 +276,9 @@ internal sealed class ElementValueOps
             throw new ToolException(
                 "E_PATTERN_UNSUPPORTED",
                 "该控件不支持 ValuePattern；如接受切换前台后键入，请显式传 allow_keyboard=true",
-                new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
+                new JsonObject { ["ref"] = request.Entry.Ref, ["element"] = ElementPresenter.ToJson(request.Info) });
         }
 
-        return _host.KeyboardValueOps.SetElementValueByKeyboard(
-            display, handle, entry, value, refreshed, mode, allowDestructive);
+        return _host.KeyboardValueOps.SetElementValueByKeyboard(request);
     }
 }

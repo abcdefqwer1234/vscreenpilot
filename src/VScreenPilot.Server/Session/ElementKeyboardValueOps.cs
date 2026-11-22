@@ -24,15 +24,16 @@ internal sealed class ElementKeyboardValueOps
     internal readonly ElementOperations _host;
 
     public ElementKeyboardValueOps(ElementOperations host) => _host = host;
-    internal SetElementValueView SetElementValueByKeyboard(
-        DisplayInfo display,
-        UiaElementHandle handle,
-        ElementRefEntry entry,
-        string value,
-        bool refreshed,
-        string? mode,
-        bool allowDestructive)
+    internal SetElementValueView SetElementValueByKeyboard(ElementWriteRequest request)
     {
+        DisplayInfo display = request.Display;
+        UiaElementHandle handle = request.Handle;
+        ElementRefEntry entry = request.Entry;
+        string value = request.Value;
+        bool refreshed = request.Refreshed;
+        string? mode = request.Mode;
+        bool allowDestructive = request.AllowDestructive;
+
         (TrackedApp app, string effectiveMode, bool replace) =
             ResolveKeyboardTarget(display, entry, handle, mode, allowDestructive);
 
