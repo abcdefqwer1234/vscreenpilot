@@ -16,7 +16,7 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager : IDisposable, IElementOperationsHost
+internal sealed partial class SessionManager : IDisposable
 {
     /// <summary>
     /// 在释放/预热等低负载节点裁剪工作集。不是定时看门狗，只按事件触发。
@@ -193,23 +193,7 @@ internal sealed partial class SessionManager : IDisposable, IElementOperationsHo
         }
     }
 
-    DisplayInfo IElementOperationsHost.EnsureDisplay() => EnsureEnvironment();
-
-    UiaHost IElementOperationsHost.Uia => _uiaHost;
-
-    ElementResolver IElementOperationsHost.Resolver => _resolver;
-
-    ElementRefStore IElementOperationsHost.Refs => _refs;
-
-    int IElementOperationsHost.RefCapacity => ElementRefCapacity;
-
-    bool IElementOperationsHost.IsCancelled => Cancellation.IsCancellationRequested;
-
-    LogRing IElementOperationsHost.Log => _log;
-
-    TrackedApp? IElementOperationsHost.FindApp(int? pid) => FindLiveTrackedApp(pid);
-
-    TrackedApp? IElementOperationsHost.OwnedAppForPid(int pid)
+    private TrackedApp? OwnedAppForPidCore(int pid)
     {
         lock (_gate)
         {
@@ -217,42 +201,6 @@ internal sealed partial class SessionManager : IDisposable, IElementOperationsHo
                 item => IsOwned(item) && item.Pid == pid && TrackedAppTracker.IsLive(item));
         }
     }
-
-    void IElementOperationsHost.RequireOnDisplay(DisplayInfo display, IntPtr hwnd, string label) =>
-        RequireWindowOnDisplay(display, hwnd, label);
-
-    void IElementOperationsHost.RequirePointInTrackedApp(
-        DisplayInfo display, int x, int y, string label) =>
-        RequirePointInTrackedApp(display, x, y, label);
-
-    ClickView IElementOperationsHost.Click(
-        int x, int y, string button, int clicks, string mode,
-        bool keepForeground, bool observe, bool fallbackInput) =>
-        Click(x, y, button, clicks, mode, keepForeground, observe, fallbackInput);
-
-    TypeTextView IElementOperationsHost.TypeText(
-        string text, int? pid, bool verify, int chunkChars, string channel) =>
-        TypeText(text, pid, verify, chunkChars, channel);
-
-    TextWriteResult IElementOperationsHost.WriteTextVerified(
-        TrackedApp app, UiaElementHandle handle, string value, bool replace, int timeoutMs) =>
-        _input.WriteTextVerified(app, handle, value, replace, timeoutMs);
-
-    bool IElementOperationsHost.EnsureForeground(TrackedApp app) => EnsureForeground(app);
-
-    void IElementOperationsHost.PauseFocusGuard() => PauseFocusGuard();
-
-    void IElementOperationsHost.ResumeFocusGuard() => ResumeFocusGuard();
-
-    void IElementOperationsHost.RestoreForeground(IntPtr previous) => RestoreForeground(previous);
-
-    void IElementOperationsHost.ResetUia() => ResetUia();
-
-    JsonObject IElementOperationsHost.ConvertTreeNode(
-        UiaTreeNode node, IntPtr hwnd, ref string rootRef) =>
-        _snapshots.ConvertTreeNode(node, hwnd, ref rootRef);
-
-    Func<bool> IElementOperationsHost.CancellationProbe() => CancellationProbe();
 
     private void ClearElementRefsCore(bool allClients)
     {

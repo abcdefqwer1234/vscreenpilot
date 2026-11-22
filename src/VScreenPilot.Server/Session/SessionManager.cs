@@ -19,7 +19,7 @@ namespace VScreenPilot.Session;
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
-internal sealed partial class SessionManager : IDisposable, IElementOperationsHost
+internal sealed partial class SessionManager : IDisposable
 {
     private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
@@ -262,7 +262,16 @@ internal sealed partial class SessionManager : IDisposable, IElementOperationsHo
         _regionVerifier = new RegionVerifier(new RegionVerifierContext(EnsureEnvironmentFast, CaptureRegion, FindFrame, FindLatestFrame, () => _frames.Latest(), () => _frames.Snapshot()));
         _waits = new WaitService(new WaitDisplayContext(EnsureEnvironmentFast, CaptureRegion), new WaitSessionContext(EnterRead, ExitRead, () => Cancellation.IsCancellationRequested, ToolProgress.Report), new WaitAppContext(FindLiveTrackedApp, OwnedAppsSnapshotCore, TrackedPids, Uia), new WaitFrameContext((source, x, y, w, h) => _regionVerifier.ResolveBaselineFrame(source, x, y, w, h), _regionVerifier.FramesJson, MatchVisual));
         _resolver = new ElementResolver(new ElementResolverContext(_refs, () => Clients.CurrentId, () => SnapshotId, _uiaHost, IsTrackedPidCore, RequireWindowOnDisplay, _log));
-        _elements = new ElementOperations(this);
+        _elements = new ElementOperations(
+            new ElementStateContext(_uiaHost, _resolver, _refs, RegisterElement,
+                ElementRefCapacity, _log, _snapshots.ConvertTreeNode),
+            new ElementSnapshotContext(EnsureSnapshot, BeginSnapshot,
+                () => Cancellation.IsCancellationRequested, CancellationProbe),
+            new ElementAppContext(EnsureEnvironment, FindLiveTrackedApp, OwnedAppForPidCore,
+                RequireWindowOnDisplay, (display, x, y, label) => { _ = RequirePointInTrackedApp(display, x, y, label); }),
+            new ElementInputContext(Click, TypeText, (app, handle, value, replace, timeout) => _input.WriteTextVerified(app, handle, value, replace, timeout), ResetUia),
+            new ElementFocusContext(EnsureForeground, () => PauseFocusGuard(),
+                ResumeFocusGuard, previous => RestoreForeground(previous)));
         _screenText = new ScreenTextService(new ScreenTextContext(EnsureEnvironmentFast, CaptureRegion, () => Cancellation, Metrics.RecordOcr, Click));
         _capture = new ScreenCaptureService(new ScreenCaptureContext(EnsureEnvironmentFast, CaptureRegion, StoreFrame, _paths.ValidateSavePath));
         _focus = new FocusGuard(new FocusContext(IsTrackedWindow, IsAnyClientWindow, target => RestoreForeground(target, logFailure: false), _log));

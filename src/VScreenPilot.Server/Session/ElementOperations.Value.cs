@@ -23,8 +23,8 @@ internal sealed partial class ElementOperations
     public SetElementValueView SetElementValue(
         string reference, string value, bool allowKeyboard, string? mode = null, bool allowDestructive = false)
     {
-        DisplayInfo display = _host.EnsureDisplay();
-        ElementRefEntry probe = _host.Resolver.Require(reference);
+        DisplayInfo display = _apps.EnsureDisplay();
+        ElementRefEntry probe = _state.Resolver.Require(reference);
 
         if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaChildId))
         {
@@ -38,7 +38,7 @@ internal sealed partial class ElementOperations
         ElementRefEntry probe, IntPtr msaaHwnd, int msaaChildId, string value,
         bool allowKeyboard, string? mode, bool allowDestructive)
     {
-        string? existing = _host.Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
+        string? existing = _state.Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
 
         if (!string.IsNullOrEmpty(existing) &&
             !string.Equals(existing, value, StringComparison.Ordinal) &&
@@ -50,7 +50,7 @@ internal sealed partial class ElementOperations
                 new JsonObject { ["ref"] = probe.Ref, ["existing_length"] = existing.Length });
         }
 
-        if (!_host.Uia.InvokeMsaa(() => MsaaService.SetValue(msaaHwnd, msaaChildId, value)))
+        if (!_state.Uia.InvokeMsaa(() => MsaaService.SetValue(msaaHwnd, msaaChildId, value)))
         {
             if (!allowKeyboard)
             {
@@ -60,7 +60,7 @@ internal sealed partial class ElementOperations
                     new JsonObject { ["ref"] = probe.Ref });
             }
 
-            var bounds = _host.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaChildId));
+            var bounds = _state.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaChildId));
 
             if (bounds is null)
             {
@@ -70,12 +70,12 @@ internal sealed partial class ElementOperations
                     new JsonObject { ["ref"] = probe.Ref });
             }
 
-            _host.Click(
+            _input.Click(
                 bounds.Value.Left + bounds.Value.Width / 2,
                 bounds.Value.Top + bounds.Value.Height / 2,
                 "left", 1, "message");
 
-            TypeTextView typed = _host.TypeText(value, null, verify: true, chunkChars: 32, channel: "auto");
+            TypeTextView typed = _input.TypeText(value, null, verify: true, chunkChars: 32, channel: "auto");
             return new SetElementValueView(
                 probe.Ref,
                 "msaa+keyboard",
@@ -91,7 +91,7 @@ internal sealed partial class ElementOperations
                 Warning: null);
         }
 
-        string? observed = _host.Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
+        string? observed = _state.Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
         return new SetElementValueView(
             probe.Ref,
             "msaa",
@@ -111,7 +111,7 @@ internal sealed partial class ElementOperations
         DisplayInfo display, string reference, string value,
         bool allowKeyboard, string? mode, bool allowDestructive)
     {
-        using UiaElementHandle handle = _host.Resolver.Resolve(reference, display, out ElementRefEntry entry, out bool refreshed);
+        using UiaElementHandle handle = _state.Resolver.Resolve(reference, display, out ElementRefEntry entry, out bool refreshed);
         UiaElementInfo info = handle.Info;
 
         if (!info.Enabled)
@@ -266,11 +266,11 @@ internal sealed partial class ElementOperations
 
 
         IntPtr previous = WindowManager.GetForegroundWindow();
-        _host.PauseFocusGuard();
+        _focus.PauseFocusGuard();
 
         try
         {
-            if (!_host.EnsureForeground(app))
+            if (!_focus.EnsureForeground(app))
             {
                 throw new ToolException(
                     "E_FOCUS",
@@ -329,7 +329,7 @@ internal sealed partial class ElementOperations
             }
 
             Thread.Sleep(30);
-            TextWriteResult write = _host.WriteTextVerified(
+            TextWriteResult write = _input.WriteTextVerified(
                 app, handle, value, replace, timeoutMs: 12000);
 
             string? after = handle.GetText(65536);
@@ -353,8 +353,8 @@ internal sealed partial class ElementOperations
         }
         finally
         {
-            _host.RestoreForeground(previous);
-            _host.ResumeFocusGuard();
+            _focus.RestoreForeground(previous);
+            _focus.ResumeFocusGuard();
         }
     }
 
@@ -364,7 +364,7 @@ internal sealed partial class ElementOperations
     {
         TrackedApp? app;
 
-        app = _host.OwnedAppForPid(entry.Pid);
+        app = _apps.OwnedAppForPid(entry.Pid);
 
         if (app is null)
         {
@@ -374,7 +374,7 @@ internal sealed partial class ElementOperations
                 new JsonObject { ["ref"] = entry.Ref });
         }
 
-        _host.RequireOnDisplay(display, entry.Hwnd, "set_element_value");
+        _apps.RequireOnDisplay(display, entry.Hwnd, "set_element_value");
 
         string effectiveMode = ResolveWriteMode(mode, handle.Info);
         bool replace = effectiveMode == "replace";
@@ -459,7 +459,7 @@ internal sealed partial class ElementOperations
     /// <summary>SetFocus/消息点击后确认焦点确实落在目标控件上，避免键入到相邻控件。</summary>
     private bool VerifyFocus(UiaElementHandle expected)
     {
-        using UiaElementHandle? focused = _host.Uia.GetFocusedElementHandle(expected.Info.ProcessId);
+        using UiaElementHandle? focused = _state.Uia.GetFocusedElementHandle(expected.Info.ProcessId);
         if (focused is null)
         {
             return false;

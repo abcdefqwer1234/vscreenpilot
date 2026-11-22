@@ -17,50 +17,80 @@ using VScreenPilot.Json;
 
 namespace VScreenPilot.Session;
 
-internal interface IElementOperationsHost
-{
-    DisplayInfo EnsureDisplay();
-    UiaHost Uia { get; }
-    ElementResolver Resolver { get; }
-    ElementRefStore Refs { get; }
-    string RegisterElement(UiaElementInfo info, IntPtr hwnd);
-    string EnsureSnapshot();
-    string BeginSnapshot();
-    int RefCapacity { get; }
-    bool IsCancelled { get; }
-    LogRing Log { get; }
-    TrackedApp? FindApp(int? pid);
-    TrackedApp? OwnedAppForPid(int pid);
-    void RequireOnDisplay(DisplayInfo display, IntPtr hwnd, string label);
-    void RequirePointInTrackedApp(DisplayInfo display, int x, int y, string label);
-    ClickView Click(
-        int x, int y, string button, int clicks, string mode,
-        bool keepForeground = false, bool observe = true, bool fallbackInput = false);
-    TypeTextView TypeText(string text, int? pid, bool verify, int chunkChars, string channel);
-    TextWriteResult WriteTextVerified(
-        TrackedApp app, UiaElementHandle handle, string value, bool replace, int timeoutMs);
-    bool EnsureForeground(TrackedApp app);
-    void PauseFocusGuard();
-    void ResumeFocusGuard();
-    void RestoreForeground(IntPtr previous);
-    void ResetUia();
-    JsonObject ConvertTreeNode(UiaTreeNode node, IntPtr hwnd, ref string rootRef);
-    Func<bool> CancellationProbe();
-}
+internal delegate JsonObject ConvertTreeNodeHandler(UiaTreeNode node, IntPtr hwnd, ref string rootRef);
+
+internal sealed record ElementStateContext(
+    UiaHost Uia,
+    ElementResolver Resolver,
+    ElementRefStore Refs,
+    Func<UiaElementInfo, IntPtr, string> RegisterElement,
+    int RefCapacity,
+    LogRing Log,
+    ConvertTreeNodeHandler ConvertTreeNode);
+
+internal sealed record ElementSnapshotContext(
+    Func<string> EnsureSnapshot,
+    Func<string> BeginSnapshot,
+    Func<bool> IsCancelled,
+    Func<Func<bool>> CancellationProbe);
+
+internal sealed record ElementAppContext(
+    Func<DisplayInfo> EnsureDisplay,
+    Func<int?, TrackedApp?> FindApp,
+    Func<int, TrackedApp?> OwnedAppForPid,
+    Action<DisplayInfo, IntPtr, string> RequireOnDisplay,
+    Action<DisplayInfo, int, int, string> RequirePointInTrackedApp);
+
+internal delegate ClickView ClickHandler(
+    int x, int y, string button, int clicks, string mode,
+    bool keepForeground = false, bool observe = true, bool fallbackInput = false);
+
+internal delegate TypeTextView TypeTextHandler(
+    string text, int? pid, bool verify, int chunkChars, string channel);
+
+internal delegate TextWriteResult WriteTextVerifiedHandler(
+    TrackedApp app, UiaElementHandle? handle, string value, bool replace, int timeoutMs);
+
+internal sealed record ElementInputContext(
+    ClickHandler Click,
+    TypeTextHandler TypeText,
+    WriteTextVerifiedHandler WriteTextVerified,
+    Action ResetUia);
+
+internal sealed record ElementFocusContext(
+    Func<TrackedApp, bool> EnsureForeground,
+    Action PauseFocusGuard,
+    Action ResumeFocusGuard,
+    Action<IntPtr> RestoreForeground);
 
 internal sealed partial class ElementOperations
 {
-    private readonly IElementOperationsHost _host;
+    private readonly ElementStateContext _state;
+    private readonly ElementSnapshotContext _snapshot;
+    private readonly ElementAppContext _apps;
+    private readonly ElementInputContext _input;
+    private readonly ElementFocusContext _focus;
 
-    public ElementOperations(IElementOperationsHost host) => _host = host;
+    public ElementOperations(
+        ElementStateContext state,
+        ElementSnapshotContext snapshot,
+        ElementAppContext apps,
+        ElementInputContext input,
+        ElementFocusContext focus)
+    {
+        _state = state;
+        _snapshot = snapshot;
+        _apps = apps;
+        _input = input;
+        _focus = focus;
+    }
 
     public UiTreeView GetUiTree(
         int? maxDepth, bool? interactiveOnly, int? maxNodes, string? root, int? pid,
         string? format = null, bool newSnapshot = false)
     {
         int depth = Math.Clamp(maxDepth ?? 3, 1, 10);
-        // 树节点上限不能超过 ref 容量，否则返回的早期 ref 已被淘汰（E5）。
-        int nodes = Math.Clamp(maxNodes ?? 300, 1, Math.Min(1024, _host.RefCapacity));
+        int nodes = Math.Clamp(maxNodes ?? 300, 1, Math.Min(1024, _state.RefCapacity));
         bool interactive = interactiveOnly ?? true;
         int effectiveNodes = nodes;
 
@@ -71,16 +101,14 @@ internal sealed partial class ElementOperations
             return early;
         }
 
-        // 建树不持 _refGate：UIA 最坏 3s，不能把 ref 解析/其它观察一起堵住。
-        // 只有“推进代际 + 登记 ref + 生成 JSON”这段纯内存操作才进锁。
-        UiaTreeResult result = _host.Uia.BuildTree(
+        UiaTreeResult result = _state.Uia.BuildTree(
             hwnd,
             rootRuntimeId,
             depth,
             interactive,
             nodes,
             timeBudgetMs: 3000,
-            isCancelled: _host.CancellationProbe());
+            isCancelled: _snapshot.CancellationProbe());
 
         if (result.Root is null)
         {
@@ -96,12 +124,10 @@ internal sealed partial class ElementOperations
         JsonObject tree;
         string snapshotId;
 
-        lock (_host.Refs.SyncRoot)
+        lock (_state.Refs.SyncRoot)
         {
-            // 只有显式 new_snapshot 才推进代际；默认复用当前快照，
-            // 这样 find -> get_ui_tree -> invoke 不会莫名 E_STALE_SNAPSHOT。
-            snapshotId = newSnapshot ? _host.BeginSnapshot() : _host.EnsureSnapshot();
-            tree = _host.ConvertTreeNode(result.Root, hwnd, ref rootRef);
+            snapshotId = newSnapshot ? _snapshot.BeginSnapshot() : _snapshot.EnsureSnapshot();
+            tree = _state.ConvertTreeNode(result.Root, hwnd, ref rootRef);
         }
 
         WindowInfo? window = WindowManager.FromHandle(hwnd);
@@ -117,7 +143,7 @@ internal sealed partial class ElementOperations
             depth,
             result.MaxDepthReached,
             result.ElapsedMs,
-            _host.RefCapacity,
+            _state.RefCapacity,
             effectiveNodes,
             snapshotId,
             newSnapshot,
@@ -142,7 +168,7 @@ internal sealed partial class ElementOperations
         if (!string.IsNullOrWhiteSpace(root))
         {
             // MSAA ref 不是 UIA runtime_id，不能走 ResolveElementHandle；单独展开成扁平树。
-            ElementRefEntry msaaEntry = _host.Resolver.Require(root);
+            ElementRefEntry msaaEntry = _state.Resolver.Require(root);
 
             if (MsaaService.TryParse(msaaEntry.RuntimeId, out IntPtr msaaHwnd, out int msaaOrdinal))
             {
@@ -150,8 +176,8 @@ internal sealed partial class ElementOperations
             }
 
             // 走完整的 ref 校验：pid 仍在会话、窗口在虚拟屏、runtime_id 失效时按指纹重定位。
-            DisplayInfo display = _host.EnsureDisplay();
-            using (UiaElementHandle handle = _host.Resolver.Resolve(
+            DisplayInfo display = _apps.EnsureDisplay();
+            using (UiaElementHandle handle = _state.Resolver.Resolve(
                        root, display, out ElementRefEntry entry, out bool refreshed))
             {
                 hwnd = entry.Hwnd;
@@ -159,7 +185,7 @@ internal sealed partial class ElementOperations
 
                 if (refreshed)
                 {
-                    _host.Log.Info($"get_ui_tree 树根 {entry.Ref} 已按指纹重定位");
+                    _state.Log.Info($"get_ui_tree 树根 {entry.Ref} 已按指纹重定位");
                 }
             }
 
@@ -173,7 +199,7 @@ internal sealed partial class ElementOperations
         }
         else
         {
-            TrackedApp? app = _host.FindApp(pid);
+            TrackedApp? app = _apps.FindApp(pid);
 
             if (app is null)
             {
@@ -186,8 +212,8 @@ internal sealed partial class ElementOperations
             }
 
             hwnd = WindowManager.GetActivePopup(app.Hwnd);
-            DisplayInfo display = _host.EnsureDisplay();
-            _host.RequireOnDisplay(display, hwnd, "get_ui_tree");
+            DisplayInfo display = _apps.EnsureDisplay();
+            _apps.RequireOnDisplay(display, hwnd, "get_ui_tree");
             rootRuntimeId = string.Empty;
         }
 
@@ -202,16 +228,16 @@ internal sealed partial class ElementOperations
     private UiTreeView BuildMsaaTree(
         ElementRefEntry rootEntry, IntPtr hwnd, int ordinal, int maxNodes, string? format)
     {
-        MsaaFindResult found = _host.Uia.InvokeMsaa(() => MsaaService.FindElements(
+        MsaaFindResult found = _state.Uia.InvokeMsaa(() => MsaaService.FindElements(
             hwnd, null, UiaNameMatch.Exact, null, maxNodes));
 
         var children = new JsonArray();
         string snapshotId;
         int count = 0;
 
-        lock (_host.Refs.SyncRoot)
+        lock (_state.Refs.SyncRoot)
         {
-            snapshotId = _host.EnsureSnapshot();
+            snapshotId = _snapshot.EnsureSnapshot();
 
             foreach (UiaElementInfo info in found.Items)
             {
@@ -222,7 +248,7 @@ internal sealed partial class ElementOperations
 
                 children.Add((JsonNode)new JsonObject
                 {
-                    ["ref"] = _host.RegisterElement(info, hwnd),
+                    ["ref"] = _state.RegisterElement(info, hwnd),
                     ["control_type"] = info.ControlTypeName,
                     ["name"] = info.Name,
                     ["bounds"] = new JsonObject
@@ -256,7 +282,7 @@ internal sealed partial class ElementOperations
             MaxDepth: 1,
             MaxDepthReached: null,
             ElapsedMs: null,
-            _host.RefCapacity,
+            _state.RefCapacity,
             maxNodes,
             snapshotId,
             NewSnapshot: false,
@@ -275,13 +301,13 @@ internal sealed partial class ElementOperations
 
     public ElementTextView GetElementText(string reference, int maxChars)
     {
-        DisplayInfo display = _host.EnsureDisplay();
-        ElementRefEntry probe = _host.Resolver.Require(reference);
+        DisplayInfo display = _apps.EnsureDisplay();
+        ElementRefEntry probe = _state.Resolver.Require(reference);
         maxChars = Math.Clamp(maxChars, 1, 65536);
 
         if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaChildId))
         {
-            string msaaText = _host.Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId)) ?? string.Empty;
+            string msaaText = _state.Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId)) ?? string.Empty;
             return new ElementTextView(
                 probe.Ref,
                 probe.ControlTypeName,
@@ -292,7 +318,7 @@ internal sealed partial class ElementOperations
                 Refreshed: false);
         }
 
-        using UiaElementHandle handle = _host.Resolver.Resolve(
+        using UiaElementHandle handle = _state.Resolver.Resolve(
             reference, display, out ElementRefEntry entry, out bool refreshed);
 
         string? text = handle.GetText(maxChars);
