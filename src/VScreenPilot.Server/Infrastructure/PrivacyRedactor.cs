@@ -37,55 +37,74 @@ internal static class PrivacyRedactor
         switch (node)
         {
             case JsonObject obj:
+                foreach (string key in obj.Select(pair => pair.Key).ToList())
                 {
-                    foreach (string key in obj.Select(pair => pair.Key).ToList())
-                    {
-                        JsonNode? value = obj[key];
-
-                        if (value is JsonValue scalar && scalar.TryGetValue(out string? text) &&
-                            text is not null)
-                        {
-                            string redacted = RedactEmails(text, ref count);
-
-                            if (!ReferenceEquals(redacted, text) &&
-                                !string.Equals(redacted, text, StringComparison.Ordinal))
-                            {
-                                obj[key] = redacted;
-                            }
-                        }
-                        else
-                        {
-                            RedactJsonStrings(value, ref count);
-                        }
-                    }
-
-                    break;
+                    RedactObjectValue(obj, key, ref count);
                 }
+
+                break;
 
             case JsonArray array:
+                for (int index = 0; index < array.Count; index++)
                 {
-                    for (int index = 0; index < array.Count; index++)
-                    {
-                        JsonNode? value = array[index];
-
-                        if (value is JsonValue scalar && scalar.TryGetValue(out string? text) &&
-                            text is not null)
-                        {
-                            string redacted = RedactEmails(text, ref count);
-
-                            if (!string.Equals(redacted, text, StringComparison.Ordinal))
-                            {
-                                array[index] = redacted;
-                            }
-                        }
-                        else
-                        {
-                            RedactJsonStrings(value, ref count);
-                        }
-                    }
-
-                    break;
+                    RedactArrayValue(array, index, ref count);
                 }
+
+                break;
         }
+    }
+
+    private static void RedactObjectValue(JsonObject obj, string key, ref int count)
+    {
+        JsonNode? value = obj[key];
+
+        if (TryRedactScalar(value, ref count, out string redacted))
+        {
+            obj[key] = redacted;
+            return;
+        }
+
+        if (value is not JsonValue)
+        {
+            RedactJsonStrings(value, ref count);
+        }
+    }
+
+    private static void RedactArrayValue(JsonArray array, int index, ref int count)
+    {
+        JsonNode? value = array[index];
+
+        if (TryRedactScalar(value, ref count, out string redacted))
+        {
+            array[index] = redacted;
+            return;
+        }
+
+        if (value is not JsonValue)
+        {
+            RedactJsonStrings(value, ref count);
+        }
+    }
+
+    private static bool TryRedactScalar(JsonNode? value, ref int count, out string redacted)
+    {
+        redacted = string.Empty;
+
+        if (value is not JsonValue scalar ||
+            !scalar.TryGetValue(out string? text) ||
+            text is null)
+        {
+            return false;
+        }
+
+        string result = RedactEmails(text, ref count);
+
+        if (string.Equals(result, text, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        redacted = result;
+        return true;
     }
 }

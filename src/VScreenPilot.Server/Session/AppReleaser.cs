@@ -264,34 +264,7 @@ internal sealed class AppReleaser
             List<UiaElementInfo> buttons = _uia.FindElements(
                 dialogHwnd, null, UiaNameMatch.Contains, "Button", null, 30);
 
-            // 先按 Win32 对话框按钮 ID（是/否/取消 = 6/7/2）识别，避免只支持中英文；
-            // 文本匹配只作为兜底。
-            string[] preferredIds = save
-                ? new[] { "6", "1" }
-                : new[] { "7", "2" };
-
-            UiaElementInfo? target = buttons.FirstOrDefault(
-                item => preferredIds.Contains(item.AutomationId, StringComparer.OrdinalIgnoreCase));
-
-            target ??= buttons.FirstOrDefault(item =>
-            {
-                string name = item.Name ?? string.Empty;
-
-                if (save)
-                {
-                    return !string.Equals(item.AutomationId, "FileSave", StringComparison.OrdinalIgnoreCase) &&
-                           !name.Contains("不保存", StringComparison.OrdinalIgnoreCase) &&
-                           !name.Contains("Don't Save", StringComparison.OrdinalIgnoreCase) &&
-                           (name.Contains("保存", StringComparison.OrdinalIgnoreCase) ||
-                            name.Contains("Save", StringComparison.OrdinalIgnoreCase));
-                }
-
-                return name.Contains("不保存", StringComparison.OrdinalIgnoreCase) ||
-                       name.Contains("不儲存", StringComparison.OrdinalIgnoreCase) ||
-                       name.Contains("Don't Save", StringComparison.OrdinalIgnoreCase) ||
-                       name.StartsWith("否", StringComparison.OrdinalIgnoreCase) ||
-                       name.StartsWith("放弃", StringComparison.OrdinalIgnoreCase);
-            });
+            UiaElementInfo? target = PickDialogButton(buttons, save);
 
             if (target is null || string.IsNullOrEmpty(target.RuntimeId))
             {
@@ -314,4 +287,42 @@ internal sealed class AppReleaser
             return false;
         }
     }
+
+    private static UiaElementInfo? PickDialogButton(List<UiaElementInfo> buttons, bool save)
+    {
+        // 先按 Win32 对话框按钮 ID（是/否/取消 = 6/7/2）识别，避免只支持中英文；
+        // 文本匹配只作为兜底。
+        string[] preferredIds = save ? new[] { "6", "1" } : new[] { "7", "2" };
+
+        UiaElementInfo? target = buttons.FirstOrDefault(
+            item => preferredIds.Contains(item.AutomationId, StringComparer.OrdinalIgnoreCase));
+
+        return target ?? buttons.FirstOrDefault(item => MatchesDialogButton(item, save));
+    }
+
+    private static bool MatchesDialogButton(UiaElementInfo item, bool save)
+    {
+        string name = item.Name ?? string.Empty;
+
+        if (save)
+        {
+            return IsSaveButton(item, name);
+        }
+
+        return IsDiscardButton(name);
+    }
+
+    private static bool IsSaveButton(UiaElementInfo item, string name) =>
+        !string.Equals(item.AutomationId, "FileSave", StringComparison.OrdinalIgnoreCase) &&
+        !name.Contains("不保存", StringComparison.OrdinalIgnoreCase) &&
+        !name.Contains("Don't Save", StringComparison.OrdinalIgnoreCase) &&
+        (name.Contains("保存", StringComparison.OrdinalIgnoreCase) ||
+         name.Contains("Save", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsDiscardButton(string name) =>
+        name.Contains("不保存", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("不储存", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Don't Save", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("否", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("放弃", StringComparison.OrdinalIgnoreCase);
 }

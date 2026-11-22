@@ -287,43 +287,55 @@ internal sealed class RegionVerifier
     internal FrameSnapshot? ResolveBaselineFrame(
         JsonElement source, int x, int y, int width, int height)
     {
-        if (source.ValueKind == JsonValueKind.Object &&
-            source.TryGetProperty("baseline_frame_id", out JsonElement frameIdElement) &&
-            frameIdElement.ValueKind == JsonValueKind.String)
-        {
-            FrameSnapshot? frame = _host.FindFrame(frameIdElement.GetString() ?? string.Empty);
+        var region = new FrameRegion(x, y, width, height);
 
+        if (TryReadString(source, "baseline_frame_id", out string? frameId))
+        {
             // 显式 baseline 也必须校验区域，否则“同尺寸不同区域”会被静默拿来比较（SEC-09）。
-            return frame is not null &&
-                   frame.X == x &&
-                   frame.Y == y &&
-                   frame.Width == width &&
-                   frame.Height == height
-                ? frame
-                : null;
+            return MatchFrame(_host.FindFrame(frameId ?? string.Empty), region);
         }
 
-        string mode = "last_same_region";
+        string mode = TryReadString(source, "baseline", out string? requested)
+            ? (requested ?? "last_same_region").Trim().ToLowerInvariant()
+            : "last_same_region";
 
-        if (source.ValueKind == JsonValueKind.Object &&
-            source.TryGetProperty("baseline", out JsonElement baselineElement) &&
-            baselineElement.ValueKind == JsonValueKind.String)
-        {
-            mode = (baselineElement.GetString() ?? mode).Trim().ToLowerInvariant();
-        }
-
-        if (mode is "last" or "latest")
-        {
-            FrameSnapshot? latest = _host.LatestFrame();
-            return latest is not null &&
-                   latest.Width == width &&
-                   latest.Height == height
-                ? latest
-                : null;
-        }
-
-        return _host.FindLatestFrame(x, y, width, height);
+        return mode is "last" or "latest"
+            ? MatchSize(_host.LatestFrame(), region)
+            : _host.FindLatestFrame(x, y, width, height);
     }
+
+    private static bool TryReadString(JsonElement source, string property, out string? value)
+    {
+        value = null;
+
+        if (source.ValueKind != JsonValueKind.Object ||
+            !source.TryGetProperty(property, out JsonElement element) ||
+            element.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        value = element.GetString();
+        return true;
+    }
+
+    private static FrameSnapshot? MatchFrame(FrameSnapshot? frame, FrameRegion region) =>
+        frame is not null &&
+        frame.X == region.X &&
+        frame.Y == region.Y &&
+        frame.Width == region.Width &&
+        frame.Height == region.Height
+            ? frame
+            : null;
+
+    private static FrameSnapshot? MatchSize(FrameSnapshot? frame, FrameRegion region) =>
+        frame is not null &&
+        frame.Width == region.Width &&
+        frame.Height == region.Height
+            ? frame
+            : null;
+
+    private readonly record struct FrameRegion(int X, int Y, int Width, int Height);
 
     internal JsonArray FramesJson()
     {

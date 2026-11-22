@@ -160,72 +160,86 @@ internal static class PngWriter
     private static void WriteFilteredRow(
         byte[] current, byte[] prior, bool hasPrior, int stride, byte[] raw, int destination)
     {
-        byte filter;
-
-        if (FilterMode == "none")
-        {
-            filter = 0;
-        }
-        else if (FilterMode == "up")
-        {
-            filter = hasPrior ? (byte)2 : (byte)0;
-        }
-        else
-        {
-            long none = 0, sub = 0, up = 0, average = 0;
-
-            for (int index = 0; index < stride; index += Bpp)
-            {
-                byte value = current[index];
-                int left = index >= Bpp ? current[index - Bpp] : 0;
-                int above = hasPrior ? prior[index] : 0;
-
-                // 先转 int 再取绝对值：Math.Abs((sbyte)-128) 会抛 OverflowException。
-                none += Math.Abs((int)(sbyte)value);
-                sub += Math.Abs((int)(sbyte)(value - left));
-                up += Math.Abs((int)(sbyte)(value - above));
-                average += Math.Abs((int)(sbyte)(value - ((left + above) >> 1)));
-            }
-
-            filter = 0;
-            long best = none;
-
-            if (sub < best)
-            {
-                best = sub;
-                filter = 1;
-            }
-
-            if (hasPrior && up < best)
-            {
-                best = up;
-                filter = 2;
-            }
-
-            if (average < best)
-            {
-                filter = 3;
-            }
-        }
-
+        byte filter = ChooseFilter(current, prior, hasPrior, stride);
         raw[destination] = filter;
+
         int offset = destination + 1;
 
         for (int index = 0; index < stride; index++)
         {
-            byte value = current[index];
+            raw[offset + index] = ApplyFilter(filter, current, prior, hasPrior, index);
+        }
+    }
 
+    private static byte ChooseFilter(byte[] current, byte[] prior, bool hasPrior, int stride)
+    {
+        if (FilterMode == "none")
+        {
+            return 0;
+        }
+
+        if (FilterMode == "up")
+        {
+            return hasPrior ? (byte)2 : (byte)0;
+        }
+
+        long none = 0, sub = 0, up = 0, average = 0;
+
+        for (int index = 0; index < stride; index += Bpp)
+        {
+            byte value = current[index];
             int left = index >= Bpp ? current[index - Bpp] : 0;
             int above = hasPrior ? prior[index] : 0;
 
-            raw[offset + index] = filter switch
-            {
-                1 => (byte)(value - left),
-                2 => (byte)(value - above),
-                3 => (byte)(value - ((left + above) >> 1)),
-                _ => value,
-            };
+            // 先转 int 再取绝对值：Math.Abs((sbyte)-128) 会抛 OverflowException。
+            none += Math.Abs((int)(sbyte)value);
+            sub += Math.Abs((int)(sbyte)(value - left));
+            up += Math.Abs((int)(sbyte)(value - above));
+            average += Math.Abs((int)(sbyte)(value - ((left + above) >> 1)));
         }
+
+        return PickSmallest(none, sub, hasPrior ? up : long.MaxValue, average);
+    }
+
+    private static byte PickSmallest(long none, long sub, long up, long average)
+    {
+        long best = none;
+        byte filter = 0;
+
+        if (sub < best)
+        {
+            best = sub;
+            filter = 1;
+        }
+
+        if (up < best)
+        {
+            best = up;
+            filter = 2;
+        }
+
+        if (average < best)
+        {
+            filter = 3;
+        }
+
+        return filter;
+    }
+
+    private static byte ApplyFilter(
+        byte filter, byte[] current, byte[] prior, bool hasPrior, int index)
+    {
+        byte value = current[index];
+        int left = index >= Bpp ? current[index - Bpp] : 0;
+        int above = hasPrior ? prior[index] : 0;
+
+        return filter switch
+        {
+            1 => (byte)(value - left),
+            2 => (byte)(value - above),
+            3 => (byte)(value - ((left + above) >> 1)),
+            _ => value,
+        };
     }
 
     private static void WriteChunk(Stream stream, string type, ReadOnlySpan<byte> data)
