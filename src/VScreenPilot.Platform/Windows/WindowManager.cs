@@ -307,6 +307,23 @@ internal static class WindowManager
             return true;
         }
 
+        // 目标 UI 线程挂起时 AttachThreadInput 会把服务端一起拖死；
+        // 先用 WM_NULL + SMTO_ABORTIFHUNG 做 120ms 健康检查。
+        if (!IsWindowResponsive(hwnd))
+        {
+            return false;
+        }
+
+        return AttachAndSetForeground(hwnd);
+    }
+
+    private static bool IsWindowResponsive(IntPtr hwnd) =>
+        NativeMethods.SendMessageTimeoutW(
+            hwnd, NativeMethods.WmNull, IntPtr.Zero, IntPtr.Zero,
+            NativeMethods.SmtoAbortIfHung, 120, out _) != IntPtr.Zero;
+
+    private static bool AttachAndSetForeground(IntPtr hwnd)
+    {
         uint currentThread = NativeMethods.GetCurrentThreadId();
         IntPtr foreground = NativeMethods.GetForegroundWindow();
         uint foregroundThread = foreground == IntPtr.Zero
@@ -314,30 +331,15 @@ internal static class WindowManager
             : NativeMethods.GetWindowThreadProcessId(foreground, out _);
         uint targetThread = NativeMethods.GetWindowThreadProcessId(hwnd, out _);
 
-        // 目标 UI 线程挂起时 AttachThreadInput 会把服务端一起拖死；
-        // 先用 WM_NULL + SMTO_ABORTIFHUNG 做 120ms 健康检查。
-        if (NativeMethods.SendMessageTimeoutW(
-                hwnd, NativeMethods.WmNull, IntPtr.Zero, IntPtr.Zero,
-                NativeMethods.SmtoAbortIfHung, 120, out _) == IntPtr.Zero)
-        {
-            return false;
-        }
-
         bool attachedForeground = false;
         bool attachedTarget = false;
 
         try
         {
             // 只有附加到当前前台线程才能绕过前台锁。
-            if (foregroundThread != 0 && foregroundThread != currentThread)
-            {
-                attachedForeground = NativeMethods.AttachThreadInput(currentThread, foregroundThread, true);
-            }
-
-            if (targetThread != 0 && targetThread != currentThread && targetThread != foregroundThread)
-            {
-                attachedTarget = NativeMethods.AttachThreadInput(currentThread, targetThread, true);
-            }
+            attachedForeground = TryAttach(currentThread, foregroundThread);
+            attachedTarget = targetThread != foregroundThread &&
+                             TryAttach(currentThread, targetThread);
 
             return NativeMethods.SetForegroundWindow(hwnd);
         }
@@ -354,6 +356,11 @@ internal static class WindowManager
             }
         }
     }
+
+    private static bool TryAttach(uint currentThread, uint targetThread) =>
+        targetThread != 0 &&
+        targetThread != currentThread &&
+        NativeMethods.AttachThreadInput(currentThread, targetThread, true);
 
     public static NativeMethods.WINDOWPLACEMENT GetPlacement(IntPtr hwnd)
     {

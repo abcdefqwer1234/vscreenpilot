@@ -16,52 +16,71 @@ internal static class ToolCatalog
         var tools = new ToolRegistry();
         Assembly assembly = typeof(ToolCatalog).Assembly;
 
-        foreach (string resource in assembly.GetManifestResourceNames()
-                     .Where(name => name.Contains(DefinitionResourceMarker, StringComparison.Ordinal) &&
-                                    name.EndsWith(".json", StringComparison.Ordinal))
-                     .OrderBy(name => name, StringComparer.Ordinal))
+        foreach (string resource in EnumerateDefinitions(assembly))
         {
-            using Stream stream = assembly.GetManifestResourceStream(resource)
-                ?? throw new InvalidOperationException($"缺少工具定义资源: {resource}");
-
-            JsonNode node = JsonNode.Parse(stream)
-                ?? throw new InvalidOperationException($"工具定义无法解析: {resource}");
-
-            string name = node["name"]?.GetValue<string>()
-                ?? throw new InvalidOperationException($"工具定义缺少 name: {resource}");
-
-            if (!handlers.TryGetValue(name, out Func<JsonElement, ToolResponse>? handler))
-            {
-                throw new InvalidOperationException($"工具 {name} 没有登记 handler");
-            }
-
-            tools.Add(new ToolDescriptor(
-                name,
-                node["title"]?.GetValue<string>() ?? name,
-                node["description"]?.GetValue<string>() ?? string.Empty,
-                node["inputSchema"]?.DeepClone()
-                    ?? throw new InvalidOperationException($"工具 {name} 缺少 inputSchema"),
-                node["outputSchema"]?.DeepClone()
-                    ?? throw new InvalidOperationException($"工具 {name} 缺少 outputSchema"),
-                node["readOnly"]?.GetValue<bool>() ?? false,
-                node["destructive"]?.GetValue<bool>() ?? false,
-                node["timeoutMs"]?.GetValue<int>() ?? 30_000,
-                ParsePolicy(node["policy"]),
-                handler));
+            tools.Add(LoadDescriptor(assembly, resource, handlers));
         }
 
-        if (tools.Count != handlers.Count)
-        {
-            string[] missing = handlers.Keys
-                .Except(tools.All.Select(tool => tool.Name), StringComparer.Ordinal)
-                .OrderBy(name => name, StringComparer.Ordinal)
-                .ToArray();
-
-            throw new InvalidOperationException(
-                $"工具定义缺失 {missing.Length} 个: {string.Join(", ", missing)}");
-        }
-
+        EnsureAllHandlersCovered(tools, handlers);
         return tools;
+    }
+
+    private static IEnumerable<string> EnumerateDefinitions(Assembly assembly) =>
+        assembly.GetManifestResourceNames()
+            .Where(name => name.Contains(DefinitionResourceMarker, StringComparison.Ordinal) &&
+                           name.EndsWith(".json", StringComparison.Ordinal))
+            .OrderBy(name => name, StringComparer.Ordinal);
+
+    private static ToolDescriptor LoadDescriptor(
+        Assembly assembly,
+        string resource,
+        IReadOnlyDictionary<string, Func<JsonElement, ToolResponse>> handlers)
+    {
+        using Stream stream = assembly.GetManifestResourceStream(resource)
+            ?? throw new InvalidOperationException($"缺少工具定义资源: {resource}");
+
+        JsonNode node = JsonNode.Parse(stream)
+            ?? throw new InvalidOperationException($"工具定义无法解析: {resource}");
+
+        string name = node["name"]?.GetValue<string>()
+            ?? throw new InvalidOperationException($"工具定义缺少 name: {resource}");
+
+        if (!handlers.TryGetValue(name, out Func<JsonElement, ToolResponse>? handler))
+        {
+            throw new InvalidOperationException($"工具 {name} 没有登记 handler");
+        }
+
+        return new ToolDescriptor(
+            name,
+            node["title"]?.GetValue<string>() ?? name,
+            node["description"]?.GetValue<string>() ?? string.Empty,
+            node["inputSchema"]?.DeepClone()
+                ?? throw new InvalidOperationException($"工具 {name} 缺少 inputSchema"),
+            node["outputSchema"]?.DeepClone()
+                ?? throw new InvalidOperationException($"工具 {name} 缺少 outputSchema"),
+            node["readOnly"]?.GetValue<bool>() ?? false,
+            node["destructive"]?.GetValue<bool>() ?? false,
+            node["timeoutMs"]?.GetValue<int>() ?? 30_000,
+            ParsePolicy(node["policy"]),
+            handler);
+    }
+
+    private static void EnsureAllHandlersCovered(
+        ToolRegistry tools,
+        IReadOnlyDictionary<string, Func<JsonElement, ToolResponse>> handlers)
+    {
+        if (tools.Count == handlers.Count)
+        {
+            return;
+        }
+
+        string[] missing = handlers.Keys
+            .Except(tools.All.Select(tool => tool.Name), StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        throw new InvalidOperationException(
+            $"工具定义缺失 {missing.Length} 个: {string.Join(", ", missing)}");
     }
 
     private static ToolPolicy ParsePolicy(JsonNode? node)

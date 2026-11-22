@@ -221,72 +221,93 @@ internal sealed class InstanceRegistry
     public static IReadOnlyList<Entry> ListStateEntries()
     {
         var result = new List<Entry>();
+        string directory = StateDirectory();
+
+        if (!Directory.Exists(directory))
+        {
+            return result;
+        }
 
         try
         {
-            string directory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "VScreenPilot");
-
-            if (!Directory.Exists(directory))
-            {
-                return result;
-            }
-
             foreach (string path in Directory.EnumerateFiles(directory, "state*.json"))
             {
-                try
+                Entry? entry = TryReadStateEntry(path);
+
+                if (entry is not null)
                 {
-                    using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
-                    JsonElement root = document.RootElement;
-                    int pid = root.TryGetProperty("pid", out JsonElement pidValue)
-                        ? pidValue.GetInt32()
-                        : 0;
-                    string started = root.TryGetProperty("startedAt", out JsonElement startedValue)
-                        ? startedValue.GetString() ?? string.Empty
-                        : string.Empty;
-
-                    if (!IsLive(pid, started))
-                    {
-                        continue;
-                    }
-
-                    string file = Path.GetFileName(path);
-                    string profile = string.Equals(file, "state.json", StringComparison.OrdinalIgnoreCase)
-                        ? "default"
-                        : file.StartsWith("state.", StringComparison.OrdinalIgnoreCase)
-                            ? file[6..^5]
-                            : "unknown";
-
-                    result.Add(new Entry
-                    {
-                        Pid = pid,
-                        StartedAt = started,
-                        Profile = profile,
-                        Mutex = $@"Global\{Profile.MutexName(profile)}",
-                        DisplayDevice = root.TryGetProperty("display", out JsonElement display) &&
-                                        display.TryGetProperty("device", out JsonElement device)
-                            ? device.GetString() ?? string.Empty
-                            : string.Empty,
-                        Version = "0.1.0-or-older",
-                        Ready = false,
-                    });
-                }
-                catch (Exception exception)
-                {
-                    // 单个 state 损坏不影响其他。
-                    LogSink.Debug($"忽略异常: {exception.Message}");
+                    result.Add(entry);
                 }
             }
         }
         catch (Exception exception)
         {
-            // 忽略。
             LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
         return result;
     }
+
+    private static string StateDirectory() => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "VScreenPilot");
+
+    private static Entry? TryReadStateEntry(string path)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+            JsonElement root = document.RootElement;
+            int pid = root.TryGetProperty("pid", out JsonElement pidValue)
+                ? pidValue.GetInt32()
+                : 0;
+            string started = root.TryGetProperty("startedAt", out JsonElement startedValue)
+                ? startedValue.GetString() ?? string.Empty
+                : string.Empty;
+
+            if (!IsLive(pid, started))
+            {
+                return null;
+            }
+
+            string profile = ParseProfile(Path.GetFileName(path));
+
+            return new Entry
+            {
+                Pid = pid,
+                StartedAt = started,
+                Profile = profile,
+                Mutex = $@"Global\{Profile.MutexName(profile)}",
+                DisplayDevice = ParseDisplayDevice(root),
+                Version = "0.1.0-or-older",
+                Ready = false,
+            };
+        }
+        catch (Exception exception)
+        {
+            // 单个 state 损坏不影响其他。
+            LogSink.Debug($"忽略异常: {exception.Message}");
+            return null;
+        }
+    }
+
+    private static string ParseProfile(string file)
+    {
+        if (string.Equals(file, "state.json", StringComparison.OrdinalIgnoreCase))
+        {
+            return "default";
+        }
+
+        return file.StartsWith("state.", StringComparison.OrdinalIgnoreCase) ? file[6..^5] : "unknown";
+    }
+
+    private static string ParseDisplayDevice(JsonElement root) =>
+        root.TryGetProperty("display", out JsonElement display) &&
+        display.TryGetProperty("device", out JsonElement device)
+            ? device.GetString() ?? string.Empty
+            : string.Empty;
+
+
 
     private Entry? ReadStateFallback()
     {
@@ -366,8 +387,7 @@ internal sealed class InstanceRegistry
                 return nameMatches;
             }
 
-            // 进程名精确匹配（发布版）只用来兜底无启动时间的旧 state；
-            // 以启动时间为准，同时覆盖 dotnet 运行、改名 exe，避免 PID 复用后误认。
+            // 以启动时间为准，覆盖 dotnet 运行/改过 exe 的情况，避免 PID 复用后误认。
             return Math.Abs(
                 (process.StartTime.ToUniversalTime() - expected.UtcDateTime).TotalSeconds) <= 5;
         }

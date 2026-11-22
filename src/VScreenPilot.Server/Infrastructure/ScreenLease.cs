@@ -48,65 +48,73 @@ internal sealed class ScreenLease
             lock (_gate)
             {
                 long now = Environment.TickCount64;
-                bool idleExpired = _activeCalls == 0 &&
-                                   _holderId is not null &&
-                                   now - _lastActivityTicks > _idleTtlMs &&
-                                   now >= _pinnedUntilTicks;
+                bool idleExpired = IsIdleExpired(now);
 
                 if (_holderId is null || _holderId == clientId || idleExpired)
                 {
-                    if (_holderId != clientId)
-                    {
-                        string? previous = _holderId;
-                        long previousHeld = previous is null ? 0 : Math.Max(0, now - _acquiredTicks);
-
-                        _holderId = clientId;
-                        _holderName = tool;
-                        _acquiredTicks = now;
-                        _pinnedUntilTicks = 0;
-                        _generation++;
-
-                        if (idleExpired && previous is not null)
-                        {
-                            LogSink?.Invoke(
-                                $"screen_lease_stolen previous={previous} client={clientId} " +
-                                $"held_ms={previousHeld}");
-                        }
-                    }
-
-                    _activeCalls++;
-                    _lastActivityTicks = now;
-                    return new Lease(this, clientId, _generation);
+                    return Enter(clientId, tool, now, idleExpired);
                 }
 
                 long remaining = deadline - now;
 
                 if (remaining <= 0)
                 {
-                    throw new ToolException(
-                        "E_SCREEN_LEASED",
-                        $"另一个客户端正在使用虚拟屏（holder={_holderId}, tool={_holderName}）",
-                        new JsonObject
-                        {
-                            ["holder_client_id"] = _holderId,
-                            ["holder_tool"] = _holderName,
-                            ["holder_cwd"] = _holderId is null
-                                ? null
-                                : ClientCwdProvider?.Invoke(_holderId),
-                            ["held_ms"] = Math.Max(0, now - _acquiredTicks),
-                            ["waited_ms"] = Math.Max(0, now - started),
-                            ["retry_after_ms"] = 1000,
-                        },
-                        retryable: true,
-                        hint: $"等待对方 release_environment 或空闲 {_idleTtlMs / 1000}s 后重试",
-                        stage: "lease");
+                    throw BuildBusyError(started, now);
                 }
-
-                // 100ms 轮询一次 TTL；holder 显式 release 时会被 Pulse 立即唤醒。
-                Monitor.Wait(_gate, (int)Math.Min(100, remaining));
             }
+
+            Thread.Sleep(50);
         }
     }
+
+    private bool IsIdleExpired(long now) =>
+        _activeCalls == 0 &&
+        _holderId is not null &&
+        now - _lastActivityTicks > _idleTtlMs &&
+        now >= _pinnedUntilTicks;
+
+    private IDisposable Enter(string clientId, string tool, long now, bool idleExpired)
+    {
+        if (_holderId != clientId)
+        {
+            string? previous = _holderId;
+            long previousHeld = previous is null ? 0 : Math.Max(0, now - _acquiredTicks);
+
+            _holderId = clientId;
+            _holderName = tool;
+            _acquiredTicks = now;
+            _pinnedUntilTicks = 0;
+            _generation++;
+
+            if (idleExpired && previous is not null)
+            {
+                LogSink?.Invoke(
+                    $"screen_lease_stolen previous={previous} client={clientId} " +
+                    $"held_ms={previousHeld}");
+            }
+        }
+
+        _activeCalls++;
+        _lastActivityTicks = now;
+        return new Lease(this, clientId, _generation);
+    }
+
+    private ToolException BuildBusyError(long started, long now) =>
+        new(
+            "E_SCREEN_LEASED",
+            $"另一个客户端正在使用虚拟屏（holder={_holderId}, tool={_holderName}）",
+            new JsonObject
+            {
+                ["holder_client_id"] = _holderId,
+                ["holder_tool"] = _holderName,
+                ["holder_cwd"] = _holderId is null ? null : ClientCwdProvider?.Invoke(_holderId),
+                ["held_ms"] = Math.Max(0, now - _acquiredTicks),
+                ["waited_ms"] = Math.Max(0, now - started),
+                ["retry_after_ms"] = 1000,
+            },
+            retryable: true,
+            hint: $"等待对方 release_environment 或空闲 {_idleTtlMs / 1000}s 后重试",
+            stage: "lease");
 
     /// <summary>
     /// 显式归还：忽略在途计数，只要 holder 是自己就清空。

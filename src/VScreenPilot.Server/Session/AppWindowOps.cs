@@ -181,15 +181,10 @@ internal sealed class AppWindowOps
 
     internal WindowInfo? WaitForStableWindow(WindowInfo window, int waitMs, int displayArea)
     {
-        // 启动 splash/引导页通常远小于主窗口。小于虚拟屏 10% 的窗口先不当作主窗口，
+        // 启动 splash/引导页通常远小于主窗口。小于虚拟屏 50% 的窗口先不当作主窗口，
         // 继续轮询同进程的最大窗口，直到出现更大的窗口或超时。
-        // 启动 splash 的窗口面积可能并不小（CCW 的 splash 约 920×460），
-        // 用“不足虚拟屏一半”作为启动期窗口的判定，最多观察 12 秒等待主窗口。
-        bool smallWindow = displayArea > 0 && window.Area < displayArea * 0.50;
-        var deadline = DateTime.UtcNow.AddMilliseconds(
-            smallWindow
-                ? Math.Max(3000, Math.Min(waitMs, 20000))
-                : Math.Max(500, Math.Min(waitMs, 3000)));
+        bool smallWindow = IsSmallWindow(window, displayArea);
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(ResolveTimeout(waitMs, smallWindow));
 
         _core._log.Info(
             $"等待窗口稳定: hwnd=0x{window.Hwnd.ToInt64():X} area={window.Area} " +
@@ -202,20 +197,10 @@ internal sealed class AppWindowOps
         {
             Thread.Sleep(150);
 
-            // 不能用 FindMainWindow 的 owner 过滤：部分应用的 splash 是主窗口的
-            // owner，会导到主窗口被排除、一直选中 splash。这里直接按 pid + 面积选。
-            WindowInfo? next = WindowManager.ListTopLevel()
-                .Where(item => item.Pid == window.Pid &&
-                               item.Visible &&
-                               item.Area >= 100 * 80 &&
-                               !string.IsNullOrWhiteSpace(item.Title))
-                .OrderByDescending(item => item.Area)
-                .FirstOrDefault();
+            WindowInfo? next = FindLargestWindow(window.Pid);
 
             if (next is null)
             {
-                // 启动 splash 关闭后到主窗口出现之间可能没有可见窗口；
-                // 只要进程还活着就继续等，别把已失效的 splash 当成主窗口返回。
                 if (!AppTermination.IsProcessAlive(window.Pid))
                 {
                     break;
@@ -225,12 +210,12 @@ internal sealed class AppWindowOps
                 continue;
             }
 
-            if (next.Hwnd != window.Hwnd || next.Area > lastArea * 1.1 || next.Area < lastArea * 0.9)
+            if (WindowChanged(window, next, lastArea))
             {
                 window = next;
                 lastArea = next.Area;
                 stable = 0;
-                smallWindow = displayArea > 0 && window.Area < displayArea * 0.50;
+                smallWindow = IsSmallWindow(window, displayArea);
                 // 不记录标题：可能含文档名/客户名。
                 _core._log.Info(
                     $"窗口更新: hwnd=0x{window.Hwnd.ToInt64():X} area={window.Area} small={smallWindow}");
@@ -238,6 +223,7 @@ internal sealed class AppWindowOps
             }
 
             stable++;
+
             if (!smallWindow && stable >= 2)
             {
                 _core._log.Info($"窗口已稳定: hwnd=0x{window.Hwnd.ToInt64():X} area={window.Area}");
@@ -245,13 +231,32 @@ internal sealed class AppWindowOps
             }
         }
 
-        WindowInfo? final = WindowManager.ListTopLevel()
-            .Where(item => item.Pid == window.Pid && item.Visible)
-            .OrderByDescending(item => item.Area)
-            .FirstOrDefault() ?? window;
-
+        WindowInfo final = FindLargestWindow(window.Pid, requireTitle: false) ?? window;
         _core._log.Info($"等待窗口稳定结束: hwnd=0x{final.Hwnd.ToInt64():X} area={final.Area}");
-
         return final;
     }
+
+    private static bool IsSmallWindow(WindowInfo window, int displayArea) =>
+        displayArea > 0 && window.Area < displayArea * 0.50;
+
+    private static int ResolveTimeout(int waitMs, bool smallWindow) =>
+        smallWindow
+            ? Math.Max(3000, Math.Min(waitMs, 20000))
+            : Math.Max(500, Math.Min(waitMs, 3000));
+
+    // 不能用 FindMainWindow 的 owner 过滤：部分应用的 splash 是主窗口的 owner，
+    // 会导致主窗口被排除、一直选中 splash。这里直接按 pid + 面积选。
+    private static WindowInfo? FindLargestWindow(int pid, bool requireTitle = true) =>
+        WindowManager.ListTopLevel()
+            .Where(item => item.Pid == pid &&
+                           item.Visible &&
+                           item.Area >= 100 * 80 &&
+                           (!requireTitle || !string.IsNullOrWhiteSpace(item.Title)))
+            .OrderByDescending(item => item.Area)
+            .FirstOrDefault();
+
+    private static bool WindowChanged(WindowInfo current, WindowInfo next, long lastArea) =>
+        next.Hwnd != current.Hwnd ||
+        next.Area > lastArea * 1.1 ||
+        next.Area < lastArea * 0.9;
 }

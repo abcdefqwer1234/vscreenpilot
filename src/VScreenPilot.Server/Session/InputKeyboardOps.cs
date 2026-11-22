@@ -24,6 +24,17 @@ namespace VScreenPilot.Session;
 internal sealed record WriteChannelPlan(string? Channel, bool Verify, int ChunkChars, int VerifyEvery);
 
 /// <summary>KeyboardOps：InputRouter 的输入子通道。</summary>
+/// <summary>写入后补校验的上下文。</summary>
+internal sealed record ReprobeContext(
+    TrackedApp App, UiaElementHandle? Focused, string Text, bool Verify,
+    bool PatternUsed, bool UseClipboard);
+
+/// <summary>type_text 的写入结果。</summary>
+internal sealed record TypeTextOutcome(TextWriteResult Write, bool PatternUsed, bool UseClipboard);
+
+/// <summary>type_text 的选项。</summary>
+internal sealed record TypeTextSettings(int TextLength, int ChunkChars, bool Verify);
+
 internal sealed class InputKeyboardOps
 {
     internal readonly InputRouter _host;
@@ -41,7 +52,7 @@ internal sealed class InputKeyboardOps
         IntPtr previous = WindowManager.GetForegroundWindow();
         _host._focus.PauseFocusGuard(0);
         int effectiveChunk = Math.Clamp(chunkChars, 1, 256);
-        int verifyEvery = text.Length > 20000 ? 16 : text.Length > 2048 ? 4 : 1;
+        int verifyEvery = ResolveVerifyEvery(text.Length);
 
         try
         {
@@ -56,44 +67,12 @@ internal sealed class InputKeyboardOps
                     new TextWriteRequest(text, Replace: false, TimeoutMs: 12000),
                     new WriteChannelPlan(channel, verify, effectiveChunk, verifyEvery));
 
-                // 写入前焦点控件偶发不可用（UWP/新版记事本）；写完后再取一次补校验。
-                // 避免“内容其实写对了，但 verified 永远是 false”。
-                if (!write.Verified && verify && focused is null && !patternUsed && !useClipboard)
-                {
-                    using UiaElementHandle? late = _host._uia.Uia.GetFocusedElementHandle(app.Pid);
-                    string? observed = late?.GetText(65536);
+                write = ReprobeWriteResult(write, new ReprobeContext(app, focused, text, verify, patternUsed, useClipboard));
 
-                    if (observed is not null)
-                    {
-                        write = write with
-                        {
-                            TextSupported = true,
-                            Verified = _host.TextOps.TextMatches(string.Empty, observed, text, replace: false),
-                            ObservedLength = observed.Length,
-                        };
-                    }
-                }
-
-                return new TypeTextView(
-                    write.Typed,
-                    text.Length,
-                    app.Pid,
-                    write.Chunks,
-                    effectiveChunk,
-                    write.TextSupported,
-                    write.Verified,
-                    patternUsed
-                        ? "uia-value-pattern"
-                        : useClipboard
-                            ? "clipboard+ctrl-v"
-                            : verify ? "sendinput+verify" : "sendinput",
-                    patternUsed ? "pattern" : useClipboard ? "clipboard" : "keys",
-                    Math.Round(write.InjectMs, 2),
-                    Math.Round(write.DurationMs, 2),
-                    write.ObservedLength,
-                    write.Verified
-                        ? null
-                        : "输入未能通过 TextPattern/ValuePattern 回读确认；请用 get_element_text 或截图复核");
+                return BuildTypeTextView(
+                    app,
+                    new TypeTextOutcome(write, patternUsed, useClipboard),
+                    new TypeTextSettings(text.Length, effectiveChunk, verify));
             }
             finally
             {
@@ -105,6 +84,71 @@ internal sealed class InputKeyboardOps
             _host._focus.ResumeFocusGuard();
         }
     }
+
+    private static int ResolveVerifyEvery(int length) =>
+        length > 20000 ? 16 : length > 2048 ? 4 : 1;
+
+    private TextWriteResult ReprobeWriteResult(TextWriteResult write, ReprobeContext context)
+    {
+        TrackedApp app = context.App;
+        UiaElementHandle? focused = context.Focused;
+        string text = context.Text;
+        bool verify = context.Verify;
+        bool patternUsed = context.PatternUsed;
+        bool useClipboard = context.UseClipboard;
+        // 写入前焦点控件偶发不可用（UWP/新版记事本）；写完后再次取一次补校验。
+        // 避免“内容其实写对了，但 verified 永远是 false”。
+        if (write.Verified || !verify || focused is not null || patternUsed || useClipboard)
+        {
+            return write;
+        }
+
+        using UiaElementHandle? late = _host._uia.Uia.GetFocusedElementHandle(app.Pid);
+        string? observed = late?.GetText(65536);
+
+        if (observed is null)
+        {
+            return write;
+        }
+
+        return write with
+        {
+            TextSupported = true,
+            Verified = _host.TextOps.TextMatches(string.Empty, observed, text, replace: false),
+            ObservedLength = observed.Length,
+        };
+    }
+
+    private static TypeTextView BuildTypeTextView(
+        TrackedApp app, TypeTextOutcome outcome, TypeTextSettings settings) =>
+        BuildTypeTextViewCore(app, outcome.Write, settings, outcome.PatternUsed, outcome.UseClipboard);
+
+    private static TypeTextView BuildTypeTextViewCore(
+        TrackedApp app,
+        TextWriteResult write,
+        TypeTextSettings settings,
+        bool patternUsed,
+        bool useClipboard) =>
+        new(
+            write.Typed,
+            settings.TextLength,
+            app.Pid,
+            write.Chunks,
+            settings.ChunkChars,
+            write.TextSupported,
+            write.Verified,
+            patternUsed
+                ? "uia-value-pattern"
+                : useClipboard
+                    ? "clipboard+ctrl-v"
+                    : settings.Verify ? "sendinput+verify" : "sendinput",
+            patternUsed ? "pattern" : useClipboard ? "clipboard" : "keys",
+            Math.Round(write.InjectMs, 2),
+            Math.Round(write.DurationMs, 2),
+            write.ObservedLength,
+            write.Verified
+                ? null
+                : "输入未能通过 TextPattern/ValuePattern 回读确认；请用 get_element_text 或截图复核");
 
     internal void ValidateTextRequest(string text)
     {
@@ -172,82 +216,83 @@ internal sealed class InputKeyboardOps
     {
         string text = request.Text;
         string mode = (plan.Channel ?? "auto").Trim().ToLowerInvariant();
-        bool hasSurrogate = text.Any(char.IsSurrogate);
-        bool patternUsed = false;
-        bool useClipboard = false;
-        TextWriteResult write;
 
         if (mode == "pattern")
         {
-            if (focused is null)
-            {
-                throw new ToolException(
-                    "E_PATTERN_UNSUPPORTED",
-                    "当前焦点控件不可用，无法用 ValuePattern 写入",
-                    retryable: false,
-                    hint: "改用 channel=auto 或 channel=clipboard",
-                    stage: "input");
-            }
-
-            UiaSetValueResult set = focused.SetValue(text);
-
-            if (!set.Supported || set.ReadOnly || set.Failure is not null)
-            {
-                throw new ToolException(
-                    "E_PATTERN_UNSUPPORTED",
-                    "控件不支持可用 ValuePattern",
-                    new JsonObject { ["failure"] = set.Failure },
-                    retryable: false,
-                    hint: "改用 channel=auto 或 channel=clipboard",
-                    stage: "input");
-            }
-
-            patternUsed = true;
-            write = new TextWriteResult(
-                text.Length, Chunks: 1, TextSupported: true,
-                Verified: string.Equals(set.Value, text, StringComparison.Ordinal),
-                ObservedLength: set.Value?.Length,
-                InjectMs: 0, DurationMs: 0);
-        }
-        else
-        {
-            useClipboard = mode == "clipboard" ||
-                           (mode == "auto" && (text.Length >= 200 || hasSurrogate));
-
-            if (useClipboard && ClipboardText.HasNonTextFormats())
-            {
-                // 剪贴板里有图片/文件：写文本会永久清掉它们，且无法还原。
-                if (mode == "clipboard")
-                {
-                    throw new ToolException(
-                        "E_CLIPBOARD_UNSAFE",
-                        "剪贴板包含非文本内容（图片/文件），写入文本会清空且无法还原",
-                        retryable: false,
-                        hint: "改用 channel=auto/keys（SendInput），或先让用户备份剪贴板",
-                        stage: "input");
-                }
-
-                useClipboard = false;
-            }
-
-            if (useClipboard)
-            {
-                write = _host.TextOps.WriteTextViaClipboard(focused, text);
-            }
-            else
-            {
-                write = plan.Verify
-                    ? _host.TextOps.WriteTextVerified(
-                        app, focused,
-                        new TextWriteRequest(text, Replace: false, TimeoutMs: 10000,
-                            request.ChunkChars, request.VerifyEveryChunks))
-                    : _host.TextOps.WriteTextUnverified(app, focused, text);
-            }
+            return (WriteByPattern(focused, text), true, false);
         }
 
-        return (write, patternUsed, useClipboard);
+        bool useClipboard = ResolveClipboardUse(mode, text, text.Any(char.IsSurrogate));
+
+        return useClipboard
+            ? (_host.TextOps.WriteTextViaClipboard(focused, text), false, true)
+            : (WriteByKeyboard(app, focused, request, plan), false, false);
     }
 
+    private static TextWriteResult WriteByPattern(UiaElementHandle? focused, string text)
+    {
+        if (focused is null)
+        {
+            throw new ToolException(
+                "E_PATTERN_UNSUPPORTED",
+                "当前焦点控件不可用，无法用 ValuePattern 写入",
+                retryable: false,
+                hint: "改用 channel=auto 或 channel=clipboard",
+                stage: "input");
+        }
+
+        UiaSetValueResult set = focused.SetValue(text);
+
+        if (!set.Supported || set.ReadOnly || set.Failure is not null)
+        {
+            throw new ToolException(
+                "E_PATTERN_UNSUPPORTED",
+                "控件不支持可用 ValuePattern",
+                new JsonObject { ["failure"] = set.Failure },
+                retryable: false,
+                hint: "改用 channel=auto 或 channel=clipboard",
+                stage: "input");
+        }
+
+        return new TextWriteResult(
+            text.Length, Chunks: 1, TextSupported: true,
+            Verified: string.Equals(set.Value, text, StringComparison.Ordinal),
+            ObservedLength: set.Value?.Length,
+            InjectMs: 0, DurationMs: 0);
+    }
+
+    private static bool ResolveClipboardUse(string mode, string text, bool hasSurrogate)
+    {
+        bool requested = mode == "clipboard" ||
+                         (mode == "auto" && (text.Length >= 200 || hasSurrogate));
+
+        if (!requested || !ClipboardText.HasNonTextFormats())
+        {
+            return requested;
+        }
+
+        // 剪贴板里有图片/文件：写文本会永久清掉它们，且无法还原。
+        if (mode == "clipboard")
+        {
+            throw new ToolException(
+                "E_CLIPBOARD_UNSAFE",
+                "剪贴板包含非文本内容（图片/文件），写入文本会清空且无法还原",
+                retryable: false,
+                hint: "改用 channel=auto/keys（SendInput），或先让用户备份剪贴板",
+                stage: "input");
+        }
+
+        return false;
+    }
+
+    private TextWriteResult WriteByKeyboard(
+        TrackedApp app, UiaElementHandle? focused, TextWriteRequest request, WriteChannelPlan plan) =>
+        plan.Verify
+            ? _host.TextOps.WriteTextVerified(
+                app, focused,
+                new TextWriteRequest(request.Text, Replace: false, TimeoutMs: 10000,
+                    request.ChunkChars, request.VerifyEveryChunks))
+            : _host.TextOps.WriteTextUnverified(app, focused, request.Text);
 
     public PressKeysView PressKeys(
         string keys, bool keepForeground = false, int? pid = null,

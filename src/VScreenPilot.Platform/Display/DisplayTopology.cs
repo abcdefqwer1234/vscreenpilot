@@ -35,45 +35,67 @@ public static class DisplayTopology
         for (uint index = 0; ; index++)
         {
             var adapter = NewDisplayDevice();
+
             if (!Win32.EnumDisplayDevicesW(null, index, ref adapter, 0))
             {
                 break;
             }
 
-            if ((adapter.StateFlags & Win32.DisplayDeviceMirroringDriver) != 0)
+            if (IsMirroring(adapter))
             {
                 continue;
             }
 
-            var mode = NewDevMode();
-            bool hasMode = Win32.EnumDisplaySettingsW(adapter.DeviceName, Win32.EnumCurrentSettings, ref mode);
-            bool attached = (adapter.StateFlags & Win32.DisplayDeviceAttachedToDesktop) != 0;
-            bool isParsec = adapter.DeviceString.Contains("Parsec", StringComparison.OrdinalIgnoreCase) ||
-                            adapter.DeviceID.Contains(VddDevice.DisplayId, StringComparison.OrdinalIgnoreCase);
+            DisplayInfo? info = DescribeAdapter(adapter);
 
-            // 未激活的 Intel 幻影适配器没有意义；Parsec 适配器即使未激活也要保留，
-            // 因为需要拿它的 DeviceName 去 ChangeDisplaySettingsEx 激活。
-            if (!hasMode && !attached && !isParsec)
+            if (info is not null)
             {
-                continue;
+                result.Add(info);
             }
-
-            result.Add(new DisplayInfo(
-                adapter.DeviceName,
-                adapter.DeviceString,
-                adapter.DeviceID,
-                attached,
-                (adapter.StateFlags & Win32.DisplayDevicePrimaryDevice) != 0,
-                hasMode ? mode.dmPositionX : 0,
-                hasMode ? mode.dmPositionY : 0,
-                hasMode ? mode.dmPelsWidth : 0,
-                hasMode ? mode.dmPelsHeight : 0,
-                hasMode ? mode.dmDisplayFrequency : 0,
-                hasMode ? GetDpi(mode.dmPositionX + mode.dmPelsWidth / 2, mode.dmPositionY + mode.dmPelsHeight / 2) : 0));
         }
 
         return result;
     }
+
+    private static bool IsMirroring(Win32.DISPLAY_DEVICE adapter) =>
+        (adapter.StateFlags & Win32.DisplayDeviceMirroringDriver) != 0;
+
+    private static DisplayInfo? DescribeAdapter(Win32.DISPLAY_DEVICE adapter)
+    {
+        var mode = NewDevMode();
+        bool hasMode = Win32.EnumDisplaySettingsW(
+            adapter.DeviceName, Win32.EnumCurrentSettings, ref mode);
+        bool attached = (adapter.StateFlags & Win32.DisplayDeviceAttachedToDesktop) != 0;
+        bool isParsec = IsParsec(adapter);
+
+        // 未激活的 Intel 幻影适配器没有意义；Parsec 适配器即使未激活也要保留，
+        // 因为需要拿它的 DeviceName 去 ChangeDisplaySettingsEx 激活。
+        if (!hasMode && !attached && !isParsec)
+        {
+            return null;
+        }
+
+        return new DisplayInfo(
+            adapter.DeviceName,
+            adapter.DeviceString,
+            adapter.DeviceID,
+            attached,
+            (adapter.StateFlags & Win32.DisplayDevicePrimaryDevice) != 0,
+            hasMode ? mode.dmPositionX : 0,
+            hasMode ? mode.dmPositionY : 0,
+            hasMode ? mode.dmPelsWidth : 0,
+            hasMode ? mode.dmPelsHeight : 0,
+            hasMode ? mode.dmDisplayFrequency : 0,
+            hasMode
+                ? GetDpi(
+                    mode.dmPositionX + mode.dmPelsWidth / 2,
+                    mode.dmPositionY + mode.dmPelsHeight / 2)
+                : 0);
+    }
+
+    private static bool IsParsec(Win32.DISPLAY_DEVICE adapter) =>
+        adapter.DeviceString.Contains("Parsec", StringComparison.OrdinalIgnoreCase) ||
+        adapter.DeviceID.Contains(VddDevice.DisplayId, StringComparison.OrdinalIgnoreCase);
 
     public static DisplayInfo? FindParsecDisplay()
     {

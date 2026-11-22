@@ -42,20 +42,17 @@ internal static class Bootstrap
 
         string profile = Profile.Resolve();
         using var log = new LogRing();
-        LogSink.Configure(Path.Combine(
-            Path.GetDirectoryName(log.FilePath) ?? AppContext.BaseDirectory,
-            $"trace-{profile}.log"));
+        ConfigureTraceLog(log, profile);
 
         string? cliCommand = GetOption(args, "--cli");
         bool cliRequested = args.Any(arg =>
             string.Equals(arg, "--cli", StringComparison.OrdinalIgnoreCase) ||
             arg.StartsWith("--cli=", StringComparison.OrdinalIgnoreCase));
 
-        if (cliRequested &&
-            (string.IsNullOrWhiteSpace(cliCommand) || cliCommand.StartsWith("--", StringComparison.Ordinal)))
+        int? invalidCli = ValidateCli(cliRequested, cliCommand);
+        if (invalidCli is not null)
         {
-            Console.Error.WriteLine("--cli 需要一个命令：env|snapshot|screen|status|stop");
-            return 2;
+            return invalidCli.Value;
         }
 
         int? cliExit = TryRunCli(args, cliCommand, profile, log, out bool cliNeedsLocalSession);
@@ -64,14 +61,10 @@ internal static class Bootstrap
             return cliExit.Value;
         }
 
-        if (HasFlag(args, "--doctor"))
+        int? modesExit = TryRunModes(args, allowScript, profile, log);
+        if (modesExit is not null)
         {
-            return DoctorReportBuilder.Run(log, allowScript, profile);
-        }
-
-        if (HasFlag(args, "--daemon"))
-        {
-            return DaemonHost.RunStandalone(profile, log, allowScript);
+            return modesExit.Value;
         }
 
         int? proxyExit = RunProxy(profile, allowScript);
@@ -96,6 +89,39 @@ internal static class Bootstrap
         return cliNeedsLocalSession
             ? RunLocalSession(args, cliCommand!, log, mutex, allowScript)
             : RunHost(args, profile, log, mutex, allowScript);
+    }
+
+    private static void ConfigureTraceLog(LogRing log, string profile) =>
+        LogSink.Configure(Path.Combine(
+            Path.GetDirectoryName(log.FilePath) ?? AppContext.BaseDirectory,
+            $"trace-{profile}.log"));
+
+    private static int? ValidateCli(bool cliRequested, string? cliCommand)
+    {
+        if (!cliRequested ||
+            (!string.IsNullOrWhiteSpace(cliCommand) &&
+             !cliCommand.StartsWith("--", StringComparison.Ordinal)))
+        {
+            return null;
+        }
+
+        Console.Error.WriteLine("--cli 需要一个命令：env|snapshot|screen|status|stop");
+        return 2;
+    }
+
+    private static int? TryRunModes(string[] args, bool allowScript, string profile, LogRing log)
+    {
+        if (HasFlag(args, "--doctor"))
+        {
+            return DoctorReportBuilder.Run(log, allowScript, profile);
+        }
+
+        if (HasFlag(args, "--daemon"))
+        {
+            return DaemonHost.RunStandalone(profile, log, allowScript);
+        }
+
+        return null;
     }
 
     private static bool TryImmediate(string[] args, out int exit)

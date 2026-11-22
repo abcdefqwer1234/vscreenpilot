@@ -147,19 +147,7 @@ internal sealed class AppProcessOps
 
                 bool samePath = IsSameExecutable(process, fullPath);
                 bool hasWindow = process.MainWindowHandle != IntPtr.Zero;
-
-                if (samePath && hasWindow)
-                {
-                    fullMatch ??= process;
-                }
-                else if (samePath)
-                {
-                    pathFallback ??= process;
-                }
-                else if (hasWindow)
-                {
-                    nameFallback ??= process;
-                }
+                ClassifyCandidate(process, samePath, hasWindow, ref fullMatch, ref pathFallback, ref nameFallback);
             }
             catch (Exception exception)
             {
@@ -170,6 +158,32 @@ internal sealed class AppProcessOps
 
         // 同名但不同路径的进程只作为最后兜底，避免误接管其他位置的同名程序。
         return fullMatch ?? pathFallback ?? nameFallback;
+    }
+
+    private static void ClassifyCandidate(
+        Process process,
+        bool samePath,
+        bool hasWindow,
+        ref Process? fullMatch,
+        ref Process? pathFallback,
+        ref Process? nameFallback)
+    {
+        if (samePath && hasWindow)
+        {
+            fullMatch ??= process;
+            return;
+        }
+
+        if (samePath)
+        {
+            pathFallback ??= process;
+            return;
+        }
+
+        if (hasWindow)
+        {
+            nameFallback ??= process;
+        }
     }
 
     private static void DisposeAllExcept(Process[] processes, Process? keep)

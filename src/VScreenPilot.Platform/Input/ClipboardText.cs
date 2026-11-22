@@ -118,36 +118,14 @@ internal static class ClipboardText
 
             while ((format = EnumClipboardFormats(format)) != 0)
             {
-                if (format is 1 or 7 or CfUnicodeText or 16)
+                if (IsTextFormat(format))
                 {
-                    continue; // CF_TEXT / CF_OEMTEXT / CF_UNICODETEXT / CF_LOCALE
+                    continue;
                 }
 
-                if (format is CfBitmap or CfMetafilePict or CfDib or CfEnhMetaFile or CfHDrop or CfDibV5)
+                if (IsBinaryFormat(format) || HasNonTextName(format))
                 {
                     return true;
-                }
-
-                var name = new System.Text.StringBuilder(128);
-                int length = GetClipboardFormatNameW(format, name, name.Capacity);
-
-                if (length > 0)
-                {
-                    string value = name.ToString(0, length);
-
-                    if (value.Contains("PNG", StringComparison.OrdinalIgnoreCase) ||
-                        value.Contains("JPEG", StringComparison.OrdinalIgnoreCase) ||
-                        value.Contains("JFIF", StringComparison.OrdinalIgnoreCase) ||
-                        value.Contains("GIF", StringComparison.OrdinalIgnoreCase) ||
-                        value.Contains("Image", StringComparison.OrdinalIgnoreCase) ||
-                        value.Contains("File", StringComparison.OrdinalIgnoreCase) ||
-                        value.Contains("Shell", StringComparison.OrdinalIgnoreCase) ||
-                        value.Contains("HTML", StringComparison.OrdinalIgnoreCase) ||
-                        value.Contains("Rich Text", StringComparison.OrdinalIgnoreCase) ||
-                        value.Contains("RTF", StringComparison.OrdinalIgnoreCase))
-                    {
-                        return true;
-                    }
                 }
             }
 
@@ -158,6 +136,30 @@ internal static class ClipboardText
             CloseClipboard();
         }
     }
+
+    private static bool IsTextFormat(uint format) =>
+        format is 1 or 7 or CfUnicodeText or 16; // CF_TEXT / CF_OEMTEXT / CF_UNICODETEXT / CF_LOCALE
+
+    private static bool IsBinaryFormat(uint format) =>
+        format is CfBitmap or CfMetafilePict or CfDib or CfEnhMetaFile or CfHDrop or CfDibV5;
+
+    private static bool HasNonTextName(uint format)
+    {
+        var name = new System.Text.StringBuilder(128);
+        int length = GetClipboardFormatNameW(format, name, name.Capacity);
+
+        if (length <= 0)
+        {
+            return false;
+        }
+
+        string value = name.ToString(0, length);
+        return ContainsAny(value,
+            "PNG", "JPEG", "JFIF", "GIF", "Image", "File", "Shell", "HTML", "Rich Text", "RTF");
+    }
+
+    private static bool ContainsAny(string value, params string[] needles) =>
+        needles.Any(needle => value.Contains(needle, StringComparison.OrdinalIgnoreCase));
 
     private static string? ReadCore()
     {

@@ -85,46 +85,8 @@ internal sealed class ResourceHandler
             throw new McpException($"Unknown resource: {uri}");
         }
 
-        string name = uri[ArtifactPrefix.Length..];
-        bool preview = false;
-        bool forceFull = false;
-        int queryIndex = name.IndexOf('?');
-
-        if (queryIndex >= 0)
-        {
-            string[] query = name[(queryIndex + 1)..]
-                .Split('&', StringSplitOptions.RemoveEmptyEntries);
-            preview = query.Any(part => part.Equals("preview=1", StringComparison.OrdinalIgnoreCase));
-            forceFull = query.Any(part => part.Equals("full=1", StringComparison.OrdinalIgnoreCase));
-            name = name[..queryIndex];
-        }
-
-        if (name.Length == 0 || name.Contains('/') || name.Contains('\\') || name.Contains(".."))
-        {
-            throw new McpException($"Invalid artifact name: {name}");
-        }
-
-        string path = Path.Combine(_artifacts.Directory, name);
-
-        if (!preview && !forceFull && File.Exists(path))
-        {
-            preview = new FileInfo(path).Length > Limits.ResourcePreviewBytes;
-        }
-
-        if (preview)
-        {
-            string previewPath = Path.ChangeExtension(path, ".preview.png");
-
-            if (!File.Exists(previewPath))
-            {
-                TryCreatePreview(path, previewPath);
-            }
-
-            if (File.Exists(previewPath))
-            {
-                path = previewPath;
-            }
-        }
+        ArtifactRequest request = ParseArtifactRequest(uri[ArtifactPrefix.Length..]);
+        string path = ResolvePath(request);
 
         if (!File.Exists(path))
         {
@@ -144,6 +106,55 @@ internal sealed class ResourceHandler
             ],
         });
     }
+
+    private static ArtifactRequest ParseArtifactRequest(string raw)
+    {
+        string name = raw;
+        bool preview = false;
+        bool forceFull = false;
+        int queryIndex = name.IndexOf('?');
+
+        if (queryIndex >= 0)
+        {
+            string[] query = name[(queryIndex + 1)..]
+                .Split('&', StringSplitOptions.RemoveEmptyEntries);
+            preview = query.Any(part => part.Equals("preview=1", StringComparison.OrdinalIgnoreCase));
+            forceFull = query.Any(part => part.Equals("full=1", StringComparison.OrdinalIgnoreCase));
+            name = name[..queryIndex];
+        }
+
+        if (name.Length == 0 || name.Contains('/') || name.Contains('\\') || name.Contains(".."))
+        {
+            throw new McpException($"Invalid artifact name: {name}");
+        }
+
+        return new ArtifactRequest(name, preview, forceFull);
+    }
+
+    private string ResolvePath(ArtifactRequest request)
+    {
+        string path = Path.Combine(_artifacts.Directory, request.Name);
+        bool wantsPreview = request.Preview ||
+                            (!request.ForceFull &&
+                             File.Exists(path) &&
+                             new FileInfo(path).Length > Limits.ResourcePreviewBytes);
+
+        if (!wantsPreview)
+        {
+            return path;
+        }
+
+        string previewPath = Path.ChangeExtension(path, ".preview.png");
+
+        if (!File.Exists(previewPath))
+        {
+            TryCreatePreview(path, previewPath);
+        }
+
+        return File.Exists(previewPath) ? previewPath : path;
+    }
+
+    private sealed record ArtifactRequest(string Name, bool Preview, bool ForceFull);
 
     private static void TryCreatePreview(string sourcePath, string previewPath)
     {

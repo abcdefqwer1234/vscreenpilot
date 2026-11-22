@@ -190,20 +190,8 @@ internal sealed class WaitService
             throw new ToolException("E_INVALID_ARG", "text 条件需要非空 text");
         }
 
-        (int rx, int ry, int rw, int rh)? region = null;
-
-        if (condition.TryGetProperty("region", out JsonElement regionElement) &&
-            regionElement.ValueKind == JsonValueKind.Object)
-        {
-            (int x, int y, int width, int height) = VisualSupport.ParseRegion(regionElement);
-            VisualSupport.RequireRegionInDisplay(display, x, y, width, height, "text");
-            region = (x, y, width, height);
-        }
-
-        List<TrackedApp> candidates;
-
-        candidates = _apps.OwnedAppsSnapshot();
-
+        TextBounds? region = ReadTextRegion(condition, display);
+        List<TrackedApp> candidates = _apps.OwnedAppsSnapshot();
         int? requestedPid = GetInt(condition, "pid", -1) is var pidValue && pidValue >= 0
             ? pidValue
             : null;
@@ -215,32 +203,11 @@ internal sealed class WaitService
                 continue;
             }
 
-            UiaElementInfo? info = _apps.Uia.FindTextElement(app.Hwnd, needle);
-
-            if (info is null || info.Offscreen)
+            JsonObject? found = MatchTextInApp(app, needle!, region);
+            if (found is not null)
             {
-                continue;
+                return found;
             }
-
-            if (region is { } bounds &&
-                (info.Left + info.Width <= bounds.rx ||
-                 info.Top + info.Height <= bounds.ry ||
-                 info.Left >= bounds.rx + bounds.rw ||
-                 info.Top >= bounds.ry + bounds.rh))
-            {
-                continue;
-            }
-
-            return new JsonObject
-            {
-                ["satisfied"] = true,
-                ["element"] = ElementPresenter.ToCompactJson(info),
-                ["window"] = new JsonObject
-                {
-                    ["pid"] = app.Pid,
-                    ["title"] = WindowManager.GetTitle(app.Hwnd),
-                },
-            };
         }
 
         return new JsonObject
@@ -249,6 +216,53 @@ internal sealed class WaitService
             ["reason"] = candidates.Count == 0 ? "no_target_window" : "uia_text_not_found",
         };
     }
+
+    private static TextBounds? ReadTextRegion(JsonElement condition, DisplayInfo display)
+    {
+        if (!condition.TryGetProperty("region", out JsonElement regionElement) ||
+            regionElement.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        (int x, int y, int width, int height) = VisualSupport.ParseRegion(regionElement);
+        VisualSupport.RequireRegionInDisplay(display, x, y, width, height, "text");
+        return new TextBounds(x, y, width, height);
+    }
+
+    private JsonObject? MatchTextInApp(TrackedApp app, string needle, TextBounds? region)
+    {
+        UiaElementInfo? info = _apps.Uia.FindTextElement(app.Hwnd, needle);
+
+        if (info is null || info.Offscreen)
+        {
+            return null;
+        }
+
+        if (region is { } bounds && IsOutside(info, bounds))
+        {
+            return null;
+        }
+
+        return new JsonObject
+        {
+            ["satisfied"] = true,
+            ["element"] = ElementPresenter.ToCompactJson(info),
+            ["window"] = new JsonObject
+            {
+                ["pid"] = app.Pid,
+                ["title"] = WindowManager.GetTitle(app.Hwnd),
+            },
+        };
+    }
+
+    private static bool IsOutside(UiaElementInfo info, TextBounds bounds) =>
+        info.Left + info.Width <= bounds.X ||
+        info.Top + info.Height <= bounds.Y ||
+        info.Left >= bounds.X + bounds.Width ||
+        info.Top >= bounds.Y + bounds.Height;
+
+    private readonly record struct TextBounds(int X, int Y, int Width, int Height);
 
     private JsonObject EvaluateColor(JsonElement condition, DisplayInfo display)
     {
