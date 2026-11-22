@@ -130,39 +130,11 @@ internal sealed class ControlServer : IDisposable
         using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         requestCts.CancelAfter(TimeSpan.FromSeconds(5));
 
-        string? line;
-
-        try
-        {
-            line = await ReadLimitedLineAsync(reader, MaxRequestBytes, requestCts.Token).ConfigureAwait(false);
-        }
-        catch (ToolException exception)
-        {
-            await WriteAsync(writer, Error(exception.Code, exception.Message)).ConfigureAwait(false);
-            return;
-        }
-
-        if (line is null)
-        {
-            await WriteAsync(writer, Error("E_INVALID_ARG", "控制请求为空或超过 1MB")).ConfigureAwait(false);
-            return;
-        }
-
-        JsonObject? request;
-
-        try
-        {
-            request = JsonNode.Parse(line) as JsonObject;
-        }
-        catch (Exception exception)
-        {
-            LogSink.Debug($"忽略异常: {exception.Message}");
-            request = null;
-        }
+        JsonObject? request = await ReadRequestAsync(
+            reader, writer, requestCts.Token).ConfigureAwait(false);
 
         if (request is null)
         {
-            await WriteAsync(writer, Error("E_INVALID_ARG", "控制请求不是有效 JSON")).ConfigureAwait(false);
             return;
         }
 
@@ -170,6 +142,49 @@ internal sealed class ControlServer : IDisposable
             ? opText
             : string.Empty;
 
+        await DispatchAsync(writer, request, op).ConfigureAwait(false);
+    }
+
+    private static async Task<JsonObject?> ReadRequestAsync(
+        StreamReader reader, StreamWriter writer, CancellationToken cancellationToken)
+    {
+        string? line;
+
+        try
+        {
+            line = await ReadLimitedLineAsync(
+                reader, MaxRequestBytes, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ToolException exception)
+        {
+            await WriteAsync(writer, Error(exception.Code, exception.Message)).ConfigureAwait(false);
+            return null;
+        }
+
+        if (line is null)
+        {
+            await WriteAsync(writer, Error("E_INVALID_ARG", "控制请求为空或超过 1MB")).ConfigureAwait(false);
+            return null;
+        }
+
+        try
+        {
+            if (JsonNode.Parse(line) is JsonObject parsed)
+            {
+                return parsed;
+            }
+        }
+        catch (Exception exception)
+        {
+            LogSink.Debug($"忽略异常: {exception.Message}");
+        }
+
+        await WriteAsync(writer, Error("E_INVALID_ARG", "控制请求不是有效 JSON")).ConfigureAwait(false);
+        return null;
+    }
+
+    private async Task DispatchAsync(StreamWriter writer, JsonObject request, string op)
+    {
         try
         {
             using IDisposable controlScope = _control.UseClient(

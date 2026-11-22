@@ -96,67 +96,18 @@ internal sealed class ScriptRunner
 
         try
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = prepared.Powershell,
-                Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{prepared.ScriptPath}\"",
-                WorkingDirectory = prepared.Root,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                StandardOutputEncoding = new UTF8Encoding(false),
-                StandardErrorEncoding = new UTF8Encoding(false),
-            };
-
-            using var process = new Process { StartInfo = startInfo };
-            process.Start();
-
-            // 脚本也纳入作业对象：服务器被强杀时由系统回收，避免残留后台进程。
+            using var process = StartPowerShell(prepared);
             context.AssignToJob(process);
 
             Task<string> stdoutTask = ReadCappedAsync(process.StandardOutput, OutputCap);
             Task<string> stderrTask = ReadCappedAsync(process.StandardError, OutputCap);
 
-            bool cancelled = false;
-            string killReason = string.Empty;
-
-            while (true)
-            {
-                if (process.WaitForExit(100))
-                {
-                    exitCode = process.ExitCode;
-                    break;
-                }
-
-                if (context.Cancellation.IsCancellationRequested)
-                {
-                    cancelled = true;
-                    killReason = "请求已取消";
-                    break;
-                }
-
-                if (stopwatch.ElapsedMilliseconds > timeoutMs)
-                {
-                    timedOut = true;
-                    killReason = $"执行超时 ({timeoutMs}ms)";
-                    break;
-                }
-            }
+            (exitCode, timedOut, bool cancelled, string killReason) =
+                WaitForCompletion(process, context, stopwatch, timeoutMs);
 
             if (cancelled || timedOut)
             {
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch (Exception exception)
-                {
-                    // 进程可能已退出。
-                    LogSink.Debug($"忽略异常: {exception.Message}");
-                }
-
-                process.WaitForExit(2000);
+                KillProcessTree(process);
             }
 
             stdout = ReadTask(stdoutTask);
@@ -182,18 +133,81 @@ internal sealed class ScriptRunner
         }
         finally
         {
-            try
-            {
-                Directory.Delete(prepared.Root, recursive: true);
-            }
-            catch (Exception exception)
-            {
-                // 临时目录清理失败不影响结果。
-                LogSink.Debug($"忽略异常: {exception.Message}");
-            }
+            CleanupScriptDirectory(prepared.Root);
         }
 
         return (exitCode, stdout, stderr, timedOut);
+    }
+
+    private static Process StartPowerShell(
+        (string Root, string ScriptPath, string Powershell) prepared)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = prepared.Powershell,
+            Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{prepared.ScriptPath}\"",
+            WorkingDirectory = prepared.Root,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = new UTF8Encoding(false),
+            StandardErrorEncoding = new UTF8Encoding(false),
+        };
+
+        var process = new Process { StartInfo = startInfo };
+        process.Start();
+        return process;
+    }
+
+    private static (int ExitCode, bool TimedOut, bool Cancelled, string KillReason) WaitForCompletion(
+        Process process, ScriptRunContext context, Stopwatch stopwatch, int timeoutMs)
+    {
+        while (true)
+        {
+            if (process.WaitForExit(100))
+            {
+                return (process.ExitCode, false, false, string.Empty);
+            }
+
+            if (context.Cancellation.IsCancellationRequested)
+            {
+                return (-1, false, true, "请求已取消");
+            }
+
+            if (stopwatch.ElapsedMilliseconds > timeoutMs)
+            {
+                return (-1, true, false, $"执行超时 ({timeoutMs}ms)");
+            }
+        }
+    }
+
+    private static void KillProcessTree(Process process)
+    {
+        try
+        {
+            process.Kill(entireProcessTree: true);
+        }
+        catch (Exception exception)
+        {
+            // 进程可能已退出。
+            LogSink.Debug($"忽略异常: {exception.Message}");
+        }
+
+        process.WaitForExit(2000);
+    }
+
+    private static void CleanupScriptDirectory(string root)
+    {
+        try
+        {
+            Directory.Delete(root, recursive: true);
+        }
+        catch (Exception exception)
+        {
+            // 临时目录清理失败不影响结果。
+            LogSink.Debug($"忽略异常: {exception.Message}");
+        }
     }
 
     /// <summary>

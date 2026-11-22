@@ -34,13 +34,13 @@ internal sealed class ElementInvokeOps
             return InvokeMsaaElement(probe, msaaHwnd, msaaChildId, allowClick);
         }
 
-        UiaElementHandle handle = _host._state.Resolver.Resolve(reference, display, out ElementRefEntry entry, out bool refreshed);
+        UiaElementHandle handle = _host._state.Resolver.Resolve(
+            reference, display, out ElementRefEntry entry, out bool refreshed);
         bool handleTransferred = false;
 
         try
         {
             UiaElementInfo info = handle.Info;
-
             UiaInvokePattern mode = ParseInvokePattern(pattern);
 
             if (!info.Enabled)
@@ -56,78 +56,15 @@ internal sealed class ElementInvokeOps
                 return InvokeDefaultAction(display, handle, entry, refreshed);
             }
 
-            // Invoke 是同步 COM 调用：按钮弹出模态对话框时会一直等到对话框关闭。
-            // 在独立任务里执行，超时后放弃旧 UIA 实例，避免整个会话永久卡死。
-            Task<(bool Ok, string? Strategy)> invokeTask = Task.Run(() =>
-            {
-                try
-                {
-                    return handle.Invoke(mode);
-                }
-                finally
-                {
-                    handle.Dispose();
-                }
-            });
+            InvokeElementView? invoked = TryInvokeWithTimeout(
+                handle, info, mode, entry, refreshed, ref handleTransferred);
 
-            handleTransferred = true;
-
-            if (!invokeTask.Wait(5000))
+            if (invoked is not null)
             {
-                _host._input.ResetUia();
-                throw new ToolException(
-                    "E_TIMEOUT",
-                    "UIA 触发 5s 未返回，常见于会打开模态对话框的按钮",
-                    new JsonObject { ["ref"] = entry.Ref },
-                    retryable: true,
-                    hint: "先用 get_ui_tree 或截图确认是否已弹出对话框；也可改用 click 的消息点击",
-                    stage: "invoke");
+                return invoked;
             }
 
-            (bool ok, string? strategy) = invokeTask.Result;
-
-            if (ok)
-            {
-                Thread.Sleep(50);
-                return new InvokeElementView(
-                    entry.Ref, strategy ?? "uia", null, null, null, refreshed, null,
-                    ElementPresenter.ToView(info, compact: true));
-            }
-
-            if (!allowClick)
-            {
-                throw new ToolException(
-                    "E_PATTERN_UNSUPPORTED",
-                    "该控件没有可用的 UIA 触发模式（Invoke/Toggle/SelectionItem/ExpandCollapse/Legacy）；" +
-                    "可先用 pattern 指定期望模式；如需按坐标触发，请改用 click 或显式传 allow_click=true",
-                    new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
-            }
-
-            int centerX = info.Left + info.Width / 2;
-            int centerY = info.Top + info.Height / 2;
-
-            if (info.Width <= 0 || info.Height <= 0)
-            {
-                throw new ToolException(
-                    "E_ELEMENT_OFFSCREEN",
-                    "控件没有可见尺寸，无法按坐标触发",
-                    new JsonObject { ["ref"] = entry.Ref });
-            }
-
-            _host._apps.RequirePointInTrackedApp(display, centerX, centerY, "invoke_element");
-
-            if (!MessageInput.Click(centerX, centerY, "left", 1, out string? detail))
-            {
-                throw new ToolException(
-                    "E_INPUT_UNSUPPORTED",
-                    "控件不支持语义触发，按坐标点击也失败",
-                    new JsonObject { ["ref"] = entry.Ref, ["detail"] = detail });
-            }
-
-            Thread.Sleep(50);
-            return new InvokeElementView(
-                entry.Ref, "message_click", null, null, null, refreshed, detail,
-                ElementPresenter.ToView(info, compact: true));
+            return InvokeByMessageClick(display, info, entry, refreshed, allowClick);
         }
         finally
         {
@@ -136,6 +73,101 @@ internal sealed class ElementInvokeOps
                 handle.Dispose();
             }
         }
+    }
+
+    /// <summary>
+    /// Invoke 是同步 COM 调用：按钮弹出模态对话框时会一直等到对话框关闭。
+    /// 在独立任务里执行，超时后放弃旧 UIA 实例，避免整个会话永久卡死。
+    /// </summary>
+    private InvokeElementView? TryInvokeWithTimeout(
+        UiaElementHandle handle,
+        UiaElementInfo info,
+        UiaInvokePattern mode,
+        ElementRefEntry entry,
+        bool refreshed,
+        ref bool handleTransferred)
+    {
+        Task<(bool Ok, string? Strategy)> invokeTask = Task.Run(() =>
+        {
+            try
+            {
+                return handle.Invoke(mode);
+            }
+            finally
+            {
+                handle.Dispose();
+            }
+        });
+
+        handleTransferred = true;
+
+        if (!invokeTask.Wait(5000))
+        {
+            _host._input.ResetUia();
+            throw new ToolException(
+                "E_TIMEOUT",
+                "UIA 触发 5s 未返回，常见于会打开模态对话框的按钮",
+                new JsonObject { ["ref"] = entry.Ref },
+                retryable: true,
+                hint: "先用 get_ui_tree 或截图确认是否已弹出对话框；也可改用 click 的消息点击",
+                stage: "invoke");
+        }
+
+        (bool ok, string? strategy) = invokeTask.Result;
+
+        if (!ok)
+        {
+            return null;
+        }
+
+        Thread.Sleep(50);
+        return new InvokeElementView(
+            entry.Ref, strategy ?? "uia", null, null, null, refreshed, null,
+            ElementPresenter.ToView(info, compact: true));
+    }
+
+    /// <summary>语义触发不可用时的兜底：按控件中心做消息点击（需 allow_click）。</summary>
+    private InvokeElementView InvokeByMessageClick(
+        DisplayInfo display,
+        UiaElementInfo info,
+        ElementRefEntry entry,
+        bool refreshed,
+        bool allowClick)
+    {
+        if (!allowClick)
+        {
+            throw new ToolException(
+                "E_PATTERN_UNSUPPORTED",
+                "该控件没有可用的 UIA 触发模式（Invoke/Toggle/SelectionItem/ExpandCollapse/Legacy）；" +
+                "可先用 pattern 指定期望模式；如需按坐标触发，请改用 click 或显式传 allow_click=true",
+                new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
+        }
+
+        int centerX = info.Left + info.Width / 2;
+        int centerY = info.Top + info.Height / 2;
+
+        if (info.Width <= 0 || info.Height <= 0)
+        {
+            throw new ToolException(
+                "E_ELEMENT_OFFSCREEN",
+                "控件没有可见尺寸，无法按坐标触发",
+                new JsonObject { ["ref"] = entry.Ref });
+        }
+
+        _host._apps.RequirePointInTrackedApp(display, centerX, centerY, "invoke_element");
+
+        if (!MessageInput.Click(centerX, centerY, "left", 1, out string? detail))
+        {
+            throw new ToolException(
+                "E_INPUT_UNSUPPORTED",
+                "控件不支持语义触发，按坐标点击也失败",
+                new JsonObject { ["ref"] = entry.Ref, ["detail"] = detail });
+        }
+
+        Thread.Sleep(50);
+        return new InvokeElementView(
+            entry.Ref, "message_click", null, null, null, refreshed, detail,
+            ElementPresenter.ToView(info, compact: true));
     }
 
     internal static UiaInvokePattern ParseInvokePattern(string? pattern) =>

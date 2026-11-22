@@ -270,16 +270,7 @@ internal sealed class InputKeyboardOps
         }
 
         using var inputLease = InputLease.TryAcquire(3000, "press_keys");
-
-        if (!_host._display.IsInputDesktopAvailable())
-        {
-            throw new ToolException(
-                "E_NO_INTERACTIVE_DESKTOP",
-                "当前没有可交互桌面（锁屏/安全桌面/Session 0），SendInput 无法注入",
-                retryable: true,
-                hint: "解锁桌面或改用 UIA 语义操作",
-                stage: "input");
-        }
+        RequireInteractiveDesktop();
 
         DisplayInfo display = _host._display.Ensure();
         TrackedApp app = _host.RequireTrackedApp(pid);
@@ -289,46 +280,16 @@ internal sealed class InputKeyboardOps
 
         try
         {
-            if (!_host._focus.EnsureForeground(app))
-            {
-                throw new ToolException(
-                    "E_FOCUS",
-                    "无法把目标窗口切换到前台，已取消按键以避免输入到用户当前窗口",
-                    retryable: true,
-                    hint: "确认没有模态框禁用主窗口；可改用消息点击或先关闭弹窗",
-                    stage: "focus");
-            }
+            RequireForeground(app);
 
             try
             {
                 var stopwatch = Stopwatch.StartNew();
-                double injectMs = 0;
-
                 ObserveSignature? observeBefore = observe
                     ? _host._display.CaptureSignature(display, display.X, display.Y, display.Width, display.Height)
                     : null;
 
-                int sent = 0;
-
-                foreach (string key in keys)
-                {
-                    if (_host._session.Cancellation().IsCancellationRequested)
-                    {
-                        throw new ToolException(
-                            "E_CANCELLED",
-                            "press_keys 已被取消，停止继续注入",
-                            new JsonObject { ["sent"] = sent },
-                            retryable: true,
-                            hint: "重新调用；已发送的按键不会自动撤销",
-                            stage: "input");
-                    }
-
-                    var watch = Stopwatch.StartNew();
-                    InputInjector.PressKeys(key, allowSystemKeys);
-                    sent++;
-                    injectMs += watch.Elapsed.TotalMilliseconds;
-                    Thread.Sleep(120);
-                }
+                double injectMs = InjectSequence(keys, allowSystemKeys);
 
                 ObserveSignature? observeAfter = observeBefore is null
                     ? null
@@ -361,5 +322,63 @@ internal sealed class InputKeyboardOps
                 _host._focus.ResumeFocusGuard();
             }
         }
+    }
+
+    private void RequireInteractiveDesktop()
+    {
+        if (_host._display.IsInputDesktopAvailable())
+        {
+            return;
+        }
+
+        throw new ToolException(
+            "E_NO_INTERACTIVE_DESKTOP",
+            "当前没有可交互桌面（锁屏/安全桌面/Session 0），SendInput 无法注入",
+            retryable: true,
+            hint: "解锁桌面或改用 UIA 语义操作",
+            stage: "input");
+    }
+
+    private void RequireForeground(TrackedApp app)
+    {
+        if (_host._focus.EnsureForeground(app))
+        {
+            return;
+        }
+
+        throw new ToolException(
+            "E_FOCUS",
+            "无法把目标窗口切换到前台，已取消按键以避免输入到用户当前窗口",
+            retryable: true,
+            hint: "确认没有模态框禁用主窗口；可改用消息点击或先关闭弹窗",
+            stage: "focus");
+    }
+
+    private double InjectSequence(IReadOnlyList<string> keys, bool allowSystemKeys)
+    {
+        double injectMs = 0;
+        int sent = 0;
+
+        foreach (string key in keys)
+        {
+            if (_host._session.Cancellation().IsCancellationRequested)
+            {
+                throw new ToolException(
+                    "E_CANCELLED",
+                    "press_keys 已被取消，停止继续注入",
+                    new JsonObject { ["sent"] = sent },
+                    retryable: true,
+                    hint: "重新调用；已发送的按键不会自动撤销",
+                    stage: "input");
+            }
+
+            var watch = Stopwatch.StartNew();
+            InputInjector.PressKeys(key, allowSystemKeys);
+            sent++;
+            injectMs += watch.Elapsed.TotalMilliseconds;
+            Thread.Sleep(120);
+        }
+
+        return injectMs;
     }
 }
