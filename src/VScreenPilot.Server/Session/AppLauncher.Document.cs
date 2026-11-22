@@ -32,7 +32,7 @@ internal sealed partial class AppLauncher
 
             try
             {
-                if (_host.Uia.FindElement(hwnd, null, "Document", null, null) is not null)
+                if (_apps.Uia.FindElement(hwnd, null, "Document", null, null) is not null)
                 {
                     return true;
                 }
@@ -88,7 +88,7 @@ internal sealed partial class AppLauncher
     {
         try
         {
-            foreach (UiaElementInfo info in _host.Uia.FindElements(
+            foreach (UiaElementInfo info in _apps.Uia.FindElements(
                          hwnd, null, UiaNameMatch.Exact, "Button", null, 200))
             {
                 if (info.Name.Contains("空白", StringComparison.OrdinalIgnoreCase) ||

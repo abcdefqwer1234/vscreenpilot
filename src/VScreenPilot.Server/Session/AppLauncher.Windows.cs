@@ -24,7 +24,7 @@ internal sealed partial class AppLauncher
     {
         lock (_gate)
         {
-            return _host.Apps.Any(app => _host.IsOwned(app) && app.Hwnd == hwnd && _host.IsLive(app));
+            return _apps.Apps.Any(app => _apps.IsOwned(app) && app.Hwnd == hwnd && _apps.IsLive(app));
         }
     }
 
@@ -43,7 +43,7 @@ internal sealed partial class AppLauncher
                     continue;
                 }
 
-                if (_host.Job.Assign(process))
+                if (_session.Job.Assign(process))
                 {
                     _log.Info($"已将进程 {pid} 加入作业对象");
                     return;
@@ -63,7 +63,7 @@ internal sealed partial class AppLauncher
         {
             _jobUnavailableLogged = true;
             _log.Warn(
-                $"进程 {pid} 未能加入作业对象（{_host.Job.Status}）；崩溃兜底不可用，" +
+                $"进程 {pid} 未能加入作业对象（{_session.Job.Status}）；崩溃兜底不可用，" +
                 "将依赖进程树清理与启动时孤儿清扫");
         }
     }

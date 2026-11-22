@@ -37,7 +37,7 @@ internal sealed partial class AppLauncher
             NewInstance = newInstance,
             EnsureDocument = ensureDocument,
             Pid = pid,
-            Display = _host.EnsureDisplay(),
+            Display = _apps.EnsureDisplay(),
             UserForeground = WindowManager.GetForegroundWindow(),
         };
 
@@ -150,8 +150,8 @@ internal sealed partial class AppLauncher
         bool hasDirectory = Path.IsPathRooted(s.Path!) ||
                             s.Path!.Contains('\\') ||
                             s.Path!.Contains('/');
-        s.LaunchPath = hasDirectory ? _host.ResolvePath(s.Path) : s.Path;
-        _host.EnsureAppAllowed(s.LaunchPath);
+        s.LaunchPath = hasDirectory ? _apps.ResolvePath(s.Path) : s.Path;
+        _apps.EnsureAppAllowed(s.LaunchPath);
 
         if (File.Exists(s.LaunchPath) == false && hasDirectory)
         {
@@ -185,7 +185,7 @@ internal sealed partial class AppLauncher
             FileName = s.LaunchPath,
             UseShellExecute = false,
             WorkingDirectory = string.IsNullOrEmpty(workingDirectory)
-                ? _host.Clients.CurrentCwd
+                ? _session.Clients.CurrentCwd
                 : workingDirectory,
         };
 
@@ -201,7 +201,7 @@ internal sealed partial class AppLauncher
 
         using (process)
         {
-            if (!_host.Job.Assign(process))
+            if (!_session.Job.Assign(process))
             {
                 _log.Warn($"应用 {processId} 未能加入作业对象，崩溃兜底不可用");
             }
@@ -308,7 +308,7 @@ internal sealed partial class AppLauncher
                 FileName = s.LaunchPath,
                 UseShellExecute = false,
                 WorkingDirectory = string.IsNullOrEmpty(workingDirectory)
-                    ? _host.Clients.CurrentCwd
+                    ? _session.Clients.CurrentCwd
                     : workingDirectory,
             };
 
@@ -325,7 +325,7 @@ internal sealed partial class AppLauncher
 
             using (process)
             {
-                if (!_host.Job.Assign(process))
+                if (!_session.Job.Assign(process))
                 {
                     _log.Warn($"应用 {processId} 未能加入作业对象，崩溃兜底不可用");
                 }
@@ -356,12 +356,12 @@ internal sealed partial class AppLauncher
         WindowManager.MoveAndMaximize(s.Window!.Hwnd, s.Display.X, s.Display.Y, s.Display.Width, s.Display.Height);
         // 应用启动/会话恢复可能在稍后多次激活自己；同步归还一次，再持续观察一小段时间。
         Thread.Sleep(500);
-        _host.RestoreForeground(s.PreviousForeground);
-        _host.StartFocusGuard(s.PreviousForeground);
+        _focus.RestoreForeground(s.PreviousForeground);
+        _focus.StartFocusGuard(s.PreviousForeground);
         s.Maximized = WindowManager.WaitForZoomed(s.Window!.Hwnd, TimeSpan.FromSeconds(2));
         Thread.Sleep(300);
         s.After = WindowManager.FromHandle(s.Window!.Hwnd);
-        _host.SaveState();
+        _session.SaveState();
 
 
         if (s.LaunchWarning is not null)

@@ -16,39 +16,45 @@ using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 
-internal interface IAppLaunchHost
-{
-    LogRing Log { get; }
-    JobObject Job { get; }
-    TrackedAppRegistry Apps { get; }
-    ClientSessionRegistry Clients { get; }
-    UiaHost Uia { get; }
-    object Gate { get; }
-    DisplayInfo EnsureDisplay();
-    string ResolvePath(string path);
-    void EnsureAppAllowed(string path);
-    bool IsOwned(TrackedApp app);
-    bool IsLive(TrackedApp app);
-    void RestoreForeground(IntPtr previous, bool logFailure = true);
-    void StartFocusGuard(IntPtr preferredUserForeground = default);
-    void PauseFocusGuard(int leaseMs = 0);
-    void ResumeFocusGuard();
-    bool EnsureForeground(TrackedApp app);
-    void SaveState();
-}
+internal sealed record LaunchSessionContext(
+    LogRing Log,
+    JobObject Job,
+    ClientSessionRegistry Clients,
+    object Gate,
+    Action SaveState);
+
+internal sealed record LaunchAppContext(
+    TrackedAppRegistry Apps,
+    UiaHost Uia,
+    Func<DisplayInfo> EnsureDisplay,
+    Func<string, string> ResolvePath,
+    Action<string> EnsureAppAllowed,
+    Func<TrackedApp, bool> IsOwned,
+    Func<TrackedApp, bool> IsLive);
+
+internal sealed record LaunchFocusContext(
+    Action<IntPtr> RestoreForeground,
+    Action<IntPtr> StartFocusGuard,
+    Action PauseFocusGuard,
+    Action ResumeFocusGuard,
+    Func<TrackedApp, bool> EnsureForeground);
 
 internal sealed partial class AppLauncher
 {
-    private readonly IAppLaunchHost _host;
+    private readonly LaunchSessionContext _session;
+    private readonly LaunchAppContext _apps;
+    private readonly LaunchFocusContext _focus;
     private readonly LogRing _log;
     private readonly object _gate;
     private bool _jobUnavailableLogged;
 
-    public AppLauncher(IAppLaunchHost host)
+    public AppLauncher(LaunchSessionContext session, LaunchAppContext apps, LaunchFocusContext focus)
     {
-        _host = host;
-        _log = host.Log;
-        _gate = host.Gate;
+        _session = session;
+        _apps = apps;
+        _focus = focus;
+        _log = session.Log;
+        _gate = session.Gate;
     }
 
     /// <summary>
@@ -74,7 +80,7 @@ internal sealed partial class AppLauncher
             return (0, string.Empty);
         }
 
-        UiaTreeResult tree = _host.Uia.BuildTree(
+        UiaTreeResult tree = _apps.Uia.BuildTree(
             frameHwnd,
             rootRuntimeId: string.Empty,
             maxDepth: 4,

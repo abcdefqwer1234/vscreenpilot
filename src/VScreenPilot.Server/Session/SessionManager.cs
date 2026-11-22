@@ -239,7 +239,12 @@ internal sealed partial class SessionManager : IDisposable, IElementOperationsHo
             VirtualHeight,
             VirtualRefresh);
         _releaser = new AppReleaser(log, _uiaHost, ResetUia);
-        _launcher = new AppLauncher(this);
+        _launcher = new AppLauncher(
+            new LaunchSessionContext(_log, _job, Clients, _gate, SaveState),
+            new LaunchAppContext(_apps, Uia, EnsureEnvironment, _paths.Resolve,
+                EnsureAppAllowed, IsOwned, TrackedAppTracker.IsLive),
+            new LaunchFocusContext(previous => RestoreForeground(previous, logFailure: true),
+                StartFocusGuard, () => PauseFocusGuard(), ResumeFocusGuard, EnsureForeground));
         _input = new InputRouter(this);
         _visual = new VisualMatchService(new VisualContext(EnsureEnvironment, CaptureRegion, _paths.ValidatePngPath, () => Cancellation.IsCancellationRequested));
         _finder = new ElementFinder(new ElementFinderContext(FindLiveTrackedApp, EnsureEnvironment, RequireWindowOnDisplay, Uia, EnsureSnapshot, RegisterElement));

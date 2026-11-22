@@ -88,7 +88,7 @@ internal sealed partial class AppLauncher
         string fullPath;
         try
         {
-            fullPath = _host.ResolvePath(path);
+            fullPath = _apps.ResolvePath(path);
         }
         catch (Exception exception)
         {

@@ -40,15 +40,15 @@ internal sealed partial class AppLauncher
         string allowPath = string.IsNullOrEmpty(s.ContentPath)
             ? WindowManager.GetProcessPath(s.Window!.Pid)
             : s.ContentPath;
-        _host.EnsureAppAllowed(allowPath);
+        _apps.EnsureAppAllowed(allowPath);
 
         lock (_gate)
         {
-            s.Tracked = _host.Apps.FirstOrDefault(app => _host.IsOwned(app) && app.Hwnd == s.Window!.Hwnd)
-                ?? _host.Apps.FirstOrDefault(app => _host.IsOwned(app) && app.Pid == s.Window!.Pid);
+            s.Tracked = _apps.Apps.FirstOrDefault(app => _apps.IsOwned(app) && app.Hwnd == s.Window!.Hwnd)
+                ?? _apps.Apps.FirstOrDefault(app => _apps.IsOwned(app) && app.Pid == s.Window!.Pid);
 
-            TrackedApp? foreign = _host.Apps.FirstOrDefault(app =>
-                !_host.IsOwned(app) && (app.Hwnd == s.Window!.Hwnd || app.Pid == s.Window!.Pid));
+            TrackedApp? foreign = _apps.Apps.FirstOrDefault(app =>
+                !_apps.IsOwned(app) && (app.Hwnd == s.Window!.Hwnd || app.Pid == s.Window!.Pid));
 
             if (s.Tracked is null && foreign is not null)
             {
@@ -60,7 +60,7 @@ internal sealed partial class AppLauncher
                         ["hwnd"] = s.Window!.Hwnd.ToInt64(),
                         ["pid"] = s.Window!.Pid,
                         ["owner_client_id"] = foreign.OwnerClientId,
-                        ["owner_cwd"] = _host.Clients.FindCwd(foreign.OwnerClientId),
+                        ["owner_cwd"] = _session.Clients.FindCwd(foreign.OwnerClientId),
                     },
                     retryable: true,
                     hint: "让该客户端 release_environment，或为当前客户端启动一个独立实例",
@@ -72,7 +72,7 @@ internal sealed partial class AppLauncher
                 s.Tracked = new TrackedApp
                 {
                     Pid = s.Window!.Pid,
-                    OwnerClientId = _host.Clients.CurrentId,
+                    OwnerClientId = _session.Clients.CurrentId,
                     ExePath = WindowManager.GetProcessPath(s.Window!.Pid),
                     ContentPid = s.ContentPid,
                     ContentExePath = s.ContentPath,
@@ -86,7 +86,7 @@ internal sealed partial class AppLauncher
                     Placement = WindowManager.GetPlacement(s.Window!.Hwnd),
                     PlacementSaved = true,
                 };
-                _host.Apps.Add(s.Tracked);
+                _apps.Apps.Add(s.Tracked);
                 _log.Info(
                     $"接管应用 pid={s.Window!.Pid} started={s.Started} newInstance={s.NewInstance}");
             }
@@ -120,17 +120,17 @@ internal sealed partial class AppLauncher
 
         if (word)
         {
-            s.DocumentReady = _host.Uia.FindElement(s.Window!.Hwnd, null, "Document", null, null) is not null;
+            s.DocumentReady = _apps.Uia.FindElement(s.Window!.Hwnd, null, "Document", null, null) is not null;
             s.DocumentReason = s.DocumentReady == true ? "document_element" : "no_document_element";
 
             // 仅对本会话新启动的专用 Word 自动新建文档；复用用户 Word 时不动其文档状态。
             if (s.DocumentReady != true && s.EnsureDocument && s.Started && s.CloseOnRelease)
             {
-                _host.PauseFocusGuard();
+                _focus.PauseFocusGuard();
 
                 try
                 {
-                    if (s.Tracked is not null && _host.EnsureForeground(s.Tracked))
+                    if (s.Tracked is not null && _focus.EnsureForeground(s.Tracked))
                     {
                         InputInjector.PressKeys("Ctrl+N");
                         s.DocumentReady = WaitForWordDocument(s.Window!.Hwnd, 6000);
@@ -139,8 +139,8 @@ internal sealed partial class AppLauncher
                 }
                 finally
                 {
-                    _host.RestoreForeground(s.PreviousForeground);
-                    _host.ResumeFocusGuard();
+                    _focus.RestoreForeground(s.PreviousForeground);
+                    _focus.ResumeFocusGuard();
                 }
             }
 
@@ -157,11 +157,11 @@ internal sealed partial class AppLauncher
 
             if (s.DocumentReady != true && s.EnsureDocument && s.Started && s.CloseOnRelease && s.Tracked is not null)
             {
-                _host.PauseFocusGuard();
+                _focus.PauseFocusGuard();
 
                 try
                 {
-                    if (_host.EnsureForeground(s.Tracked))
+                    if (_focus.EnsureForeground(s.Tracked))
                     {
                         InputInjector.PressKeys("Ctrl+N");
                         s.DocumentReady = WaitForDocumentTitle(s.Window!.Hwnd, "PowerPoint", 5000);
@@ -200,8 +200,8 @@ internal sealed partial class AppLauncher
                 }
                 finally
                 {
-                    _host.RestoreForeground(s.PreviousForeground);
-                    _host.ResumeFocusGuard();
+                    _focus.RestoreForeground(s.PreviousForeground);
+                    _focus.ResumeFocusGuard();
                 }
 
                 if (s.DocumentReady != true)
