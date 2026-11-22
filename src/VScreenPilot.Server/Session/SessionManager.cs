@@ -19,7 +19,7 @@ namespace VScreenPilot.Session;
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
-internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, ITrackedAppHost
+internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost
 {
     private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
@@ -242,7 +242,7 @@ internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaser
         _screenText = new ScreenTextService(this);
         _capture = new ScreenCaptureService(this);
         _focus = new FocusGuard(new FocusContext(IsTrackedWindow, IsAnyClientWindow, target => RestoreForeground(target, logFailure: false), _log));
-        _tracker = new TrackedAppTracker(this);
+        _tracker = new TrackedAppTracker(new TrackedAppContext(_apps, _gate, IsOwned, _log));
         _stateKeeper = new SessionStateKeeper(new SessionStateContext(_gate, _stateStore, _display.State, _apps, _log));
         _allowlist = new AppAllowlistPolicy(new AppAllowlistContext(() => Clients.Current?.AppAllowlist ?? Array.Empty<string>(), _paths.Resolve));
         _releaserService = new EnvironmentReleaser(this);

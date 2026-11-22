@@ -9,20 +9,18 @@ using VScreenPilot.Platform.Logging;
 namespace VScreenPilot.Session;
 
 /// <summary>跟踪应用所需的最小宿主接口。</summary>
-internal interface ITrackedAppHost
-{
-    TrackedAppRegistry Apps { get; }
-    object Gate { get; }
-    bool IsOwned(TrackedApp app);
-    LogRing Log { get; }
-}
+internal sealed record TrackedAppContext(
+    TrackedAppRegistry Apps,
+    object Gate,
+    Func<TrackedApp, bool> IsOwned,
+    LogRing Log);
 
 /// <summary>已接管应用的存活判定、清理与 Office 启动壳重定位。</summary>
 internal sealed class TrackedAppTracker
 {
-    private readonly ITrackedAppHost _host;
+    private readonly TrackedAppContext _host;
 
-    public TrackedAppTracker(ITrackedAppHost host) => _host = host;
+    public TrackedAppTracker(TrackedAppContext host) => _host = host;
 
     /// <summary>
     /// 条目仍可用：窗口存在且仍属于登记时的进程。
