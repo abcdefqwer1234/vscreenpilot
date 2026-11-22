@@ -69,7 +69,7 @@ internal sealed partial class SnapshotBuilder : IDisposable
     internal JsonObject ConvertTreeNode(UiaTreeNode node, IntPtr hwnd, ref string rootRef)
     {
         UiaElementInfo info = node.Info;
-        string reference = _host.RegisterElement(info, hwnd);
+        string reference = _state.RegisterElement(info, hwnd);
 
         if (string.IsNullOrEmpty(rootRef))
         {

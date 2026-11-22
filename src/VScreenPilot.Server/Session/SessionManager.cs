@@ -219,7 +219,15 @@ internal sealed partial class SessionManager : IDisposable, IElementOperationsHo
 
         _paths = new ClientPathPolicy(Clients);
         _apps = new TrackedAppRegistry(_gate);
-        _snapshots = new SnapshotBuilder(this);
+        _snapshots = new SnapshotBuilder(
+            new SnapshotStateContext(Uia, _refs, () => SnapshotId, () => ElementRefCapacity,
+                Metrics, BeginSnapshot, RegisterElement),
+            new SnapshotAppContext(EnsureEnvironmentFast, PruneDeadApps, FindLiveTrackedApp,
+                RequireWindowOnDisplay, () => _apps.Where(IsOwned).ToList(), TrackedAppTracker.IsLive),
+            new SnapshotCaptureContext(CaptureRegion,
+                (scale, previewScale) => CaptureScreenEx(null, null, null, null, scale,
+                    savePath: null, storeFrame: false, previewScale: previewScale),
+                CancellationProbe));
         _environment = new EnvironmentReporter(this);
         _display = new VirtualDisplayController(
             _gate, log, ProfileName,

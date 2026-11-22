@@ -18,33 +18,42 @@ internal sealed record SnapshotResult(
     SnapshotView Data, byte[]? Png, byte[]? PreviewPng, JsonObject? PreviewMeta);
 
 /// <summary>快照构建所需的最小宿主接口；由 <see cref="SessionManager"/> 实现。</summary>
-internal interface ISnapshotHost
-{
-    UiaHost Uia { get; }
-    ElementRefStore Refs { get; }
-    string SnapshotId { get; }
-    int RefCapacity { get; }
-    MetricsRegistry Metrics { get; }
-    DisplayInfo EnsureDisplay();
-    void PruneApps();
-    TrackedApp? FindApp(int? pid);
-    void RequireOnDisplay(DisplayInfo display, IntPtr hwnd, string label);
-    Func<bool> CancellationProbe();
-    string BeginSnapshot();
-    string RegisterElement(UiaElementInfo info, IntPtr hwnd);
-    IReadOnlyList<TrackedApp> OwnedApps();
-    bool IsLive(TrackedApp app);
-    (byte[] Bgra, int Width, int Height) CaptureRegion(int x, int y, int width, int height);
-    CaptureResult CaptureForSnapshot(double scale, double previewScale);
-}
+internal sealed record SnapshotStateContext(
+    UiaHost Uia,
+    ElementRefStore Refs,
+    Func<string> SnapshotId,
+    Func<int> RefCapacity,
+    MetricsRegistry Metrics,
+    Func<string> BeginSnapshot,
+    Func<UiaElementInfo, IntPtr, string> RegisterElement);
+
+internal sealed record SnapshotAppContext(
+    Func<DisplayInfo> EnsureDisplay,
+    Action PruneApps,
+    Func<int?, TrackedApp?> FindApp,
+    Action<DisplayInfo, IntPtr, string> RequireOnDisplay,
+    Func<IReadOnlyList<TrackedApp>> OwnedApps,
+    Func<TrackedApp, bool> IsLive);
+
+internal sealed record SnapshotCaptureContext(
+    Func<int, int, int, int, (byte[] Bgra, int Width, int Height)> CaptureRegion,
+    Func<double, double, CaptureResult> CaptureForSnapshot,
+    Func<Func<bool>> CancellationProbe);
 
 /// <summary>快照：环境确认、语义树、弹窗、前台、可选截图与脱敏。</summary>
 internal sealed partial class SnapshotBuilder : IDisposable
 {
-    private readonly ISnapshotHost _host;
+    private readonly SnapshotStateContext _state;
+    private readonly SnapshotAppContext _apps;
+    private readonly SnapshotCaptureContext _capture;
     private readonly SemaphoreSlim _snapshotGate = new(1, 1);
 
-    public SnapshotBuilder(ISnapshotHost host) => _host = host;
+    public SnapshotBuilder(SnapshotStateContext state, SnapshotAppContext apps, SnapshotCaptureContext capture)
+    {
+        _state = state;
+        _apps = apps;
+        _capture = capture;
+    }
 
     public void Dispose() => _snapshotGate.Dispose();
 
@@ -97,9 +106,9 @@ internal sealed partial class SnapshotBuilder : IDisposable
         double scale,
         bool annotate)
     {
-        DisplayInfo display = _host.EnsureDisplay();
-        _host.PruneApps();
-        TrackedApp app = _host.FindApp(pid)
+        DisplayInfo display = _apps.EnsureDisplay();
+        _apps.PruneApps();
+        TrackedApp app = _apps.FindApp(pid)
             ?? throw new ToolException(
                 "E_NO_TARGET",
                 pid is null
@@ -108,10 +117,10 @@ internal sealed partial class SnapshotBuilder : IDisposable
                 new JsonObject { ["pid"] = pid });
 
         IntPtr hwnd = WindowManager.GetActivePopup(app.Hwnd);
-        _host.RequireOnDisplay(display, hwnd, "snapshot");
+        _apps.RequireOnDisplay(display, hwnd, "snapshot");
 
         int depth = Math.Clamp(maxDepth, 1, 10);
-        int nodes = Math.Clamp(maxNodes, 1, Math.Min(1024, _host.RefCapacity));
+        int nodes = Math.Clamp(maxNodes, 1, Math.Min(1024, _state.RefCapacity()));
         long started = Environment.TickCount64;
 
         UiaTreeResult result = BuildTree(
@@ -123,9 +132,9 @@ internal sealed partial class SnapshotBuilder : IDisposable
         JsonObject tree;
         string snapshotId;
 
-        lock (_host.Refs.SyncRoot)
+        lock (_state.Refs.SyncRoot)
         {
-            snapshotId = _host.BeginSnapshot();
+            snapshotId = _state.BeginSnapshot();
             tree = ConvertTreeNode(result.Root!, hwnd, ref rootRef);
         }
 
@@ -146,7 +155,7 @@ internal sealed partial class SnapshotBuilder : IDisposable
             ["interactive_only"] = effectiveInteractiveOnly,
             ["max_depth"] = depth,
             ["max_nodes_effective"] = nodes,
-            ["ref_capacity"] = _host.RefCapacity,
+            ["ref_capacity"] = _state.RefCapacity(),
             ["elapsed_ms"] = Math.Round((double)(Environment.TickCount64 - started), 1),
             ["window"] = new JsonObject
             {
@@ -175,9 +184,9 @@ internal sealed partial class SnapshotBuilder : IDisposable
                     : result.Pruned > 0 ? "pruned_all" : "uia_busy");
         }
 
-        _host.Metrics.RecordSnapshot(result.Nodes);
+        _state.Metrics.RecordSnapshot(result.Nodes);
 
-        if (maxNodes > Math.Min(1024, _host.RefCapacity))
+        if (maxNodes > Math.Min(1024, _state.RefCapacity()))
         {
             data["max_nodes_clamped"] = true;
         }
@@ -215,7 +224,7 @@ internal sealed partial class SnapshotBuilder : IDisposable
             throw new ToolException(
                 "E_ELEMENT_NOT_FOUND",
                 result.Reason == "root_not_found" ? "树根控件已不存在" : "无法读取语义树",
-                new JsonObject { ["reason"] = result.Reason, ["snapshot_id"] = _host.SnapshotId });
+                new JsonObject { ["reason"] = result.Reason, ["snapshot_id"] = _state.SnapshotId() });
         }
     }
 
@@ -224,14 +233,14 @@ internal sealed partial class SnapshotBuilder : IDisposable
         IntPtr hwnd, int depth, int nodes, bool interactiveOnly,
         out bool emptyRetried, out bool effectiveInteractiveOnly)
     {
-        UiaTreeResult result = _host.Uia.BuildTree(
+        UiaTreeResult result = _state.Uia.BuildTree(
             hwnd,
             rootRuntimeId: string.Empty,
             maxDepth: depth,
             interactiveOnly: interactiveOnly,
             maxNodes: nodes,
             timeBudgetMs: 3000,
-            isCancelled: _host.CancellationProbe());
+            isCancelled: _capture.CancellationProbe());
 
         emptyRetried = false;
         effectiveInteractiveOnly = interactiveOnly;
@@ -242,14 +251,14 @@ internal sealed partial class SnapshotBuilder : IDisposable
         {
             Thread.Sleep(200);
 
-            UiaTreeResult retry = _host.Uia.BuildTree(
+            UiaTreeResult retry = _state.Uia.BuildTree(
                 hwnd,
                 rootRuntimeId: string.Empty,
                 maxDepth: Math.Max(depth, 4),
                 interactiveOnly: false,
                 maxNodes: nodes,
                 timeBudgetMs: 3000,
-                isCancelled: _host.CancellationProbe());
+                isCancelled: _capture.CancellationProbe());
 
             if (retry.Root is not null && retry.Nodes > result.Nodes)
             {
@@ -292,20 +301,20 @@ internal sealed partial class SnapshotBuilder : IDisposable
             // 把控件直接放进 snapshot.dialogs[].controls，模型不需要再调 find_element。
             if (dialog.ClassName.Contains("bosa", StringComparison.OrdinalIgnoreCase))
             {
-                MsaaFindResult msaa = _host.Uia.InvokeMsaa(() => MsaaService.FindElements(
+                MsaaFindResult msaa = _state.Uia.InvokeMsaa(() => MsaaService.FindElements(
                     dialog.Hwnd, null, UiaNameMatch.Exact, null, 100));
 
                 if (msaa.Items.Count > 0)
                 {
                     var controls = new JsonArray();
 
-                    lock (_host.Refs.SyncRoot)
+                    lock (_state.Refs.SyncRoot)
                     {
                         foreach (UiaElementInfo info in msaa.Items)
                         {
                             var control = new JsonObject
                             {
-                                ["ref"] = _host.RegisterElement(info, dialog.Hwnd),
+                                ["ref"] = _state.RegisterElement(info, dialog.Hwnd),
                                 ["name"] = info.Name,
                                 ["control_type"] = info.ControlTypeName,
                                 ["bounds"] = new JsonObject
@@ -372,16 +381,16 @@ internal sealed partial class SnapshotBuilder : IDisposable
     {
         var windows = new JsonArray();
 
-        foreach (TrackedApp tracked in _host.OwnedApps())
+        foreach (TrackedApp tracked in _apps.OwnedApps())
         {
             windows.Add((JsonNode)new JsonObject
             {
                 ["pid"] = tracked.Pid,
                 ["hwnd"] = tracked.Hwnd.ToInt64(),
-                ["title"] = _host.IsLive(tracked)
+                ["title"] = _apps.IsLive(tracked)
                     ? WindowManager.GetTitle(tracked.Hwnd)
                     : tracked.Title,
-                ["alive"] = _host.IsLive(tracked),
+                ["alive"] = _apps.IsLive(tracked),
                 ["owned"] = tracked.Owned,
             });
         }
@@ -394,7 +403,7 @@ internal sealed partial class SnapshotBuilder : IDisposable
 
         if (foregroundInfo is not null)
         {
-            foregroundTracked = _host.OwnedApps().Any(item => item.Pid == foregroundInfo.Pid);
+            foregroundTracked = _apps.OwnedApps().Any(item => item.Pid == foregroundInfo.Pid);
         }
 
         data["foreground"] = foregroundInfo is null

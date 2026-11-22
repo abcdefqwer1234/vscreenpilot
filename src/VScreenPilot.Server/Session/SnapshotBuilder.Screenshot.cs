@@ -37,7 +37,7 @@ internal sealed partial class SnapshotBuilder : IDisposable
 
             // 直接用源帧做叠加，再缩放编码；网格让模型估坐标时有参照。
             (byte[] bgra, int captureWidth, int captureHeight) =
-                _host.CaptureRegion(display.X, display.Y, display.Width, display.Height);
+                _capture.CaptureRegion(display.X, display.Y, display.Width, display.Height);
 
             double effectiveScale = Math.Clamp(scale, 0.1, 1.0);
             int thickness = Math.Max(2, (int)Math.Ceiling(2 / effectiveScale));
@@ -103,7 +103,7 @@ internal sealed partial class SnapshotBuilder : IDisposable
         else
         {
             // 快照截图不写帧缓存；preview 与主图同帧，且不阻塞 _refGate（已在锁外）。
-            CaptureResult capture = _host.CaptureForSnapshot(
+            CaptureResult capture = _capture.CaptureForSnapshot(
                 Math.Clamp(scale, 0.1, 1.0),
                 Math.Max(Limits.MinScale, scale * Limits.PreviewScale));
 
