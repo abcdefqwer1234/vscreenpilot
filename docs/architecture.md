@@ -123,7 +123,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 <!-- arch-metrics:begin -->
 | 指标 | 实测 | 硬上限 |
 |---|---:|---:|
-| 源文件 / 行数 | 230 / 35330 | - |
+| 源文件 / 行数 | 230 / 35371 | - |
 | 最大文件 | 444 | ≤450 |
 | 类型 >400 | 0 | 0 |
 | 最大类型跨度 | 398 | ≤400 |
