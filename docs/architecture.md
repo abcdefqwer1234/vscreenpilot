@@ -53,7 +53,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 
 - 入口：`Program.Main` 只委托 `Composition.Bootstrap.Run`；`Bootstrap` 解析 `--version` / `--doctor` / `--cli` / `--daemon` / `--profile` 等，然后进入 `ServerHost`。
 - 组合根：`SessionManager`（256 行、0 public 成员）只持有组件字段并暴露 `*Ops`；`SessionComposition.Build` 负责装配顺序（显示 → 快照 → 环境 → 启动 → 输入 → 元素 → 释放 → 维护）。
-- 单一 wiring：`Program.Main` 只调用 `Composition.Bootstrap.Run`，`ServerHost` 是唯一构造 `SessionManager` 的位置。
+- 单一 wiring：`Program.Main` 只调用 `Composition.Bootstrap.Run`；`SessionManager` 的构造点只有 3 处（`Bootstrap.RunHost`、`Bootstrap` 本地 CLI 会话、`ServerHost.RunDaemon`），按进程模式互斥，同一进程只走一条路径。
 - 组件不使用 `I*Host` 接口：全部通过上下文 record（`*Context`）传入只读回调，`I*Host` 计数为 0。
 - 会话组件（Server/Session）：
   - 显示：`VirtualDisplayController`
@@ -97,8 +97,8 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 
 | 闸门 | 内容 | 位置 |
 |---|---|---|
-| 单元 | 258 用例（235 测试方法）；视图序列化、策略、路径、拓扑、租约、组件 fake、纯逻辑拆分类 | `tests/VScreenPilot.Tests.Unit` |
-| 契约 | 18 用例；schema 快照、架构方向、命名空间/IVT/棘轮、组件测试映射 | `tests/VScreenPilot.Tests.Contract` |
+| 单元 | 217 方法 / 258 用例；视图序列化、策略、路径、拓扑、租约、组件 fake、纯逻辑拆分类 | `tests/VScreenPilot.Tests.Unit` |
+| 契约 | 19 用例；schema 快照、架构方向、命名空间/IVT/棘轮、组件测试映射 | `tests/VScreenPilot.Tests.Contract` |
 | 架构度量 | `arch_metrics.py --selftest/--enforce`（23 正向 + 2 meta + 1 反向；文件/方法/判断点/参数/宿主/SPLIT/catch/测试数/组件映射） | `.github/workflows/ci.yml` |
 | 基线 diff | `capture_baseline.py` + `compare_baseline.py --only server.json --only errors.json` | CI `smoke` |
 | GUI / protocol | 14/14（含 GUI-02、GUI-15 pid 场景）、30/30；需要 VDD | 自托管 nightly |
@@ -109,8 +109,9 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 ## 8. 当前状态与残余风险
 
 - 类型 ≤400、文件 ≤450、partial 0、方法 ≤80/12/6、`I*Host` 0、`SessionManager` 256 行 / 0 public、`Program` ≤200，全部由 `arch_metrics --enforce` 守住。
-- 组件测试映射写入 `tools/audit/arch_rules.json` 的 `components`（28 个组件，每个 ≥2 个测试），由契约测试与 `--enforce` 双重校验。
+- 组件测试映射写入 `tools/audit/arch_rules.json` 的 `components`（28 个组件，每个 ≥2 个测试；其中 17 个 `direct` 要求测试文件出现组件名，其余 11 个为 smoke 映射），由契约测试与 `--enforce` 双重校验。
 - 架构 allowlist 为空；新增 public 类型、放宽阈值、引入 `partial` 都会让 CI 失败。
+- `record` 主构造参数单独统计（`records`）：新增 >6 直接失败，历史 48 个视图/DTO 记录在 `record_param_baseline` 且只降不升；`split_namespaces` 已接入 `--enforce`。
 - 残余风险：`bench_*` 全量审计依赖自托管 VDD runner；本地无 VDD 时只能跑单元/契约/静态闸门。
 
 ## 9. 架构度量（自动生成）
@@ -131,7 +132,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 | I*Host | 0 / 0 成员 | 0 |
 | SessionManager | 256 行 / 0 public | ≤350 / ≤12 |
 | Program | 9 行 / Main 1 | ≤200 / ≤80 |
-| 测试方法 | 235 | ≥230 |
+| 测试方法 | 236 | ≥230 |
 | 无日志 catch | 66 | ≤66 |
 | SPLIT 命名空间 | 0 | 0 |
 | public 类型 | Abstractions=55, Automation=0, Platform=6, Server=9 | 不增加 |

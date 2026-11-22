@@ -416,9 +416,38 @@ def component_tests(components):
     return rows
 
 
+def record_params(files):
+    """record 主构造参数：parse_members 不覆盖，单独统计。"""
+    rows = []
+    for path in files:
+        text = strip_code(open(path, encoding="utf-8").read())
+        rel = os.path.relpath(path, REPO).replace(os.sep, "/")
+        for match in re.finditer(r"\brecord\s+(?:struct\s+)?(\w+)\s*\(", text):
+            start = match.end() - 1
+            depth, index = 0, start
+            while index < len(text):
+                ch = text[index]
+                if ch == "(":
+                    depth += 1
+                elif ch == ")":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                index += 1
+            if index >= len(text):
+                continue
+            rows.append({
+                "name": match.group(1),
+                "file": rel,
+                "params": count_parameters(text[start:index + 1]),
+            })
+    return rows
+
+
 def collect():
     files = sorted(source_files(SRC))
     file_rows, decls, method_rows = [], [], []
+    record_rows = record_params(files)
     edges = set()
     for path in files:
         text = open(path, encoding="utf-8").read()
@@ -527,6 +556,12 @@ def collect():
             "gt_6_params": sum(1 for row in method_rows if row["params"] > 6),
             "top": sorted(method_rows, key=lambda row: -row["lines"])[:25],
         },
+        "records": {
+            "max_params": max((row["params"] for row in record_rows), default=0),
+            "gt_6_params": sum(1 for row in record_rows if row["params"] > 6),
+            "items": sorted((row for row in record_rows if row["params"] > 6),
+                            key=lambda row: -row["params"]),
+        },
         "hosts": {
             "count": len(hosts),
             "members": sum(len(host["members"]) for host in hosts),
@@ -598,6 +633,19 @@ def threshold_failures(current, rules):
         if component["methods"] < minimum:
             failures.append(
                 f"组件 {component['name']} 测试方法 {component['methods']} < {minimum}")
+    split_namespaces = current["namespaces"]["split"]
+    if rules.get("split_namespaces") == 0 and split_namespaces:
+        failures.append(f"SPLIT 命名空间 {len(split_namespaces)} 个: {', '.join(split_namespaces)}")
+    baseline = rules.get("record_param_baseline", {})
+    for row in current["records"]["items"]:
+        key = f"{row['file']}:{row['name']}"
+        allowed = baseline.get(key)
+        if allowed is None:
+            failures.append(
+                f"新增 record 主构造 {row['name']} 参数 {row['params']} > 6（{row['file']}）")
+        elif row["params"] > allowed:
+            failures.append(
+                f"record {row['name']} 参数 {row['params']} > 基线 {allowed}（{row['file']}）")
     return failures
 
 

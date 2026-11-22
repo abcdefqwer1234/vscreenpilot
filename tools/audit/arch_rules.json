@@ -1,6 +1,4 @@
 {
-  "profile": "migration",
-  "assemblies": 4,
   "split_namespaces": 0,
   "max_type_lines": 400,
   "max_file_lines": 450,
@@ -9,19 +7,12 @@
   "max_decision_points": 12,
   "max_parameters": 6,
   "max_host_interfaces": 0,
-  "max_context_members": 8,
-  "max_session_ports": 12,
-  "max_platform_seams": 5,
-  "max_port_members": 8,
   "max_session_manager_lines": 350,
   "max_session_manager_public": 12,
   "max_program_lines": 200,
   "max_program_main_lines": 80,
-  "max_app_services": 10,
-  "max_handler_groups": 8,
   "min_test_methods": 230,
   "min_tests_per_component": 2,
-  "max_new_public_types": 0,
   "max_comment_only_catches": 66,
   "public_types": {
     "VScreenPilot.Abstractions": 55,
@@ -32,116 +23,194 @@
   "components": [
     {
       "name": "SessionManager",
-      "test": "VScreenPilot.Tests.Unit/SessionStateKeeperTests.cs"
+      "test": "VScreenPilot.Tests.Unit/SessionStateKeeperTests.cs",
+      "direct": false
     },
     {
       "name": "AppLauncher",
-      "test": "VScreenPilot.Tests.Unit/LaunchPolicyTests.cs"
+      "test": "VScreenPilot.Tests.Unit/LaunchPolicyTests.cs",
+      "direct": true
     },
     {
       "name": "AppReleaser",
-      "test": "VScreenPilot.Tests.Unit/EnvironmentReleaserTests.cs"
+      "test": "VScreenPilot.Tests.Unit/EnvironmentReleaserTests.cs",
+      "direct": false
     },
     {
       "name": "VirtualDisplayController",
-      "test": "VScreenPilot.Tests.Unit/DisplayTopologyTests.cs"
+      "test": "VScreenPilot.Tests.Unit/DisplayTopologyTests.cs",
+      "direct": false
     },
     {
       "name": "SnapshotBuilder",
-      "test": "VScreenPilot.Tests.Unit/SnapshotViewSerializationTests.cs"
+      "test": "VScreenPilot.Tests.Unit/SnapshotViewSerializationTests.cs",
+      "direct": false
     },
     {
       "name": "VisualMatchService",
-      "test": "VScreenPilot.Tests.Unit/VisualSupportTests.cs"
+      "test": "VScreenPilot.Tests.Unit/VisualSupportTests.cs",
+      "direct": false
     },
     {
       "name": "UiaHost",
-      "test": "VScreenPilot.Tests.Unit/UiaHostTimeoutTests.cs"
+      "test": "VScreenPilot.Tests.Unit/UiaHostTimeoutTests.cs",
+      "direct": true
     },
     {
       "name": "ColorComponentScanner",
-      "test": "VScreenPilot.Tests.Unit/ColorComponentScannerTests.cs"
+      "test": "VScreenPilot.Tests.Unit/ColorComponentScannerTests.cs",
+      "direct": true
     },
     {
       "name": "InputRouter",
-      "test": "VScreenPilot.Tests.Unit/InputPolicyTests.cs"
+      "test": "VScreenPilot.Tests.Unit/InputPolicyTests.cs",
+      "direct": false
     },
     {
       "name": "ElementPresenter",
-      "test": "VScreenPilot.Tests.Unit/ElementPresenterTests.cs"
+      "test": "VScreenPilot.Tests.Unit/ElementPresenterTests.cs",
+      "direct": true
     },
     {
       "name": "ControlServer",
-      "test": "VScreenPilot.Tests.Unit/IpcContractTests.cs"
+      "test": "VScreenPilot.Tests.Unit/IpcContractTests.cs",
+      "direct": false
     },
     {
       "name": "Handshake",
-      "test": "VScreenPilot.Tests.Unit/HandshakeTests.cs"
+      "test": "VScreenPilot.Tests.Unit/HandshakeTests.cs",
+      "direct": true
     },
     {
       "name": "McpTransport",
-      "test": "VScreenPilot.Tests.Unit/ProtocolContractTests.cs"
+      "test": "VScreenPilot.Tests.Unit/ProtocolContractTests.cs",
+      "direct": false
     },
     {
       "name": "ToolExecutor",
-      "test": "VScreenPilot.Tests.Unit/ToolExecutorLeaseTests.cs"
+      "test": "VScreenPilot.Tests.Unit/ToolExecutorLeaseTests.cs",
+      "direct": true
     },
     {
       "name": "ToolCatalog",
-      "test": "VScreenPilot.Tests.Unit/ToolPolicyTests.cs"
+      "test": "VScreenPilot.Tests.Unit/ToolPolicyTests.cs",
+      "direct": false
     },
     {
       "name": "ScreenLease",
-      "test": "VScreenPilot.Tests.Unit/ScreenLeaseTests.cs"
+      "test": "VScreenPilot.Tests.Unit/ScreenLeaseTests.cs",
+      "direct": true
     },
     {
       "name": "LogRing",
-      "test": "VScreenPilot.Tests.Unit/InfrastructureTests.cs"
+      "test": "VScreenPilot.Tests.Unit/InfrastructureTests.cs",
+      "direct": false
     },
     {
       "name": "InstanceRegistry",
-      "test": "VScreenPilot.Tests.Unit/InfrastructureTests.cs"
+      "test": "VScreenPilot.Tests.Unit/InfrastructureTests.cs",
+      "direct": false
     },
     {
       "name": "PrivacyRedactor",
-      "test": "VScreenPilot.Tests.Unit/PrivacyRedactorTests.cs"
+      "test": "VScreenPilot.Tests.Unit/PrivacyRedactorTests.cs",
+      "direct": true
     },
     {
       "name": "ArgumentValidator",
-      "test": "VScreenPilot.Tests.Unit/ArgumentValidatorTests.cs"
+      "test": "VScreenPilot.Tests.Unit/ArgumentValidatorTests.cs",
+      "direct": true
     },
     {
       "name": "PngWriter",
-      "test": "VScreenPilot.Tests.Unit/PngWriterTests.cs"
+      "test": "VScreenPilot.Tests.Unit/PngWriterTests.cs",
+      "direct": true
     },
     {
       "name": "PngOverlay",
-      "test": "VScreenPilot.Tests.Unit/PngOverlayTests.cs"
+      "test": "VScreenPilot.Tests.Unit/PngOverlayTests.cs",
+      "direct": true
     },
     {
       "name": "LogQuery",
-      "test": "VScreenPilot.Tests.Unit/LogQueryTests.cs"
+      "test": "VScreenPilot.Tests.Unit/LogQueryTests.cs",
+      "direct": true
     },
     {
       "name": "AppAllowlistPolicy",
-      "test": "VScreenPilot.Tests.Unit/AppAllowlistPolicyTests.cs"
+      "test": "VScreenPilot.Tests.Unit/AppAllowlistPolicyTests.cs",
+      "direct": true
     },
     {
       "name": "MaintenanceService",
-      "test": "VScreenPilot.Tests.Unit/MaintenanceServiceTests.cs"
+      "test": "VScreenPilot.Tests.Unit/MaintenanceServiceTests.cs",
+      "direct": true
     },
     {
       "name": "VddDevice",
-      "test": "VScreenPilot.Tests.Unit/VddDeviceTests.cs"
+      "test": "VScreenPilot.Tests.Unit/VddDeviceTests.cs",
+      "direct": true
     },
     {
       "name": "VspOptions",
-      "test": "VScreenPilot.Tests.Unit/VspOptionsTests.cs"
+      "test": "VScreenPilot.Tests.Unit/VspOptionsTests.cs",
+      "direct": true
     },
     {
       "name": "KeyMap",
-      "test": "VScreenPilot.Tests.Unit/KeyMapTests.cs"
+      "test": "VScreenPilot.Tests.Unit/KeyMapTests.cs",
+      "direct": true
     }
   ],
-  "allowlist": {}
+  "allowlist": {},
+  "record_param_baseline": {
+    "src/VScreenPilot.Abstractions/Views/SnapshotView.cs:SnapshotView": 31,
+    "src/VScreenPilot.Abstractions/Views/InputViews.cs:ClickRefView": 19,
+    "src/VScreenPilot.Abstractions/Views/TreeViews.cs:UiTreeView": 19,
+    "src/VScreenPilot.Abstractions/Views/VerifyViews.cs:MatchVisualView": 18,
+    "src/VScreenPilot.Automation/Ui/UiaService.cs:UiaElementInfo": 18,
+    "src/VScreenPilot.Abstractions/Views/LaunchOrPlaceView.cs:LaunchOrPlaceView": 16,
+    "src/VScreenPilot.Abstractions/Views/TreeViews.cs:FindElementView": 16,
+    "src/VScreenPilot.Abstractions/Views/CaptureView.cs:CaptureView": 15,
+    "src/VScreenPilot.Abstractions/Views/ElementView.cs:ElementView": 14,
+    "src/VScreenPilot.Abstractions/Views/VerifyViews.cs:AssertRegionView": 14,
+    "src/VScreenPilot.Abstractions/Views/InputViews.cs:TypeTextView": 13,
+    "src/VScreenPilot.Abstractions/Views/InputViews.cs:GestureView": 13,
+    "src/VScreenPilot.Abstractions/Views/InputViews.cs:ClickView": 13,
+    "src/VScreenPilot.Server/Session/SnapshotBuilder.cs:SnapshotBuildContext": 13,
+    "src/VScreenPilot.Abstractions/Views/ElementView.cs:SetElementValueView": 12,
+    "src/VScreenPilot.Abstractions/Views/ReleaseReport.cs:ReleaseReport": 12,
+    "src/VScreenPilot.Platform/Display/DisplayTopology.cs:DisplayInfo": 11,
+    "src/VScreenPilot.Server/Session/ElementFinder.cs:FindQuery": 11,
+    "src/VScreenPilot.Abstractions/Views/ScreenTextView.cs:ScreenTextView": 10,
+    "src/VScreenPilot.Abstractions/Views/ScreenTextView.cs:ClickTextView": 10,
+    "src/VScreenPilot.Abstractions/Views/VerifyViews.cs:VisualMatchView": 10,
+    "src/VScreenPilot.Server/Tools/ToolDescriptor.cs:ToolDescriptor": 10,
+    "src/VScreenPilot.Abstractions/Views/TreeViews.cs:FindElementItemView": 9,
+    "src/VScreenPilot.Server/Session/EnvironmentReporter.cs:ProbeInputs": 9,
+    "src/VScreenPilot.Server/Session/VisualColorOps.cs:ColorQuery": 9,
+    "src/VScreenPilot.Abstractions/Views/ElementView.cs:InvokeElementView": 8,
+    "src/VScreenPilot.Abstractions/Views/InputViews.cs:ObservedView": 8,
+    "src/VScreenPilot.Abstractions/Views/InputViews.cs:PressKeysView": 8,
+    "src/VScreenPilot.Abstractions/Views/TreeViews.cs:FindElementsView": 8,
+    "src/VScreenPilot.Automation/Ui/UiaLocateOps.cs:FingerprintQuery": 8,
+    "src/VScreenPilot.Automation/Ui/UiaService.cs:UiaTreeResult": 8,
+    "src/VScreenPilot.Server/Ipc/Handshake.cs:ClientHello": 8,
+    "src/VScreenPilot.Server/Services/Requests.cs:SnapshotRequest": 8,
+    "src/VScreenPilot.Server/Services/Requests.cs:CaptureRequest": 8,
+    "src/VScreenPilot.Server/Session/EnvironmentReleaser.cs:ReleaseDisplayContext": 8,
+    "src/VScreenPilot.Server/Session/InputClickOps.cs:SessionClickRequest": 8,
+    "src/VScreenPilot.Abstractions/Views/ElementTextView.cs:ElementTextView": 7,
+    "src/VScreenPilot.Abstractions/Views/ScriptView.cs:ScriptView": 7,
+    "src/VScreenPilot.Platform/Windows/WindowManager.cs:WindowInfo": 7,
+    "src/VScreenPilot.Server/Session/AppLauncher.cs:LaunchAppContext": 7,
+    "src/VScreenPilot.Server/Session/ElementOperations.cs:ElementStateContext": 7,
+    "src/VScreenPilot.Server/Session/ElementResolver.cs:ElementResolverContext": 7,
+    "src/VScreenPilot.Server/Session/EnvironmentReporter.cs:EnvironmentRuntimeContext": 7,
+    "src/VScreenPilot.Server/Session/EnvironmentReporter.cs:EnvironmentHealContext": 7,
+    "src/VScreenPilot.Server/Session/InputRouter.cs:TextWriteResult": 7,
+    "src/VScreenPilot.Server/Session/InputRouter.cs:InputFocusContext": 7,
+    "src/VScreenPilot.Server/Session/SnapshotBuilder.cs:SnapshotStateContext": 7,
+    "src/VScreenPilot.Server/Verification/ObserveSampler.cs:Signature": 7
+  }
 }

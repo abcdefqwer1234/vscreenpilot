@@ -263,14 +263,18 @@ def main() -> int:
                       type=typed_pid.code or "ok", find=find_pid.code or "ok"))
 
     # ---------------- GUI-15 ----------------
+    # 指定 pid 被杀、另一个应用仍存活：按 pid 的调用报错，存活应用仍可用。
     kill_tree(target_pid or 0)
     time.sleep(1.0)
     dead = h.call("find_element", {"automation_id": "input", "pid": target_pid}, 30)
+    survivor = h.call("get_ui_tree", {"pid": note_pid, "max_depth": 2}, 60)
     relaunched = h.launch_target()
     recovered = h.call("find_element", {"automation_id": "input"}, 60)
     cases.append(case("GUI-15", "应用被杀后错误可识别并可重启恢复",
-                      dead.code is not None and relaunched.ok and recovered.ok,
-                      dead=dead.code, relaunch=relaunched.code or "ok", recovered=recovered.code or "ok"))
+                      dead.code is not None and survivor.ok and relaunched.ok and recovered.ok,
+                      dead=dead.code, survivor=survivor.code or "ok",
+                      survivor_nodes=(survivor.data or {}).get("nodes"),
+                      relaunch=relaunched.code or "ok", recovered=recovered.code or "ok"))
 
     h.call("release_environment", {"keep_display": False, "on_dirty": "discard", "allow_data_loss": True}, 120)
     timings_out = {name: stats(values) for name, values in timings.items()}

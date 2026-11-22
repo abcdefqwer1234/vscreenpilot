@@ -171,9 +171,27 @@ public sealed class ArchitectureFitnessTests
 
             Assert.True(File.Exists(path), $"组件 {name} 的测试文件不存在: {test}");
 
-            int count = Regex.Count(File.ReadAllText(path), @"\[(?:Fact|Theory)\]");
+            string content = File.ReadAllText(path);
+            int count = Regex.Count(content, @"\[(?:Fact|Theory)\]");
             Assert.True(count >= 2, $"组件 {name} 测试方法 {count} < 2 ({test})");
+
+            if (component.TryGetProperty("direct", out JsonElement direct) &&
+                direct.ValueKind == JsonValueKind.True)
+            {
+                Assert.Contains(name, content);
+            }
         }
+    }
+
+    [Fact]
+    public void RecordParameterBaselineIsPresent()
+    {
+        using JsonDocument document = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(Root, "tools", "audit", "arch_rules.json")));
+        JsonElement baseline = document.RootElement.GetProperty("record_param_baseline");
+
+        // record 主构造不计入 methods 参数指标；必须保留基线，否则盲区会无声扩大。
+        Assert.NotEmpty(baseline.EnumerateObject());
     }
 
     [Fact]
