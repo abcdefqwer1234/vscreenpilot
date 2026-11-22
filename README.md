@@ -6,11 +6,11 @@
 - 对内：自动挂载 1280×720 虚拟屏、启动/接管应用、归位、清理、记日志。
 - 运行期不需要管理员权限；首次安装一次 Parsec VDD 即可。
 - 语义后端：UIA 为主，MSAA 兜底（Office 旧对话框），OCR 兜底（画布型应用）；支持 UWP `ApplicationFrameWindow`。
-- 共享实例与 as-built 细节见 [`技术文档.md`](技术文档.md)、[`docs/architecture.md`](docs/architecture.md)；行为变化与错误目录见 [`docs/changes-2026-11.md`](docs/changes-2026-11.md)、[`docs/errors.md`](docs/errors.md)。
+- 共享实例与 as-built 细节见 [`技术文档.md`](技术文档.md)、[`docs/架构说明.md`](docs/架构说明.md)；行为变化与错误目录见 [`docs/2026-11变更.md`](docs/2026-11变更.md)、[`docs/errors.md`](docs/errors.md)。
 - 测试与复现见 [`docs/audit/第一轮测试报告.md`](docs/audit/第一轮测试报告.md)（Word/CCW 与重构）与 [`docs/audit/第二轮测试报告.md`](docs/audit/第二轮测试报告.md)（PPT 与修复）；原始记录已汇总进这两份报告。
 
 > 版本 0.2.2（多客户端共享实例）。这是 **0.x 技术预览**：工具名与参数已按契约冻结，但 0.x 阶段仍可能做不兼容调整；升级前请看 [CHANGELOG](CHANGELOG.md)。
-> 0.2.2 的 as-built 以 [技术文档.md](技术文档.md) 和 [architecture](docs/architecture.md) 为准；[技术文档.md](技术文档.md) 已更新到 0.2.2，0.1.0 的实现细节查 git 历史。需求契约见 [需求文件.md](需求文件.md)。
+> 0.2.2 的 as-built 以 [技术文档.md](技术文档.md) 和 [architecture](docs/架构说明.md) 为准；[技术文档.md](技术文档.md) 已更新到 0.2.2，0.1.0 的实现细节查 git 历史。需求契约见 [需求文件.md](需求文件.md)。
 
 ---
 
@@ -435,11 +435,11 @@ artifacts/server/               发布 exe
 artifacts/release/              绿色 zip、安装包、symbols
 技术文档.md                     0.2.2 综合技术手册（机制、共享实例、重构史）
 需求文件.md                     需求契约
-docs/architecture.md           分层与数据流（含自动度量）
-docs/changes-2026-11.md        重构变更摘要
+docs/架构说明.md           分层与数据流（含自动度量）
+docs/2026-11变更.md        重构变更摘要
 docs/errors.md                 错误目录
 docs/mcp-config.example.jsonc  OpenCode 接入示例
-docs/releasing.md              发布手册（GitHub Release + winget）
+docs/发布手册.md              发布手册（GitHub Release + winget）
 ```
 
 ## 测试脚本

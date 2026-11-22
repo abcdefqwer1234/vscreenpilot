@@ -15,7 +15,7 @@ import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-ARCH = os.path.join(REPO, "docs", "architecture.md")
+ARCH = os.path.join(REPO, "docs", "架构说明.md")
 METRICS = os.path.join(REPO, "tools", "audit", "arch_metrics.py")
 BEGIN = "<!-- arch-metrics:begin -->"
 END = "<!-- arch-metrics:end -->"

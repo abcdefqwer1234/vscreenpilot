@@ -12,7 +12,7 @@ type, locate elements and verify results — without stealing your cursor or cov
 
 > 0.2.2 is a technical preview. Tool names and parameters are frozen, but 0.x may still contain
 > breaking changes; read [CHANGELOG.md](CHANGELOG.md) before upgrading. For 0.2.2 as-built details see
-> [技术文档.md](技术文档.md) and [docs/architecture.md](docs/architecture.md); 0.1.0 implementation
+> [技术文档.md](技术文档.md) and [docs/架构说明.md](docs/架构说明.md); 0.1.0 implementation
 > details live in git history.
 
 ## Requirements
@@ -63,7 +63,7 @@ From source:
 
 ## Documentation
 
-- [Architecture](docs/architecture.md)
+- [Architecture](docs/架构说明.md)
 - [Error catalog](docs/errors.md)
 - [Audit reports](docs/audit/第二轮测试报告.md)
 

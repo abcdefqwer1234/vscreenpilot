@@ -72,6 +72,6 @@ pwsh tools/audit/run_all.ps1 -Exe artifacts/server/VScreenPilot.exe -Out tools/a
 
 改动架构或新增工具后同步更新：
 
-- `docs/architecture.md`：分层、并发模型、已知未完成项。
+- `docs/架构说明.md`：分层、并发模型、已知未完成项。
 - [`技术文档.md`](技术文档.md)：机制、工具、共享实例、重构史与不变量清单。
 - `docs/errors.md`：错误码与 `docs` 锚点。
