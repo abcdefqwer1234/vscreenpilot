@@ -33,12 +33,12 @@ internal sealed class SessionManager : IDisposable
     internal readonly object _gate = new();
 
     internal readonly ElementRefStore Refs = new();
-    internal readonly FocusGuard FocusGuard;
+    internal FocusGuard FocusGuard = null!;
     internal readonly ScreenCapture ScreenCapture = new();
-    internal readonly SnapshotBuilder Snapshots;
-    internal readonly VisualMatchService VisualMatch;
+    internal SnapshotBuilder Snapshots = null!;
+    internal VisualMatchService VisualMatch = null!;
     internal readonly ScriptRunner ScriptRunner = new();
-    internal readonly MaintenanceService MaintenanceService;
+    internal MaintenanceService MaintenanceService = null!;
     internal ObserveSampler? ObserveSampler;
     internal const int ElementRefCapacity = ElementRefStore.Capacity;
 
@@ -62,17 +62,17 @@ internal sealed class SessionManager : IDisposable
     /// <summary>本会话的客户端登记处；每个 SessionManager 一份，不使用进程级静态。</summary>
     internal ClientSessionRegistry Clients { get; } = new();
 
-    internal readonly ClientPathPolicy _paths;
-    internal readonly EnvironmentReporter _environment;
+    internal ClientPathPolicy _paths = null!;
+    internal EnvironmentReporter _environment = null!;
 
     internal readonly SessionGuard _guard = new();
     internal readonly LogRing _log;
     internal readonly StateStore _stateStore;
     internal readonly JobObject _job;
-    internal readonly TrackedAppRegistry _apps;
+    internal TrackedAppRegistry _apps = null!;
     internal readonly bool _allowScript;
-    internal readonly AppAllowlistPolicy _allowlist;
-    internal readonly EnvironmentReleaser _releaserService;
+    internal AppAllowlistPolicy _allowlist = null!;
+    internal EnvironmentReleaser _releaserService = null!;
 
     internal int _disposed;
 
@@ -81,19 +81,19 @@ internal sealed class SessionManager : IDisposable
     internal const int MaxFrames = 8;
 
     internal readonly UiaHost _uiaHost = new();
-    internal readonly VirtualDisplayController _display;
-    internal readonly AppReleaser _releaser;
-    internal readonly AppLauncher _launcher;
-    internal readonly InputRouter _input;
-    internal readonly ElementFinder _finder;
-    internal readonly TrackedAppTracker _tracker;
-    internal readonly SessionStateKeeper _stateKeeper;
-    internal readonly RegionVerifier _regionVerifier;
-    internal readonly WaitService _waits;
-    internal readonly ElementResolver _resolver;
-    internal readonly ElementOperations _elements;
-    internal readonly ScreenTextService _screenText;
-    internal readonly ScreenCaptureService _capture;
+    internal VirtualDisplayController _display = null!;
+    internal AppReleaser _releaser = null!;
+    internal AppLauncher _launcher = null!;
+    internal InputRouter _input = null!;
+    internal ElementFinder _finder = null!;
+    internal TrackedAppTracker _tracker = null!;
+    internal SessionStateKeeper _stateKeeper = null!;
+    internal RegionVerifier _regionVerifier = null!;
+    internal WaitService _waits = null!;
+    internal ElementResolver _resolver = null!;
+    internal ElementOperations _elements = null!;
+    internal ScreenTextService _screenText = null!;
+    internal ScreenCaptureService _capture = null!;
     internal CursorGuard? _cursorGuard;
     // 每调用一个异步流：并发工具不会互相清掉取消令牌（旧实现是单个字段）。
     internal readonly AsyncLocal<CancellationTokenSource?> _cancellation = new();
@@ -235,96 +235,7 @@ internal sealed class SessionManager : IDisposable
 
         _paths = new ClientPathPolicy(Clients);
         _apps = new TrackedAppRegistry(_gate);
-        Snapshots = new SnapshotBuilder(
-            new SnapshotStateContext(Uia, Refs, () => ElementOps.SnapshotId, () => ElementRefCapacity,
-                Metrics, ElementOps.BeginSnapshot, ElementOps.RegisterElement),
-            new SnapshotAppContext(EnsureEnvironmentFast, PruneDeadApps, FindLiveTrackedApp,
-                InputOps.RequireWindowOnDisplay, () => _apps.Where(ClientOps.IsOwned).ToList(), TrackedAppTracker.IsLive),
-            new SnapshotCaptureContext(CaptureOps.CaptureRegion,
-                (scale, previewScale) => CaptureOps.CaptureScreenEx(null, null, null, null, scale,
-                    savePath: null, storeFrame: false, previewScale: previewScale),
-                CancellationProbe));
-        _display = new VirtualDisplayController(
-            _gate, log, ProfileName,
-            () => Volatile.Read(ref _disposed) != 0,
-            OnDisplayReady,
-            OnDisplayRemoved,
-            LifecycleOps.SaveState,
-            VirtualWidth,
-            VirtualHeight,
-            VirtualRefresh);
-        _environment = new EnvironmentReporter(
-            new EnvironmentRuntimeContext(Metrics, _gate, () => _display.State.Initialized, ProfileName,
-                () => Epoch, _job, ScreenLeaseProvider),
-            new EnvironmentClientContext(Clients, () => ClientOps.ClientSummariesJson()),
-            new EnvironmentAppContext(_apps, ClientOps.IsOwned, TrackedAppTracker.IsLive, PruneDeadApps, Uia),
-            new EnvironmentHealContext(() => _display.State.SelfHealed,
-                () => _display.State.SelfHealCount, () => _display.State.LastSelfHealReason,
-                () => _display.State.AdoptedOrphan, () => _display.State.RecreateCount,
-                () => _display.State.VddReopenCount, () => _display.State.PositionFallback),
-            new EnvironmentDisplayContext(_display.Vdd, () => _display.State.Index,
-                () => _display.State.DeviceName, EnsureEnvironment, LifecycleOps.OwnDisplay));
-        _releaser = new AppReleaser(log, _uiaHost, ResetUia);
-        _launcher = new AppLauncher(
-            new LaunchSessionContext(_log, _job, Clients, _gate, LifecycleOps.SaveState),
-            new LaunchAppContext(_apps, Uia, EnsureEnvironment, _paths.Resolve,
-                LifecycleOps.EnsureAppAllowed, ClientOps.IsOwned, TrackedAppTracker.IsLive),
-            new LaunchFocusContext(previous => InputOps.RestoreForeground(previous, logFailure: true),
-                FocusOps.StartFocusGuard, () => FocusOps.PauseFocusGuard(), FocusOps.ResumeFocusGuard, InputOps.EnsureForeground));
-        VisualMatch = new VisualMatchService(new VisualContext(EnsureEnvironment, CaptureOps.CaptureRegion, _paths.ValidatePngPath, () => Cancellation.IsCancellationRequested));
-        _finder = new ElementFinder(new ElementFinderContext(FindLiveTrackedApp, EnsureEnvironment, InputOps.RequireWindowOnDisplay, Uia, ElementOps.EnsureSnapshot, ElementOps.RegisterElement));
-        _regionVerifier = new RegionVerifier(new RegionVerifierContext(EnsureEnvironmentFast, CaptureOps.CaptureRegion, CaptureOps.FindFrame, CaptureOps.FindLatestFrame, () => _frames.Latest(), () => _frames.Snapshot()));
-        _waits = new WaitService(new WaitDisplayContext(EnsureEnvironmentFast, CaptureOps.CaptureRegion), new WaitSessionContext(EnterRead, ExitRead, () => Cancellation.IsCancellationRequested, ToolProgress.Report), new WaitAppContext(FindLiveTrackedApp, LifecycleOps.OwnedAppsSnapshotCore, VerifyOps.TrackedPids, Uia), new WaitFrameContext((source, x, y, w, h) => _regionVerifier.ResolveBaselineFrame(source, x, y, w, h), _regionVerifier.FramesJson, VisualOps.MatchVisual));
-        _resolver = new ElementResolver(new ElementResolverContext(Refs, () => Clients.CurrentId, () => ElementOps.SnapshotId, _uiaHost, LifecycleOps.IsTrackedPidCore, InputOps.RequireWindowOnDisplay, _log));
-        _input = new InputRouter(
-            new InputSessionContext(_log, Clients, () => Cancellation),
-            new InputFocusContext(InputOps.EnsureForeground, InputOps.IsAppForeground, previous => InputOps.RestoreForeground(previous),
-                FocusOps.PauseFocusGuard, FocusOps.ResumeFocusGuard, () => _cursorGuard!.Pause(), () => _cursorGuard!.Resume()),
-            new InputDisplayContext(EnsureEnvironmentFast, EnsureEnvironment,
-                InputOps.RequireWindowOnDisplay, InputOps.RequirePointInDisplay, ObserveOps.CaptureSignature,
-                () => EnvironmentProbe.IsInputDesktopAvailable()),
-            new InputElementContext(_resolver.Require, _resolver.Resolve, LifecycleOps.FindTrackedAppAtWindowCore,
-                InputOps.RequirePointInTrackedApp, LastLiveTrackedApp, FindLiveTrackedApp),
-            new InputUiaContext(Uia, ResetUia, ObserveOps.BuildObserved));
-        _elements = new ElementOperations(
-            new ElementStateContext(_uiaHost, _resolver, Refs, ElementOps.RegisterElement,
-                ElementRefCapacity, _log, Snapshots.ConvertTreeNode),
-            new ElementSnapshotContext(ElementOps.EnsureSnapshot, ElementOps.BeginSnapshot,
-                () => Cancellation.IsCancellationRequested, CancellationProbe),
-            new ElementAppContext(EnsureEnvironment, FindLiveTrackedApp, LifecycleOps.OwnedAppForPidCore,
-                InputOps.RequireWindowOnDisplay, (display, x, y, label) => { _ = InputOps.RequirePointInTrackedApp(display, x, y, label); }),
-            new ElementInputContext(InputOps.Click, InputOps.TypeText, (app, handle, value, replace, timeout) => _input.TextOps.WriteTextVerified(app, handle, value, replace, timeout), ResetUia),
-            new ElementFocusContext(InputOps.EnsureForeground, () => FocusOps.PauseFocusGuard(),
-                FocusOps.ResumeFocusGuard, previous => InputOps.RestoreForeground(previous)));
-        _screenText = new ScreenTextService(new ScreenTextContext(EnsureEnvironmentFast, CaptureOps.CaptureRegion, () => Cancellation, Metrics.RecordOcr, InputOps.Click));
-        _capture = new ScreenCaptureService(new ScreenCaptureContext(EnsureEnvironmentFast, CaptureOps.CaptureRegion, CaptureOps.StoreFrame, _paths.ValidateSavePath));
-        FocusGuard = new FocusGuard(new FocusContext(FocusOps.IsTrackedWindow, FocusOps.IsAnyClientWindow, target => InputOps.RestoreForeground(target, logFailure: false), _log));
-        _tracker = new TrackedAppTracker(new TrackedAppContext(_apps, _gate, ClientOps.IsOwned, _log));
-        _stateKeeper = new SessionStateKeeper(new SessionStateContext(_gate, _stateStore, _display.State, _apps, _log));
-        _allowlist = new AppAllowlistPolicy(new AppAllowlistContext(() => Clients.Current?.AppAllowlist ?? Array.Empty<string>(), _paths.Resolve));
-        _releaserService = new EnvironmentReleaser(
-            new ReleaseSessionContext(_gate, IncrementEpoch, () => Clients.ActiveCount, _log),
-            new ReleaseAppsContext(_apps, ClientOps.IsOwned,
-                (app, policy) =>
-                {
-                    string outcome = LifecycleOps.CloseTrackedApp(app, policy, out string? warning);
-                    return (outcome, warning);
-                },
-                FocusOps.ResumeFocusGuard),
-            new ReleaseDisplayContext(
-                LifecycleOps.ClearElementRefsCore, LifecycleOps.ClearFramesCore, LifecycleOps.ClearInputBlockCore,
-                () => _display.State!.SelfHealed = false,
-                initialized => _display.State.Initialized = initialized,
-                () => _display.State!.VirtualDisplay is { Attached: true },
-                LifecycleOps.TryRemoveDisplay,
-                LifecycleOps.StopAndDisposeVddCore),
-            new ReleaseStateContext(LifecycleOps.TrimIdleMemory, LifecycleOps.SaveState, () => _stateStore.Clear()));
-        MaintenanceService = new MaintenanceService(new MaintenanceContext(ArtifactRoot, () => Volatile.Read(ref _disposed) != 0, () => LifecycleOps.ArtifactDirectorySnapshot(), _log));
-        _log.ClientIdProvider = () => Clients.CurrentId;
-        AppLauncher.CleanupStaleProfiles();
-        ArtifactOps.SweepOldArtifacts();
-        LifecycleOps.RecoverFromPreviousCrash();
-        ArtifactOps.StartMaintenance();
+        SessionComposition.Build(this);
     }
 
     internal LogRing Log => _log;
