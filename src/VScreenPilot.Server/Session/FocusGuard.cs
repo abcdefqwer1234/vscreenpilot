@@ -7,14 +7,12 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-/// <summary>焦点护栏所需的最小宿主接口。</summary>
-internal interface IFocusHost
-{
-    bool IsTrackedWindow(IntPtr hwnd);
-    bool IsAnyClientWindow(IntPtr hwnd);
-    void RestoreForeground(IntPtr target);
-    LogRing Log { get; }
-}
+/// <summary>焦点护栏所需的最小上下文；用委托读取实时状态。</summary>
+internal sealed record FocusContext(
+    Func<IntPtr, bool> IsTrackedWindow,
+    Func<IntPtr, bool> IsAnyClientWindow,
+    Action<IntPtr> RestoreForeground,
+    LogRing Log);
 
 /// <summary>常驻焦点护栏：本会话窗口占据前台时把焦点归还用户窗口。</summary>
 internal sealed class FocusGuard
@@ -26,9 +24,9 @@ internal sealed class FocusGuard
     private IntPtr _lastUserForeground;
     private long _nextRestoreTicks;
     private long _resumeAtTicks;
-    private readonly IFocusHost _host;
+    private readonly FocusContext _host;
 
-    public FocusGuard(IFocusHost host) => _host = host;
+    public FocusGuard(FocusContext host) => _host = host;
 
     public void Start(IntPtr preferredUserForeground = default)
     {

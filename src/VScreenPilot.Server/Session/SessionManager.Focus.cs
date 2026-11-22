@@ -5,7 +5,7 @@ using VScreenPilot.Server.Infrastructure;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager : IFocusHost
+internal sealed partial class SessionManager
 {
     private readonly FocusGuard _focus;
 
@@ -59,12 +59,4 @@ internal sealed partial class SessionManager : IFocusHost
             return _apps.Any(app => app.Pid == (int)pid && TrackedAppTracker.IsLive(app));
         }
     }
-
-    bool IFocusHost.IsTrackedWindow(IntPtr hwnd) => IsTrackedWindow(hwnd);
-
-    bool IFocusHost.IsAnyClientWindow(IntPtr hwnd) => IsAnyClientWindow(hwnd);
-
-    void IFocusHost.RestoreForeground(IntPtr target) => RestoreForeground(target, logFailure: false);
-
-    LogRing IFocusHost.Log => _log;
 }
