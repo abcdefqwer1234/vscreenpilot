@@ -16,7 +16,7 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager : IDisposable, ISessionStateHost, IAppAllowlistHost, IEnvironmentReleaserHost, IMaintenanceHost, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, IFocusHost, ITrackedAppHost
+internal sealed partial class SessionManager : IDisposable, ISessionStateHost, IAppAllowlistHost, IEnvironmentReleaserHost, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, IFocusHost, ITrackedAppHost
 {
     /// <summary>
     /// 在释放/预热等低负载节点裁剪工作集。不是定时看门狗，只按事件触发。
@@ -448,21 +448,12 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
 
     LogRing IEnvironmentReleaserHost.Log => _log;
 
-    string IMaintenanceHost.ArtifactRoot => ArtifactRoot;
-
-    bool IMaintenanceHost.Disposed => Volatile.Read(ref _disposed) != 0;
-
-    string[] IMaintenanceHost.ArtifactDirectories
+    private string[] ArtifactDirectorySnapshot()
     {
-        get
+        lock (_artifactGate)
         {
-            lock (_artifactGate)
-            {
-                return _artifactDirectories.Values.ToArray();
-            }
+            return _artifactDirectories.Values.ToArray();
         }
     }
-
-    LogRing IMaintenanceHost.Log => _log;
 
 }

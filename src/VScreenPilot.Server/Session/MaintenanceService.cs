@@ -3,24 +3,22 @@ using VScreenPilot.Server.Infrastructure;
 
 namespace VScreenPilot.Session;
 
-/// <summary>周期维护所需的最小宿主接口。</summary>
-internal interface IMaintenanceHost
-{
-    string ArtifactRoot { get; }
-    bool Disposed { get; }
-    string[] ArtifactDirectories { get; }
-    LogRing Log { get; }
-}
+/// <summary>周期维护所需的最小上下文；用委托读取实时状态，避免复制。</summary>
+internal sealed record MaintenanceContext(
+    string ArtifactRoot,
+    Func<bool> Disposed,
+    Func<string[]> ArtifactDirectories,
+    LogRing Log);
 
 /// <summary>daemon 长期运行时的产物、trace 与日志清理。</summary>
 internal sealed class MaintenanceService : IDisposable
 {
-    private readonly IMaintenanceHost _host;
+    private readonly MaintenanceContext _host;
     private long _lastSweepTicks;
     private Timer? _timer;
     private ArtifactStore? _artifacts;
 
-    public MaintenanceService(IMaintenanceHost host) => _host = host;
+    public MaintenanceService(MaintenanceContext host) => _host = host;
 
     /// <summary>daemon 长期运行时也要清理；每小时最多扫一次，不依赖客户端断开。</summary>
     public void Start()
@@ -34,7 +32,7 @@ internal sealed class MaintenanceService : IDisposable
 
     private void Run()
     {
-        if (_host.Disposed)
+        if (_host.Disposed())
         {
             return;
         }
@@ -73,7 +71,7 @@ internal sealed class MaintenanceService : IDisposable
         Interlocked.Exchange(ref _lastSweepTicks, Environment.TickCount64);
 
         _artifacts ??= new ArtifactStore(_host.ArtifactRoot, _host.Log.Info, _host.Log.Warn);
-        _artifacts.Sweep(_host.ArtifactDirectories);
+        _artifacts.Sweep(_host.ArtifactDirectories());
     }
 
     /// <summary>daemon 长期运行时也要清理；最多每小时扫一次，避免每个连接都遍历目录。</summary>

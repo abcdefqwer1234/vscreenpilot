@@ -38,7 +38,7 @@ public sealed class MaintenanceServiceTests : IDisposable
     public void SweepNowDeletesExpiredSessionDirectory()
     {
         string expired = CreateOldDirectory("20200101-000000-1");
-        var service = new MaintenanceService(new FakeHost(_root));
+        var service = new MaintenanceService(new FakeHost(_root).ToContext());
 
         service.SweepNow();
 
@@ -49,7 +49,7 @@ public sealed class MaintenanceServiceTests : IDisposable
     public void SweepNowKeepsCurrentSessionDirectory()
     {
         string current = CreateOldDirectory("20200101-000000-2");
-        var service = new MaintenanceService(new FakeHost(_root) { Current = new[] { current } });
+        var service = new MaintenanceService(new FakeHost(_root) { Current = new[] { current } }.ToContext());
 
         service.SweepNow();
 
@@ -60,7 +60,7 @@ public sealed class MaintenanceServiceTests : IDisposable
     public void SweepPeriodicallyIsThrottledForOneHour()
     {
         string first = CreateOldDirectory("20200101-000000-3");
-        var service = new MaintenanceService(new FakeHost(_root));
+        var service = new MaintenanceService(new FakeHost(_root).ToContext());
 
         service.SweepNow();
         Assert.False(Directory.Exists(first));
@@ -76,7 +76,7 @@ public sealed class MaintenanceServiceTests : IDisposable
     [Fact]
     public void DisposeIsIdempotentAfterStart()
     {
-        var service = new MaintenanceService(new FakeHost(_root));
+        var service = new MaintenanceService(new FakeHost(_root).ToContext());
 
         service.Start();
         service.Dispose();
@@ -92,7 +92,7 @@ public sealed class MaintenanceServiceTests : IDisposable
         return path;
     }
 
-    private sealed class FakeHost : IMaintenanceHost
+    private sealed class FakeHost
     {
         public FakeHost(string root) => ArtifactRoot = root;
 
@@ -102,8 +102,9 @@ public sealed class MaintenanceServiceTests : IDisposable
 
         public string[] Current { get; init; } = Array.Empty<string>();
 
-        public string[] ArtifactDirectories => Current;
-
         public LogRing Log { get; } = new(capacity: 10, fileEnabled: false);
+
+        public MaintenanceContext ToContext() =>
+            new(ArtifactRoot, () => Disposed, () => Current, Log);
     }
 }
