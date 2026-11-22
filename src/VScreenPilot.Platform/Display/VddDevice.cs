@@ -35,13 +35,16 @@ public sealed class VddDevice : IDisposable
     private const uint IoctlUpdate = 0x0022A00C;
     private const uint IoctlVersion = 0x0022E010;
 
-    private readonly object _gate = new();
-    private readonly object _ioGate = new();
-    private IntPtr _handle = IntPtr.Zero;
+    internal readonly object _gate = new();
+    internal readonly object _ioGate = new();
+    internal IntPtr _handle = IntPtr.Zero;
     private Thread? _keepAliveThread;
     private volatile bool _keepAliveRunning;
     private long _pingCount;
     private int _consecutiveUpdateFailures;
+    internal readonly VddIo Io;
+
+    public VddDevice() => Io = new VddIo(this);
 
     public bool IsOpen
     {
@@ -57,7 +60,7 @@ public sealed class VddDevice : IDisposable
     public long PingCount => Interlocked.Read(ref _pingCount);
 
     /// <summary>最近一次 IOCTL 失败的 Win32 错误码，仅用于诊断。</summary>
-    public int LastError { get; private set; }
+    public int LastError { get; internal set; }
 
     /// <summary>打开设备接口。返回 false 时 err 为 Win32 错误码（5 = 拒绝访问）。</summary>
     public bool TryOpen(out int error)
@@ -185,7 +188,7 @@ public sealed class VddDevice : IDisposable
 
             for (uint index = 0; Win32.SetupDiEnumDeviceInfo(deviceInfoSet, index, ref devInfo); index++)
             {
-                if (!MatchesHardwareId(deviceInfoSet, ref devInfo))
+                if (!VddIo.MatchesHardwareId(deviceInfoSet, ref devInfo))
                 {
                     continue;
                 }
@@ -224,39 +227,16 @@ public sealed class VddDevice : IDisposable
         return VddDeviceStatus.NotInstalled;
     }
 
-    private static bool MatchesHardwareId(IntPtr deviceInfoSet, ref Win32.SP_DEVINFO_DATA devInfo)
-    {
-        var buffer = new byte[1024];
-        if (!Win32.SetupDiGetDeviceRegistryPropertyW(
-                deviceInfoSet, ref devInfo, Win32.SpdrpHardwareId, out _,
-                buffer, (uint)buffer.Length, out uint required) || required == 0)
-        {
-            return false;
-        }
-
-        int length = (int)Math.Min(required, (uint)buffer.Length);
-        string value = Encoding.Unicode.GetString(buffer, 0, length);
-        foreach (string part in value.Split('\0'))
-        {
-            if (part.Trim().Equals(HardwareId, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     public int GetVersion()
     {
-        return IoControl(IoctlVersion, ReadOnlySpan<byte>.Empty, hasOutput: true, 1000, out int value)
+        return Io.IoControl(IoctlVersion, ReadOnlySpan<byte>.Empty, hasOutput: true, 1000, out int value)
             ? value
             : -1;
     }
 
     public int AddDisplay(int timeoutMs = 5000)
     {
-        if (!IoControl(IoctlAdd, ReadOnlySpan<byte>.Empty, hasOutput: true, timeoutMs, out int index))
+        if (!Io.IoControl(IoctlAdd, ReadOnlySpan<byte>.Empty, hasOutput: true, timeoutMs, out int index))
         {
             return -1;
         }
@@ -273,7 +253,7 @@ public sealed class VddDevice : IDisposable
         Span<byte> input = stackalloc byte[2];
         EncodeRemoveIndex(index, input);
 
-        if (!IoControl(IoctlRemove, input, hasOutput: false, timeoutMs, out _))
+        if (!Io.IoControl(IoctlRemove, input, hasOutput: false, timeoutMs, out _))
         {
             return false;
         }
@@ -293,7 +273,7 @@ public sealed class VddDevice : IDisposable
     /// <summary>心跳。必须约每 100ms 调用一次。</summary>
     public void Update()
     {
-        bool ok = IoControl(IoctlUpdate, ReadOnlySpan<byte>.Empty, hasOutput: false, 200, out _);
+        bool ok = Io.IoControl(IoctlUpdate, ReadOnlySpan<byte>.Empty, hasOutput: false, 200, out _);
 
         if (ok)
         {
@@ -344,94 +324,6 @@ public sealed class VddDevice : IDisposable
         _keepAliveRunning = false;
         _keepAliveThread?.Join(1000);
         _keepAliveThread = null;
-    }
-
-    private bool IoControl(uint code, ReadOnlySpan<byte> input, bool hasOutput, int timeoutMs, out int output)
-    {
-        // 驱动对并发 IOCTL 的容忍度有限：ADD/REMOVE 与心跳必须串行化。
-        // 心跳线程在 ADD/REMOVE 期间会短暂等待；此时没有已挂载的屏需要保活。
-        lock (_ioGate)
-        {
-            return IoControlCore(code, input, hasOutput, timeoutMs, out output);
-        }
-    }
-
-    private bool IoControlCore(uint code, ReadOnlySpan<byte> input, bool hasOutput, int timeoutMs, out int output)
-    {
-        output = -1;
-
-        IntPtr handle;
-        lock (_gate)
-        {
-            handle = _handle;
-            if (handle == IntPtr.Zero || handle == Win32.InvalidHandleValue)
-            {
-                return false;
-            }
-        }
-
-        IntPtr inputBuffer = Marshal.AllocHGlobal(32);
-        IntPtr outputBuffer = Marshal.AllocHGlobal(4);
-        var overlapped = new Win32.OVERLAPPED();
-
-        try
-        {
-            for (int i = 0; i < 32; i++)
-            {
-                Marshal.WriteByte(inputBuffer, i, 0);
-            }
-
-            for (int i = 0; i < input.Length && i < 32; i++)
-            {
-                Marshal.WriteByte(inputBuffer, i, input[i]);
-            }
-
-            overlapped.hEvent = Win32.CreateEventW(IntPtr.Zero, false, false, null);
-            if (overlapped.hEvent == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            // 按参考实现：忽略 DeviceIoControl 的同步返回值，统一等待 OVERLAPPED。
-            Win32.DeviceIoControl(
-                handle, code,
-                inputBuffer, 32,
-                outputBuffer, hasOutput ? 4 : 0,
-                IntPtr.Zero, ref overlapped);
-
-            bool success = Win32.GetOverlappedResultEx(
-                handle, ref overlapped, out _, (uint)timeoutMs, false);
-
-            if (!success)
-            {
-                LastError = Marshal.GetLastWin32Error();
-                // 超时/错误时内核可能仍在写这块内存，必须取消并阻塞等待完成。
-                Win32.CancelIoEx(handle, ref overlapped);
-                Win32.GetOverlappedResult(handle, ref overlapped, out _, true);
-                return false;
-            }
-
-            if (hasOutput)
-            {
-                output = Marshal.ReadInt32(outputBuffer);
-            }
-
-            return true;
-        }
-        catch (Exception ex) when (ex is Win32Exception or DllNotFoundException or EntryPointNotFoundException)
-        {
-            return false;
-        }
-        finally
-        {
-            if (overlapped.hEvent != IntPtr.Zero)
-            {
-                Win32.CloseHandle(overlapped.hEvent);
-            }
-
-            Marshal.FreeHGlobal(inputBuffer);
-            Marshal.FreeHGlobal(outputBuffer);
-        }
     }
 
     public void Dispose()
