@@ -19,47 +19,93 @@ internal static class ArgumentValidator
         }
 
         ValidateType(rules["type"], value, path);
+        ValidateEnum(rules, value, path);
+        ValidateConst(rules, value, path);
+        ValidateNumber(rules, value, path);
+        ValidateString(rules, value, path);
+        ValidateComposite(rules, value, path);
+    }
 
-        if (rules["enum"] is JsonArray allowed && !allowed.Any(item => Matches(item, value)))
+    private static void ValidateEnum(JsonObject rules, JsonElement value, string path)
+    {
+        if (rules["enum"] is not JsonArray allowed)
+        {
+            return;
+        }
+
+        if (!allowed.Any(item => Matches(item, value)))
         {
             throw Invalid(path, "enum", value, string.Join("|", allowed.Select(ToText)));
         }
+    }
 
+    private static void ValidateConst(JsonObject rules, JsonElement value, string path)
+    {
         if (rules["const"] is JsonNode constant && !Matches(constant, value))
         {
             throw Invalid(path, "const", value, constant.ToJsonString());
         }
+    }
 
-        if (value.ValueKind == JsonValueKind.Number)
+    private static void ValidateNumber(JsonObject rules, JsonElement value, string path)
+    {
+        if (value.ValueKind != JsonValueKind.Number)
         {
-            double number = value.GetDouble();
-
-            if (rules["minimum"] is JsonValue minimum && number < minimum.GetValue<double>())
-            {
-                throw Invalid(path, ">=", value, minimum.ToJsonString());
-            }
-
-            if (rules["maximum"] is JsonValue maximum && number > maximum.GetValue<double>())
-            {
-                throw Invalid(path, "<=", value, maximum.ToJsonString());
-            }
+            return;
         }
 
-        if (value.ValueKind == JsonValueKind.String)
+        ValidateMinimum(rules, value, path);
+        ValidateMaximum(rules, value, path);
+    }
+
+    private static void ValidateMinimum(JsonObject rules, JsonElement value, string path)
+    {
+        if (rules["minimum"] is not JsonValue minimum)
         {
-            string text = value.GetString() ?? string.Empty;
-
-            if (rules["minLength"] is JsonValue minLength && text.Length < minLength.GetValue<int>())
-            {
-                throw Invalid(path, $"length>={minLength}", value, null);
-            }
-
-            if (rules["maxLength"] is JsonValue maxLength && text.Length > maxLength.GetValue<int>())
-            {
-                throw Invalid(path, $"length<={maxLength}", value, null);
-            }
+            return;
         }
 
+        if (value.GetDouble() < minimum.GetValue<double>())
+        {
+            throw Invalid(path, ">=", value, minimum.ToJsonString());
+        }
+    }
+
+    private static void ValidateMaximum(JsonObject rules, JsonElement value, string path)
+    {
+        if (rules["maximum"] is not JsonValue maximum)
+        {
+            return;
+        }
+
+        if (value.GetDouble() > maximum.GetValue<double>())
+        {
+            throw Invalid(path, "<=", value, maximum.ToJsonString());
+        }
+    }
+
+    private static void ValidateString(JsonObject rules, JsonElement value, string path)
+    {
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            return;
+        }
+
+        string text = value.GetString() ?? string.Empty;
+
+        if (rules["minLength"] is JsonValue minLength && text.Length < minLength.GetValue<int>())
+        {
+            throw Invalid(path, $"length>={minLength}", value, null);
+        }
+
+        if (rules["maxLength"] is JsonValue maxLength && text.Length > maxLength.GetValue<int>())
+        {
+            throw Invalid(path, $"length<={maxLength}", value, null);
+        }
+    }
+
+    private static void ValidateComposite(JsonObject rules, JsonElement value, string path)
+    {
         if (value.ValueKind == JsonValueKind.Object)
         {
             ValidateObject(rules, value, path);

@@ -144,50 +144,66 @@ internal sealed class SnapshotConvertOps
     {
         if (target.Count < maxCount && node["bounds"] is JsonObject bounds)
         {
-            int x = bounds["x"]?.GetValue<int>() ?? 0;
-            int y = bounds["y"]?.GetValue<int>() ?? 0;
-            int width = bounds["width"]?.GetValue<int>() ?? 0;
-            int height = bounds["height"]?.GetValue<int>() ?? 0;
-            string? name = node["name"]?.GetValue<string>();
-            string controlType = node["control_type"]?.GetValue<string>() ?? string.Empty;
-            bool interesting = !string.IsNullOrWhiteSpace(name) ||
-                               controlType is "Button" or "Edit" or "Document" or "ListItem"
-                                   or "MenuItem" or "TabItem" or "ComboBox";
-
-            bool offscreen = node["offscreen"]?.GetValue<bool>() == true;
-
-            if (!offscreen &&
-                interesting &&
-                width >= 8 && height >= 8 &&
-                x + width > display.X && y + height > display.Y &&
-                x < display.X + display.Width && y < display.Y + display.Height)
-            {
-                var annotation = new JsonObject
-                {
-                    ["index"] = target.Count + 1,
-                    ["ref"] = node["ref"]?.GetValue<string>(),
-                    ["control_type"] = controlType,
-                    ["bounds"] = bounds.DeepClone(),
-                };
-
-                if (!string.IsNullOrWhiteSpace(name))
-                {
-                    annotation["name"] = name.Length > 80 ? name[..80] : name;
-                }
-
-                target.Add(annotation);
-            }
+            TryAddAnnotation(node, bounds, display, target);
         }
 
-        if (node["children"] is JsonArray children)
+        if (node["children"] is not JsonArray children)
         {
-            foreach (JsonNode? child in children)
+            return;
+        }
+
+        foreach (JsonNode? child in children)
+        {
+            if (child is JsonObject childObject)
             {
-                if (child is JsonObject childObject)
-                {
-                    CollectAnnotations(childObject, display, target, maxCount);
-                }
+                CollectAnnotations(childObject, display, target, maxCount);
             }
         }
     }
+
+    private static void TryAddAnnotation(
+        JsonObject node, JsonObject bounds, DisplayInfo display, JsonArray target)
+    {
+        var box = new AnnotationBox(
+            bounds["x"]?.GetValue<int>() ?? 0,
+            bounds["y"]?.GetValue<int>() ?? 0,
+            bounds["width"]?.GetValue<int>() ?? 0,
+            bounds["height"]?.GetValue<int>() ?? 0);
+
+        string? name = node["name"]?.GetValue<string>();
+        string controlType = node["control_type"]?.GetValue<string>() ?? string.Empty;
+        bool offscreen = node["offscreen"]?.GetValue<bool>() == true;
+
+        if (offscreen || !IsInteresting(name, controlType) || !IsOnDisplay(box, display))
+        {
+            return;
+        }
+
+        var annotation = new JsonObject
+        {
+            ["index"] = target.Count + 1,
+            ["ref"] = node["ref"]?.GetValue<string>(),
+            ["control_type"] = controlType,
+            ["bounds"] = bounds.DeepClone(),
+        };
+
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            annotation["name"] = name.Length > 80 ? name[..80] : name;
+        }
+
+        target.Add(annotation);
+    }
+
+    private static bool IsInteresting(string? name, string controlType) =>
+        !string.IsNullOrWhiteSpace(name) ||
+        controlType is "Button" or "Edit" or "Document" or "ListItem"
+            or "MenuItem" or "TabItem" or "ComboBox";
+
+    private static bool IsOnDisplay(AnnotationBox box, DisplayInfo display) =>
+        box.Width >= 8 && box.Height >= 8 &&
+        box.X + box.Width > display.X && box.Y + box.Height > display.Y &&
+        box.X < display.X + display.Width && box.Y < display.Y + display.Height;
+
+    private readonly record struct AnnotationBox(int X, int Y, int Width, int Height);
 }

@@ -173,70 +173,95 @@ internal sealed class EnvironmentReleaser
 
     private void CloseOrRestoreApp(ReleaseState state, TrackedApp app, string onDirty)
     {
-        if (app.Hwnd != IntPtr.Zero && NativeMethods.IsWindow(app.Hwnd))
+        bool windowAlive = app.Hwnd != IntPtr.Zero && NativeMethods.IsWindow(app.Hwnd);
+
+        if (windowAlive)
         {
-            if (app.Owned && app.CloseWindowOnRelease)
-            {
-                (string outcome, string? warning) = _apps.CloseTrackedApp(app, onDirty);
-
-                switch (outcome)
-                {
-                    case "closed":
-                        state.Closed.Add(app.Pid);
-                        break;
-                    case "saved":
-                        state.Saved.Add(app.Pid);
-                        state.Closed.Add(app.Pid);
-                        break;
-                    case "discarded":
-                        state.Discarded.Add(app.Pid);
-                        state.Closed.Add(app.Pid);
-                        break;
-                    case "forced":
-                        state.Forced.Add(app.Pid);
-                        state.Closed.Add(app.Pid);
-                        break;
-                    default:
-                        state.Kept.Add(app.Pid);
-                        break;
-                }
-
-                if (warning is not null)
-                {
-                    state.Warnings.Add(warning);
-                }
-            }
-            else if (app.PlacementSaved)
-            {
-                // 接管（非本会话启动）的窗口只归位、不关闭。
-                WindowManager.SetPlacement(app.Hwnd, app.Placement);
-                state.Restored.Add(app.Pid);
-                state.Kept.Add(app.Pid);
-            }
-
-            if (app.StartedProcess && app.TempProfile is not null)
-            {
-                AppTermination.KillProcessTreeIfMatches(app.Pid, app.ExePath);
-                state.Forced.Add(app.Pid);
-            }
+            CloseOrRestoreWindow(state, app, onDirty);
         }
 
+        ReclaimResidualProcess(app, windowAlive);
+    }
+
+    private void CloseOrRestoreWindow(ReleaseState state, TrackedApp app, string onDirty)
+    {
+        if (app.Owned && app.CloseWindowOnRelease)
+        {
+            CloseTrackedWindow(state, app, onDirty);
+        }
+        else if (app.PlacementSaved)
+        {
+            // 接管（非本会话启动）的窗口只归位、不关闭。
+            WindowManager.SetPlacement(app.Hwnd, app.Placement);
+            state.Restored.Add(app.Pid);
+            state.Kept.Add(app.Pid);
+        }
+
+        if (app.StartedProcess && app.TempProfile is not null)
+        {
+            AppTermination.KillProcessTreeIfMatches(app.Pid, app.ExePath);
+            state.Forced.Add(app.Pid);
+        }
+    }
+
+    private void CloseTrackedWindow(ReleaseState state, TrackedApp app, string onDirty)
+    {
+        (string outcome, string? warning) = _apps.CloseTrackedApp(app, onDirty);
+        RecordOutcome(state, app.Pid, outcome);
+
+        if (warning is not null)
+        {
+            state.Warnings.Add(warning);
+        }
+    }
+
+    private static void RecordOutcome(ReleaseState state, int pid, string outcome)
+    {
+        switch (outcome)
+        {
+            case "closed":
+                state.Closed.Add(pid);
+                break;
+            case "saved":
+                state.Saved.Add(pid);
+                state.Closed.Add(pid);
+                break;
+            case "discarded":
+                state.Discarded.Add(pid);
+                state.Closed.Add(pid);
+                break;
+            case "forced":
+                state.Forced.Add(pid);
+                state.Closed.Add(pid);
+                break;
+            default:
+                state.Kept.Add(pid);
+                break;
+        }
+    }
+
+    private static void ReclaimResidualProcess(TrackedApp app, bool windowAlive)
+    {
         if (app.TempProfile is not null)
         {
             // 窗口已关闭但进程可能仍在后台（Edge 常驻），按 exe 路径核对后再杀。
-            if (app.StartedProcess &&
-                (app.Hwnd == IntPtr.Zero || !NativeMethods.IsWindow(app.Hwnd)))
+            if (app.StartedProcess && !windowAlive)
             {
                 AppTermination.KillProcessTreeIfMatches(app.Pid, app.ExePath);
             }
 
             AppTermination.TryDeleteDirectory(app.TempProfile);
+            return;
         }
-        else if (app.CloseWindowOnRelease && app.DedicatedProcess &&
-                 app.StartedProcess &&
-                 (app.Hwnd == IntPtr.Zero || !NativeMethods.IsWindow(app.Hwnd)))
+
+        // 专用实例的窗口被用户先关掉时，回收可能残留的进程。
+        bool dedicatedResidual = app.CloseWindowOnRelease &&
+                                 app.DedicatedProcess &&
+                                 app.StartedProcess &&
+                                 !windowAlive;
+
+        if (dedicatedResidual)
         {
-            // 专用实例的窗口被用户先关掉时，回收可能残留的进程。
             AppTermination.KillProcessTreeIfMatches(app.Pid, app.ExePath);
         }
     }

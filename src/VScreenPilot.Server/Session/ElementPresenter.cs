@@ -8,30 +8,64 @@ namespace VScreenPilot.Session;
 internal static class ElementPresenter
 {
     /// <summary>完整或 compact 元素视图；compact 时省略诊断字段并保留旧的省略规则。</summary>
-    public static ElementView ToView(UiaElementInfo info, bool compact)
-    {
-        string? value = null;
+    public static ElementView ToView(UiaElementInfo info, bool compact) =>
+        compact ? ToCompactView(info) : ToFullView(info);
 
-        if (!info.Password && !string.IsNullOrEmpty(info.Value))
-        {
-            value = compact && info.Value.Length > 200 ? info.Value[..200] : info.Value;
-        }
-
-        return new ElementView(
-            compact ? null : info.RuntimeId,
+    private static ElementView ToCompactView(UiaElementInfo info) =>
+        new(
+            null,
             info.Name,
             info.AutomationId,
             info.ControlTypeName,
-            compact ? null : info.ControlType,
-            new BoundsView(info.Left, info.Top, info.Width, info.Height),
-            compact ? (info.Enabled ? null : false) : info.Enabled,
-            compact ? (info.Offscreen ? true : null) : info.Offscreen,
-            compact ? null : info.ProcessId,
-            compact ? null : info.ClassName,
-            !compact && info.Focusable ? true : null,
+            null,
+            ToBounds(info),
+            info.Enabled ? null : false,
+            info.Offscreen ? true : null,
+            null,
+            null,
+            null,
             info.Focused ? true : null,
-            value,
-            compact ? null : (!info.Password && !string.IsNullOrEmpty(info.Text) ? info.Text : null));
+            CompactValue(info),
+            null);
+
+    private static ElementView ToFullView(UiaElementInfo info) =>
+        new(
+            info.RuntimeId,
+            info.Name,
+            info.AutomationId,
+            info.ControlTypeName,
+            info.ControlType,
+            ToBounds(info),
+            info.Enabled,
+            info.Offscreen,
+            info.ProcessId,
+            info.ClassName,
+            info.Focusable ? true : null,
+            info.Focused ? true : null,
+            FullValue(info),
+            info.Password || string.IsNullOrEmpty(info.Text) ? null : info.Text);
+
+    private static BoundsView ToBounds(UiaElementInfo info) =>
+        new(info.Left, info.Top, info.Width, info.Height);
+
+    private static string? CompactValue(UiaElementInfo info)
+    {
+        if (info.Password || string.IsNullOrEmpty(info.Value))
+        {
+            return null;
+        }
+
+        return info.Value.Length > 200 ? info.Value[..200] : info.Value;
+    }
+
+    private static string? FullValue(UiaElementInfo info)
+    {
+        if (info.Password || string.IsNullOrEmpty(info.Value))
+        {
+            return null;
+        }
+
+        return info.Value;
     }
 
     /// <summary>find_element 条目：compact 字段 + ref，保持旧字段顺序。</summary>

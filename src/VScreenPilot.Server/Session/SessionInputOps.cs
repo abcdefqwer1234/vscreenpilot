@@ -88,6 +88,7 @@ internal sealed class SessionInputOps
         }
 
         IntPtr currentForeground = NativeMethods.GetForegroundWindow();
+
         if (currentForeground == previous)
         {
             return;
@@ -101,39 +102,33 @@ internal sealed class SessionInputOps
         }
 
         // 目标线程挂起时 AttachThreadInput 会把服务端拖死；先做 120ms 健康检查。
-        if (NativeMethods.SendMessageTimeoutW(
-                previous, NativeMethods.WmNull, IntPtr.Zero, IntPtr.Zero,
-                NativeMethods.SmtoAbortIfHung, 120, out _) == IntPtr.Zero)
+        if (!IsWindowResponsive(previous))
         {
             return;
         }
 
+        AttachAndSetForeground(previous, currentForeground, logFailure);
+    }
+
+    private static bool IsWindowResponsive(IntPtr hwnd) =>
+        NativeMethods.SendMessageTimeoutW(
+            hwnd, NativeMethods.WmNull, IntPtr.Zero, IntPtr.Zero,
+            NativeMethods.SmtoAbortIfHung, 120, out _) != IntPtr.Zero;
+
+    private void AttachAndSetForeground(IntPtr previous, IntPtr currentForeground, bool logFailure)
+    {
         uint currentThread = NativeMethods.GetCurrentThreadId();
         uint foregroundThread = currentForeground == IntPtr.Zero
             ? 0
             : NativeMethods.GetWindowThreadProcessId(currentForeground, out _);
         uint targetThread = NativeMethods.GetWindowThreadProcessId(previous, out _);
-
         var attached = new List<uint>();
 
         try
         {
             // 标准做法：同时附加到“当前前台线程”和“目标线程”，才能绕过前台锁。
-            if (foregroundThread != 0 && foregroundThread != currentThread)
-            {
-                if (NativeMethods.AttachThreadInput(currentThread, foregroundThread, true))
-                {
-                    attached.Add(foregroundThread);
-                }
-            }
-
-            if (targetThread != 0 && targetThread != currentThread && targetThread != foregroundThread)
-            {
-                if (NativeMethods.AttachThreadInput(currentThread, targetThread, true))
-                {
-                    attached.Add(targetThread);
-                }
-            }
+            AttachThread(currentThread, foregroundThread, attached);
+            AttachThread(currentThread, targetThread, attached);
 
             if (!NativeMethods.SetForegroundWindow(previous))
             {
@@ -141,8 +136,11 @@ internal sealed class SessionInputOps
                 {
                     _host._log.Warn($"恢复前台窗口失败 hwnd=0x{previous.ToInt64():X}");
                 }
+
+                return;
             }
-            else if (logFailure && NativeMethods.GetForegroundWindow() != previous)
+
+            if (logFailure && NativeMethods.GetForegroundWindow() != previous)
             {
                 _host._log.Warn(
                     $"恢复前台未生效 expected=0x{previous.ToInt64():X} " +
@@ -155,6 +153,19 @@ internal sealed class SessionInputOps
             {
                 NativeMethods.AttachThreadInput(currentThread, thread, false);
             }
+        }
+    }
+
+    private static void AttachThread(uint currentThread, uint targetThread, List<uint> attached)
+    {
+        if (targetThread == 0 || targetThread == currentThread || attached.Contains(targetThread))
+        {
+            return;
+        }
+
+        if (NativeMethods.AttachThreadInput(currentThread, targetThread, true))
+        {
+            attached.Add(targetThread);
         }
     }
 

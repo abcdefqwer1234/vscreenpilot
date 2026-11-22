@@ -277,20 +277,18 @@ internal sealed class WaitService
 
     private JsonObject EvaluateWindow(JsonElement condition)
     {
-        string? title = GetString(condition, "title");
-        string state = GetString(condition, "state") ?? "exists";
-        string scope = (GetString(condition, "scope") ?? "tracked").ToLowerInvariant();
-        int minWidth = GetInt(condition, "min_width", 0);
-        int minHeight = GetInt(condition, "min_height", 0);
+        var query = new WindowWaitQuery(
+            Title: GetString(condition, "title"),
+            State: GetString(condition, "state") ?? "exists",
+            Scope: (GetString(condition, "scope") ?? "tracked").ToLowerInvariant(),
+            MinWidth: GetInt(condition, "min_width", 0),
+            MinHeight: GetInt(condition, "min_height", 0));
 
-        if (scope is not ("tracked" or "any"))
-        {
-            throw new ToolException("E_INVALID_ARG", $"未知 window scope: {scope}");
-        }
+        ValidateWindowScope(query.Scope);
 
-        HashSet<int> pids = scope == "tracked" ? _apps.TrackedPids() : new HashSet<int>();
+        HashSet<int> pids = query.Scope == "tracked" ? _apps.TrackedPids() : new HashSet<int>();
 
-        if (scope == "tracked" && pids.Count == 0)
+        if (query.Scope == "tracked" && pids.Count == 0)
         {
             return new JsonObject
             {
@@ -299,21 +297,43 @@ internal sealed class WaitService
             };
         }
 
-        // title 可省略：用于等待“任意窗口出现”或“标题从 splash 变成主窗口”。
-        // min_width/min_height 可过滤启动 splash。
-        WindowInfo? window = WindowManager.ListTopLevel()
+        WindowInfo? window = FindWindow(query, pids);
+        bool satisfied = IsWindowStateSatisfied(query.State, window);
+        bool trackedWindow = window is not null && pids.Contains(window.Pid);
+
+        return new JsonObject
+        {
+            ["satisfied"] = satisfied,
+            ["scope"] = query.Scope,
+            ["window"] = window is null ? null : BuildWindowNode(window, trackedWindow),
+        };
+    }
+
+    private static void ValidateWindowScope(string scope)
+    {
+        if (scope is not ("tracked" or "any"))
+        {
+            throw new ToolException("E_INVALID_ARG", $"未知 window scope: {scope}");
+        }
+    }
+
+    // title 可省略：用于等待“任意窗口出现”或“标题从 splash 变成主窗口”。
+    // min_width/min_height 可过滤启动 splash。
+    private static WindowInfo? FindWindow(WindowWaitQuery query, HashSet<int> pids) =>
+        WindowManager.ListTopLevel()
             .Where(item =>
                 item.Visible &&
-                (string.IsNullOrWhiteSpace(title) ||
-                 item.Title.Contains(title, StringComparison.OrdinalIgnoreCase)) &&
-                (minWidth <= 0 || item.Width >= minWidth) &&
-                (minHeight <= 0 || item.Height >= minHeight) &&
-                (scope == "any" || pids.Contains(item.Pid)) &&
+                (string.IsNullOrWhiteSpace(query.Title) ||
+                 item.Title.Contains(query.Title, StringComparison.OrdinalIgnoreCase)) &&
+                (query.MinWidth <= 0 || item.Width >= query.MinWidth) &&
+                (query.MinHeight <= 0 || item.Height >= query.MinHeight) &&
+                (query.Scope == "any" || pids.Contains(item.Pid)) &&
                 item.Area >= 100 * 80)
             .OrderByDescending(item => item.Area)
             .FirstOrDefault();
 
-        bool satisfied = state.ToLowerInvariant() switch
+    private static bool IsWindowStateSatisfied(string state, WindowInfo? window) =>
+        state.ToLowerInvariant() switch
         {
             "exists" => window is not null,
             "visible" => window is { Visible: true },
@@ -322,25 +342,19 @@ internal sealed class WaitService
             _ => throw new ToolException("E_INVALID_ARG", $"未知 window state: {state}"),
         };
 
-        bool trackedWindow = window is not null && pids.Contains(window.Pid);
-
-        return new JsonObject
+    private static JsonObject BuildWindowNode(WindowInfo window, bool trackedWindow) =>
+        new()
         {
-            ["satisfied"] = satisfied,
-            ["scope"] = scope,
-            ["window"] = window is null
-                ? null
-                : new JsonObject
-                {
-                    ["hwnd"] = window.Hwnd.ToInt64(),
-                    ["tracked"] = trackedWindow,
-                    // scope=any 只用于判断存在性；非本会话窗口不回传标题/PID，
-                    // 避免把用户主屏的邮件主题、文档名泄露给模型。
-                    ["title"] = trackedWindow ? window.Title : "<redacted>",
-                    ["pid"] = trackedWindow ? window.Pid : null,
-                },
+            ["hwnd"] = window.Hwnd.ToInt64(),
+            ["tracked"] = trackedWindow,
+            // scope=any 只用于判断存在性；非本会话窗口不回传标题/PID，
+            // 避免把用户主屏的邮件主题、文档名泄露给模型。
+            ["title"] = trackedWindow ? window.Title : "<redacted>",
+            ["pid"] = trackedWindow ? window.Pid : null,
         };
-    }
+
+    private sealed record WindowWaitQuery(
+        string? Title, string State, string Scope, int MinWidth, int MinHeight);
 
     private JsonObject EvaluatePixelDiff(JsonElement condition, DisplayInfo display)
     {
