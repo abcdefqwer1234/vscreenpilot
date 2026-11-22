@@ -87,64 +87,7 @@ internal sealed class SnapshotSectionOps
                 rootListed = true;
             }
 
-            var dialogJson = new JsonObject
-            {
-                ["hwnd"] = dialog.Hwnd.ToInt64(),
-                ["title"] = PrivacyRedactor.RedactEmails(dialog.Title, ref redactions),
-                ["class"] = dialog.ClassName,
-                ["bounds"] = new JsonObject
-                {
-                    ["x"] = dialog.Rect.Left,
-                    ["y"] = dialog.Rect.Top,
-                    ["width"] = dialog.Width,
-                    ["height"] = dialog.Height,
-                },
-            };
-
-            // Office 旧对话框（bosa_sdm_msword）UIA 树为空，MSAA 是唯一语义来源。
-            // 把控件直接放进 snapshot.dialogs[].controls，模型不需要再调 find_element。
-            if (dialog.ClassName.Contains("bosa", StringComparison.OrdinalIgnoreCase))
-            {
-                MsaaFindResult msaa = _core._state.Uia.InvokeMsaa(() => MsaaService.FindElements(
-                    dialog.Hwnd, null, UiaNameMatch.Exact, null, 100));
-
-                if (msaa.Items.Count > 0)
-                {
-                    var controls = new JsonArray();
-
-                    lock (_core._state.Refs.SyncRoot)
-                    {
-                        foreach (UiaElementInfo info in msaa.Items)
-                        {
-                            var control = new JsonObject
-                            {
-                                ["ref"] = _core._state.RegisterElement(info, dialog.Hwnd),
-                                ["name"] = info.Name,
-                                ["control_type"] = info.ControlTypeName,
-                                ["bounds"] = new JsonObject
-                                {
-                                    ["x"] = info.Left,
-                                    ["y"] = info.Top,
-                                    ["width"] = info.Width,
-                                    ["height"] = info.Height,
-                                },
-                            };
-
-                            if (!string.IsNullOrEmpty(info.Value))
-                            {
-                                control["value"] = info.Value;
-                            }
-
-                            controls.Add(control);
-                        }
-                    }
-
-                    dialogJson["controls"] = controls;
-                    dialogJson["msaa_truncated"] = msaa.Truncated;
-                }
-            }
-
-            dialogs.Add(dialogJson);
+            dialogs.Add((JsonNode)BuildDialogJson(dialog, ref redactions));
         }
 
         // snapshot 的 root 可能已经是弹窗（GetActivePopup）。此时 dialogs[] 不含它，
@@ -156,30 +99,100 @@ internal sealed class SnapshotSectionOps
 
             if (!rootListed)
             {
-                WindowInfo info = WindowManager.FromHandle(hwnd)
-                    ?? new WindowInfo(
-                        hwnd, app.Pid, string.Empty, string.Empty,
-                        default, Visible: false, Owned: false);
-
-                dialogs.Insert(0, (JsonNode)new JsonObject
-                {
-                    ["hwnd"] = hwnd.ToInt64(),
-                    ["title"] = PrivacyRedactor.RedactEmails(info.Title, ref redactions),
-                    ["class"] = info.ClassName,
-                    ["is_root"] = true,
-                    ["bounds"] = new JsonObject
-                    {
-                        ["x"] = info.Rect.Left,
-                        ["y"] = info.Rect.Top,
-                        ["width"] = info.Width,
-                        ["height"] = info.Height,
-                    },
-                });
+                dialogs.Insert(0, (JsonNode)BuildRootDialog(app, hwnd, ref redactions));
             }
         }
 
         data["dialogs"] = dialogs;
     }
+
+    private JsonObject BuildDialogJson(WindowInfo dialog, ref int redactions)
+    {
+        var dialogJson = new JsonObject
+        {
+            ["hwnd"] = dialog.Hwnd.ToInt64(),
+            ["title"] = PrivacyRedactor.RedactEmails(dialog.Title, ref redactions),
+            ["class"] = dialog.ClassName,
+            ["bounds"] = BuildBounds(dialog.Rect.Left, dialog.Rect.Top, dialog.Width, dialog.Height),
+        };
+
+        // Office 旧对话框（bosa_sdm_msword）UIA 树为空，MSAA 是唯一语义来源。
+        // 把控件直接放进 snapshot.dialogs[].controls，模型不需要再调 find_element。
+        if (dialog.ClassName.Contains("bosa", StringComparison.OrdinalIgnoreCase))
+        {
+            AppendMsaaControls(dialog, dialogJson);
+        }
+
+        return dialogJson;
+    }
+
+    private void AppendMsaaControls(WindowInfo dialog, JsonObject dialogJson)
+    {
+        MsaaFindResult msaa = _core._state.Uia.InvokeMsaa(() => MsaaService.FindElements(
+            dialog.Hwnd, null, UiaNameMatch.Exact, null, 100));
+
+        if (msaa.Items.Count == 0)
+        {
+            return;
+        }
+
+        var controls = new JsonArray();
+
+        lock (_core._state.Refs.SyncRoot)
+        {
+            foreach (UiaElementInfo info in msaa.Items)
+            {
+                controls.Add((JsonNode)BuildMsaaControl(info, dialog.Hwnd));
+            }
+        }
+
+        dialogJson["controls"] = controls;
+        dialogJson["msaa_truncated"] = msaa.Truncated;
+    }
+
+    private JsonObject BuildMsaaControl(UiaElementInfo info, IntPtr hwnd)
+    {
+        var control = new JsonObject
+        {
+            ["ref"] = _core._state.RegisterElement(info, hwnd),
+            ["name"] = info.Name,
+            ["control_type"] = info.ControlTypeName,
+            ["bounds"] = BuildBounds(info.Left, info.Top, info.Width, info.Height),
+        };
+
+        if (!string.IsNullOrEmpty(info.Value))
+        {
+            control["value"] = info.Value;
+        }
+
+        return control;
+    }
+
+    private static JsonObject BuildRootDialog(TrackedApp app, IntPtr hwnd, ref int redactions)
+    {
+        WindowInfo info = WindowManager.FromHandle(hwnd)
+            ?? new WindowInfo(
+                hwnd, app.Pid, string.Empty, string.Empty,
+                default, Visible: false, Owned: false);
+
+        return new JsonObject
+        {
+            ["hwnd"] = hwnd.ToInt64(),
+            ["title"] = PrivacyRedactor.RedactEmails(info.Title, ref redactions),
+            ["class"] = info.ClassName,
+            ["is_root"] = true,
+            ["bounds"] = BuildBounds(info.Rect.Left, info.Rect.Top, info.Width, info.Height),
+        };
+    }
+
+    private static JsonObject BuildBounds(int x, int y, int width, int height) =>
+        new()
+        {
+            ["x"] = x,
+            ["y"] = y,
+            ["width"] = width,
+            ["height"] = height,
+        };
 
     internal void BuildWindowsAndForeground(JsonObject data)
     {

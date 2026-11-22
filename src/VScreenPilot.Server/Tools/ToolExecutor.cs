@@ -65,105 +65,140 @@ internal sealed class ToolExecutor
             : context.Control.UseClient(context.Client);
         long epoch = context.Control.Epoch;
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        WriteScheduler.Lease? lease = null;
-        CancellationTokenSource? callCts = null;
-        bool callCtsTransferred = false;
-        Task<ToolResponse>? handlerTask = null;
+        var state = new ToolInvocationState();
         ToolPolicy policy = tool.Policy;
-        IDisposable? screenLease = null;
         bool releaseSucceeded = false;
 
         try
         {
-            (lease, screenLease, callCts) = await BeginInvocation(tool, context, policy).ConfigureAwait(false);
+            state.HandlerTask = await StartInvocationAsync(tool, context, policy, state).ConfigureAwait(false);
 
-            // 长任务至少给一次“已开始/已完成”进度，客户端不会以为调用挂死。
-            _progress?.Invoke(0, 1, "started");
-
-            handlerTask = StartHandlerTask(tool, context, policy, _progress);
-
-            _handlerStarted();
-            _ = handlerTask.ContinueWith(
-                _ => _handlerFinished(),
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
-
-            ToolResponse response;
-
-            try
-            {
-                response = await handlerTask!
-                    .WaitAsync(TimeSpan.FromMilliseconds(tool.TimeoutMs), context.CancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (TimeoutException)
-            {
-                TimeoutOutcome outcome = BuildTimeoutOutcome(tool, handlerTask!, lease, screenLease, callCts);
-                lease = outcome.PendingLease;
-                screenLease = outcome.PendingScreenLease;
-                callCtsTransferred = outcome.CtsTransferred;
-                response = outcome.Response;
-            }
+            ToolResponse response = await AwaitHandlerAsync(tool, context, state).ConfigureAwait(false);
 
             return CompleteResponse(tool, context, policy, epoch, response, stopwatch, out releaseSucceeded);
         }
         catch (OperationCanceledException)
         {
-            ToolCancelPolicy.CancelOutcome outcome = ToolCancelPolicy.BuildCancelOutcome(handlerTask, lease, screenLease, callCts);
-            lease = outcome.PendingLease;
-            screenLease = outcome.PendingScreenLease;
-            callCtsTransferred = outcome.CtsTransferred;
+            ToolCancelPolicy.CancelOutcome outcome = ToolCancelPolicy.BuildCancelOutcome(
+                state.HandlerTask, state.Lease, state.ScreenLease, state.CallCts);
+            state.Apply(outcome.PendingLease, outcome.PendingScreenLease, outcome.CtsTransferred);
             throw;
         }
         catch (ToolException exception)
         {
-            var response = ToolResponse.FromException(exception).SetRequestId(context.RequestId);
-            _trace(tool.Name, context.RequestId, context.ArgumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
-            return response;
+            return FailWithToolException(tool, context, stopwatch, exception);
         }
         catch (Exception exception)
         {
-            _log.Error($"工具 {tool.Name} 失败", exception);
-            var response = ToolResponse.FromException(exception, $"tool:{tool.Name}")
-                .SetRequestId(context.RequestId);
-            _trace(tool.Name, context.RequestId, context.ArgumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
-            return response;
+            return FailUnexpected(tool, context, stopwatch, exception);
         }
         finally
         {
-            context.Control.SetCancellation(null);
+            CleanupInvocation(context, policy, state, releaseSucceeded);
+        }
+    }
 
-            // 超时的 CTS 所有权已经交给仍在运行的 handler。
-            if (!callCtsTransferred)
-            {
-                callCts?.Dispose();
-            }
+    private async Task<Task<ToolResponse>> StartInvocationAsync(
+        ToolDescriptor tool, ToolContext context, ToolPolicy policy, ToolInvocationState state)
+    {
+        (state.Lease, state.ScreenLease, state.CallCts) =
+            await BeginInvocation(tool, context, policy).ConfigureAwait(false);
 
-            if (policy.SessionWrite)
-            {
-                string releaseClientId = context.Client?.Id ?? "c0";
+        // 长任务至少给一次“已开始/已完成”进度，客户端不会以为调用挂死。
+        _progress?.Invoke(0, 1, "started");
 
-                if (releaseSucceeded)
-                {
-                    // 只有真正清理成功才把屏幕交给下一个客户端；失败时仍保留租约。
-                    // 这里不能走 ReleaseHolderIfIdle：本工具自己还持有一个租约（active_calls>=1）。
-                    context.Control.Lease.ForceRelease(releaseClientId);
-                }
-                else if (handlerTask is { IsCompleted: false })
-                {
-                    // 超时/取消后 handler 可能仍在关闭窗口：等它真正结束再释放租约。
-                    _ = handlerTask.ContinueWith(
-                        _ => context.Control.Lease.ForceRelease(releaseClientId),
-                        CancellationToken.None,
-                        TaskContinuationOptions.ExecuteSynchronously,
-                        TaskScheduler.Default);
-                }
-            }
+        Task<ToolResponse> handlerTask = StartHandlerTask(tool, context, policy, _progress);
 
-            // 释放顺序与获取相反：先写锁，后屏幕租约。
-            lease?.Dispose();
-            screenLease?.Dispose();
+        _handlerStarted();
+        _ = handlerTask.ContinueWith(
+            _ => _handlerFinished(),
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+
+        return handlerTask;
+    }
+
+    private async Task<ToolResponse> AwaitHandlerAsync(
+        ToolDescriptor tool, ToolContext context, ToolInvocationState state)
+    {
+        try
+        {
+            return await state.HandlerTask!
+                .WaitAsync(TimeSpan.FromMilliseconds(tool.TimeoutMs), context.CancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            TimeoutOutcome outcome = BuildTimeoutOutcome(
+                tool, state.HandlerTask!, state.Lease, state.ScreenLease, state.CallCts);
+            state.Apply(outcome.PendingLease, outcome.PendingScreenLease, outcome.CtsTransferred);
+            return outcome.Response;
+        }
+    }
+
+    private ToolResponse FailWithToolException(
+        ToolDescriptor tool, ToolContext context, System.Diagnostics.Stopwatch stopwatch, ToolException exception)
+    {
+        var response = ToolResponse.FromException(exception).SetRequestId(context.RequestId);
+        _trace(tool.Name, context.RequestId, context.ArgumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
+        return response;
+    }
+
+    private ToolResponse FailUnexpected(
+        ToolDescriptor tool, ToolContext context, System.Diagnostics.Stopwatch stopwatch, Exception exception)
+    {
+        _log.Error($"工具 {tool.Name} 失败", exception);
+        var response = ToolResponse.FromException(exception, $"tool:{tool.Name}")
+            .SetRequestId(context.RequestId);
+        _trace(tool.Name, context.RequestId, context.ArgumentSummary, stopwatch.Elapsed.TotalMilliseconds, response);
+        return response;
+    }
+
+    private void CleanupInvocation(
+        ToolContext context, ToolPolicy policy, ToolInvocationState state, bool releaseSucceeded)
+    {
+        context.Control.SetCancellation(null);
+
+        // 超时的 CTS 所有权已经交给仍在运行的 handler。
+        if (!state.CtsTransferred)
+        {
+            state.CallCts?.Dispose();
+        }
+
+        ReleaseClientLease(context, policy, state.HandlerTask, releaseSucceeded);
+
+        // 释放顺序与获取相反：先写锁，后屏幕租约。
+        state.Lease?.Dispose();
+        state.ScreenLease?.Dispose();
+    }
+
+    private static void ReleaseClientLease(
+        ToolContext context, ToolPolicy policy, Task<ToolResponse>? handlerTask, bool releaseSucceeded)
+    {
+        if (!policy.SessionWrite)
+        {
+            return;
+        }
+
+        string releaseClientId = context.Client?.Id ?? "c0";
+
+        if (releaseSucceeded)
+        {
+            // 只有真正清理成功才把屏幕交给下一个客户端；失败时仍保留租约。
+            // 这里不能走 ReleaseHolderIfIdle：本工具自己还持有一个租约（active_calls>=1）。
+            context.Control.Lease.ForceRelease(releaseClientId);
+            return;
+        }
+
+        if (handlerTask is { IsCompleted: false })
+        {
+            // 超时/取消后 handler 可能仍在关闭窗口：等它真正结束再释放租约。
+            _ = handlerTask.ContinueWith(
+                _ => context.Control.Lease.ForceRelease(releaseClientId),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
     }
 

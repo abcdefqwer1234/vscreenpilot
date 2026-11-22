@@ -21,7 +21,13 @@ internal sealed class AppLaunchOps
 {
     private readonly AppLauncher _core;
 
-    public AppLaunchOps(AppLauncher core) => _core = core;
+    internal readonly AppLaunchStartOps StartOps;
+
+    public AppLaunchOps(AppLauncher core)
+    {
+        _core = core;
+        StartOps = new AppLaunchStartOps(core);
+    }
 
     public LaunchOrPlaceView Launch(
         string? path,
@@ -173,119 +179,7 @@ internal sealed class AppLaunchOps
         }
     }
 
-    internal void StartNewInstance(LaunchState s)
-    {
-        using (Process? probe = _core.ProcessOps.FindRunningProcess(s.LaunchPath))
-        {
-            s.HadRunningInstance = probe is not null;
-        }
-
-        var before = new HashSet<IntPtr>(
-            WindowManager.ListTopLevel().Select(item => item.Hwnd));
-
-        string? workingDirectory = Path.GetDirectoryName(s.LaunchPath);
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = s.LaunchPath,
-            UseShellExecute = false,
-            WorkingDirectory = string.IsNullOrEmpty(workingDirectory)
-                ? _core._session.Clients.CurrentCwd
-                : workingDirectory,
-        };
-
-        string? launchTempProfile;
-        startInfo.Arguments = _core.ProcessOps.BuildNewInstanceArguments(s.ExeName, s.Arguments, out launchTempProfile);
-        s.TempProfile = launchTempProfile;
-
-        Process process = Process.Start(startInfo)
-            ?? throw new ToolException("E_APP_START", $"无法启动应用: {s.LaunchPath}");
-
-        int processId = process.Id;
-        s.Started = true;
-
-        using (process)
-        {
-            if (!_core._session.Job.Assign(process))
-            {
-                _core._log.Warn($"应用 {processId} 未能加入作业对象，崩溃兜底不可用");
-            }
-
-            int launchedContentPid;
-            string launchedContentPath;
-            s.Window = _core.WindowOps.WaitForNewWindow(
-                process, s.ExeName, before, s.WaitMs, out launchedContentPid, out launchedContentPath);
-            s.ContentPid = launchedContentPid;
-            s.ContentPath = launchedContentPath;
-        }
-
-        if (s.Window is null)
-        {
-            AppTermination.KillProcessTree(processId);
-            if (s.TempProfile is not null)
-            {
-                AppTermination.TryDeleteDirectory(s.TempProfile);
-            }
-
-            if (s.HadRunningInstance)
-            {
-                // 单实例应用（如 Win11 记事本）无法创建新窗口：自动降级为接管现有窗口。
-                WindowInfo? reuse = null;
-
-                using (Process? running = _core.ProcessOps.FindRunningProcess(s.Path!))
-                {
-                    if (running is not null)
-                    {
-                        reuse = _core.WindowOps.WaitForMainWindow(running, 3000);
-                    }
-                }
-
-                if (reuse is not null)
-                {
-                    // 不记录窗口标题：可能包含文档名/客户名。
-                    _core._log.Warn($"无法创建独立实例，已接管现有窗口 pid={reuse.Pid}");
-                    bool alreadyOwned = _core.WindowOps.IsOwnedWindowOnCurrentClient(reuse.Hwnd);
-                    s.Window = reuse;
-                    s.NewInstance = false;
-                    s.Started = false;
-
-                    if (!alreadyOwned)
-                    {
-                        // 用户原本就有的窗口：不能算本会话启动，release 只归位、不关闭。
-                        s.CloseOnRelease = false;
-                        s.Dedicated = false;
-                        s.AdoptedExisting = true;
-                        s.LaunchWarning =
-                            "无法创建独立实例，已接管现有窗口；release_environment 只归位、不关闭该窗口";
-                    }
-                }
-                else
-                {
-                    throw new ToolException(
-                        "E_NEW_INSTANCE_UNSUPPORTED",
-                        "无法为已运行的应用创建独立窗口；请设置 new_instance=false 以接管现有窗口",
-                        new JsonObject
-                        {
-                            ["app"] = s.ExeName,
-                            ["suggest_reuse"] = true,
-                        },
-                        retryable: true,
-                        hint: "改用 window 参数按标题接管，或设置 new_instance=false",
-                        stage: "launch");
-                }
-            }
-            else
-            {
-                throw new ToolException("E_WINDOW_TIMEOUT", "等待新窗口超时");
-            }
-        }
-
-        // 单实例回退到“接管现有窗口”时，上面已把 closeOnRelease 置 false；
-        // 这里不能无条件覆盖，否则 release 会把用户原有窗口当成本会话启动的应用关闭/强杀。
-        (s.CloseOnRelease, s.Dedicated) = AppLauncher.ResolveNewInstanceOwnership(
-            s.AdoptedExisting,
-            s.HadRunningInstance,
-            s.ExeName.Equals("msedge", StringComparison.OrdinalIgnoreCase));
-    }
+    internal void StartNewInstance(LaunchState s) => StartOps.StartNewInstance(s);
 
     internal void LaunchOrReuse(LaunchState s)
     {

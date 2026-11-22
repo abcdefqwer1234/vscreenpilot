@@ -18,6 +18,14 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
+/// <summary>set_element_value 的入参。</summary>
+internal sealed record ElementValueRequest(
+    string Reference,
+    string Value,
+    bool AllowKeyboard,
+    string? Mode,
+    bool AllowDestructive);
+
 /// <summary>元素写值参数；用 init 属性避免长参数列表。</summary>
 internal sealed record ElementWriteRequest
 {
@@ -48,7 +56,7 @@ internal sealed class ElementValueOps
             return SetMsaaValue(probe, msaaHwnd, msaaChildId, value, allowKeyboard, mode, allowDestructive);
         }
 
-        return SetUiaValue(display, reference, value, allowKeyboard, mode, allowDestructive);
+        return SetUiaValue(display, new ElementValueRequest(reference, value, allowKeyboard, mode, allowDestructive));
     }
 
     private SetElementValueView SetMsaaValue(
@@ -124,67 +132,21 @@ internal sealed class ElementValueOps
             Warning: null);
     }
 
-    private SetElementValueView SetUiaValue(
-        DisplayInfo display, string reference, string value,
-        bool allowKeyboard, string? mode, bool allowDestructive)
+    private SetElementValueView SetUiaValue(DisplayInfo display, ElementValueRequest request)
     {
-        using UiaElementHandle handle = _host._state.Resolver.Resolve(reference, display, out ElementRefEntry entry, out bool refreshed);
+        using UiaElementHandle handle = _host._state.Resolver.Resolve(
+            request.Reference, display, out ElementRefEntry entry, out bool refreshed);
         UiaElementInfo info = handle.Info;
 
-        if (!info.Enabled)
-        {
-            throw new ToolException(
-                "E_ELEMENT_DISABLED",
-                "控件已禁用，拒绝写入",
-                new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
-        }
+        EnsureWritable(entry, info);
 
-        string effectiveMode = _host.KeyboardValueOps.ResolveWriteMode(mode, info);
+        string effectiveMode = _host.KeyboardValueOps.ResolveWriteMode(request.Mode, info);
+        ValidateKeyboardMode(entry, info, effectiveMode, request.AllowKeyboard);
 
-        if (effectiveMode == "replace" && !allowDestructive)
-        {
-            throw new ToolException(
-                "E_DESTRUCTIVE_REQUIRED",
-                "replace 会先全选目标内容再覆盖；请显式传 allow_destructive=true，或改用 mode=append/insert",
-                new JsonObject
-                {
-                    ["ref"] = entry.Ref,
-                    ["mode"] = effectiveMode,
-                    ["control_type"] = info.ControlTypeName,
-                    ["automation_id"] = info.AutomationId,
-                });
-        }
-
-        // ValuePattern 只能整值替换，无法追加；append/replace 必须走键盘路径，
-        // 否则会在支持 ValuePattern 的控件上静默覆盖已有内容。
         if (effectiveMode is "append" or "replace")
         {
-            if (!allowKeyboard)
-            {
-                throw new ToolException(
-                    "E_PATTERN_UNSUPPORTED",
-                    effectiveMode == "append"
-                        ? "append 无法通过 ValuePattern 实现（只能整值替换）；请显式传 allow_keyboard=true"
-                        : "replace 需要键盘写入（Ctrl+A 覆盖）；请显式传 allow_keyboard=true，或改用 mode=insert",
-                    new JsonObject
-                    {
-                        ["ref"] = entry.Ref,
-                        ["mode"] = effectiveMode,
-                        ["element"] = ElementPresenter.ToJson(info),
-                    });
-            }
-
-            return _host.KeyboardValueOps.SetElementValueByKeyboard(new ElementWriteRequest
-            {
-                Handle = handle,
-                Entry = entry,
-                Info = info,
-                Display = display,
-                Value = value,
-                Refreshed = refreshed,
-                Mode = effectiveMode,
-                AllowDestructive = allowDestructive,
-            });
+            return _host.KeyboardValueOps.SetElementValueByKeyboard(
+                BuildWriteRequest((handle, entry, info, display, refreshed), request, effectiveMode));
         }
 
         // ValuePattern 的 SetValue 是整值覆盖。mode=insert 在普通控件上走这条路径，
@@ -193,9 +155,9 @@ internal sealed class ElementValueOps
         string? existingValue = handle.GetValue();
         bool destructiveInsert = effectiveMode == "insert" &&
                                  !string.IsNullOrEmpty(existingValue) &&
-                                 !string.Equals(existingValue, value, StringComparison.Ordinal);
+                                 !string.Equals(existingValue, request.Value, StringComparison.Ordinal);
 
-        if (destructiveInsert && !allowDestructive)
+        if (destructiveInsert && !request.AllowDestructive)
         {
             throw new ToolException(
                 "E_DESTRUCTIVE_REQUIRED",
@@ -212,22 +174,65 @@ internal sealed class ElementValueOps
         }
 
         return FinishUiaWrite(
-            handle.SetValue(value),
-            new ElementWriteRequest
-            {
-                Handle = handle,
-                Entry = entry,
-                Info = info,
-                Display = display,
-                Value = value,
-                Refreshed = refreshed,
-                Mode = mode,
-                AllowDestructive = allowDestructive,
-            },
-            allowKeyboard,
+            handle.SetValue(request.Value),
+            BuildWriteRequest((handle, entry, info, display, refreshed), request, request.Mode),
+            request.AllowKeyboard,
             effectiveMode,
             destructiveInsert);
     }
+
+    private static void EnsureWritable(ElementRefEntry entry, UiaElementInfo info)
+    {
+        if (info.Enabled)
+        {
+            return;
+        }
+
+        throw new ToolException(
+            "E_ELEMENT_DISABLED",
+            "控件已禁用，拒绝写入",
+            new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
+    }
+
+    private static void ValidateKeyboardMode(
+        ElementRefEntry entry, UiaElementInfo info, string effectiveMode, bool allowKeyboard)
+    {
+        if (effectiveMode is not ("append" or "replace") || allowKeyboard)
+        {
+            return;
+        }
+
+        // ValuePattern 只能整值替换，无法追加；append/replace 必须走键盘路径，
+        // 否则会在支持 ValuePattern 的控件上静默覆盖已有内容。
+        throw new ToolException(
+            "E_PATTERN_UNSUPPORTED",
+            effectiveMode == "append"
+                ? "append 无法通过 ValuePattern 实现（只能整值替换）；请显式传 allow_keyboard=true"
+                : "replace 需要键盘写入（Ctrl+A 覆盖）；请显式传 allow_keyboard=true，或改用 mode=insert",
+            new JsonObject
+            {
+                ["ref"] = entry.Ref,
+                ["mode"] = effectiveMode,
+                ["control_type"] = info.ControlTypeName,
+                ["automation_id"] = info.AutomationId,
+            });
+    }
+
+    private static ElementWriteRequest BuildWriteRequest(
+        (UiaElementHandle Handle, ElementRefEntry Entry, UiaElementInfo Info, DisplayInfo Display, bool Refreshed) target,
+        ElementValueRequest request,
+        string? effectiveMode) =>
+        new()
+        {
+            Handle = target.Handle,
+            Entry = target.Entry,
+            Info = target.Info,
+            Display = target.Display,
+            Value = request.Value,
+            Refreshed = target.Refreshed,
+            Mode = effectiveMode,
+            AllowDestructive = request.AllowDestructive,
+        };
 
     private SetElementValueView FinishUiaWrite(
         UiaSetValueResult result,

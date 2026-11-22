@@ -70,8 +70,38 @@ internal sealed class ElementResolver
         string reference, DisplayInfo display, out ElementRefEntry entry, out bool refreshed)
     {
         entry = Require(reference);
-        refreshed = false;
 
+        EnsureEntryUsable(entry);
+        _host.RequireOnDisplay(display, entry.Hwnd, "element_ref");
+
+        UiaElementHandle? handle = ResolveHandle(entry, out refreshed);
+
+        if (handle is null)
+        {
+            throw new ToolException(
+                "E_ELEMENT_STALE",
+                "控件已销毁或无法唯一定位，请重新 get_ui_tree / find_element",
+                new JsonObject
+                {
+                    ["ref"] = entry.Ref,
+                    ["name"] = entry.Name,
+                    ["automation_id"] = entry.AutomationId,
+                    ["control_type"] = entry.ControlTypeName,
+                });
+        }
+
+        entry.Update(handle.Info, entry.Hwnd);
+
+        if (refreshed)
+        {
+            _host.Log.Info($"element_ref {entry.Ref} 已按指纹重定位");
+        }
+
+        return handle;
+    }
+
+    private void EnsureEntryUsable(ElementRefEntry entry)
+    {
         if (entry.Hwnd == IntPtr.Zero || !NativeMethods.IsWindow(entry.Hwnd))
         {
             throw new ToolException(
@@ -80,13 +110,10 @@ internal sealed class ElementResolver
                 new JsonObject { ["ref"] = entry.Ref, ["hwnd"] = entry.Hwnd.ToInt64() });
         }
 
-        bool tracked;
-        int entryPid = entry.Pid;
-
         // 句柄可能被系统复用：必须确认该 HWND 仍属于登记时的进程。
         _ = NativeMethods.GetWindowThreadProcessId(entry.Hwnd, out uint entryHwndPid);
 
-        if (entryHwndPid != (uint)entryPid)
+        if (entryHwndPid != (uint)entry.Pid)
         {
             throw new ToolException(
                 "E_ELEMENT_STALE",
@@ -99,76 +126,73 @@ internal sealed class ElementResolver
                 });
         }
 
-        tracked = _host.IsTrackedPid(entryPid);
-
-        if (!tracked)
+        if (_host.IsTrackedPid(entry.Pid))
         {
-            throw new ToolException(
-                "E_NO_TARGET",
-                "element_ref 所属应用已不在本会话中，请重新 launch_or_place_app",
-                new JsonObject { ["ref"] = entry.Ref, ["pid"] = entry.Pid });
+            return;
         }
 
-        _host.RequireOnDisplay(display, entry.Hwnd, "element_ref");
+        throw new ToolException(
+            "E_NO_TARGET",
+            "element_ref 所属应用已不在本会话中，请重新 launch_or_place_app",
+            new JsonObject { ["ref"] = entry.Ref, ["pid"] = entry.Pid });
+    }
 
-        UiaElementHandle? handle = null;
+    private UiaElementHandle? ResolveHandle(ElementRefEntry entry, out bool refreshed)
+    {
+        refreshed = false;
 
         if (!string.IsNullOrEmpty(entry.RuntimeId))
         {
-            handle = _host.Uia.FindByRuntimeId(entry.Hwnd, entry.RuntimeId);
-        }
+            UiaElementHandle? direct = _host.Uia.FindByRuntimeId(entry.Hwnd, entry.RuntimeId);
 
-        if (handle is not null)
-        {
-            entry.Update(handle.Info, entry.Hwnd);
-            return handle;
-        }
-
-        handle = _host.Uia.FindByFingerprint(
-            entry.Hwnd, entry.Name, entry.AutomationId, entry.ControlTypeName,
-            entry.Left, entry.Top, entry.Right, entry.Bottom);
-
-        // 控件可能被移动到同进程的另一个顶层窗口（保存框、浮动面板等）。
-        if (handle is null)
-        {
-            foreach (WindowInfo candidate in WindowManager.ListForProcess(entry.Pid))
+            if (direct is not null)
             {
-                if (candidate.Hwnd == entry.Hwnd)
-                {
-                    continue;
-                }
-
-                handle = _host.Uia.FindByFingerprint(
-                    candidate.Hwnd, entry.Name, entry.AutomationId, entry.ControlTypeName,
-                    entry.Left, entry.Top, entry.Right, entry.Bottom);
-
-                if (handle is not null)
-                {
-                    entry.Hwnd = candidate.Hwnd;
-                    break;
-                }
+                return direct;
             }
         }
 
-        if (handle is null)
-        {
-            throw new ToolException(
-                "E_ELEMENT_STALE",
-                "控件已销毁或无法唯一重定位，请重新 get_ui_tree / find_element",
-                new JsonObject
-                {
-                    ["ref"] = entry.Ref,
-                    ["name"] = entry.Name,
-                    ["automation_id"] = entry.AutomationId,
-                    ["control_type"] = entry.ControlTypeName,
-                });
-        }
-
-        refreshed = true;
-        entry.Update(handle.Info, entry.Hwnd);
-        _host.Log.Info($"element_ref {entry.Ref} 已按指纹重定位");
+        UiaElementHandle? handle = FindByFingerprintWithMove(entry);
+        refreshed = handle is not null;
         return handle;
     }
+
+    /// <summary>
+    /// 控件可能被移动到同进程的另一个顶层窗口（保存框、浮动面板等）。
+    /// </summary>
+    private UiaElementHandle? FindByFingerprintWithMove(ElementRefEntry entry)
+    {
+        UiaElementHandle? handle = FindByFingerprint(entry, entry.Hwnd);
+
+        if (handle is not null)
+        {
+            return handle;
+        }
+
+        foreach (WindowInfo candidate in WindowManager.ListForProcess(entry.Pid))
+        {
+            if (candidate.Hwnd == entry.Hwnd)
+            {
+                continue;
+            }
+
+            handle = FindByFingerprint(entry, candidate.Hwnd);
+
+            if (handle is null)
+            {
+                continue;
+            }
+
+            entry.Hwnd = candidate.Hwnd;
+            return handle;
+        }
+
+        return null;
+    }
+
+    private UiaElementHandle? FindByFingerprint(ElementRefEntry entry, IntPtr hwnd) =>
+        _host.Uia.FindByFingerprint(
+            hwnd, entry.Name, entry.AutomationId, entry.ControlTypeName,
+            entry.Left, entry.Top, entry.Right, entry.Bottom);
 
     /* ------------------------------------------------------------------ */
     /* 工具：get_ui_tree                                                   */

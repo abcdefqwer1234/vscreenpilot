@@ -40,6 +40,16 @@ internal static class CliEnvironment
             result["warning"] = "无 daemon 的本地只读查询不会挂载虚拟屏；请在 MCP 中调用 get_environment{ensure:true}";
         }
 
+        result["driver"] = BuildDriver();
+        result["virtual_display"] = BuildVirtualDisplay(profile, state);
+        result["primary"] = BuildPrimary();
+        result["virtual_screen"] = BuildVirtualScreen();
+
+        return result;
+    }
+
+    private static JsonObject BuildDriver()
+    {
         string driverStatus;
 
         try
@@ -77,42 +87,68 @@ internal static class CliEnvironment
             driver["open_error"] = exception.Message;
         }
 
-        result["driver"] = driver;
+        return driver;
+    }
 
+    private static JsonObject BuildVirtualDisplay(string profile, StateStore state)
+    {
         string? ownDevice = state.Load()?.DisplayDevice;
-        DisplayInfo? parsec = !string.IsNullOrWhiteSpace(ownDevice)
-            ? DisplayTopology.FindParsecDisplayByDevice(ownDevice)
-            : string.Equals(profile, "default", StringComparison.Ordinal)
-                ? DisplayTopology.FindParsecDisplay()
-                : null;
-        result["virtual_display"] = parsec is null
-            ? new JsonObject { ["enabled"] = false }
-            : new JsonObject
-            {
-                ["enabled"] = true,
-                ["device"] = parsec.DeviceName,
-                ["x"] = parsec.X,
-                ["y"] = parsec.Y,
-                ["width"] = parsec.Width,
-                ["height"] = parsec.Height,
-                ["dpi"] = parsec.Dpi,
-            };
+        DisplayInfo? parsec = FindParsecDisplay(ownDevice, profile);
 
+        if (parsec is null)
+        {
+            return new JsonObject { ["enabled"] = false };
+        }
+
+        return new JsonObject
+        {
+            ["enabled"] = true,
+            ["device"] = parsec.DeviceName,
+            ["x"] = parsec.X,
+            ["y"] = parsec.Y,
+            ["width"] = parsec.Width,
+            ["height"] = parsec.Height,
+            ["dpi"] = parsec.Dpi,
+        };
+    }
+
+    private static DisplayInfo? FindParsecDisplay(string? ownDevice, string profile)
+    {
+        if (!string.IsNullOrWhiteSpace(ownDevice))
+        {
+            return DisplayTopology.FindParsecDisplayByDevice(ownDevice);
+        }
+
+        return string.Equals(profile, "default", StringComparison.Ordinal)
+            ? DisplayTopology.FindParsecDisplay()
+            : null;
+    }
+
+    private static JsonObject? BuildPrimary()
+    {
         DisplayInfo? primary = DisplayTopology.FindPrimary();
-        result["primary"] = primary is null
-            ? null
-            : new JsonObject
-            {
-                ["device"] = primary.DeviceName,
-                ["x"] = primary.X,
-                ["y"] = primary.Y,
-                ["width"] = primary.Width,
-                ["height"] = primary.Height,
-                ["dpi"] = primary.Dpi,
-            };
 
+        if (primary is null)
+        {
+            return null;
+        }
+
+        return new JsonObject
+        {
+            ["device"] = primary.DeviceName,
+            ["x"] = primary.X,
+            ["y"] = primary.Y,
+            ["width"] = primary.Width,
+            ["height"] = primary.Height,
+            ["dpi"] = primary.Dpi,
+        };
+    }
+
+    private static JsonObject BuildVirtualScreen()
+    {
         (int x, int y, int width, int height) = DisplayTopology.VirtualScreenBounds();
-        result["virtual_screen"] = new JsonObject
+
+        return new JsonObject
         {
             ["x"] = x,
             ["y"] = y,
@@ -120,7 +156,5 @@ internal static class CliEnvironment
             ["height"] = height,
             ["monitors"] = NativeMethods.GetSystemMetrics(80),
         };
-
-        return result;
     }
 }

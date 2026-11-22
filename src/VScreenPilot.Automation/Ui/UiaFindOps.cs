@@ -11,8 +11,13 @@ namespace VScreenPilot.Uia;
 internal sealed class UiaFindOps
 {
     private readonly UiaService _core;
+    private readonly UiaTextSearchOps _textSearch;
 
-    public UiaFindOps(UiaService core) => _core = core;
+    public UiaFindOps(UiaService core)
+    {
+        _core = core;
+        _textSearch = new UiaTextSearchOps(core);
+    }
     public UiaElementInfo? FindElement(
         IntPtr hwnd, string? name, string? controlType, string? automationId, string? runtimeId)
     {
@@ -141,74 +146,7 @@ internal sealed class UiaFindOps
                     return null;
                 }
 
-                var textCandidates = new List<IUIAutomationElement>();
-                int count = Math.Min(all.Length, 3000);
-
-                for (int index = 0; index < count; index++)
-                {
-                    IUIAutomationElement? element = all.GetElement(index);
-
-                    if (element is null)
-                    {
-                        continue;
-                    }
-
-                    bool keepForText = false;
-
-                    try
-                    {
-                        UiaElementInfo? info = _core.Factory.Describe(element, cached: true);
-
-                        if (info is null || info.Offscreen)
-                        {
-                            continue;
-                        }
-
-                        if (info.Name.Contains(text, StringComparison.OrdinalIgnoreCase))
-                        {
-                            return info;
-                        }
-
-                        if (info.ControlType is 50030 or 50004 or 50020)
-                        {
-                            // 这些类型的正文可能不在 Name 里，循环结束后统一读一次。
-                            keepForText = true;
-                            textCandidates.Add(element);
-                        }
-                    }
-                    finally
-                    {
-                        if (!keepForText)
-                        {
-                            UiaElementFactoryOps.ReleaseElement(element);
-                        }
-                    }
-                }
-
-                foreach (IUIAutomationElement element in textCandidates)
-                {
-                    try
-                    {
-                        string? value = _core.TextOps.GetText(element, maxChars);
-
-                        if (value is not null &&
-                            value.Contains(text, StringComparison.OrdinalIgnoreCase))
-                        {
-                            return _core.Factory.Describe(element, cached: false);
-                        }
-                    }
-                    catch (COMException exception)
-                    {
-                        // 单个 provider 读文本失败不影响其余候选。
-                        LogSink.Debug($"忽略异常: {exception.Message}");
-                    }
-                    finally
-                    {
-                        UiaElementFactoryOps.ReleaseElement(element);
-                    }
-                }
-
-                return null;
+                return _textSearch.Search(all, text, maxChars);
             }
             catch (COMException)
             {
@@ -246,10 +184,8 @@ internal sealed class UiaFindOps
     {
         lock (_core._sync)
         {
-            var results = new List<UiaElementInfo>();
-            bool truncated = false;
             // prefer=largest/focused 需要完整候选集；其余调用仍按较小的上限快速返回。
-            maxResults = Math.Clamp(maxResults, 1, 2000);
+            int limit = Math.Clamp(maxResults, 1, 2000);
 
             IUIAutomationCondition condition = _core.Conditions.BuildCondition(
                 nameMatch == UiaNameMatch.Exact ? name : null,
@@ -266,7 +202,7 @@ internal sealed class UiaFindOps
 
                 if (root is null)
                 {
-                    return new UiaFindResult(results, truncated);
+                    return new UiaFindResult(new List<UiaElementInfo>(), false);
                 }
 
                 IUIAutomationElementArray? all = root.FindAllBuildCache(
@@ -274,62 +210,12 @@ internal sealed class UiaFindOps
 
                 if (all is null)
                 {
-                    return new UiaFindResult(results, truncated);
+                    return new UiaFindResult(new List<UiaElementInfo>(), false);
                 }
 
                 try
                 {
-                    var usable = new List<UiaElementInfo>();
-                    var hidden = new List<UiaElementInfo>();
-                    int count = Math.Min(all.Length, 5000);
-                    truncated = all.Length > count;
-
-                    for (int i = 0; i < count; i++)
-                    {
-                        IUIAutomationElement? element = all.GetElement(i);
-                        if (element is null)
-                        {
-                            continue;
-                        }
-
-                        try
-                        {
-                            UiaElementInfo? info = _core.Factory.Describe(element, cached: true);
-                            if (info is null || !_core.Conditions.MatchesName(info.Name, name, nameMatch))
-                            {
-                                continue;
-                            }
-
-                            if (_core.Factory.IsUsable(info))
-                            {
-                                usable.Add(info);
-                                if (usable.Count >= maxResults)
-                                {
-                                    // 后面还有候选（或已有 hidden）说明结果被截断。
-                                    truncated |= i + 1 < count || hidden.Count > 0;
-                                    break;
-                                }
-                            }
-                            else if (hidden.Count < maxResults)
-                            {
-                                hidden.Add(info);
-                            }
-                        }
-                        finally
-                        {
-                            UiaElementFactoryOps.ReleaseElement(element);
-                        }
-                    }
-
-                    results.AddRange(usable);
-                    results.AddRange(hidden);
-
-                    if (results.Count > maxResults)
-                    {
-                        results = results.Take(maxResults).ToList();
-                    }
-
-                    return new UiaFindResult(results, truncated);
+                    return new UiaFindCollector(_core, name, nameMatch, limit).Collect(all);
                 }
                 finally
                 {
@@ -347,6 +233,4 @@ internal sealed class UiaFindOps
             }
         }
     }
-
-    /// <summary>按 runtime_id 在窗口内精确定位。</summary>
 }

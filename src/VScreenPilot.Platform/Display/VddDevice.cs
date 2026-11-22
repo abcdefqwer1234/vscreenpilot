@@ -86,72 +86,9 @@ public sealed class VddDevice : IDisposable
 
             try
             {
-                var interfaceData = new Win32.SP_DEVICE_INTERFACE_DATA
+                if (TryOpenFromSet(deviceInfoSet, ref adapterGuid, ref error))
                 {
-                    cbSize = Marshal.SizeOf<Win32.SP_DEVICE_INTERFACE_DATA>(),
-                };
-
-                for (uint index = 0;
-                     Win32.SetupDiEnumDeviceInterfaces(deviceInfoSet, IntPtr.Zero,
-                         ref adapterGuid, index, ref interfaceData);
-                     index++)
-                {
-                    if (!Win32.SetupDiGetDeviceInterfaceDetailW(
-                            deviceInfoSet, ref interfaceData, IntPtr.Zero, 0,
-                            out uint requiredSize, IntPtr.Zero))
-                    {
-                        // 首次调用按约定返回 false + ERROR_INSUFFICIENT_BUFFER，
-                        // requiredSize 有效时继续。
-                        error = Marshal.GetLastWin32Error();
-                        if (requiredSize == 0)
-                        {
-                            continue;
-                        }
-                    }
-
-                    IntPtr detail = Marshal.AllocHGlobal((int)requiredSize);
-                    try
-                    {
-                        // x64 固定为 8；DevicePath 仍从偏移 4 开始。
-                        Marshal.WriteInt32(detail, IntPtr.Size == 8 ? 8 : 6);
-                        if (!Win32.SetupDiGetDeviceInterfaceDetailW(
-                                deviceInfoSet, ref interfaceData, detail, requiredSize,
-                                out _, IntPtr.Zero))
-                        {
-                            error = Marshal.GetLastWin32Error();
-                            continue;
-                        }
-
-                        string? path = Marshal.PtrToStringUni(IntPtr.Add(detail, 4));
-                        if (string.IsNullOrWhiteSpace(path))
-                        {
-                            continue;
-                        }
-
-                        IntPtr handle = Win32.CreateFileW(
-                            path,
-                            Win32.GenericRead | Win32.GenericWrite,
-                            Win32.FileShareRead | Win32.FileShareWrite,
-                            IntPtr.Zero,
-                            Win32.OpenExisting,
-                            Win32.FileAttributeNormal | Win32.FileFlagOverlapped |
-                            Win32.FileFlagNoBuffering | Win32.FileFlagWriteThrough,
-                            IntPtr.Zero);
-
-                        if (handle != IntPtr.Zero && handle != Win32.InvalidHandleValue)
-                        {
-                            _handle = handle;
-                            Interlocked.Exchange(ref _consecutiveUpdateFailures, 0);
-                            error = 0;
-                            return true;
-                        }
-
-                        error = Marshal.GetLastWin32Error();
-                    }
-                    finally
-                    {
-                        Marshal.FreeHGlobal(detail);
-                    }
+                    return true;
                 }
             }
             finally
@@ -166,6 +103,90 @@ public sealed class VddDevice : IDisposable
 
             return false;
         }
+    }
+
+    private bool TryOpenFromSet(IntPtr deviceInfoSet, ref Guid adapterGuid, ref int error)
+    {
+        var interfaceData = new Win32.SP_DEVICE_INTERFACE_DATA
+        {
+            cbSize = Marshal.SizeOf<Win32.SP_DEVICE_INTERFACE_DATA>(),
+        };
+
+        for (uint index = 0;
+             Win32.SetupDiEnumDeviceInterfaces(deviceInfoSet, IntPtr.Zero,
+                 ref adapterGuid, index, ref interfaceData);
+             index++)
+        {
+            if (TryOpenInterface(deviceInfoSet, ref interfaceData, ref error))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryOpenInterface(
+        IntPtr deviceInfoSet, ref Win32.SP_DEVICE_INTERFACE_DATA interfaceData, ref int error)
+    {
+        if (!Win32.SetupDiGetDeviceInterfaceDetailW(
+                deviceInfoSet, ref interfaceData, IntPtr.Zero, 0,
+                out uint requiredSize, IntPtr.Zero))
+        {
+            // 首次调用按约定返回 false + ERROR_INSUFFICIENT_BUFFER，
+            // requiredSize 有效时继续。
+            error = Marshal.GetLastWin32Error();
+            if (requiredSize == 0)
+            {
+                return false;
+            }
+        }
+
+        IntPtr detail = Marshal.AllocHGlobal((int)requiredSize);
+        try
+        {
+            // x64 固定为 8；DevicePath 仍从偏移 4 开始。
+            Marshal.WriteInt32(detail, IntPtr.Size == 8 ? 8 : 6);
+
+            if (!Win32.SetupDiGetDeviceInterfaceDetailW(
+                    deviceInfoSet, ref interfaceData, detail, requiredSize,
+                    out _, IntPtr.Zero))
+            {
+                error = Marshal.GetLastWin32Error();
+                return false;
+            }
+
+            string? path = Marshal.PtrToStringUni(IntPtr.Add(detail, 4));
+            return !string.IsNullOrWhiteSpace(path) && TryOpenPath(path, ref error);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(detail);
+        }
+    }
+
+    private bool TryOpenPath(string path, ref int error)
+    {
+        IntPtr handle = Win32.CreateFileW(
+            path,
+            Win32.GenericRead | Win32.GenericWrite,
+            Win32.FileShareRead | Win32.FileShareWrite,
+            IntPtr.Zero,
+            Win32.OpenExisting,
+            Win32.FileAttributeNormal | Win32.FileFlagOverlapped |
+            Win32.FileFlagNoBuffering | Win32.FileFlagWriteThrough,
+            IntPtr.Zero);
+
+        if (handle == IntPtr.Zero || handle == Win32.InvalidHandleValue)
+        {
+            error = Marshal.GetLastWin32Error();
+            return false;
+        }
+
+        _handle = handle;
+        Interlocked.Exchange(ref _consecutiveUpdateFailures, 0);
+        error = 0;
+        return true;
     }
 
     public static VddDeviceStatus QueryStatus()

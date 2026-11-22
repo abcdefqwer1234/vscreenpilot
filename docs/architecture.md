@@ -123,19 +123,19 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 <!-- arch-metrics:begin -->
 | 指标 | 实测 | 硬上限 |
 |---|---:|---:|
-| 源文件 / 行数 | 220 / 33710 | - |
+| 源文件 / 行数 | 225 / 34135 | - |
 | 最大文件 | 442 | ≤450 |
 | 类型 >400 | 0 | 0 |
 | 最大类型跨度 | 399 | ≤400 |
 | partial 类型 | 0 | 0 |
-| 方法 >80 行 | 41（最大 113） | 0 / ≤80 |
-| 方法 >12 判断点 | 43（最大 27） | 0 / ≤12 |
+| 方法 >80 行 | 28（最大 106） | 0 / ≤80 |
+| 方法 >12 判断点 | 38（最大 23） | 0 / ≤12 |
 | 方法 >6 参数 | 52（最大 11） | 0 / ≤6 |
 | I*Host | 0 / 0 成员 | 0 |
 | SessionManager | 256 行 / 0 public | ≤350 / ≤12 |
 | Program | 9 行 / Main 1 | ≤200 / ≤80 |
 | 测试方法 | 180 | ≥230 |
-| 无日志 catch | 66 | ≤66 |
+| 无日志 catch | 67 | ≤66 |
 | SPLIT 命名空间 | 0 | 0 |
 | public 类型 | Abstractions=55, Automation=0, Platform=6, Server=9 | 不增加 |
 <!-- arch-metrics:end -->

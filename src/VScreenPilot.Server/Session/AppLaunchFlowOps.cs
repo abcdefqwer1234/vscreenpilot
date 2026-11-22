@@ -118,112 +118,140 @@ internal sealed class AppLaunchFlowOps
 
     internal void EnsureDocumentReady(LaunchState s)
     {
-        bool word = s.ExeName.Equals("winword", StringComparison.OrdinalIgnoreCase);
-        bool powerpoint = s.ExeName.Equals("powerpnt", StringComparison.OrdinalIgnoreCase);
-        bool excel = s.ExeName.Equals("excel", StringComparison.OrdinalIgnoreCase);
-
-        if (word)
+        if (s.ExeName.Equals("winword", StringComparison.OrdinalIgnoreCase))
         {
-            s.DocumentReady = _core._apps.Uia.FindElement(s.Window!.Hwnd, null, "Document", null, null) is not null;
-            s.DocumentReason = s.DocumentReady == true ? "document_element" : "no_document_element";
+            EnsureWordDocument(s);
+            return;
+        }
 
-            // 仅对本会话新启动的专用 Word 自动新建文档；复用用户 Word 时不动其文档状态。
-            if (s.DocumentReady != true && s.EnsureDocument && s.Started && s.CloseOnRelease)
+        if (s.ExeName.Equals("powerpnt", StringComparison.OrdinalIgnoreCase))
+        {
+            EnsurePowerPointDocument(s);
+            return;
+        }
+
+        if (s.ExeName.Equals("excel", StringComparison.OrdinalIgnoreCase))
+        {
+            EnsureExcelDocument(s);
+            return;
+        }
+
+        // 没有按应用建模时不要猜：返回 null，让调用方自己决定是否 snapshot。
+        s.DocumentReady = null;
+        s.DocumentReason = "not_modeled";
+    }
+
+    private static bool ShouldAutoCreateDocument(LaunchState s) =>
+        s.EnsureDocument && s.Started && s.CloseOnRelease;
+
+    private void EnsureWordDocument(LaunchState s)
+    {
+        s.DocumentReady = _core._apps.Uia.FindElement(s.Window!.Hwnd, null, "Document", null, null) is not null;
+        s.DocumentReason = s.DocumentReady == true ? "document_element" : "no_document_element";
+
+        // 仅对本会话新启动的专用 Word 自动新建文档；复用用户 Word 时不动其文档状态。
+        if (s.DocumentReady != true && ShouldAutoCreateDocument(s))
+        {
+            TryCreateWordDocument(s);
+        }
+
+        if (s.DocumentReady != true)
+        {
+            s.Warnings.Add("Word 当前没有可编辑文档；可传 ensure_document=true 或手动 Ctrl+N");
+        }
+    }
+
+    private void TryCreateWordDocument(LaunchState s)
+    {
+        _core._focus.PauseFocusGuard();
+
+        try
+        {
+            if (s.Tracked is not null && _core._focus.EnsureForeground(s.Tracked))
             {
-                _core._focus.PauseFocusGuard();
-
-                try
-                {
-                    if (s.Tracked is not null && _core._focus.EnsureForeground(s.Tracked))
-                    {
-                        InputInjector.PressKeys("Ctrl+N");
-                        s.DocumentReady = _core.DocumentOps.WaitForWordDocument(s.Window!.Hwnd, 6000);
-                        s.DocumentReason = s.DocumentReady == true ? "created_by_ctrl_n" : "ctrl_n_failed";
-                    }
-                }
-                finally
-                {
-                    _core._focus.RestoreForeground(s.PreviousForeground);
-                    _core._focus.ResumeFocusGuard();
-                }
+                InputInjector.PressKeys("Ctrl+N");
+                s.DocumentReady = _core.DocumentOps.WaitForWordDocument(s.Window!.Hwnd, 6000);
+                s.DocumentReason = s.DocumentReady == true ? "created_by_ctrl_n" : "ctrl_n_failed";
             }
+        }
+        finally
+        {
+            _core._focus.RestoreForeground(s.PreviousForeground);
+            _core._focus.ResumeFocusGuard();
+        }
+    }
+
+    private void EnsurePowerPointDocument(LaunchState s)
+    {
+        string currentTitle = WindowManager.GetTitle(s.Window!.Hwnd);
+        s.DocumentReady = AppDocumentOps.LooksLikeDocumentWindow(currentTitle, "PowerPoint");
+        s.DocumentReason = s.DocumentReady == true ? "document_title" : "start_screen_or_no_document";
+
+        if (s.DocumentReady != true && ShouldAutoCreateDocument(s) && s.Tracked is not null)
+        {
+            TryCreatePowerPointDocument(s);
 
             if (s.DocumentReady != true)
             {
-                s.Warnings.Add("Word 当前没有可编辑文档；可传 ensure_document=true 或手动 Ctrl+N");
+                s.Warnings.Add("PowerPoint 停在开始屏幕；请输入文件名/点“空白演示文稿”，或手动 Ctrl+N");
             }
         }
-        else if (powerpoint)
-        {
-            string currentTitle = WindowManager.GetTitle(s.Window!.Hwnd);
-            s.DocumentReady = AppDocumentOps.LooksLikeDocumentWindow(currentTitle, "PowerPoint");
-            s.DocumentReason = s.DocumentReady == true ? "document_title" : "start_screen_or_no_document";
+    }
 
-            if (s.DocumentReady != true && s.EnsureDocument && s.Started && s.CloseOnRelease && s.Tracked is not null)
+    private void TryCreatePowerPointDocument(LaunchState s)
+    {
+        _core._focus.PauseFocusGuard();
+
+        try
+        {
+            if (!_core._focus.EnsureForeground(s.Tracked!))
             {
-                _core._focus.PauseFocusGuard();
-
-                try
-                {
-                    if (_core._focus.EnsureForeground(s.Tracked))
-                    {
-                        InputInjector.PressKeys("Ctrl+N");
-                        s.DocumentReady = _core.DocumentOps.WaitForDocumentTitle(s.Window!.Hwnd, "PowerPoint", 5000);
-
-                        if (s.DocumentReady != true)
-                        {
-                            // 开始屏幕的“空白演示文稿”磁贴是普通按钮；按名字找，别猜坐标。
-                            UiaElementInfo? tile = _core.DocumentOps.FindBlankPresentationTile(s.Window!.Hwnd);
-
-                            if (tile is not null && tile.Width > 0 && tile.Height > 0)
-                            {
-                                InputInjector.Click(
-                                    tile.Left + tile.Width / 2, tile.Top + tile.Height / 2,
-                                    "left", clicks: 1);
-                                s.DocumentReady = _core.DocumentOps.WaitForDocumentTitle(s.Window!.Hwnd, "PowerPoint", 8000);
-                                s.DocumentReason = s.DocumentReady == true ? "blank_tile" : "blank_tile_failed";
-                            }
-                            else
-                            {
-                                // 部分 Office 版本的开始屏幕不把磁贴暴露给 UIA。
-                                // 按 1280×720 的实测比例估算“空白演示文稿”磁贴中心。
-                                int estimateX = s.Display.X + (int)Math.Round(s.Display.Width * 0.15625);
-                                int estimateY = s.Display.Y + (int)Math.Round(s.Display.Height * 0.3125);
-                                InputInjector.Click(estimateX, estimateY, "left", clicks: 1);
-                                s.DocumentReady = _core.DocumentOps.WaitForDocumentTitle(s.Window!.Hwnd, "PowerPoint", 8000);
-                                s.DocumentReason = s.DocumentReady == true
-                                    ? "blank_tile_estimated"
-                                    : "blank_tile_failed";
-                            }
-                        }
-                        else
-                        {
-                            s.DocumentReason = "created_by_ctrl_n";
-                        }
-                    }
-                }
-                finally
-                {
-                    _core._focus.RestoreForeground(s.PreviousForeground);
-                    _core._focus.ResumeFocusGuard();
-                }
-
-                if (s.DocumentReady != true)
-                {
-                    s.Warnings.Add("PowerPoint 停在开始屏幕；请输入文件名/点“空白演示文稿”，或手动 Ctrl+N");
-                }
+                return;
             }
+
+            InputInjector.PressKeys("Ctrl+N");
+            s.DocumentReady = _core.DocumentOps.WaitForDocumentTitle(s.Window!.Hwnd, "PowerPoint", 5000);
+
+            if (s.DocumentReady == true)
+            {
+                s.DocumentReason = "created_by_ctrl_n";
+                return;
+            }
+
+            ClickBlankPresentationTile(s);
         }
-        else if (excel)
+        finally
         {
-            s.DocumentReady = AppDocumentOps.LooksLikeDocumentWindow(WindowManager.GetTitle(s.Window!.Hwnd), "Excel");
-            s.DocumentReason = s.DocumentReady == true ? "document_title" : "no_workbook";
+            _core._focus.RestoreForeground(s.PreviousForeground);
+            _core._focus.ResumeFocusGuard();
         }
-        else
+    }
+
+    private void ClickBlankPresentationTile(LaunchState s)
+    {
+        // 开始屏幕的“空白演示文稿”磁贴是普通按钮；按名字找，别猜坐标。
+        UiaElementInfo? tile = _core.DocumentOps.FindBlankPresentationTile(s.Window!.Hwnd);
+
+        if (tile is not null && tile.Width > 0 && tile.Height > 0)
         {
-            // 没有按应用建模时不要猜：返回 null，让调用方自己决定是否 snapshot。
-            s.DocumentReady = null;
-            s.DocumentReason = "not_modeled";
+            InputInjector.Click(tile.Left + tile.Width / 2, tile.Top + tile.Height / 2, "left", clicks: 1);
+            s.DocumentReady = _core.DocumentOps.WaitForDocumentTitle(s.Window!.Hwnd, "PowerPoint", 8000);
+            s.DocumentReason = s.DocumentReady == true ? "blank_tile" : "blank_tile_failed";
+            return;
         }
+
+        // 部分 Office 版本的开始屏幕不把磁贴暴露给 UIA。
+        // 按 1280×720 的实测比例估算“空白演示文稿”磁贴中心。
+        int estimateX = s.Display.X + (int)Math.Round(s.Display.Width * 0.15625);
+        int estimateY = s.Display.Y + (int)Math.Round(s.Display.Height * 0.3125);
+        InputInjector.Click(estimateX, estimateY, "left", clicks: 1);
+        s.DocumentReady = _core.DocumentOps.WaitForDocumentTitle(s.Window!.Hwnd, "PowerPoint", 8000);
+        s.DocumentReason = s.DocumentReady == true ? "blank_tile_estimated" : "blank_tile_failed";
+    }
+
+    private void EnsureExcelDocument(LaunchState s)
+    {
+        s.DocumentReady = AppDocumentOps.LooksLikeDocumentWindow(WindowManager.GetTitle(s.Window!.Hwnd), "Excel");
+        s.DocumentReason = s.DocumentReady == true ? "document_title" : "no_workbook";
     }
 }

@@ -166,9 +166,7 @@ internal sealed class InputGestureOps
         JsonElement arguments, DisplayInfo display, bool observe,
         bool useInput, Stopwatch stopwatch, IntPtr previousForeground)
     {
-        (int? x, int? y) = _host.GetPoint(arguments, "from") is { } point
-            ? (point.X, point.Y)
-            : ((int?)null, (int?)null);
+        (int x, int y) = ResolveScrollPoint(arguments);
 
         int dx = GetInt(arguments, "dx", 0);
         int dy = GetInt(arguments, "dy", 0);
@@ -178,31 +176,57 @@ internal sealed class InputGestureOps
             throw new ToolException("E_INVALID_ARG", "scroll 需要 dx 或 dy");
         }
 
-        string? detail = null;
+        _host._element.RequirePointInTrackedApp(display, x, y, "scroll");
 
-        if (x is null || y is null)
+        ObserveSignature? scrollBefore = observe ? CaptureScrollArea(display, x, y) : null;
+        string? detail = InjectScroll(useInput, x, y, dx, dy);
+
+        double injectMs = stopwatch.Elapsed.TotalMilliseconds;
+        Thread.Sleep(50);
+
+        if (WindowManager.GetForegroundWindow() != previousForeground)
         {
-            TrackedApp app = _host.RequireTrackedApp();
-            WindowInfo? info = WindowManager.FromHandle(app.Hwnd);
-            if (info is null)
-            {
-                throw new ToolException("E_NO_TARGET", "目标窗口已失效");
-            }
-
-            x = info.Rect.Left + info.Width / 2;
-            y = info.Rect.Top + info.Height / 2;
+            _host.RestoreFocusAfterClick(previousForeground);
         }
 
-        _host._element.RequirePointInTrackedApp(display, x.Value, y.Value, "scroll");
+        GestureView scrollResult = BuildScrollView(useInput, dx, dy, detail, injectMs, stopwatch);
 
-        ObserveSignature? scrollBefore = observe
-            ? _host._display.CaptureSignature(display, x.Value - 120, y.Value - 120, 240, 240)
-            : null;
+        ObserveSignature? scrollAfter = scrollBefore is null ? null : CaptureScrollArea(display, x, y);
+        ObservedView? scrollObserved = _host._uia.BuildObserved(
+            scrollBefore, scrollAfter, stopwatch.Elapsed.TotalMilliseconds);
 
+        if (scrollObserved is not null)
+        {
+            scrollResult = scrollResult with { Observed = scrollObserved, Verified = scrollObserved.Changed };
+        }
+
+        return scrollResult;
+    }
+
+    private (int X, int Y) ResolveScrollPoint(JsonElement arguments)
+    {
+        if (_host.GetPoint(arguments, "from") is { } point)
+        {
+            return (point.X, point.Y);
+        }
+
+        TrackedApp app = _host.RequireTrackedApp();
+        WindowInfo info = WindowManager.FromHandle(app.Hwnd)
+            ?? throw new ToolException("E_NO_TARGET", "目标窗口已失效");
+
+        return (info.Rect.Left + info.Width / 2, info.Rect.Top + info.Height / 2);
+    }
+
+    private ObserveSignature? CaptureScrollArea(DisplayInfo display, int x, int y) =>
+        _host._display.CaptureSignature(display, x - 120, y - 120, 240, 240);
+
+    private string? InjectScroll(bool useInput, int x, int y, int dx, int dy)
+    {
         if (useInput)
         {
             _host._focus.PauseCursor();
             _host._focus.PauseFocusGuard(0);
+
             try
             {
                 InputInjector.Scroll(x, y, dx, dy);
@@ -212,26 +236,25 @@ internal sealed class InputGestureOps
                 _host._focus.ResumeCursor();
                 _host._focus.ResumeFocusGuard();
             }
-        }
-        else
-        {
-            if (!MessageInput.Scroll(x.Value, y.Value, dx, dy, out detail))
-            {
-                throw new ToolException(
-                    "E_INPUT_UNSUPPORTED",
-                    "窗口消息滚轮失败；如接受光标跳变，请显式使用 mode=\"input\"",
-                    new JsonObject { ["detail"] = detail });
-            }
+
+            return null;
         }
 
-        double injectMs = stopwatch.Elapsed.TotalMilliseconds;
-        Thread.Sleep(50);
-        if (WindowManager.GetForegroundWindow() != previousForeground)
+        if (MessageInput.Scroll(x, y, dx, dy, out string? detail))
         {
-            _host.RestoreFocusAfterClick(previousForeground);
+            return detail;
         }
 
-        var scrollResult = new GestureView(
+        throw new ToolException(
+            "E_INPUT_UNSUPPORTED",
+            "窗口消息滚轮失败；如接受光标跳变，请显式使用 mode=\"input\"",
+            new JsonObject { ["detail"] = detail });
+    }
+
+    private static GestureView BuildScrollView(
+        bool useInput, int dx, int dy, string? detail, double injectMs, Stopwatch stopwatch)
+    {
+        var view = new GestureView(
             "scroll",
             null,
             null,
@@ -246,27 +269,15 @@ internal sealed class InputGestureOps
             null,
             null);
 
-        if (!useInput)
+        if (useInput)
         {
-            scrollResult = scrollResult with
-            {
-                Hint = "窗口消息滚轮可能被未聚焦的应用忽略，请用 assert_region/wait_for 验证",
-            };
+            return view;
         }
 
-        ObserveSignature? scrollAfter = scrollBefore is null
-            ? null
-            : _host._display.CaptureSignature(display, x.Value - 120, y.Value - 120, 240, 240);
-        ObservedView? scrollObserved = _host._uia.BuildObserved(
-            scrollBefore, scrollAfter, stopwatch.Elapsed.TotalMilliseconds);
-
-        if (scrollObserved is not null)
+        return view with
         {
-            scrollResult = scrollResult with { Observed = scrollObserved, Verified = scrollObserved.Changed };
-
-        }
-
-        return scrollResult;
+            Hint = "窗口消息滚轮可能被未聚焦的应用忽略，请用 assert_region/wait_for 验证",
+        };
     }
 
     internal GestureView GestureMove(

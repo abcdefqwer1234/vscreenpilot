@@ -51,86 +51,108 @@ internal sealed class ControlCommands
                          .Where(item => pid is null || item.Pid == pid)
                          .Take(32))
             {
-                string title = app.Title;
+                apps.Add((JsonNode)BuildAppItem(app, maxDepth, interactive, maxNodes, ref totalNodes, ref legacy));
 
-                try
+                if (totalNodes < 2000)
                 {
-                    if (app.Hwnd != IntPtr.Zero)
-                    {
-                        title = WindowManager.GetTitle(app.Hwnd);
-                    }
-                }
-                catch (Exception exception)
-                {
-                    // 窗口已失效时保留登记时的标题。
-                    LogSink.Debug($"忽略异常: {exception.Message}");
+                    continue;
                 }
 
-                var item = new JsonObject
-                {
-                    ["pid"] = app.Pid,
-                    ["hwnd"] = app.Hwnd.ToInt64(),
-                    ["title"] = title,
-                    ["alive"] = TrackedAppTracker.IsLive(app),
-                    ["owner_client_id"] = app.OwnerClientId,
-                };
-
-                try
-                {
-                    JsonObject data = VspJson.ToNode(_host._facade.Snapshot(new SnapshotRequest(
-                        app.Pid,
-                        maxDepth,
-                        interactive,
-                        maxNodes,
-                        IncludeValues: true,
-                        IncludeScreenshot: false,
-                        Scale: 0.5)).Data).AsObject();
-                    item["snapshot_id"] = data["snapshot_id"]?.DeepClone();
-                    item["tree"] = data["tree"]?.DeepClone();
-                    item["nodes"] = data["nodes"]?.DeepClone();
-                    item["truncated"] = data["truncated"]?.DeepClone();
-                    legacy = data;
-                    totalNodes += data["nodes"]?.GetValue<int>() ?? 0;
-                }
-                catch (ToolException exception)
-                {
-                    item["error"] = new JsonObject
-                    {
-                        ["code"] = exception.Code,
-                        ["message"] = exception.Message,
-                    };
-                }
-
-                apps.Add((JsonNode)item);
-
-                if (totalNodes >= 2000)
-                {
-                    truncated = true;
-                    break;
-                }
+                truncated = true;
+                break;
             }
 
             result["count"] = apps.Count;
             result["truncated"] = truncated;
-
-            // 兼容旧的单 app 顶层字段；新客户端应优先读 apps[]。
-            if (legacy is not null)
-            {
-                foreach ((string key, JsonNode? value) in legacy)
-                {
-                    if (!result.ContainsKey(key))
-                    {
-                        result[key] = value?.DeepClone();
-                    }
-                }
-            }
-
+            MergeLegacy(result, legacy);
             return result;
         }
         finally
         {
             // ctl 是一次性管理员视图，输出后立即丢弃 refs。
             _host._control.DropClientRefs("ctl");
+        }
+    }
+
+    private JsonObject BuildAppItem(
+        TrackedApp app,
+        int maxDepth,
+        bool interactive,
+        int maxNodes,
+        ref int totalNodes,
+        ref JsonObject? legacy)
+    {
+        var item = new JsonObject
+        {
+            ["pid"] = app.Pid,
+            ["hwnd"] = app.Hwnd.ToInt64(),
+            ["title"] = ReadTitle(app),
+            ["alive"] = TrackedAppTracker.IsLive(app),
+            ["owner_client_id"] = app.OwnerClientId,
+        };
+
+        try
+        {
+            JsonObject data = VspJson.ToNode(_host._facade.Snapshot(new SnapshotRequest(
+                app.Pid,
+                maxDepth,
+                interactive,
+                maxNodes,
+                IncludeValues: true,
+                IncludeScreenshot: false,
+                Scale: 0.5)).Data).AsObject();
+            item["snapshot_id"] = data["snapshot_id"]?.DeepClone();
+            item["tree"] = data["tree"]?.DeepClone();
+            item["nodes"] = data["nodes"]?.DeepClone();
+            item["truncated"] = data["truncated"]?.DeepClone();
+            legacy = data;
+            totalNodes += data["nodes"]?.GetValue<int>() ?? 0;
+        }
+        catch (ToolException exception)
+        {
+            item["error"] = new JsonObject
+            {
+                ["code"] = exception.Code,
+                ["message"] = exception.Message,
+            };
+        }
+
+        return item;
+    }
+
+    private static string ReadTitle(TrackedApp app)
+    {
+        if (app.Hwnd == IntPtr.Zero)
+        {
+            return app.Title;
+        }
+
+        try
+        {
+            return WindowManager.GetTitle(app.Hwnd);
+        }
+        catch (Exception exception)
+        {
+            // 窗口已失效时保留登记时的标题。
+            LogSink.Debug($"忽略异常: {exception.Message}");
+            return app.Title;
+        }
+    }
+
+    private static void MergeLegacy(JsonObject result, JsonObject? legacy)
+    {
+        if (legacy is null)
+        {
+            return;
+        }
+
+        // 兼容旧的单 app 顶层字段；新客户端应优先读 apps[]。
+        foreach ((string key, JsonNode? value) in legacy)
+        {
+            if (!result.ContainsKey(key))
+            {
+                result[key] = value?.DeepClone();
+            }
         }
     }
 
