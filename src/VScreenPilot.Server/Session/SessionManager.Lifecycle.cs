@@ -16,7 +16,7 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager : IDisposable, ISessionStateHost, IEnvironmentReleaserHost, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, IFocusHost, ITrackedAppHost
+internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, IFocusHost, ITrackedAppHost
 {
     /// <summary>
     /// 在释放/预热等低负载节点裁剪工作集。不是定时看门狗，只按事件触发。
@@ -356,16 +356,6 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
     MetricsRegistry IEnvironmentHost.Metrics => Metrics;
 
     void IScreenTextHost.RecordOcr() => Metrics.RecordOcr();
-
-    object ISessionStateHost.Gate => _gate;
-
-    ISessionStateStore ISessionStateHost.Store => _stateStore;
-
-    DisplayStateStore ISessionStateHost.DisplayState => _display.State;
-
-    TrackedAppRegistry ISessionStateHost.Apps => _apps;
-
-    LogRing ISessionStateHost.Log => _log;
 
     object IEnvironmentReleaserHost.Gate => _gate;
 

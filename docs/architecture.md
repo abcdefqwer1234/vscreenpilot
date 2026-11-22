@@ -123,7 +123,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 <!-- arch-metrics:begin -->
 | 指标 | 实测 | 硬上限 |
 |---|---:|---:|
-| 源文件 / 行数 | 190 / 32527 | - |
+| 源文件 / 行数 | 190 / 32515 | - |
 | 最大文件 | 599 | ≤450 |
 | 类型 >400 | 16 | 0 |
 | 最大类型跨度 | 1881 | ≤400 |
@@ -131,8 +131,8 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 | 方法 >80 行 | 49（最大 120） | 0 / ≤80 |
 | 方法 >12 判断点 | 46（最大 34） | 0 / ≤12 |
 | 方法 >6 参数 | 54（最大 12） | 0 / ≤6 |
-| I*Host | 16 / 181 成员 | 0 |
-| SessionManager | 1596 行 / 41 public | ≤350 / ≤12 |
+| I*Host | 15 / 176 成员 | 0 |
+| SessionManager | 1586 行 / 41 public | ≤350 / ≤12 |
 | Program | 9 行 / Main 1 | ≤200 / ≤80 |
 | 测试方法 | 180 | ≥230 |
 | 无日志 catch | 66 | ≤66 |

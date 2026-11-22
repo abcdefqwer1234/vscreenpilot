@@ -19,7 +19,7 @@ public sealed class SessionStateKeeperTests
         host.DisplayState.VirtualDisplay = new DisplayInfo(
             @"\\.\DISPLAY9", "Parsec Virtual Display Adapter", "VDD", Attached: true,
             Primary: false, X: 2720, Y: 0, Width: 1280, Height: 720, Frequency: 60, Dpi: 96);
-        var keeper = new SessionStateKeeper(host);
+        var keeper = new SessionStateKeeper(host.ToContext());
 
         keeper.Save();
 
@@ -49,7 +49,7 @@ public sealed class SessionStateKeeperTests
             },
         };
         var host = new FakeHost(store);
-        var keeper = new SessionStateKeeper(host);
+        var keeper = new SessionStateKeeper(host.ToContext());
 
         keeper.Recover();
 
@@ -72,7 +72,7 @@ public sealed class SessionStateKeeperTests
             },
         };
         var host = new FakeHost(store);
-        var keeper = new SessionStateKeeper(host);
+        var keeper = new SessionStateKeeper(host.ToContext());
 
         keeper.Recover();
 
@@ -129,7 +129,7 @@ public sealed class SessionStateKeeperTests
         }
     }
 
-    private sealed class FakeHost : ISessionStateHost
+    private sealed class FakeHost
     {
         public FakeHost(ISessionStateStore store)
         {
@@ -146,5 +146,7 @@ public sealed class SessionStateKeeperTests
         public TrackedAppRegistry Apps { get; }
 
         public LogRing Log { get; } = new(capacity: 10, fileEnabled: false);
+
+        public SessionStateContext ToContext() => new(Gate, Store, DisplayState, Apps, Log);
     }
 }

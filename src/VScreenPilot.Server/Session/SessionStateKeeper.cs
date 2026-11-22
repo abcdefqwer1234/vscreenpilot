@@ -8,22 +8,20 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-/// <summary>会话状态持久化所需的最小宿主接口。</summary>
-internal interface ISessionStateHost
-{
-    object Gate { get; }
-    ISessionStateStore Store { get; }
-    DisplayStateStore DisplayState { get; }
-    TrackedAppRegistry Apps { get; }
-    LogRing Log { get; }
-}
+/// <summary>会话状态持久化所需的最小上下文；持有实时共享对象，不复制状态。</summary>
+internal sealed record SessionStateContext(
+    object Gate,
+    ISessionStateStore Store,
+    DisplayStateStore DisplayState,
+    TrackedAppRegistry Apps,
+    LogRing Log);
 
 /// <summary>崩溃恢复与窗口位置状态的持久化。</summary>
 internal sealed class SessionStateKeeper
 {
-    private readonly ISessionStateHost _host;
+    private readonly SessionStateContext _host;
 
-    public SessionStateKeeper(ISessionStateHost host) => _host = host;
+    public SessionStateKeeper(SessionStateContext host) => _host = host;
 
     public void Save()
     {
