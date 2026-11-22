@@ -165,15 +165,4 @@ internal sealed partial class McpTransport
             (string.Equals(holder, clientId, StringComparison.Ordinal) && activeCalls <= 1);
         return ToolResponse.Text(data);
     }
-
-    private ToolResponse RunScript(JsonElement arguments)
-    {
-        string code = OptionalString(arguments, "code")
-            ?? throw new ToolException("E_INVALID_ARG", "run_script 需要 code");
-
-        int timeoutMs = OptionalInt(arguments, "timeout_ms", 30000);
-        return ToolResponseWriter.FromView(_session.RunScript(code, timeoutMs));
-    }
-
-
 }

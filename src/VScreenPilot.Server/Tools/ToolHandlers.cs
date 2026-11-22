@@ -242,36 +242,4 @@ internal sealed partial class McpTransport
 
         return response;
     }
-
-    private ToolResponse ReadScreenText(JsonElement arguments)
-    {
-        int? x = null, y = null, width = null, height = null;
-
-        if (arguments.ValueKind == JsonValueKind.Object &&
-            arguments.TryGetProperty("region", out JsonElement region))
-        {
-            if (region.ValueKind != JsonValueKind.Object)
-            {
-                throw new ToolException("E_INVALID_ARG", "region 必须是对象");
-            }
-
-            x = OptionalNullableInt(region, "x");
-            y = OptionalNullableInt(region, "y");
-            width = OptionalNullableInt(region, "width");
-            height = OptionalNullableInt(region, "height");
-
-            if (x is null || y is null || width is null || height is null)
-            {
-                throw new ToolException(
-                    "E_INVALID_ARG", "region 需要 x/y/width/height",
-                    hint: "省略 region 表示整个虚拟屏", stage: "validate");
-            }
-        }
-
-        return ToolResponseWriter.FromView(_session.ReadScreenText(
-            x, y, width, height,
-            OptionalString(arguments, "query"),
-            OptionalInt(arguments, "max_lines", 50)));
-    }
-
 }

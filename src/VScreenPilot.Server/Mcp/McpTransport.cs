@@ -50,6 +50,7 @@ internal sealed partial class McpTransport
     private readonly LogTool _logTool;
     private readonly VisualTools _visualTools;
     private readonly ElementTools _elementTools;
+    private readonly SystemTools _systemTools;
 
     // 令牌桶限流：daemon 内所有连接共享，避免 N 个客户端把限制放大 N 倍。
     private readonly object _rateGate = new();
@@ -92,6 +93,7 @@ internal sealed partial class McpTransport
         _logTool = new LogTool(log, () => _client?.Id ?? "c0");
         _visualTools = new VisualTools(session!);
         _elementTools = new ElementTools(session!);
+        _systemTools = new SystemTools(session!);
         _tools = BuildTools();
         _trace = sharedTrace ?? (trace ? new TraceLog() : null);
         _ownsTrace = sharedTrace is null && _trace is not null;

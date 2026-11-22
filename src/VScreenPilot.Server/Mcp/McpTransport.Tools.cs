@@ -36,7 +36,7 @@ internal sealed partial class McpTransport
             ["invoke_element"] = _elementTools.InvokeElement,
             ["set_element_value"] = _elementTools.SetElementValue,
             ["get_element_text"] = _elementTools.GetElementText,
-            ["read_screen_text"] = ReadScreenText,
+            ["read_screen_text"] = _systemTools.ReadScreenText,
             ["click"] = Click,
             ["click_ref"] = ClickRef,
             ["gesture"] = Gesture,
@@ -48,7 +48,7 @@ internal sealed partial class McpTransport
             ["match_visual"] = _visualTools.MatchVisual,
             ["release_environment"] = ReleaseEnvironment,
             ["get_log"] = _logTool.GetLog,
-            ["run_script"] = RunScript,
+            ["run_script"] = _systemTools.RunScript,
         };
 
         return ToolCatalog.Build(handlers);
