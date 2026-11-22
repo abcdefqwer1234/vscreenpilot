@@ -142,27 +142,61 @@ internal sealed partial class SnapshotBuilder : IDisposable
         int redactions = 0;
         text = PrivacyRedactor.RedactEmails(text, ref redactions);
 
+        var context = new SnapshotBuildContext(
+            display, app, hwnd, depth, nodes, result, snapshotId, rootRef, tree, text,
+            started, effectiveInteractiveOnly, emptyRetried);
+        JsonObject data = CreateSnapshotData(context, ref redactions);
+
+        BuildDialogs(app, hwnd, data, ref redactions);
+        BuildWindowsAndForeground(data);
+
+        (byte[]? png, byte[]? previewPng, JsonObject? previewMeta) =
+            BuildScreenshot(data, tree, display, includeScreenshot, annotate, scale);
+
+        ApplyRedactions(data, ref redactions);
+
+        return new SnapshotResult(ToView(data), png, previewPng, previewMeta);
+    }
+
+    private sealed record SnapshotBuildContext(
+        DisplayInfo Display,
+        TrackedApp App,
+        IntPtr Hwnd,
+        int Depth,
+        int Nodes,
+        UiaTreeResult Result,
+        string SnapshotId,
+        string RootRef,
+        JsonObject Tree,
+        string Text,
+        long Started,
+        bool EffectiveInteractiveOnly,
+        bool EmptyRetried);
+
+    private JsonObject CreateSnapshotData(SnapshotBuildContext context, ref int redactions)
+    {
         var data = new JsonObject
         {
-            ["snapshot_id"] = snapshotId,
-            ["root_ref"] = rootRef,
-            ["tree"] = tree,
-            ["text"] = text,
-            ["nodes"] = result.Nodes,
-            ["visited"] = result.Visited,
-            ["pruned"] = result.Pruned,
-            ["truncated"] = result.Truncated,
-            ["interactive_only"] = effectiveInteractiveOnly,
-            ["max_depth"] = depth,
-            ["max_nodes_effective"] = nodes,
+            ["snapshot_id"] = context.SnapshotId,
+            ["root_ref"] = context.RootRef,
+            ["tree"] = context.Tree,
+            ["text"] = context.Text,
+            ["nodes"] = context.Result.Nodes,
+            ["visited"] = context.Result.Visited,
+            ["pruned"] = context.Result.Pruned,
+            ["truncated"] = context.Result.Truncated,
+            ["interactive_only"] = context.EffectiveInteractiveOnly,
+            ["max_depth"] = context.Depth,
+            ["max_nodes_effective"] = context.Nodes,
             ["ref_capacity"] = _state.RefCapacity(),
-            ["elapsed_ms"] = Math.Round((double)(Environment.TickCount64 - started), 1),
+            ["elapsed_ms"] = Math.Round((double)(Environment.TickCount64 - context.Started), 1),
             ["window"] = new JsonObject
             {
-                ["hwnd"] = hwnd.ToInt64(),
-                ["pid"] = app.Pid,
-                ["title"] = PrivacyRedactor.RedactEmails(WindowManager.GetTitle(hwnd), ref redactions),
-                ["exe"] = app.ExePath,
+                ["hwnd"] = context.Hwnd.ToInt64(),
+                ["pid"] = context.App.Pid,
+                ["title"] = PrivacyRedactor.RedactEmails(
+                    WindowManager.GetTitle(context.Hwnd), ref redactions),
+                ["exe"] = context.App.ExePath,
             },
         };
 
@@ -171,37 +205,36 @@ internal sealed partial class SnapshotBuilder : IDisposable
             data["privacy_redactions"] = redactions;
         }
 
-        if (emptyRetried)
+        if (context.EmptyRetried)
         {
             data["empty_retry"] = true;
         }
 
-        if (result.Nodes <= 1)
+        if (context.Result.Nodes <= 1)
         {
-            data["empty_reason"] = result.Reason
-                ?? (result.Visited <= 1
+            data["empty_reason"] = context.Result.Reason
+                ?? (context.Result.Visited <= 1
                     ? "root_only"
-                    : result.Pruned > 0 ? "pruned_all" : "uia_busy");
+                    : context.Result.Pruned > 0 ? "pruned_all" : "uia_busy");
         }
 
-        _state.Metrics.RecordSnapshot(result.Nodes);
+        _state.Metrics.RecordSnapshot(context.Result.Nodes);
 
-        if (maxNodes > Math.Min(1024, _state.RefCapacity()))
+        if (context.Nodes > Math.Min(1024, _state.RefCapacity()))
         {
             data["max_nodes_clamped"] = true;
         }
 
-        if (result.Reason is not null)
+        if (context.Result.Reason is not null)
         {
-            data["truncated_reason"] = result.Reason;
+            data["truncated_reason"] = context.Result.Reason;
         }
 
-        BuildDialogs(app, hwnd, data, ref redactions);
-        BuildWindowsAndForeground(data);
+        return data;
+    }
 
-        (byte[]? png, byte[]? previewPng, JsonObject? previewMeta) =
-            BuildScreenshot(data, tree, display, includeScreenshot, annotate, scale);
-
+    private static void ApplyRedactions(JsonObject data, ref int redactions)
+    {
         if (redactions > 0)
         {
             data["privacy_redactions"] = redactions;
@@ -213,8 +246,6 @@ internal sealed partial class SnapshotBuilder : IDisposable
         {
             data["privacy_redactions"] = redactions;
         }
-
-        return new SnapshotResult(ToView(data), png, previewPng, previewMeta);
     }
 
     private void RequireRoot(UiaTreeResult result)
