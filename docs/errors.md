@@ -1,7 +1,7 @@
 # 错误码目录
 
-> 所有对外错误都包含 `code`、`message`、`retryable`、`stage`、`hint`、`docs`。
-> `docs` 是本文件的完整 HTTPS 锚点（可用 `VSP_DOCS_BASE_URL` 覆盖）。错误码的唯一事实来源是 `src/VScreenPilot.Server/Mcp/ErrorCatalog.cs`，
+> 所有对外错误都包含 `code`、`message`、`details`、`retryable`、`stage`、`hint`、`docs`、`request_id`。
+> `docs` 是本文件的完整 HTTPS 锚点（可用 `VSP_DOCS_BASE_URL` 覆盖）。错误码的唯一事实来源是 `src/VScreenPilot.Abstractions/Errors/ErrorCatalog.cs`，
 > 单元测试会检查每个码都有可操作的 hint/summary/stage。
 
 ## 参数与目标
@@ -59,6 +59,7 @@
 | 错误码 | 含义 | 下一步 |
 | --- | --- | --- |
 | `E_CLIENT_LIMIT` | 共享实例客户端达到 `VSP_CLIENT_LIMIT` | 关闭空闲 MCP 客户端，或提高上限 |
+| `E_CLIENTS_ACTIVE` | `--cli stop` 时仍有活跃 MCP 客户端 | 先关闭客户端，或确认后加 `--force` |
 | `E_INTEGRITY_MISMATCH` | 管道客户端与 daemon 完整性不一致，或完整性查询失败 | 用相同权限启动；仅测试/排障可设 `VSP_ALLOW_INTEGRITY_MISMATCH=1` |
 | `E_HANDSHAKE` | 缺少/非法 VSP/1 握手 | 升级客户端与服务端到同一版本 |
 | `E_VERSION_MISMATCH` | proxy 与 daemon 版本不一致 | 关闭旧实例后重试 |
@@ -94,7 +95,7 @@
 | `E_NEW_INSTANCE_UNSUPPORTED` | 应用不支持强制新实例 | 用 `pid` 接管或复用窗口 |
 | `E_NO_MATCH` | 模板/颜色未命中 | 放宽阈值或换 `region` |
 | `E_ORPHAN_DISPLAY` | 存在无归属虚拟屏 | 人工确认后摘除，或 `--profile` 隔离 |
-| `E_RELEASED` | 会话已释放 | 重启服务端或新建 profile |
+| `E_RELEASED` | daemon 已退出/`Dispose` 后继续调用 | 重新启动 MCP 客户端；`release_environment` 本身不会进入该状态，之后仍可重新 `launch_or_place_app` |
 | `E_SCRIPT` | 脚本执行失败 | 检查 PowerShell 语法/退出码 |
 | `E_TARGET_OFFSCREEN` | 目标窗口不在虚拟屏 | 先 `launch_or_place_app` 归位 |
 | `E_UIA` | UIA provider 调用失败 | 重试或改用 `channel=input` |

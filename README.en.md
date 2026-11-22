@@ -50,10 +50,14 @@ From source:
 
 ```json
 {
-  "mcpServers": {
-    "vscreenpilot": {
-      "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\VScreenPilot\\VScreenPilot.exe",
-      "timeout": { "startup": 120000, "catalog": 60000, "execution": 600000 }
+  "mcp": {
+    "servers": {
+      "vscreenpilot": {
+        "type": "local",
+        "command": ["C:\\Users\\<you>\\AppData\\Local\\Programs\\VScreenPilot\\VScreenPilot.exe"],
+        "codemode": false,
+        "timeout": { "startup": 120000, "catalog": 60000, "execution": 600000 }
+      }
     }
   }
 }
@@ -63,9 +67,12 @@ From source:
 
 ## Documentation
 
+- [Technical manual](技术文档.md)
 - [Architecture](docs/架构说明.md)
 - [Error catalog](docs/errors.md)
-- [Audit reports](docs/audit/第二轮测试报告.md)
+- [Release guide](docs/发布手册.md)
+- [2026-11 changes](docs/2026-11变更.md)
+- [Audit reports (0.1.0 history)](docs/audit/第二轮测试报告.md)
 
 ## Limits
 
@@ -74,7 +81,7 @@ From source:
 - Chromium/Electron/WebView2 may ignore window messages; for click/click_ref/click_text use `channel=input` or `fallback_input=true`, and for gesture use `mode=input`.
 - Elevated windows cannot be automated from a medium-integrity process (UIPI).
 - Canvas apps (PowerPoint, games) expose little UIA text; use OCR/visual tools.
-- Screenshots are written to `%LOCALAPPDATA%\VScreenPilot\artifacts\<profile>\` and kept for 7 days
+- Screenshots are written to `%LOCALAPPDATA%\VScreenPilot\artifacts\<profile>\<client_id>\<timestamp>-<pid>\` and kept for 7 days
   by default (`VSP_ARTIFACT_RETENTION_DAYS`, `0` disables cleanup).
 
 ## Security

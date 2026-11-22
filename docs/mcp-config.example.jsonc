@@ -13,7 +13,7 @@
         "command": [
           "E:\\path\\to\\VScreenPilot\\artifacts\\server\\VScreenPilot.exe"
         ],
-        // 需要 run_script 时取消下面这行注释：
+        // 需要 run_script 时，用下面这行替换上面的 command：
         // "command": ["E:\\path\\to\\VScreenPilot\\artifacts\\server\\VScreenPilot.exe", "--allow-script"],
         "codemode": false,
         "environment": {
