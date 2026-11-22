@@ -1,6 +1,6 @@
 # 架构说明
 
-> 状态：第二轮重构 R2 已完成（R2-7 已落地）；R3 待开始。进度见 `docs/第二轮重构执行报告.md`。
+> 状态：第二轮 R2 + 文件/方法级 R3 已完成；第三轮 T3 进行中。进度见 `docs/第二轮重构执行报告.md` 与 `docs/第三轮全局重构方案.md`。
 > 数字口径：`python tools/audit/arch_metrics.py`；行数用 `ReadAllLines`/`splitlines()`，不含 `obj/`、`bin/`。
 > 冻结清单：`docs/refactor-invariants.md`。第一轮验收：`docs/全局重构执行报告.md`。第二轮方案：`docs/第二轮全局重构方案.md`。
 
@@ -31,13 +31,13 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 约束由 `tests/VScreenPilot.Tests.Contract/ArchitectureTests.cs` 与 `ArchitectureFitnessTests.cs` 断言：
 
 1. 引用方向单向；`Automation` 不引用 Server/MCP SDK；`Platform` 只引用 Abstractions。
-2. 一个命名空间只属于一个程序集；现有 5 个 SPLIT 先 allowlist，只允许减少。
+2. 一个命名空间只属于一个程序集；当前 SPLIT 为 0，任何新增即失败。
 3. IVT 必须在表内；新增即失败。
 4. `Automation` 禁止 `System.Text.Json.Nodes`。
 
 ## 2. 目录与命名空间
 
-命名空间与目录同名；跨程序集同名命名空间是待清理债务：
+命名空间与目录同名；跨程序集同名命名空间已清零（当前 SPLIT 0）。
 
 | 命名空间 | 归属 |
 |---|---|
@@ -47,14 +47,14 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 | `VScreenPilot.Ui` | Server（`ElementRefStore`/文本格式化） |
 | `VScreenPilot.Apps` | Server（`TrackedApp`/注册表） |
 
-当前 SPLIT 命名空间 **0 个**；其余命名空间单归属：`VScreenPilot.Uia`、`Perception`、`Scripting`、`Platform.*`、`Views`、`Cli`、`Ipc`、`Tools`、`Input`、`Composition`、`Diagnostics`。
+当前 SPLIT 命名空间 **0 个**；其余命名空间单归属：`VScreenPilot.Uia`、`Perception`、`Scripting`、`Platform.*`、`Views`、`Cli`、`Ipc`、`Input`、`Composition`、`Diagnostics`。`Tools/` 目录当前仍声明为 `VScreenPilot.Mcp`，T3-3 拆出 `VScreenPilot.Tools`。
 
 ## 3. 启动、组合根与会话
 
 - 入口：`Program.Main` 解析 `--version` / `--doctor` / `--cli` / `--daemon` / `--profile` 等，然后进入 `ServerHost`。
-- 组合根：`SessionManager`（17 个 partial / 1,774 行）。它持有会话锁、显示控制器、应用注册表、元素 ref、UIA 宿主、写调度器与日志。
-- 已知双 wiring：`Program` 与 `ServerHost` 各构造一次 `SessionManager`；R3 再合并。
-- 组件通过 `I*Host` 反向依赖门面：18 个接口、187 个成员，最大 `IInputHost` 26。组件不做跨组件 `new`。
+- 组合根：`SessionManager`（18 个 partial 文件；类型跨度约 1,591 行，文件合计 1,805 行）。它持有会话锁、显示控制器、应用注册表、元素 ref、UIA 宿主、写调度器与日志。
+- 已知双 wiring：`Program` 与 `ServerHost` 各构造一次 `SessionManager`；R3 未合并，T3-2 收敛为单一组合根。
+- 组件通过 `I*Host` 反向依赖门面：18 个接口、187 个成员（唯一名 108），最大 `IInputHost` 26。组件不做跨组件 `new`；T3-2～T3-6 替换为端口。
 - 会话组件（Server/Session）：
   - 显示：`VirtualDisplayController`
   - 应用：`AppLauncher`、`AppReleaser`、`TrackedAppTracker`、`AppAllowlistPolicy`、`SessionStateKeeper`
@@ -68,7 +68,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 
 - 22 个工具定义在 `src/VScreenPilot.Server/Tools/Definitions/*.json`，由 `ToolCatalog` 加载（113 行）；顺序按 `Ordinal`。
 - `ToolDescriptor`/`ToolPolicy`/`ToolRegistry` 负责 schema、权限、超时与并发策略；`ToolHandlers` 负责参数解析与调用。
-- `ToolExecutor` 统一处理写锁、屏幕租约、超时、取消与 epoch；`ToolContext` 仍持有 `SessionManager`。
+- `ToolExecutor` 统一处理写锁、屏幕租约、超时、取消与 epoch；`ToolContext` 仍持有 `SessionManager`（T3-3 解耦）。失败路径的屏幕租约在 `InvocationGate` 中回滚。
 - 错误统一走 `ToolException` + `ErrorCatalog`；错误包字段、错误码、`docs` 锚点是冻结契约。
 - 内容块顺序固定：`text` → `structuredContent` → `image` → `resource_link`。
 - 传输：官方 `ModelContextProtocol` SDK（stdio）；首个进程可 spawn 独立 daemon，后续进程经 `StdioProxy` 转发。
@@ -80,7 +80,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 - **超时不释放写锁**：handler 真正结束后才释放。
 - **epoch**：`release_environment` 校验通过后递增；在途结果返回 `E_CANCELLED`。
 - **每调用取消**：`AsyncLocal<CancellationTokenSource>`。
-- **UIA 单 MTA worker**：`UiaHost` 串行执行服务级调用；MSAA 与句柄操作经 `InvokeMsaa`/`InvokeOn` 回到同一 worker。没有自动换代，卡死时 `ResetUia` 是唯一恢复入口。
+- **UIA 单 MTA worker**：`UiaHost` 串行执行服务级调用；MSAA 与句柄操作经 `InvokeMsaa`/`InvokeOn` 回到同一 worker。调用超过 15s 会退役当前 generation 并重建（`WaitCompletionOrRetire`），`ResetUia` 仍可显式恢复。
 - **多客户端**：每连接独立 `ClientContext`；`ScreenLease` 保证同一时刻只有一个客户端做 GUI/视觉操作。
 - 限流 300 突发 / 100 每秒；写等待 30s，`release_environment` 6s；release 读锁 3s。
 
@@ -97,20 +97,21 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 
 | 闸门 | 内容 | 位置 |
 |---|---|---|
-| 单元 | 201 用例；视图序列化、策略、路径、拓扑、租约、组件 fake | `tests/VScreenPilot.Tests.Unit` |
+| 单元 | 205 用例（176 测试方法）；视图序列化、策略、路径、拓扑、租约、组件 fake | `tests/VScreenPilot.Tests.Unit` |
 | 契约 | 16 用例；schema 快照、架构方向、命名空间/IVT/棘轮 | `tests/VScreenPilot.Tests.Contract` |
-| 架构度量 | `arch_metrics.py --selftest/--check`（文件/方法/宿主/SPLIT/catch/测试数） | `.github/workflows/ci.yml` |
+| 架构度量 | `arch_metrics.py --selftest/--check`（fixtures 20 正向 + 3 反向；文件/方法/宿主/SPLIT/catch/测试数） | `.github/workflows/ci.yml` |
 | 基线 diff | `capture_baseline.py` + `compare_baseline.py --only server.json --only errors.json` | CI `smoke` |
 | GUI / protocol | 14/14、30/30；需要 VDD | 自托管 nightly |
 | stability / UIA | 14/14、3/3；`bench_stability.py`、`bench_uia_stress.py` | 自托管 nightly |
 
-`GUI-15` 已通过：审计改为单应用场景后再杀掉目标，验证“报错 → 重启恢复”；产品行为未变。
+`GUI-15` 当前只覆盖“零应用/单应用”场景：先 `release_environment` 再启动单个 UiTarget，验证“杀目标 → 报错 → 重启恢复”。尚未覆盖“指定 pid 被杀、其他应用仍存活”，该断言在 T3-8 补齐。
 
-## 8. 已知债务与 R3
+## 8. 已知债务（T3 输入）
 
-- 0 个文件 >600；最大 598（`MsaaService.cs`）。R3 已拆 `VirtualDisplayController`/`SessionManager`/`McpTransport`/`ToolHandlers`/`SnapshotBuilder`/`VisualMatchService`。
-- 0 个方法 >120；最大方法 120 行（R3 已完成）。
-- 无类型 `catch` 37 处（其中无日志 34 处）；83 处宽捕获只写 `Debug.WriteLine`。
-- 18 个组件只有 5 个有直接单测；编排主要靠 Python 审计。
-- SPLIT 命名空间已在 R2-2 清零；`ToolContext` 仍持有门面；`Program`/`ServerHost` 双 wiring。
-- R2 目标：3 个组件拆分、16 个方法 ≤150、文件 ≤800、SPLIT ≤2、catch 收口；R3 再降到 ≤600 / ≤120 并清理剩余 partial。
+- 178 个源文件、32,293 行；0 个文件 >600，最大 599（`MsaaService.cs`）；15 个类型 >400，最大 `UiaService` 类型跨度 1,869。
+- 0 个方法 >150，最大 120；但仍有约 48 个 >80 行、32 个 >12 判断点、39 个 >6 参数。
+- 无类型 `catch` 0；无日志静默 `catch` 0（`arch_metrics.py` 口径）。
+- 18 个 `I*Host`、187 个成员声明、108 个唯一名；25 个有行为组件只有约 5 个有直接单测。
+- SPLIT 命名空间 0；`ToolContext` 仍持有门面；`Program`（251 行）与 `ServerHost` 仍各构造一次 `SessionManager`；`partial` 声明 63 个 / 11 个类型。
+- `Program` 251 行、`Main` 97 行；`SessionManager` 52 个 public 成员。
+- T3 目标：类型 ≤400、文件 ≤450、方法 ≤80/12/6、partial 0、`I*Host` 0、`SessionManager` ≤350、`Program` ≤200，详见 `docs/第三轮全局重构方案.md`。
