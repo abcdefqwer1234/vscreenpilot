@@ -313,11 +313,13 @@ public static class DisplayTopology
                 return dpiX;
             }
         }
-        catch (DllNotFoundException exception){
+        catch (DllNotFoundException exception)
+        {
             // 已显式忽略：预期异常，不影响主流程。
             LogSink.Debug($"忽略异常: {exception.Message}");
         }
-        catch (EntryPointNotFoundException exception){
+        catch (EntryPointNotFoundException exception)
+        {
             // 已显式忽略：预期异常，不影响主流程。
             LogSink.Debug($"忽略异常: {exception.Message}");
         }

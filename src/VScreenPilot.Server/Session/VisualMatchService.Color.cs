@@ -71,9 +71,9 @@ internal sealed partial class VisualMatchService
             List<ColorComponent> components = ConnectedComponents(
                 mask, capturedWidth, capturedHeight, minPixels, () => _host.IsCancelled());
 
-        List<ColorComponent> selected = SelectComponents(
-            components, minPixels, maxAreaRatio, excludeBorder,
-            capturedWidth, capturedHeight, maxResults);
+            List<ColorComponent> selected = SelectComponents(
+                components, minPixels, maxAreaRatio, excludeBorder,
+                capturedWidth, capturedHeight, maxResults);
 
             if (selected.Count == 0)
             {
@@ -88,7 +88,7 @@ internal sealed partial class VisualMatchService
                     });
             }
 
-        List<VisualMatchView> matches = BuildColorViews(selected, regionX, regionY);
+            List<VisualMatchView> matches = BuildColorViews(selected, regionX, regionY);
 
             return new MatchVisualView(
                 Mode: string.Empty,
@@ -116,31 +116,31 @@ internal sealed partial class VisualMatchService
         List<ColorComponent> components, int minPixels, double maxAreaRatio,
         bool excludeBorder, int capturedWidth, int capturedHeight, int maxResults)
     {
-            var selected = components
-                .Where(item => item.Pixels >= minPixels)
-                .Where(item =>
+        var selected = components
+            .Where(item => item.Pixels >= minPixels)
+            .Where(item =>
+            {
+                int componentWidth = item.Right - item.Left + 1;
+                int componentHeight = item.Bottom - item.Top + 1;
+                double areaRatio = (double)componentWidth * componentHeight / (capturedWidth * capturedHeight);
+
+                if (areaRatio > maxAreaRatio)
                 {
-                    int componentWidth = item.Right - item.Left + 1;
-                    int componentHeight = item.Bottom - item.Top + 1;
-                    double areaRatio = (double)componentWidth * componentHeight / (capturedWidth * capturedHeight);
+                    return false;
+                }
 
-                    if (areaRatio > maxAreaRatio)
-                    {
-                        return false;
-                    }
+                if (excludeBorder &&
+                    (item.Left <= 0 || item.Top <= 0 ||
+                     item.Right >= capturedWidth - 1 || item.Bottom >= capturedHeight - 1))
+                {
+                    return false;
+                }
 
-                    if (excludeBorder &&
-                        (item.Left <= 0 || item.Top <= 0 ||
-                         item.Right >= capturedWidth - 1 || item.Bottom >= capturedHeight - 1))
-                    {
-                        return false;
-                    }
-
-                    return true;
-                })
-                .OrderByDescending(item => item.Pixels)
-                .Take(maxResults)
-                .ToList();
+                return true;
+            })
+            .OrderByDescending(item => item.Pixels)
+            .Take(maxResults)
+            .ToList();
 
         return selected;
     }
@@ -148,28 +148,28 @@ internal sealed partial class VisualMatchService
     private static List<VisualMatchView> BuildColorViews(
         List<ColorComponent> selected, int regionX, int regionY)
     {
-            var matches = new List<VisualMatchView>();
+        var matches = new List<VisualMatchView>();
 
-            foreach (ColorComponent component in selected)
-            {
-                int w = component.Right - component.Left + 1;
-                int h = component.Bottom - component.Top + 1;
-                int area = w * h;
+        foreach (ColorComponent component in selected)
+        {
+            int w = component.Right - component.Left + 1;
+            int h = component.Bottom - component.Top + 1;
+            int area = w * h;
 
-                matches.Add(new VisualMatchView(
-                    regionX + component.Left,
-                    regionY + component.Top,
-                    w,
-                    h,
-                    new PointView(
-                        regionX + component.Left + w / 2,
-                        regionY + component.Top + h / 2),
-                    component.Pixels,
-                    Math.Round(area == 0 ? 0 : (double)component.Pixels / area, 4),
-                    Score: null,
-                    Confidence: 1.0,
-                    Scale: null));
-            }
+            matches.Add(new VisualMatchView(
+                regionX + component.Left,
+                regionY + component.Top,
+                w,
+                h,
+                new PointView(
+                    regionX + component.Left + w / 2,
+                    regionY + component.Top + h / 2),
+                component.Pixels,
+                Math.Round(area == 0 ? 0 : (double)component.Pixels / area, 4),
+                Score: null,
+                Confidence: 1.0,
+                Scale: null));
+        }
 
         return matches;
     }

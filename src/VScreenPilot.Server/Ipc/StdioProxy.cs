@@ -122,70 +122,70 @@ internal static class StdioProxy
 
     private static int? SendHandshake(NamedPipeClientStream pipe, bool allowScript, LogRing log)
     {
-            string cwd = Environment.GetEnvironmentVariable("VSP_CLIENT_CWD") is { Length: > 0 } configured
-                ? configured
-                : Environment.CurrentDirectory;
+        string cwd = Environment.GetEnvironmentVariable("VSP_CLIENT_CWD") is { Length: > 0 } configured
+            ? configured
+            : Environment.CurrentDirectory;
 
-            try
+        try
+        {
+            cwd = Path.GetFullPath(cwd);
+        }
+        catch (Exception exception)
+        {
+            LogSink.Debug($"忽略异常: {exception.Message}");
+            cwd = Environment.CurrentDirectory;
+        }
+
+        var allowlist = new JsonArray();
+
+        foreach (string part in (Environment.GetEnvironmentVariable("VSP_APP_ALLOWLIST") ?? string.Empty)
+                     .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            allowlist.Add(part);
+        }
+
+        Handshake.WriteLineAsync(pipe, new JsonObject
+        {
+            ["vsp"] = 1,
+            ["client"] = "mcp",
+            ["proxy_pid"] = Environment.ProcessId,
+            ["cwd"] = cwd,
+            ["roots"] = new JsonArray(cwd),
+            ["version"] = BuildInfo.Version,
+            ["capabilities"] = new JsonObject
             {
-                cwd = Path.GetFullPath(cwd);
-            }
-            catch (Exception exception)
-            {
-                LogSink.Debug($"忽略异常: {exception.Message}");
-                cwd = Environment.CurrentDirectory;
-            }
+                ["allow_script"] = allowScript,
+                ["allow_unsafe_script"] = EnvFlags.IsTruthy(
+                    Environment.GetEnvironmentVariable("VSP_ALLOW_UNSAFE_SCRIPT")),
+                ["app_allowlist"] = allowlist,
+            },
+        }).GetAwaiter().GetResult();
 
-            var allowlist = new JsonArray();
+        using var responseCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        string? responseLine = Handshake.ReadLineAsync(pipe, responseCts.Token)
+            .GetAwaiter().GetResult();
+        JsonObject? response = responseLine is null
+            ? null
+            : JsonNode.Parse(responseLine) as JsonObject;
 
-            foreach (string part in (Environment.GetEnvironmentVariable("VSP_APP_ALLOWLIST") ?? string.Empty)
-                         .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            {
-                allowlist.Add(part);
-            }
+        if (response?["ok"]?.GetValue<bool>() != true)
+        {
+            Console.Error.WriteLine(
+                $"VScreenPilot: 无法加入已有实例: {responseLine ?? "no handshake response"}");
+            return 3;
+        }
 
-            Handshake.WriteLineAsync(pipe, new JsonObject
-            {
-                ["vsp"] = 1,
-                ["client"] = "mcp",
-                ["proxy_pid"] = Environment.ProcessId,
-                ["cwd"] = cwd,
-                ["roots"] = new JsonArray(cwd),
-                ["version"] = BuildInfo.Version,
-                ["capabilities"] = new JsonObject
-                {
-                    ["allow_script"] = allowScript,
-                    ["allow_unsafe_script"] = EnvFlags.IsTruthy(
-                        Environment.GetEnvironmentVariable("VSP_ALLOW_UNSAFE_SCRIPT")),
-                    ["app_allowlist"] = allowlist,
-                },
-            }).GetAwaiter().GetResult();
+        string daemonVersion = response["daemon_version"]?.GetValue<string>() ?? string.Empty;
 
-            using var responseCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            string? responseLine = Handshake.ReadLineAsync(pipe, responseCts.Token)
-                .GetAwaiter().GetResult();
-            JsonObject? response = responseLine is null
-                ? null
-                : JsonNode.Parse(responseLine) as JsonObject;
+        if (!string.Equals(daemonVersion, BuildInfo.Version, StringComparison.Ordinal))
+        {
+            Console.Error.WriteLine(
+                $"VScreenPilot: E_VERSION_MISMATCH daemon={daemonVersion} client={BuildInfo.Version}；" +
+                "请关闭旧实例后重试");
+            return 3;
+        }
 
-            if (response?["ok"]?.GetValue<bool>() != true)
-            {
-                Console.Error.WriteLine(
-                    $"VScreenPilot: 无法加入已有实例: {responseLine ?? "no handshake response"}");
-                return 3;
-            }
-
-            string daemonVersion = response["daemon_version"]?.GetValue<string>() ?? string.Empty;
-
-            if (!string.Equals(daemonVersion, BuildInfo.Version, StringComparison.Ordinal))
-            {
-                Console.Error.WriteLine(
-                    $"VScreenPilot: E_VERSION_MISMATCH daemon={daemonVersion} client={BuildInfo.Version}；" +
-                    "请关闭旧实例后重试");
-                return 3;
-            }
-
-            log.Info($"已连接到共享实例: client_id={response["client_id"]}");
+        log.Info($"已连接到共享实例: client_id={response["client_id"]}");
 
         return null;
     }

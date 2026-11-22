@@ -224,8 +224,10 @@ public sealed record MetricsView
     [JsonPropertyName("image_bytes")] public long ImageBytes { get; init; }
     [JsonPropertyName("snapshot_nodes")] public long SnapshotNodes { get; init; }
     [JsonPropertyName("ocr_calls")] public long OcrCalls { get; init; }
-    [JsonPropertyName("by_tool")] public IReadOnlyDictionary<string, long> ByTool { get; init; } =
+    [JsonPropertyName("by_tool")]
+    public IReadOnlyDictionary<string, long> ByTool { get; init; } =
         new Dictionary<string, long>();
-    [JsonPropertyName("by_code")] public IReadOnlyDictionary<string, long> ByCode { get; init; } =
+    [JsonPropertyName("by_code")]
+    public IReadOnlyDictionary<string, long> ByCode { get; init; } =
         new Dictionary<string, long>();
 }

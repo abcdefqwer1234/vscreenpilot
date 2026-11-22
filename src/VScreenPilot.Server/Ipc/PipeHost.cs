@@ -194,7 +194,8 @@ internal sealed class PipeHost : IDisposable
                 await server.RunAsync(limiter, limiter, connectionCts.Token).ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException exception){
+        catch (OperationCanceledException exception)
+        {
             // 进程退出/管道断开。
             LogSink.Debug($"忽略异常: {exception.Message}");
         }
@@ -247,7 +248,8 @@ internal sealed class PipeHost : IDisposable
         {
             _cts.Cancel();
         }
-        catch (ObjectDisposedException exception){
+        catch (ObjectDisposedException exception)
+        {
             // 已经取消。
             LogSink.Debug($"忽略异常: {exception.Message}");
         }

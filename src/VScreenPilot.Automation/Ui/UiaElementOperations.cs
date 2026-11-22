@@ -38,39 +38,39 @@ internal sealed partial class UiaService
     {
         lock (_sync)
         {
-        IUIAutomationCondition? condition = null;
-        IUIAutomationElement? root = null;
-        IUIAutomationElement? element = null;
+            IUIAutomationCondition? condition = null;
+            IUIAutomationElement? root = null;
+            IUIAutomationElement? element = null;
 
-        try
-        {
-            root = RootFromHandle(hwnd);
+            try
+            {
+                root = RootFromHandle(hwnd);
 
-            if (root is null)
+                if (root is null)
+                {
+                    return null;
+                }
+
+                condition = BuildCondition(name, controlType, automationId, null);
+                element = root.FindFirstBuildCache(
+                    TreeScope.TreeScope_Subtree, condition, _elementCache);
+
+                return element is null ? null : Describe(element, cached: true);
+            }
+            catch (COMException)
             {
                 return null;
             }
-
-            condition = BuildCondition(name, controlType, automationId, null);
-            element = root.FindFirstBuildCache(
-                TreeScope.TreeScope_Subtree, condition, _elementCache);
-
-            return element is null ? null : Describe(element, cached: true);
-        }
-        catch (COMException)
-        {
-            return null;
-        }
-        finally
-        {
-            ReleaseElement(element);
-            ReleaseElement(root);
-
-            if (!ReferenceEquals(condition, _trueCondition))
+            finally
             {
-                ReleaseElement(condition);
+                ReleaseElement(element);
+                ReleaseElement(root);
+
+                if (!ReferenceEquals(condition, _trueCondition))
+                {
+                    ReleaseElement(condition);
+                }
             }
-        }
         }
     }
 
@@ -193,7 +193,8 @@ internal sealed partial class UiaService
                             return Describe(element, cached: false);
                         }
                     }
-                    catch (COMException exception){
+                    catch (COMException exception)
+                    {
                         // 单个 provider 读文本失败不影响其余候选。
                         LogSink.Debug($"忽略异常: {exception.Message}");
                     }
@@ -241,105 +242,105 @@ internal sealed partial class UiaService
     {
         lock (_sync)
         {
-        var results = new List<UiaElementInfo>();
-        bool truncated = false;
-        // prefer=largest/focused 需要完整候选集；其余调用仍按较小的上限快速返回。
-        maxResults = Math.Clamp(maxResults, 1, 2000);
+            var results = new List<UiaElementInfo>();
+            bool truncated = false;
+            // prefer=largest/focused 需要完整候选集；其余调用仍按较小的上限快速返回。
+            maxResults = Math.Clamp(maxResults, 1, 2000);
 
-        IUIAutomationCondition condition = BuildCondition(
-            nameMatch == UiaNameMatch.Exact ? name : null,
-            controlType,
-            automationId,
-            null);
-        bool ownedCondition = !ReferenceEquals(condition, _trueCondition);
+            IUIAutomationCondition condition = BuildCondition(
+                nameMatch == UiaNameMatch.Exact ? name : null,
+                controlType,
+                automationId,
+                null);
+            bool ownedCondition = !ReferenceEquals(condition, _trueCondition);
 
-        IUIAutomationElement? root = null;
-
-        try
-        {
-            root = RootFromHandle(hwnd);
-
-            if (root is null)
-            {
-                return new UiaFindResult(results, truncated);
-            }
-
-            IUIAutomationElementArray? all = root.FindAllBuildCache(
-                TreeScope.TreeScope_Subtree, condition, _elementCache);
-
-            if (all is null)
-            {
-                return new UiaFindResult(results, truncated);
-            }
+            IUIAutomationElement? root = null;
 
             try
             {
-                var usable = new List<UiaElementInfo>();
-                var hidden = new List<UiaElementInfo>();
-                int count = Math.Min(all.Length, 5000);
-                truncated = all.Length > count;
+                root = RootFromHandle(hwnd);
 
-                for (int i = 0; i < count; i++)
+                if (root is null)
                 {
-                    IUIAutomationElement? element = all.GetElement(i);
-                    if (element is null)
-                    {
-                        continue;
-                    }
+                    return new UiaFindResult(results, truncated);
+                }
 
-                    try
+                IUIAutomationElementArray? all = root.FindAllBuildCache(
+                    TreeScope.TreeScope_Subtree, condition, _elementCache);
+
+                if (all is null)
+                {
+                    return new UiaFindResult(results, truncated);
+                }
+
+                try
+                {
+                    var usable = new List<UiaElementInfo>();
+                    var hidden = new List<UiaElementInfo>();
+                    int count = Math.Min(all.Length, 5000);
+                    truncated = all.Length > count;
+
+                    for (int i = 0; i < count; i++)
                     {
-                        UiaElementInfo? info = Describe(element, cached: true);
-                        if (info is null || !MatchesName(info.Name, name, nameMatch))
+                        IUIAutomationElement? element = all.GetElement(i);
+                        if (element is null)
                         {
                             continue;
                         }
 
-                        if (IsUsable(info))
+                        try
                         {
-                            usable.Add(info);
-                            if (usable.Count >= maxResults)
+                            UiaElementInfo? info = Describe(element, cached: true);
+                            if (info is null || !MatchesName(info.Name, name, nameMatch))
                             {
-                                // 后面还有候选（或已有 hidden）说明结果被截断。
-                                truncated |= i + 1 < count || hidden.Count > 0;
-                                break;
+                                continue;
+                            }
+
+                            if (IsUsable(info))
+                            {
+                                usable.Add(info);
+                                if (usable.Count >= maxResults)
+                                {
+                                    // 后面还有候选（或已有 hidden）说明结果被截断。
+                                    truncated |= i + 1 < count || hidden.Count > 0;
+                                    break;
+                                }
+                            }
+                            else if (hidden.Count < maxResults)
+                            {
+                                hidden.Add(info);
                             }
                         }
-                        else if (hidden.Count < maxResults)
+                        finally
                         {
-                            hidden.Add(info);
+                            ReleaseElement(element);
                         }
                     }
-                    finally
+
+                    results.AddRange(usable);
+                    results.AddRange(hidden);
+
+                    if (results.Count > maxResults)
                     {
-                        ReleaseElement(element);
+                        results = results.Take(maxResults).ToList();
                     }
+
+                    return new UiaFindResult(results, truncated);
                 }
-
-                results.AddRange(usable);
-                results.AddRange(hidden);
-
-                if (results.Count > maxResults)
+                finally
                 {
-                    results = results.Take(maxResults).ToList();
+                    ReleaseElement(all);
                 }
-
-                return new UiaFindResult(results, truncated);
             }
             finally
             {
-                ReleaseElement(all);
-            }
-        }
-        finally
-        {
-            ReleaseElement(root);
+                ReleaseElement(root);
 
-            if (ownedCondition)
-            {
-                ReleaseElement(condition);
+                if (ownedCondition)
+                {
+                    ReleaseElement(condition);
+                }
             }
-        }
         }
     }
 
@@ -348,50 +349,50 @@ internal sealed partial class UiaService
     {
         lock (_sync)
         {
-        if (string.IsNullOrWhiteSpace(runtimeId) ||
-            !TryParseRuntimeId(runtimeId, out int[] ids))
-        {
-            return null;
-        }
-
-        IUIAutomationCondition? condition = null;
-        IUIAutomationElement? root = null;
-        IUIAutomationElement? element = null;
-
-        try
-        {
-            root = RootFromHandle(hwnd);
-
-            if (root is null)
+            if (string.IsNullOrWhiteSpace(runtimeId) ||
+                !TryParseRuntimeId(runtimeId, out int[] ids))
             {
                 return null;
             }
 
-            condition = _automation.CreatePropertyCondition(RuntimeIdPropertyId, ids);
-            element = root.FindFirstBuildCache(
-                TreeScope.TreeScope_Subtree, condition, _elementCache);
+            IUIAutomationCondition? condition = null;
+            IUIAutomationElement? root = null;
+            IUIAutomationElement? element = null;
 
-            if (element is null)
+            try
             {
-                return null;
-            }
+                root = RootFromHandle(hwnd);
 
-            UiaElementInfo? info = Describe(element, cached: true);
-            if (info is null)
+                if (root is null)
+                {
+                    return null;
+                }
+
+                condition = _automation.CreatePropertyCondition(RuntimeIdPropertyId, ids);
+                element = root.FindFirstBuildCache(
+                    TreeScope.TreeScope_Subtree, condition, _elementCache);
+
+                if (element is null)
+                {
+                    return null;
+                }
+
+                UiaElementInfo? info = Describe(element, cached: true);
+                if (info is null)
+                {
+                    return null;
+                }
+
+                var handle = new UiaElementHandle(this, element, info);
+                element = null;
+                return handle;
+            }
+            finally
             {
-                return null;
+                ReleaseElement(element);
+                ReleaseElement(root);
+                ReleaseElement(condition);
             }
-
-            var handle = new UiaElementHandle(this, element, info);
-            element = null;
-            return handle;
-        }
-        finally
-        {
-            ReleaseElement(element);
-            ReleaseElement(root);
-            ReleaseElement(condition);
-        }
         }
     }
 
@@ -411,73 +412,73 @@ internal sealed partial class UiaService
     {
         lock (_sync)
         {
-        if (string.IsNullOrEmpty(name) &&
-            string.IsNullOrEmpty(automationId) &&
-            string.IsNullOrEmpty(controlTypeName))
-        {
-            return null;
-        }
-
-        IUIAutomationCondition? condition = null;
-        IUIAutomationElement? root = null;
-        IUIAutomationElementArray? all = null;
-        IUIAutomationElement? best = null;
-        UiaElementInfo? bestInfo = null;
-
-        try
-        {
-            root = RootFromHandle(hwnd);
-
-            if (root is null)
+            if (string.IsNullOrEmpty(name) &&
+                string.IsNullOrEmpty(automationId) &&
+                string.IsNullOrEmpty(controlTypeName))
             {
                 return null;
             }
 
-            condition = BuildCondition(
-                string.IsNullOrEmpty(name) ? null : name,
-                controlTypeName,
-                string.IsNullOrEmpty(automationId) ? null : automationId,
-                null);
+            IUIAutomationCondition? condition = null;
+            IUIAutomationElement? root = null;
+            IUIAutomationElementArray? all = null;
+            IUIAutomationElement? best = null;
+            UiaElementInfo? bestInfo = null;
 
-            all = root.FindAllBuildCache(
-                TreeScope.TreeScope_Subtree, condition, _elementCache);
-
-            if (all is null)
+            try
             {
-                return null;
+                root = RootFromHandle(hwnd);
+
+                if (root is null)
+                {
+                    return null;
+                }
+
+                condition = BuildCondition(
+                    string.IsNullOrEmpty(name) ? null : name,
+                    controlTypeName,
+                    string.IsNullOrEmpty(automationId) ? null : automationId,
+                    null);
+
+                all = root.FindAllBuildCache(
+                    TreeScope.TreeScope_Subtree, condition, _elementCache);
+
+                if (all is null)
+                {
+                    return null;
+                }
+
+                (best, bestInfo) = SelectBest(
+                    all, name, automationId, controlTypeName, left, top, right, bottom,
+                    out int exact, out int near);
+
+                if (best is null || bestInfo is null)
+                {
+                    return null;
+                }
+
+                // 多个同名候选且边界附近不是唯一一个：宁可报 stale，也不猜。
+                if (exact > 1 && near != 1)
+                {
+                    ReleaseElement(best);
+                    return null;
+                }
+
+                var handle = new UiaElementHandle(this, best, bestInfo);
+                best = null;
+                return handle;
             }
-
-        (best, bestInfo) = SelectBest(
-            all, name, automationId, controlTypeName, left, top, right, bottom,
-            out int exact, out int near);
-
-            if (best is null || bestInfo is null)
-            {
-                return null;
-            }
-
-            // 多个同名候选且边界附近不是唯一一个：宁可报 stale，也不猜。
-            if (exact > 1 && near != 1)
+            finally
             {
                 ReleaseElement(best);
-                return null;
-            }
+                ReleaseElement(all);
+                ReleaseElement(root);
 
-            var handle = new UiaElementHandle(this, best, bestInfo);
-            best = null;
-            return handle;
-        }
-        finally
-        {
-            ReleaseElement(best);
-            ReleaseElement(all);
-            ReleaseElement(root);
-
-            if (!ReferenceEquals(condition, _trueCondition))
-            {
-                ReleaseElement(condition);
+                if (!ReferenceEquals(condition, _trueCondition))
+                {
+                    ReleaseElement(condition);
+                }
             }
-        }
         }
     }
 
@@ -488,54 +489,54 @@ internal sealed partial class UiaService
         IUIAutomationElement? best = null;
         UiaElementInfo? bestInfo = null;
 
-            int count = Math.Min(all.Length, 200);
-            exact = 0;
-            near = 0;
+        int count = Math.Min(all.Length, 200);
+        exact = 0;
+        near = 0;
 
-            for (int i = 0; i < count; i++)
+        for (int i = 0; i < count; i++)
+        {
+            IUIAutomationElement? element = all.GetElement(i);
+            if (element is null)
             {
-                IUIAutomationElement? element = all.GetElement(i);
-                if (element is null)
+                continue;
+            }
+
+            bool keep = false;
+
+            try
+            {
+                UiaElementInfo? info = Describe(element, cached: true);
+                if (info is null ||
+                    info.Name != name ||
+                    info.AutomationId != automationId ||
+                    !string.Equals(info.ControlTypeName, controlTypeName, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
 
-                bool keep = false;
-
-                try
+                exact++;
+                bool isNear = IsNear(info, left, top, right, bottom);
+                if (isNear)
                 {
-                    UiaElementInfo? info = Describe(element, cached: true);
-                    if (info is null ||
-                        info.Name != name ||
-                        info.AutomationId != automationId ||
-                        !string.Equals(info.ControlTypeName, controlTypeName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    exact++;
-                    bool isNear = IsNear(info, left, top, right, bottom);
-                    if (isNear)
-                    {
-                        near++;
-                    }
-
-                    if (best is null || (isNear && !IsNear(bestInfo!, left, top, right, bottom)))
-                    {
-                        ReleaseElement(best);
-                        best = element;
-                        bestInfo = info;
-                        keep = true;
-                    }
+                    near++;
                 }
-                finally
+
+                if (best is null || (isNear && !IsNear(bestInfo!, left, top, right, bottom)))
                 {
-                    if (!keep)
-                    {
-                        ReleaseElement(element);
-                    }
+                    ReleaseElement(best);
+                    best = element;
+                    bestInfo = info;
+                    keep = true;
                 }
             }
+            finally
+            {
+                if (!keep)
+                {
+                    ReleaseElement(element);
+                }
+            }
+        }
 
         return (best, bestInfo);
     }

@@ -124,7 +124,8 @@ internal sealed class ServerHost : IDisposable
                 Shutdown();
             });
         }
-        catch (PlatformNotSupportedException exception){
+        catch (PlatformNotSupportedException exception)
+        {
             // Windows 上部分场景不支持，忽略。
             LogSink.Debug($"忽略异常: {exception.Message}");
         }

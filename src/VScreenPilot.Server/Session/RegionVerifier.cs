@@ -40,7 +40,10 @@ internal sealed class RegionVerifier
                 new JsonObject
                 {
                     ["field"] = "region",
-                    ["x"] = x, ["y"] = y, ["width"] = width, ["height"] = height,
+                    ["x"] = x,
+                    ["y"] = y,
+                    ["width"] = width,
+                    ["height"] = height,
                 },
                 retryable: false,
                 hint: "传 {x,y,width,height}，width/height ≥ 1",

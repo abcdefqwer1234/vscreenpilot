@@ -119,7 +119,8 @@ internal sealed class MetricsRegistry
         };
     }
 
-    private static void InterlockedMax(ref long target, long value)    {
+    private static void InterlockedMax(ref long target, long value)
+    {
         long current = Interlocked.Read(ref target);
 
         while (value > current)

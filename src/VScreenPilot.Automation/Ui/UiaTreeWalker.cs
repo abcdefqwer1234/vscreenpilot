@@ -198,61 +198,61 @@ internal sealed partial class UiaService
     private void VisitChild(
         IUIAutomationElementArray children, int i, UiaTreeNode node, int depth, TreeBuildState state)
     {
-                IUIAutomationElement? child = null;
+        IUIAutomationElement? child = null;
 
-                try
+        try
+        {
+            child = children.GetElement(i);
+            if (child is null)
+            {
+                return;
+            }
+
+            state.Visited++;
+            state.MaxDepthReached = Math.Max(state.MaxDepthReached, depth);
+
+            UiaElementInfo? info = Describe(child, cached: true);
+            if (info is null)
+            {
+                return;
+            }
+
+            if (IsNoiseControl(info.ControlType))
+            {
+                // 滚动条/进度条/分隔条内部全是机械按钮，进树只会污染上下文。
+                return;
+            }
+
+            var childNode = new UiaTreeNode { Info = info };
+            BuildChildren(child, childNode, depth + 1, state);
+
+            if (state.InteractiveOnly && !IsInteresting(childNode))
+            {
+                state.Pruned++;
+
+                // 单子节点的无意义容器（Chromium 常见）直接上提，别让它吃掉深度预算。
+                if (childNode.Children.Count == 1)
                 {
-                    child = children.GetElement(i);
-                    if (child is null)
-                    {
-                        return;
-                    }
-
-                    state.Visited++;
-                    state.MaxDepthReached = Math.Max(state.MaxDepthReached, depth);
-
-                    UiaElementInfo? info = Describe(child, cached: true);
-                    if (info is null)
-                    {
-                        return;
-                    }
-
-                    if (IsNoiseControl(info.ControlType))
-                    {
-                        // 滚动条/进度条/分隔条内部全是机械按钮，进树只会污染上下文。
-                        return;
-                    }
-
-                    var childNode = new UiaTreeNode { Info = info };
-                    BuildChildren(child, childNode, depth + 1, state);
-
-                    if (state.InteractiveOnly && !IsInteresting(childNode))
-                    {
-                        state.Pruned++;
-
-                        // 单子节点的无意义容器（Chromium 常见）直接上提，别让它吃掉深度预算。
-                        if (childNode.Children.Count == 1)
-                        {
-                            node.Children.Add(childNode.Children[0]);
-                        }
-
-                        return;
-                    }
-
-                    // 递归可能已经用满预算；此时不能再把当前节点计入，否则 max_nodes 会被超过。
-                    if (state.Nodes >= state.MaxNodes)
-                    {
-                        state.Truncate("max_nodes");
-                        return;
-                    }
-
-                    state.Nodes++;
-                    node.Children.Add(childNode);
+                    node.Children.Add(childNode.Children[0]);
                 }
-                finally
-                {
-                    ReleaseElement(child);
-                }
+
+                return;
+            }
+
+            // 递归可能已经用满预算；此时不能再把当前节点计入，否则 max_nodes 会被超过。
+            if (state.Nodes >= state.MaxNodes)
+            {
+                state.Truncate("max_nodes");
+                return;
+            }
+
+            state.Nodes++;
+            node.Children.Add(childNode);
+        }
+        finally
+        {
+            ReleaseElement(child);
+        }
     }
 
     private static bool IsInteresting(UiaTreeNode node) =>

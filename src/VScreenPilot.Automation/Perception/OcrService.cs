@@ -1,4 +1,4 @@
-﻿using Windows.Graphics.Imaging;
+using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
 using Windows.Security.Cryptography;
 using VScreenPilot.Infrastructure;
@@ -134,7 +134,8 @@ internal sealed class OcrService
 
     private bool TryGet(
         string? tag, bool preferLatin, out OcrEngine? engine, out string language)
-    {        string key = tag ?? "user-profile";
+    {
+        string key = tag ?? "user-profile";
 
         if (_engines.TryGetValue(key, out OcrEngine? cached))
         {

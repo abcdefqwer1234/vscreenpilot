@@ -217,7 +217,8 @@ internal sealed class AppReleaser
             }
         }
         catch (Exception exception) when (
-            exception is COMException or InvalidOperationException or ArgumentException){
+            exception is COMException or InvalidOperationException or ArgumentException)
+        {
             // 继续走 WM_CLOSE/超时策略。
             LogSink.Debug($"忽略异常: {exception.Message}");
         }

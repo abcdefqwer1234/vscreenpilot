@@ -98,21 +98,21 @@ public sealed class ClientPathTests
             (ClientSessionRegistry clients, ClientPathPolicy paths) = NewPolicy();
 
             using (clients.Use(new ClientContext
-                   {
-                       Id = "c-a",
-                       Cwd = first,
-                       Roots = new[] { first },
-                   }))
+            {
+                Id = "c-a",
+                Cwd = first,
+                Roots = new[] { first },
+            }))
             {
                 Assert.Equal(firstOutput, paths.ValidateSavePath(firstOutput));
             }
 
             using (clients.Use(new ClientContext
-                   {
-                       Id = "c-b",
-                       Cwd = second,
-                       Roots = new[] { second },
-                   }))
+            {
+                Id = "c-b",
+                Cwd = second,
+                Roots = new[] { second },
+            }))
             {
                 Assert.Equal(secondOutput, paths.ValidateSavePath(secondOutput));
 

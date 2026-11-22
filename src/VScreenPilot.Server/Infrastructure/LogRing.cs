@@ -117,7 +117,8 @@ public sealed class LogRing : IDisposable
             string clientPart = string.IsNullOrWhiteSpace(clientId) ? string.Empty : $" [client={clientId}]";
             _pending.TryAdd($"{entry.Time:O} [{level}]{clientPart} {message}");
         }
-        catch (InvalidOperationException exception){
+        catch (InvalidOperationException exception)
+        {
             // Dispose 之后仍有日志，丢弃即可。
             LogSink.Debug($"忽略异常: {exception.Message}");
         }
@@ -452,7 +453,8 @@ public sealed class LogRing : IDisposable
             {
                 _pending.CompleteAdding();
             }
-            catch (ObjectDisposedException exception){
+            catch (ObjectDisposedException exception)
+            {
                 // 已释放。
                 LogSink.Debug($"忽略异常: {exception.Message}");
             }

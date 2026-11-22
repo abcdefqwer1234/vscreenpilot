@@ -335,4 +335,5 @@ internal sealed class ScreenTextService
         }
 
         return builder.ToString();
-    }}
+    }
+}

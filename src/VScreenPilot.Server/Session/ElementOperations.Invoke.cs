@@ -37,95 +37,95 @@ internal sealed partial class ElementOperations
 
         try
         {
-        UiaElementInfo info = handle.Info;
+            UiaElementInfo info = handle.Info;
 
-        UiaInvokePattern mode = ParseInvokePattern(pattern);
+            UiaInvokePattern mode = ParseInvokePattern(pattern);
 
-        if (!info.Enabled)
-        {
-            throw new ToolException(
-                "E_ELEMENT_DISABLED",
-                "控件已禁用，拒绝触发",
-                new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
-        }
-
-        if (mode == UiaInvokePattern.Default)
-        {
-            return InvokeDefaultAction(display, handle, entry, refreshed);
-        }
-
-        // Invoke 是同步 COM 调用：按钮弹出模态对话框时会一直等到对话框关闭。
-        // 在独立任务里执行，超时后放弃旧 UIA 实例，避免整个会话永久卡死。
-        Task<(bool Ok, string? Strategy)> invokeTask = Task.Run(() =>
-        {
-            try
+            if (!info.Enabled)
             {
-                return handle.Invoke(mode);
+                throw new ToolException(
+                    "E_ELEMENT_DISABLED",
+                    "控件已禁用，拒绝触发",
+                    new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
             }
-            finally
+
+            if (mode == UiaInvokePattern.Default)
             {
-                handle.Dispose();
+                return InvokeDefaultAction(display, handle, entry, refreshed);
             }
-        });
 
-        handleTransferred = true;
+            // Invoke 是同步 COM 调用：按钮弹出模态对话框时会一直等到对话框关闭。
+            // 在独立任务里执行，超时后放弃旧 UIA 实例，避免整个会话永久卡死。
+            Task<(bool Ok, string? Strategy)> invokeTask = Task.Run(() =>
+            {
+                try
+                {
+                    return handle.Invoke(mode);
+                }
+                finally
+                {
+                    handle.Dispose();
+                }
+            });
 
-        if (!invokeTask.Wait(5000))
-        {
-            _host.ResetUia();
-            throw new ToolException(
-                "E_TIMEOUT",
-                "UIA 触发 5s 未返回，常见于会打开模态对话框的按钮",
-                new JsonObject { ["ref"] = entry.Ref },
-                retryable: true,
-                hint: "先用 get_ui_tree 或截图确认是否已弹出对话框；也可改用 click 的消息点击",
-                stage: "invoke");
-        }
+            handleTransferred = true;
 
-        (bool ok, string? strategy) = invokeTask.Result;
+            if (!invokeTask.Wait(5000))
+            {
+                _host.ResetUia();
+                throw new ToolException(
+                    "E_TIMEOUT",
+                    "UIA 触发 5s 未返回，常见于会打开模态对话框的按钮",
+                    new JsonObject { ["ref"] = entry.Ref },
+                    retryable: true,
+                    hint: "先用 get_ui_tree 或截图确认是否已弹出对话框；也可改用 click 的消息点击",
+                    stage: "invoke");
+            }
 
-        if (ok)
-        {
+            (bool ok, string? strategy) = invokeTask.Result;
+
+            if (ok)
+            {
+                Thread.Sleep(50);
+                return new InvokeElementView(
+                    entry.Ref, strategy ?? "uia", null, null, null, refreshed, null,
+                    ElementPresenter.ToView(info, compact: true));
+            }
+
+            if (!allowClick)
+            {
+                throw new ToolException(
+                    "E_PATTERN_UNSUPPORTED",
+                    "该控件没有可用的 UIA 触发模式（Invoke/Toggle/SelectionItem/ExpandCollapse/Legacy）；" +
+                    "可先用 pattern 指定期望模式；如需按坐标触发，请改用 click 或显式传 allow_click=true",
+                    new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
+            }
+
+            int centerX = info.Left + info.Width / 2;
+            int centerY = info.Top + info.Height / 2;
+
+            if (info.Width <= 0 || info.Height <= 0)
+            {
+                throw new ToolException(
+                    "E_ELEMENT_OFFSCREEN",
+                    "控件没有可见尺寸，无法按坐标触发",
+                    new JsonObject { ["ref"] = entry.Ref });
+            }
+
+            _host.RequirePointInTrackedApp(display, centerX, centerY, "invoke_element");
+
+            if (!MessageInput.Click(centerX, centerY, "left", 1, out string? detail))
+            {
+                throw new ToolException(
+                    "E_INPUT_UNSUPPORTED",
+                    "控件不支持语义触发，按坐标点击也失败",
+                    new JsonObject { ["ref"] = entry.Ref, ["detail"] = detail });
+            }
+
             Thread.Sleep(50);
             return new InvokeElementView(
-                entry.Ref, strategy ?? "uia", null, null, null, refreshed, null,
+                entry.Ref, "message_click", null, null, null, refreshed, detail,
                 ElementPresenter.ToView(info, compact: true));
-        }
-
-        if (!allowClick)
-        {
-            throw new ToolException(
-                "E_PATTERN_UNSUPPORTED",
-                "该控件没有可用的 UIA 触发模式（Invoke/Toggle/SelectionItem/ExpandCollapse/Legacy）；" +
-                "可先用 pattern 指定期望模式；如需按坐标触发，请改用 click 或显式传 allow_click=true",
-                new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
-        }
-
-        int centerX = info.Left + info.Width / 2;
-        int centerY = info.Top + info.Height / 2;
-
-        if (info.Width <= 0 || info.Height <= 0)
-        {
-            throw new ToolException(
-                "E_ELEMENT_OFFSCREEN",
-                "控件没有可见尺寸，无法按坐标触发",
-                new JsonObject { ["ref"] = entry.Ref });
-        }
-
-        _host.RequirePointInTrackedApp(display, centerX, centerY, "invoke_element");
-
-        if (!MessageInput.Click(centerX, centerY, "left", 1, out string? detail))
-        {
-            throw new ToolException(
-                "E_INPUT_UNSUPPORTED",
-                "控件不支持语义触发，按坐标点击也失败",
-                new JsonObject { ["ref"] = entry.Ref, ["detail"] = detail });
-        }
-
-        Thread.Sleep(50);
-        return new InvokeElementView(
-            entry.Ref, "message_click", null, null, null, refreshed, detail,
-            ElementPresenter.ToView(info, compact: true));
         }
         finally
         {
@@ -196,7 +196,8 @@ internal sealed partial class ElementOperations
                 handle.Focus();
             }
             catch (Exception exception) when (
-                exception is COMException or InvalidOperationException){
+                exception is COMException or InvalidOperationException)
+            {
                 // 部分 WinForms/WPF 控件不支持 SetFocus；继续用 Enter 尝试。
                 LogSink.Debug($"忽略异常: {exception.Message}");
             }
@@ -230,31 +231,31 @@ internal sealed partial class ElementOperations
     private InvokeElementView InvokeMsaaElement(
         ElementRefEntry probe, IntPtr msaaHwnd, int msaaChildId, bool allowClick)
     {
-            bool invoked = _host.Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaChildId));
+        bool invoked = _host.Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaChildId));
 
-            if (!invoked && allowClick)
+        if (!invoked && allowClick)
+        {
+            var bounds = _host.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaChildId));
+
+            if (bounds is not null)
             {
-                var bounds = _host.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaChildId));
-
-                if (bounds is not null)
-                {
-                    invoked = MessageInput.Click(
-                        bounds.Value.Left + bounds.Value.Width / 2,
-                        bounds.Value.Top + bounds.Value.Height / 2,
-                        "left", 1, out _);
-                }
+                invoked = MessageInput.Click(
+                    bounds.Value.Left + bounds.Value.Width / 2,
+                    bounds.Value.Top + bounds.Value.Height / 2,
+                    "left", 1, out _);
             }
+        }
 
-            if (!invoked)
-            {
-                throw new ToolException(
-                    "E_PATTERN_UNSUPPORTED",
-                    "MSAA 控件不支持默认动作；可改用 click 或 allow_click=true",
-                    new JsonObject { ["ref"] = probe.Ref });
-            }
+        if (!invoked)
+        {
+            throw new ToolException(
+                "E_PATTERN_UNSUPPORTED",
+                "MSAA 控件不支持默认动作；可改用 click 或 allow_click=true",
+                new JsonObject { ["ref"] = probe.Ref });
+        }
 
-            return new InvokeElementView(
-                probe.Ref, "msaa", Invoked: true, Verified: false, ControlType: null,
-                Refreshed: false, Detail: null, Element: null);
+        return new InvokeElementView(
+            probe.Ref, "msaa", Invoked: true, Verified: false, ControlType: null,
+            Refreshed: false, Detail: null, Element: null);
     }
 }

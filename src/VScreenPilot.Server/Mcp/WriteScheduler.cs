@@ -113,7 +113,8 @@ internal sealed class WriteScheduler : IDisposable
             {
                 _owner._write.Release();
             }
-            catch (ObjectDisposedException exception){
+            catch (ObjectDisposedException exception)
+            {
                 // 进程退出时忽略。
                 LogSink.Debug($"忽略异常: {exception.Message}");
             }

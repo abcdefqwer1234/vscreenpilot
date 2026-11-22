@@ -84,10 +84,10 @@ internal sealed partial class SessionManager
         }
 
         using (Clients.Use(client ?? new ClientContext
-               {
-                   Id = clientId,
-                   Cwd = Environment.CurrentDirectory,
-               }))
+        {
+            Id = clientId,
+            Cwd = Environment.CurrentDirectory,
+        }))
         {
             if (!TryEnterExclusive(3000))
             {

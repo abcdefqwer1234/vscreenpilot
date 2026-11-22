@@ -150,7 +150,8 @@ internal sealed partial class VisualMatchService
                     components.Add(new ColorComponent(minX, minY, maxX, maxY, pixels));
                 }
             }
-        }        finally
+        }
+        finally
         {
             ArrayPool<byte>.Shared.Return(visited);
             ArrayPool<int>.Shared.Return(queue);

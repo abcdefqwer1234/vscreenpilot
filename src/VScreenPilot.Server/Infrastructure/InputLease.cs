@@ -68,7 +68,8 @@ internal static class InputLease
             {
                 mutex.ReleaseMutex();
             }
-            catch (ApplicationException exception){
+            catch (ApplicationException exception)
+            {
                 // 不是当前线程持有；忽略。
                 LogSink.Debug($"忽略异常: {exception.Message}");
             }

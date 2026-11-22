@@ -352,7 +352,8 @@ internal static class MsaaService
                     }
                 }
                 catch (Exception exception) when (
-                    exception is InvalidCastException or FormatException or OverflowException){
+                    exception is InvalidCastException or FormatException or OverflowException)
+                {
                     // 非 child-id / IAccessible 的 VARIANT：跳过，不影响其它控件。
                     LogSink.Debug($"忽略异常: {exception.Message}");
                 }

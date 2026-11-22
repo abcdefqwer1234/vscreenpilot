@@ -70,7 +70,6 @@ internal sealed class ToolExecutor
         bool callCtsTransferred = false;
         Task<ToolResponse>? handlerTask = null;
         ToolPolicy policy = tool.Policy;
-        bool mutating = policy.Mutates;
         IDisposable? screenLease = null;
         bool releaseSucceeded = false;
 
@@ -175,32 +174,32 @@ internal sealed class ToolExecutor
         IDisposable? screenLease = null;
         CancellationTokenSource? callCts = null;
 
-            string clientId = context.Client?.Id ?? "c0";
+        string clientId = context.Client?.Id ?? "c0";
 
-            if (RequiresScreenLease(context, policy))
+        if (RequiresScreenLease(context, policy))
+        {
+            screenLease = context.Session.Lease.Acquire(clientId, tool.Name);
+
+            if (KeepsForeground(context.Arguments))
             {
-                screenLease = context.Session.Lease.Acquire(clientId, tool.Name);
-
-                if (KeepsForeground(context.Arguments))
-                {
-                    context.Session.Lease.Extend(clientId, 30_000);
-                    context.Session.PauseFocusGuard(30_000);
-                }
+                context.Session.Lease.Extend(clientId, 30_000);
+                context.Session.PauseFocusGuard(30_000);
             }
+        }
 
-            if (policy.Mutates)
-            {
-                // release 用 6s：正常写操作应在这之前结束；只有锁定超过 5s 的卡死 handler 才旁路。
-                TimeSpan wait = TimeSpan.FromMilliseconds(policy.WriteTimeoutMs);
+        if (policy.Mutates)
+        {
+            // release 用 6s：正常写操作应在这之前结束；只有锁定超过 5s 的卡死 handler 才旁路。
+            TimeSpan wait = TimeSpan.FromMilliseconds(policy.WriteTimeoutMs);
 
-                lease = await _scheduler.AcquireAsync(
-                    tool.Name, wait, context.CancellationToken,
-                    bypass: policy.BypassWriteLock).ConfigureAwait(false);
-            }
+            lease = await _scheduler.AcquireAsync(
+                tool.Name, wait, context.CancellationToken,
+                bypass: policy.BypassWriteLock).ConfigureAwait(false);
+        }
 
-            callCts = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken);
-            callCts.CancelAfter(tool.TimeoutMs);
-            context.Session.SetCancellation(callCts);
+        callCts = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken);
+        callCts.CancelAfter(tool.TimeoutMs);
+        context.Session.SetCancellation(callCts);
 
         return (lease, screenLease, callCts!);
     }

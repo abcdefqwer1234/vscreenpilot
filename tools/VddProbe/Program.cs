@@ -617,50 +617,50 @@ internal static class Program
         switch (variant)
         {
             case "device":
-            {
-                int result = DisplayTopology.SetModeAndPositionDeviceOnly(
-                    adapter.DeviceName, width, height, frequency, x, y);
-                Console.WriteLine($"device-only   : result={result} (+{stopwatch.Elapsed.TotalMilliseconds:F0}ms)");
-                break;
-            }
+                {
+                    int result = DisplayTopology.SetModeAndPositionDeviceOnly(
+                        adapter.DeviceName, width, height, frequency, x, y);
+                    Console.WriteLine($"device-only   : result={result} (+{stopwatch.Elapsed.TotalMilliseconds:F0}ms)");
+                    break;
+                }
 
             case "extend":
-            {
-                int extend = DisplayTopology.ExtendDesktop();
-                Console.WriteLine($"extend        : result={extend} (+{stopwatch.Elapsed.TotalMilliseconds:F0}ms)");
+                {
+                    int extend = DisplayTopology.ExtendDesktop();
+                    Console.WriteLine($"extend        : result={extend} (+{stopwatch.Elapsed.TotalMilliseconds:F0}ms)");
 
-                int result = DisplayTopology.SetModeAndPositionDeviceOnly(
-                    adapter.DeviceName, width, height, frequency, x, y);
-                Console.WriteLine($"device-only   : result={result} (+{stopwatch.Elapsed.TotalMilliseconds:F0}ms)");
-                break;
-            }
+                    int result = DisplayTopology.SetModeAndPositionDeviceOnly(
+                        adapter.DeviceName, width, height, frequency, x, y);
+                    Console.WriteLine($"device-only   : result={result} (+{stopwatch.Elapsed.TotalMilliseconds:F0}ms)");
+                    break;
+                }
 
             case "extend-noopt":
-            {
-                int extend = DisplayTopology.ExtendDesktopNoOptimization();
-                Console.WriteLine($"extend-noopt  : result={extend} (+{stopwatch.Elapsed.TotalMilliseconds:F0}ms)");
+                {
+                    int extend = DisplayTopology.ExtendDesktopNoOptimization();
+                    Console.WriteLine($"extend-noopt  : result={extend} (+{stopwatch.Elapsed.TotalMilliseconds:F0}ms)");
 
-                int result = DisplayTopology.SetModeAndPositionDeviceOnly(
-                    adapter.DeviceName, width, height, frequency, x, y);
-                Console.WriteLine($"device-only   : result={result} (+{stopwatch.Elapsed.TotalMilliseconds:F0}ms)");
-                break;
-            }
+                    int result = DisplayTopology.SetModeAndPositionDeviceOnly(
+                        adapter.DeviceName, width, height, frequency, x, y);
+                    Console.WriteLine($"device-only   : result={result} (+{stopwatch.Elapsed.TotalMilliseconds:F0}ms)");
+                    break;
+                }
 
             case "none":
-            {
-                Console.WriteLine(
-                    $"none          : IOCTL add only, no mode set (+{stopwatch.Elapsed.TotalMilliseconds:F0}ms)");
-                break;
-            }
+                {
+                    Console.WriteLine(
+                        $"none          : IOCTL add only, no mode set (+{stopwatch.Elapsed.TotalMilliseconds:F0}ms)");
+                    break;
+                }
 
             case "global":
             default:
-            {
-                int result = DisplayTopology.SetModeAndPosition(
-                    adapter.DeviceName, width, height, frequency, x, y, out int apply);
-                Console.WriteLine($"global        : result={result} apply={apply} (+{stopwatch.Elapsed.TotalMilliseconds:F0}ms)");
-                break;
-            }
+                {
+                    int result = DisplayTopology.SetModeAndPosition(
+                        adapter.DeviceName, width, height, frequency, x, y, out int apply);
+                    Console.WriteLine($"global        : result={result} apply={apply} (+{stopwatch.Elapsed.TotalMilliseconds:F0}ms)");
+                    break;
+                }
         }
 
         bool settled = DisplayTopology.WaitUntil(

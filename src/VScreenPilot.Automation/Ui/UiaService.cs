@@ -268,7 +268,8 @@ internal sealed partial class UiaService : IDisposable
                 automation2.ConnectionTimeout = 500;
                 automation2.TransactionTimeout = 1500;
             }
-            catch (COMException exception){
+            catch (COMException exception)
+            {
                 // 旧系统不支持 IUIAutomation2 时保持默认值。
                 LogSink.Debug($"忽略异常: {exception.Message}");
             }

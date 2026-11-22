@@ -515,7 +515,8 @@ internal sealed class ControlServer : IDisposable
         {
             _cts.Cancel();
         }
-        catch (ObjectDisposedException exception){
+        catch (ObjectDisposedException exception)
+        {
             // 已经取消。
             LogSink.Debug($"忽略异常: {exception.Message}");
         }

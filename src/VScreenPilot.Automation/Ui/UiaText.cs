@@ -14,23 +14,23 @@ internal sealed partial class UiaService
     {
         lock (_sync)
         {
-        object? pattern = null;
+            object? pattern = null;
 
-        try
-        {
-            pattern = element.GetCurrentPattern(ValuePatternId);
-            return pattern is IUIAutomationValuePattern valuePattern
-                ? SafeString(valuePattern.CurrentValue)
-                : null;
-        }
-        catch (COMException)
-        {
-            return null;
-        }
-        finally
-        {
-            ReleaseElement(pattern);
-        }
+            try
+            {
+                pattern = element.GetCurrentPattern(ValuePatternId);
+                return pattern is IUIAutomationValuePattern valuePattern
+                    ? SafeString(valuePattern.CurrentValue)
+                    : null;
+            }
+            catch (COMException)
+            {
+                return null;
+            }
+            finally
+            {
+                ReleaseElement(pattern);
+            }
         }
     }
 
@@ -42,35 +42,36 @@ internal sealed partial class UiaService
     {
         lock (_sync)
         {
-        object? pattern = null;
-        object? range = null;
+            object? pattern = null;
+            object? range = null;
 
-        try
-        {
-            pattern = element.GetCurrentPattern(TextPatternId);
-
-            if (pattern is IUIAutomationTextPattern textPattern)
+            try
             {
-                range = textPattern.DocumentRange;
+                pattern = element.GetCurrentPattern(TextPatternId);
 
-                if (range is IUIAutomationTextRange textRange)
+                if (pattern is IUIAutomationTextPattern textPattern)
                 {
-                    return NormalizeText(textRange.GetText(maxChars));
+                    range = textPattern.DocumentRange;
+
+                    if (range is IUIAutomationTextRange textRange)
+                    {
+                        return NormalizeText(textRange.GetText(maxChars));
+                    }
                 }
             }
-        }
-        catch (Exception exception) when (
-            exception is COMException or ArgumentException or InvalidOperationException){
-            // 不是所有 provider 都支持 TextPattern；继续尝试 ValuePattern。
-            LogSink.Debug($"忽略异常: {exception.Message}");
-        }
-        finally
-        {
-            ReleaseElement(range);
-            ReleaseElement(pattern);
-        }
+            catch (Exception exception) when (
+                exception is COMException or ArgumentException or InvalidOperationException)
+            {
+                // 不是所有 provider 都支持 TextPattern；继续尝试 ValuePattern。
+                LogSink.Debug($"忽略异常: {exception.Message}");
+            }
+            finally
+            {
+                ReleaseElement(range);
+                ReleaseElement(pattern);
+            }
 
-        return GetValue(element);
+            return GetValue(element);
         }
     }
 

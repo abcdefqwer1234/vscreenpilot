@@ -161,4 +161,5 @@ internal sealed class FocusGuard
         _running = false;
         _thread?.Join(500);
         _thread = null;
-    }}
+    }
+}

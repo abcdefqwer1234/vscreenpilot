@@ -37,55 +37,55 @@ internal static class PrivacyRedactor
         switch (node)
         {
             case JsonObject obj:
-            {
-                foreach (string key in obj.Select(pair => pair.Key).ToList())
                 {
-                    JsonNode? value = obj[key];
-
-                    if (value is JsonValue scalar && scalar.TryGetValue(out string? text) &&
-                        text is not null)
+                    foreach (string key in obj.Select(pair => pair.Key).ToList())
                     {
-                        string redacted = RedactEmails(text, ref count);
+                        JsonNode? value = obj[key];
 
-                        if (!ReferenceEquals(redacted, text) &&
-                            !string.Equals(redacted, text, StringComparison.Ordinal))
+                        if (value is JsonValue scalar && scalar.TryGetValue(out string? text) &&
+                            text is not null)
                         {
-                            obj[key] = redacted;
+                            string redacted = RedactEmails(text, ref count);
+
+                            if (!ReferenceEquals(redacted, text) &&
+                                !string.Equals(redacted, text, StringComparison.Ordinal))
+                            {
+                                obj[key] = redacted;
+                            }
+                        }
+                        else
+                        {
+                            RedactJsonStrings(value, ref count);
                         }
                     }
-                    else
-                    {
-                        RedactJsonStrings(value, ref count);
-                    }
-                }
 
-                break;
-            }
+                    break;
+                }
 
             case JsonArray array:
-            {
-                for (int index = 0; index < array.Count; index++)
                 {
-                    JsonNode? value = array[index];
-
-                    if (value is JsonValue scalar && scalar.TryGetValue(out string? text) &&
-                        text is not null)
+                    for (int index = 0; index < array.Count; index++)
                     {
-                        string redacted = RedactEmails(text, ref count);
+                        JsonNode? value = array[index];
 
-                        if (!string.Equals(redacted, text, StringComparison.Ordinal))
+                        if (value is JsonValue scalar && scalar.TryGetValue(out string? text) &&
+                            text is not null)
                         {
-                            array[index] = redacted;
+                            string redacted = RedactEmails(text, ref count);
+
+                            if (!string.Equals(redacted, text, StringComparison.Ordinal))
+                            {
+                                array[index] = redacted;
+                            }
+                        }
+                        else
+                        {
+                            RedactJsonStrings(value, ref count);
                         }
                     }
-                    else
-                    {
-                        RedactJsonStrings(value, ref count);
-                    }
-                }
 
-                break;
-            }
+                    break;
+                }
         }
     }
 }

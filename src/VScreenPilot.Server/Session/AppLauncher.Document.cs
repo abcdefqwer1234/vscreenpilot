@@ -38,7 +38,8 @@ internal sealed partial class AppLauncher
                     return true;
                 }
             }
-            catch (System.Runtime.InteropServices.COMException exception){
+            catch (System.Runtime.InteropServices.COMException exception)
+            {
                 // Word 正在切换文档，稍后重试。
                 LogSink.Debug($"忽略异常: {exception.Message}");
             }
@@ -98,7 +99,8 @@ internal sealed partial class AppLauncher
                 }
             }
         }
-        catch (System.Runtime.InteropServices.COMException exception){
+        catch (System.Runtime.InteropServices.COMException exception)
+        {
             // 开始屏幕的 UIA 提供程序不稳定时按“找不到磁贴”处理。
             LogSink.Debug($"忽略异常: {exception.Message}");
         }

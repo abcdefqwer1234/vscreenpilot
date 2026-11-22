@@ -433,7 +433,8 @@ internal sealed partial class ElementOperations
             return VerifyFocus(handle);
         }
         catch (Exception exception) when (
-            exception is System.Runtime.InteropServices.COMException or InvalidOperationException){
+            exception is System.Runtime.InteropServices.COMException or InvalidOperationException)
+        {
             // Word 正文的 Edit/Body 不支持 UIA SetFocus；退化到消息点击元素中心。
             LogSink.Debug($"忽略异常: {exception.Message}");
         }

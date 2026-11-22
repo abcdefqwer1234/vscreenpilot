@@ -59,7 +59,8 @@ internal sealed class ClientPathPolicy
                 fullPath = target.FullName;
             }
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException){
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
             // 文件尚不存在/无权限读取链接：保留原路径，后续 CreateNew 会给出明确 IO 错误。
             LogSink.Debug($"忽略异常: {exception.Message}");
         }
@@ -120,7 +121,8 @@ internal sealed class ClientPathPolicy
                 }
             }
             catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException){
+                exception is IOException or UnauthorizedAccessException)
+            {
                 // 无权限读取链接时继续向上；最终仍会受 IsUnder 限制。
                 LogSink.Debug($"忽略异常: {exception.Message}");
             }
