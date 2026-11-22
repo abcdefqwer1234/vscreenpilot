@@ -75,81 +75,103 @@ internal sealed class VirtualAdoptOps
     {
         if (existing is not null && _core.State.Index < 0)
         {
-            if (_core.State.RecoveredIndex >= 0)
-            {
-                _core._log.Warn(
-                    $"检测到孤儿虚拟屏，按上次记录接管 " +
-                    $"(index={_core.State.RecoveredIndex}, device={_core.State.RecoveredDevice}, " +
-                    $"pid={_core.State.RecoveredPid})");
-                _core.State.Index = _core.State.RecoveredIndex;
-                configured = _core.CreateOps.TryActivateDisplay(existing.DeviceName, out string? adoptFailure);
-
-                if (configured)
-                {
-                    _core.State.DeviceName = existing.DeviceName;
-                    _core.State.AdoptedOrphan = true;
-                    selfHealReason = "orphan_adopted";
-                    _core._log.Info($"孤儿虚拟屏已接管: {existing}");
-                }
-                else
-                {
-                    _core._log.Warn($"孤儿虚拟屏接管失败 ({adoptFailure})，尝试重建");
-                    _core.LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
-                    selfHealReason = "orphan_reclaimed";
-                }
-            }
-            else
-            {
-                // 进程异常退出后驱动通常在 ~1s 自动回收；给一个短窗口再决定。
-                if (!DisplayTopology.WaitForNoParsecDisplay(TimeSpan.FromSeconds(2)))
-                {
-                    throw new ToolException(
-                        "E_ORPHAN_DISPLAY",
-                        "检测到未归属的虚拟显示器，且无上次会话记录可供安全接管",
-                        new JsonObject { ["display"] = existing.ToString() });
-                }
-
-                _core._log.Info("孤儿虚拟屏已被驱动自动回收");
-                existing = DisplayTopology.FindParsecDisplay();
-            }
-
-            // 一次会话只按上次记录接管一次，避免旧索引在后续重建时被误用。
-            _core.State.RecoveredIndex = -1;
-            _core.State.RecoveredDevice = string.Empty;
+            AdoptRecoveredDisplay(ref existing, ref configured, ref displayAdded, ref selfHealReason);
+            ResetRecoveredState();
         }
 
-        // 显示索引仍归本会话，但拓扑丢失或几何被改（睡眠、驱动回收、用户改设置）。
         if (existing is not null && _core.State.Index >= 0)
         {
-            _core._log.Warn($"虚拟屏状态异常 ({existing})，尝试恢复");
-
-            if (!configured)
-            {
-                configured = _core.CreateOps.TryActivateDisplay(existing.DeviceName, out string? failure);
-
-                if (!configured)
-                {
-                    _core._log.Warn($"恢复失败 ({failure})，重建虚拟屏");
-                    _core.LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
-                    _core.State.RecreateCount++;
-                    selfHealReason = "display_recreated";
-                }
-                else if (selfHealReason is null)
-                {
-                    selfHealReason = "geometry_changed";
-                }
-            }
+            RecoverGeometry(existing, ref configured, ref displayAdded, ref selfHealReason);
         }
         else if (existing is null && _core.State.Index >= 0)
         {
-            // 驱动已回收设备：索引失效，直接丢弃后重新创建，避免对旧索引反复重试。
-            _core._log.Warn("虚拟屏已被驱动回收，重新创建");
-            _core.Forget();
-            _core.State.RecreateCount++;
-            selfHealReason = "display_reclaimed";
+            ReclaimDisplay(ref selfHealReason);
         }
 
         return existing;
+    }
+
+    private void AdoptRecoveredDisplay(
+        ref DisplayInfo? existing, ref bool configured, ref bool displayAdded, ref string? selfHealReason)
+    {
+        if (_core.State.RecoveredIndex < 0)
+        {
+            // 进程异常退出后驱动通常在 ~1s 自动回收；给一个短窗口再决定。
+            if (!DisplayTopology.WaitForNoParsecDisplay(TimeSpan.FromSeconds(2)))
+            {
+                throw new ToolException(
+                    "E_ORPHAN_DISPLAY",
+                    "检测到未归属的虚拟显示器，且无上次会话记录可供安全接管",
+                    new JsonObject { ["display"] = existing!.ToString() });
+            }
+
+            _core._log.Info("孤儿虚拟屏已被驱动自动回收");
+            existing = DisplayTopology.FindParsecDisplay();
+            return;
+        }
+
+        _core._log.Warn(
+            $"检测到孤儿虚拟屏，按上次记录接管 " +
+            $"(index={_core.State.RecoveredIndex}, device={_core.State.RecoveredDevice}, " +
+            $"pid={_core.State.RecoveredPid})");
+        _core.State.Index = _core.State.RecoveredIndex;
+        configured = _core.CreateOps.TryActivateDisplay(existing!.DeviceName, out string? adoptFailure);
+
+        if (configured)
+        {
+            _core.State.DeviceName = existing!.DeviceName;
+            _core.State.AdoptedOrphan = true;
+            selfHealReason = "orphan_adopted";
+            _core._log.Info($"孤儿虚拟屏已接管: {existing}");
+            return;
+        }
+
+        _core._log.Warn($"孤儿虚拟屏接管失败 ({adoptFailure})，尝试重建");
+        _core.LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
+        selfHealReason = "orphan_reclaimed";
+    }
+
+    private void ResetRecoveredState()
+    {
+        // 一次会话只按上次记录接管一次，避免旧索引在后续重建时被误用。
+        _core.State.RecoveredIndex = -1;
+        _core.State.RecoveredDevice = string.Empty;
+    }
+
+    /// <summary>
+    /// 显示索引仍归本会话，但拓扑丢失或几何被改（睡眠、驱动回收、用户改设置）。
+    /// </summary>
+    private void RecoverGeometry(
+        DisplayInfo existing, ref bool configured, ref bool displayAdded, ref string? selfHealReason)
+    {
+        _core._log.Warn($"虚拟屏状态异常 ({existing})，尝试恢复");
+
+        if (configured)
+        {
+            return;
+        }
+
+        configured = _core.CreateOps.TryActivateDisplay(existing.DeviceName, out string? failure);
+
+        if (!configured)
+        {
+            _core._log.Warn($"恢复失败 ({failure})，重建虚拟屏");
+            _core.LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
+            _core.State.RecreateCount++;
+            selfHealReason = "display_recreated";
+            return;
+        }
+
+        selfHealReason ??= "geometry_changed";
+    }
+
+    private void ReclaimDisplay(ref string? selfHealReason)
+    {
+        // 驱动已回收设备：索引失效，直接丢弃后重新创建，避免对旧索引反复重试。
+        _core._log.Warn("虚拟屏已被驱动回收，重新创建");
+        _core.Forget();
+        _core.State.RecreateCount++;
+        selfHealReason = "display_reclaimed";
     }
 
     public DisplayInfo? OwnDisplay()

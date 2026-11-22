@@ -25,7 +25,7 @@ internal sealed class InputToolService : IInputService
     public InputToolService(SessionManager session) => _session = session;
 
     public ClickView Click(ClickRequest request) =>
-        _session.InputOps.Click(
+        _session.InputOps.Click(new SessionClickRequest(
             request.X,
             request.Y,
             request.Button,
@@ -33,7 +33,7 @@ internal sealed class InputToolService : IInputService
             request.Mode,
             request.KeepForeground,
             request.Observe,
-            request.FallbackInput);
+            request.FallbackInput));
 
     public ClickRefView ClickRef(
         string reference, string? channel, bool keepForeground, bool fallbackInput) =>

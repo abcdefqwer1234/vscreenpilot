@@ -41,9 +41,7 @@ internal sealed record ElementAppContext(
     Action<DisplayInfo, IntPtr, string> RequireOnDisplay,
     Action<DisplayInfo, int, int, string> RequirePointInTrackedApp);
 
-internal delegate ClickView ClickHandler(
-    int x, int y, string button, int clicks, string mode,
-    bool keepForeground = false, bool observe = true, bool fallbackInput = false);
+internal delegate ClickView ClickHandler(SessionClickRequest request);
 
 internal delegate TypeTextView TypeTextHandler(
     string text, int? pid, bool verify, int chunkChars, string channel);

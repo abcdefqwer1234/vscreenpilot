@@ -101,17 +101,8 @@ internal sealed class UiaHost : IDisposable
     public UiaElementHandle? FindByRuntimeId(IntPtr hwnd, string runtimeId) =>
         Invoke(service => service.FindByRuntimeId(hwnd, runtimeId));
 
-    public UiaElementHandle? FindByFingerprint(
-        IntPtr hwnd,
-        string name,
-        string automationId,
-        string controlTypeName,
-        int left,
-        int top,
-        int right,
-        int bottom) =>
-        Invoke(service => service.LocateOps.FindByFingerprint(
-            hwnd, name, automationId, controlTypeName, left, top, right, bottom));
+    public UiaElementHandle? FindByFingerprint(FingerprintQuery query) =>
+        Invoke(service => service.LocateOps.FindByFingerprint(query));
 
     public UiaElementInfo? GetFocusedElement() =>
         Invoke(static service => service.GetFocusedElement());

@@ -32,45 +32,7 @@ internal static class StdioProxy
                 return handshake;
             }
 
-
-            Stream stdin = Console.OpenStandardInput();
-            Stream stdout = Console.OpenStandardOutput();
-
-            Task up = stdin.CopyToAsync(pipe);
-            Task down = pipe.CopyToAsync(stdout);
-
-            Task completed = Task.WhenAny(up, down).GetAwaiter().GetResult();
-
-            if (completed == up && up.IsFaulted)
-            {
-                return Fail($"共享实例写入失败: {Describe(up.Exception)}");
-            }
-
-            if (completed == down)
-            {
-                // daemon 在客户端 stdin 仍打开时结束：正常 stop 或崩溃都属于“连接中断”，
-                // 不能返回 0，否则客户端会误以为 MCP 服务正常退出。
-                return Fail(
-                    down.IsFaulted
-                        ? $"共享实例连接中断: {Describe(down.Exception)}"
-                        : "共享实例已断开（daemon 退出或崩溃）");
-            }
-
-            // 客户端 stdin EOF：等待 daemon 把剩余输出写完一小段时间。
-            // 若 daemon 在这段时间内崩溃，必须返回 3，而不是伪装成正常退出。
-            try
-            {
-                down.WaitAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
-                return 0;
-            }
-            catch (TimeoutException)
-            {
-                return 0;
-            }
-            catch (Exception exception)
-            {
-                return Fail($"共享实例连接中断: {exception.GetBaseException().Message}");
-            }
+            return Relay(pipe);
         }
         catch (TimeoutException)
         {
@@ -84,22 +46,73 @@ internal static class StdioProxy
         }
         catch (Exception exception)
         {
-            try
-            {
-                Console.Error.WriteLine($"VScreenPilot: 代理失败: {exception.Message}");
-            }
-            catch (Exception writeError)
-            {
-                // 无控制台时忽略。
-                _ = writeError;
-            }
-
-            return 3;
+            return ReportFatal(exception);
         }
         finally
         {
             pipe?.Dispose();
         }
+    }
+
+    private static int? Relay(NamedPipeClientStream pipe)
+    {
+        Stream stdin = Console.OpenStandardInput();
+        Stream stdout = Console.OpenStandardOutput();
+
+        Task up = stdin.CopyToAsync(pipe);
+        Task down = pipe.CopyToAsync(stdout);
+        Task completed = Task.WhenAny(up, down).GetAwaiter().GetResult();
+
+        if (completed == up && up.IsFaulted)
+        {
+            return Fail($"共享实例写入失败: {Describe(up.Exception)}");
+        }
+
+        if (completed == down)
+        {
+            // daemon 在客户端 stdin 仍打开时结束：正常 stop 或崩溃都属于“连接中断”，
+            // 不能返回 0，否则客户端会误以为 MCP 服务正常退出。
+            return Fail(
+                down.IsFaulted
+                    ? $"共享实例连接中断: {Describe(down.Exception)}"
+                    : "共享实例已断开（daemon 退出或崩溃）");
+        }
+
+        return AwaitDaemonOutput(down);
+    }
+
+    private static int? AwaitDaemonOutput(Task down)
+    {
+        // 客户端 stdin EOF：等待 daemon 把剩余输出写完一小段时间。
+        // 若 daemon 在这段时间内崩溃，必须返回 3，而不是伪装成正常退出。
+        try
+        {
+            down.WaitAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
+            return 0;
+        }
+        catch (TimeoutException)
+        {
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            return Fail($"共享实例连接中断: {exception.GetBaseException().Message}");
+        }
+    }
+
+    private static int ReportFatal(Exception exception)
+    {
+        try
+        {
+            Console.Error.WriteLine($"VScreenPilot: 代理失败: {exception.Message}");
+        }
+        catch (Exception writeError)
+        {
+            // 无控制台时忽略。
+            _ = writeError;
+        }
+
+        return 3;
     }
 
     private static string Describe(Exception? exception) =>

@@ -27,49 +27,72 @@ internal sealed class RegionVerifier
     public AssertRegionView Assert(JsonElement region, JsonElement expectation)
     {
         DisplayInfo display = _host.EnsureDisplay();
+        (int x, int y, int width, int height) = ParseRegion(region);
+
+        EnsureExpectation(expectation);
+        VisualSupport.RequireRegionInDisplay(display, x, y, width, height, "assert_region");
+
+        (byte[] bgra, int capturedWidth, int capturedHeight) = _host.CaptureRegion(x, y, width, height);
+        return AssertExpectation(bgra, capturedWidth, capturedHeight, x, y, expectation);
+    }
+
+    private static (int X, int Y, int Width, int Height) ParseRegion(JsonElement region)
+    {
         (int x, int y, int width, int height) = VisualSupport.ParseRegion(region);
 
-        if (width <= 0 || height <= 0 || x < int.MinValue + 1 || y < int.MinValue + 1)
+        if (width > 0 && height > 0 && x >= int.MinValue + 1 && y >= int.MinValue + 1)
         {
-            throw new ToolException(
-                "E_INVALID_ARG",
-                "assert_region 的 region 必须包含正整数 width/height",
-                new JsonObject
-                {
-                    ["field"] = "region",
-                    ["x"] = x,
-                    ["y"] = y,
-                    ["width"] = width,
-                    ["height"] = height,
-                },
-                retryable: false,
-                hint: "传 {x,y,width,height}，width/height ≥ 1",
-                stage: "validate");
+            return (x, y, width, height);
         }
 
-        // expectation 至少要有一种断言，否则不要浪费一次截图。
+        throw new ToolException(
+            "E_INVALID_ARG",
+            "assert_region 的 region 必须包含正整数 width/height",
+            new JsonObject
+            {
+                ["field"] = "region",
+                ["x"] = x,
+                ["y"] = y,
+                ["width"] = width,
+                ["height"] = height,
+            },
+            retryable: false,
+            hint: "传 {x,y,width,height}，width/height ≥ 1",
+            stage: "validate");
+    }
+
+    private static void EnsureExpectation(JsonElement expectation)
+    {
+        // expectation 至少要有一个断言，否则不要浪费一次截图。
         bool hasExpectation =
-            (expectation.ValueKind == JsonValueKind.Object) &&
+            expectation.ValueKind == JsonValueKind.Object &&
             (expectation.TryGetProperty("color", out _) ||
              expectation.TryGetProperty("changed", out _) ||
              expectation.TryGetProperty("baseline", out _) ||
              expectation.TryGetProperty("baseline_frame_id", out _));
 
-        if (!hasExpectation)
+        if (hasExpectation)
         {
-            throw new ToolException(
-                "E_INVALID_ARG",
-                "assert_region 需要 expectation.color / expectation.changed / baseline",
-                new JsonObject { ["field"] = "expectation" },
-                retryable: false,
-                hint: "示例：{\"changed\":true,\"threshold\":0.01} 或 {\"color\":\"#RRGGBB\",\"coverage\":0.9}",
-                stage: "validate");
+            return;
         }
 
-        VisualSupport.RequireRegionInDisplay(display, x, y, width, height, "assert_region");
+        throw new ToolException(
+            "E_INVALID_ARG",
+            "assert_region 需要 expectation.color / expectation.changed / baseline",
+            new JsonObject { ["field"] = "expectation" },
+            retryable: false,
+            hint: "示例：{\"changed\":true,\"threshold\":0.01} 或 {\"color\":\"#RRGGBB\",\"coverage\":0.9}",
+            stage: "validate");
+    }
 
-        (byte[] bgra, int capturedWidth, int capturedHeight) = _host.CaptureRegion(x, y, width, height);
-
+    private AssertRegionView AssertExpectation(
+        byte[] bgra,
+        int capturedWidth,
+        int capturedHeight,
+        int x,
+        int y,
+        JsonElement expectation)
+    {
         if (expectation.TryGetProperty("color", out JsonElement colorElement) &&
             colorElement.ValueKind == JsonValueKind.String)
         {
@@ -80,24 +103,13 @@ internal sealed class RegionVerifier
             (changedElement.ValueKind is JsonValueKind.True or JsonValueKind.False))
         {
             return AssertChanged(
-                bgra, capturedWidth, capturedHeight, changedElement.GetBoolean(),
-                expectation, x, y);
+                bgra, capturedWidth, capturedHeight, changedElement.GetBoolean(), expectation, x, y);
         }
 
         if (expectation.TryGetProperty("baseline", out JsonElement baselineElement) &&
             baselineElement.ValueKind == JsonValueKind.String)
         {
-            string baseline = (baselineElement.GetString() ?? string.Empty)
-                .Trim()
-                .ToLowerInvariant();
-
-            if (baseline is not ("last" or "latest" or "last_same_region" or "last-same-region"))
-            {
-                throw new ToolException(
-                    "E_INVALID_ARG",
-                    $"未知 baseline: {baseline}（可选 last_same_region/last）");
-            }
-
+            ValidateBaseline(baselineElement.GetString());
             return AssertChanged(
                 bgra, capturedWidth, capturedHeight, expectChanged: false, expectation, x, y);
         }
@@ -106,6 +118,21 @@ internal sealed class RegionVerifier
             "E_INVALID_ARG",
             "expectation 需要 color、changed 或 baseline 之一");
     }
+
+    private static void ValidateBaseline(string? raw)
+    {
+        string baseline = (raw ?? string.Empty).Trim().ToLowerInvariant();
+
+        if (baseline is "last" or "latest" or "last_same_region" or "last-same-region")
+        {
+            return;
+        }
+
+        throw new ToolException(
+            "E_INVALID_ARG",
+            $"未知 baseline: {baseline}（可选 last_same_region/last）");
+    }
+
     private AssertRegionView AssertColor(
         byte[] bgra, int width, int height, string hex, JsonElement expectation)
     {

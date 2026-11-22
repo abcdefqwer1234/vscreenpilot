@@ -24,6 +24,23 @@ internal sealed class AppLaunchFlowOps
     public AppLaunchFlowOps(AppLauncher core) => _core = core;
     internal void TrackWindow(LaunchState s)
     {
+        PrepareWindow(s);
+        EnsureAllowed(s);
+
+        lock (_core._gate)
+        {
+            TrackApp(s);
+        }
+
+        // 现代应用（Edge/Notepad）由 stub 转交给真实进程，早期分配的作业对象不覆盖它。
+        if (s.Started && s.Dedicated)
+        {
+            _core.WindowOps.AssignWindowProcessToJob(s.Window!.Pid);
+        }
+    }
+
+    private void PrepareWindow(LaunchState s)
+    {
         if (s.Window is null)
         {
             throw new ToolException("E_WINDOW_TIMEOUT", "等待应用主窗口超时");
@@ -32,88 +49,97 @@ internal sealed class AppLaunchFlowOps
         // 启动壳进程可能已把窗口交接给新进程；以 hwnd 的真实属主为准。
         s.Window = WindowManager.FromHandle(s.Window!.Hwnd) ?? s.Window;
 
-        s.Window = _core.WindowOps.WaitForStableWindow(s.Window, s.WaitMs, s.Display.Width * s.Display.Height) ?? s.Window;
+        s.Window = _core.WindowOps.WaitForStableWindow(
+            s.Window, s.WaitMs, s.Display.Width * s.Display.Height) ?? s.Window;
 
         // UWP 的 frame host 路径不是用户要启动的应用；内容进程解析失败时才退回 frame。
         if (s.ContentPid == 0)
         {
             (s.ContentPid, s.ContentPath) = _core.ResolveUwpContentProcess(s.Window!.Hwnd);
         }
+    }
 
+    private void EnsureAllowed(LaunchState s)
+    {
         // path 启动时已校验；pid/window 接管也必须校验真实 exe，避免绕过 VSP_APP_ALLOWLIST（R24）。
         string allowPath = string.IsNullOrEmpty(s.ContentPath)
             ? WindowManager.GetProcessPath(s.Window!.Pid)
             : s.ContentPath;
         _core._apps.EnsureAppAllowed(allowPath);
+    }
 
-        lock (_core._gate)
+    private void TrackApp(LaunchState s)
+    {
+        s.Tracked = _core._apps.Apps.FirstOrDefault(app => _core._apps.IsOwned(app) && app.Hwnd == s.Window!.Hwnd)
+            ?? _core._apps.Apps.FirstOrDefault(app => _core._apps.IsOwned(app) && app.Pid == s.Window!.Pid);
+
+        TrackedApp? foreign = _core._apps.Apps.FirstOrDefault(app =>
+            !_core._apps.IsOwned(app) && (app.Hwnd == s.Window!.Hwnd || app.Pid == s.Window!.Pid));
+
+        if (s.Tracked is null && foreign is not null)
         {
-            s.Tracked = _core._apps.Apps.FirstOrDefault(app => _core._apps.IsOwned(app) && app.Hwnd == s.Window!.Hwnd)
-                ?? _core._apps.Apps.FirstOrDefault(app => _core._apps.IsOwned(app) && app.Pid == s.Window!.Pid);
-
-            TrackedApp? foreign = _core._apps.Apps.FirstOrDefault(app =>
-                !_core._apps.IsOwned(app) && (app.Hwnd == s.Window!.Hwnd || app.Pid == s.Window!.Pid));
-
-            if (s.Tracked is null && foreign is not null)
-            {
-                throw new ToolException(
-                    "E_APP_OWNED",
-                    $"窗口属于另一个客户端（client={foreign.OwnerClientId}）",
-                    new JsonObject
-                    {
-                        ["hwnd"] = s.Window!.Hwnd.ToInt64(),
-                        ["pid"] = s.Window!.Pid,
-                        ["owner_client_id"] = foreign.OwnerClientId,
-                        ["owner_cwd"] = _core._session.Clients.FindCwd(foreign.OwnerClientId),
-                    },
-                    retryable: true,
-                    hint: "让该客户端 release_environment，或为当前客户端启动一个独立实例",
-                    stage: "app");
-            }
-
-            if (s.Tracked is null)
-            {
-                s.Tracked = new TrackedApp
+            throw new ToolException(
+                "E_APP_OWNED",
+                $"窗口属于另一个客户端（client={foreign.OwnerClientId}）",
+                new JsonObject
                 {
-                    Pid = s.Window!.Pid,
-                    OwnerClientId = _core._session.Clients.CurrentId,
-                    ExePath = WindowManager.GetProcessPath(s.Window!.Pid),
-                    ContentPid = s.ContentPid,
-                    ContentExePath = s.ContentPath,
-                    Hwnd = s.Window!.Hwnd,
-                    Title = s.Window!.Title,
-                    StartedProcess = s.Started,
-                    Owned = s.Started && s.CloseOnRelease,
-                    CloseWindowOnRelease = s.CloseOnRelease,
-                    DedicatedProcess = s.Dedicated,
-                    TempProfile = s.TempProfile,
-                    Placement = WindowManager.GetPlacement(s.Window!.Hwnd),
-                    PlacementSaved = true,
-                };
-                _core._apps.Apps.Add(s.Tracked);
-                _core._log.Info(
-                    $"接管应用 pid={s.Window!.Pid} started={s.Started} newInstance={s.NewInstance}");
-            }
-            else
-            {
-                s.Tracked.Hwnd = s.Window!.Hwnd;
-                s.Tracked.Title = s.Window!.Title;
-                s.Tracked.Owned |= s.Started && s.CloseOnRelease;
-                s.Tracked.CloseWindowOnRelease |= s.CloseOnRelease;
-
-                if (s.ContentPid > 0)
-                {
-                    s.Tracked.ContentPid = s.ContentPid;
-                    s.Tracked.ContentExePath = s.ContentPath;
-                }
-            }
+                    ["hwnd"] = s.Window!.Hwnd.ToInt64(),
+                    ["pid"] = s.Window!.Pid,
+                    ["owner_client_id"] = foreign.OwnerClientId,
+                    ["owner_cwd"] = _core._session.Clients.FindCwd(foreign.OwnerClientId),
+                },
+                retryable: true,
+                hint: "让该客户端 release_environment，或为当前客户端启动一个独立实例",
+                stage: "app");
         }
 
-        // 现代应用（Edge/Notepad）由 stub 转交给真实进程，早期分配的作业对象不覆盖它。
-        if (s.Started && s.Dedicated)
+        if (s.Tracked is null)
         {
-            _core.WindowOps.AssignWindowProcessToJob(s.Window!.Pid);
+            RegisterTrackedApp(s);
+            return;
         }
+
+        UpdateTrackedApp(s);
+    }
+
+    private void RegisterTrackedApp(LaunchState s)
+    {
+        s.Tracked = new TrackedApp
+        {
+            Pid = s.Window!.Pid,
+            OwnerClientId = _core._session.Clients.CurrentId,
+            ExePath = WindowManager.GetProcessPath(s.Window!.Pid),
+            ContentPid = s.ContentPid,
+            ContentExePath = s.ContentPath,
+            Hwnd = s.Window!.Hwnd,
+            Title = s.Window!.Title,
+            StartedProcess = s.Started,
+            Owned = s.Started && s.CloseOnRelease,
+            CloseWindowOnRelease = s.CloseOnRelease,
+            DedicatedProcess = s.Dedicated,
+            TempProfile = s.TempProfile,
+            Placement = WindowManager.GetPlacement(s.Window!.Hwnd),
+            PlacementSaved = true,
+        };
+        _core._apps.Apps.Add(s.Tracked);
+        _core._log.Info(
+            $"接管应用 pid={s.Window!.Pid} started={s.Started} newInstance={s.NewInstance}");
+    }
+
+    private static void UpdateTrackedApp(LaunchState s)
+    {
+        s.Tracked!.Hwnd = s.Window!.Hwnd;
+        s.Tracked.Title = s.Window!.Title;
+        s.Tracked.Owned |= s.Started && s.CloseOnRelease;
+        s.Tracked.CloseWindowOnRelease |= s.CloseOnRelease;
+
+        if (s.ContentPid <= 0)
+        {
+            return;
+        }
+
+        s.Tracked.ContentPid = s.ContentPid;
+        s.Tracked.ContentExePath = s.ContentPath;
     }
 
     internal void EnsureDocumentReady(LaunchState s)

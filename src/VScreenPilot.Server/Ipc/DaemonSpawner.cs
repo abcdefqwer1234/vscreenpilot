@@ -164,71 +164,14 @@ internal static class DaemonSpawner
         try
         {
             environment = BuildEnvironmentBlock(profile);
-            var inheritable = new SecurityAttributes
-            {
-                nLength = Marshal.SizeOf<SecurityAttributes>(),
-                bInheritHandle = true,
-            };
-            nul = CreateFileW(
-                "NUL", GenericReadWrite, FileShareReadWrite, ref inheritable,
-                OpenExisting, 0, IntPtr.Zero);
+            nul = OpenNulHandle(log);
 
-            if (nul == new IntPtr(-1) || nul == IntPtr.Zero)
+            if (nul == IntPtr.Zero)
             {
-                log.Warn("独立 daemon breakaway 启动跳过：无法打开 NUL 句柄");
                 return null;
             }
 
-            var startup = new StartupInfo
-            {
-                cb = Marshal.SizeOf<StartupInfo>(),
-                dwFlags = (int)StartfUseStdHandles,
-                hStdInput = nul,
-                hStdOutput = nul,
-                hStdError = nul,
-            };
-
-            string commandLine = $"\"{exe}\" --daemon --profile \"{profile}\"";
-            uint flags = CreateBreakawayFromJob | CreateNoWindow | CreateUnicodeEnvironment;
-
-            if (!CreateProcessW(
-                    exe,
-                    commandLine,
-                    IntPtr.Zero,
-                    IntPtr.Zero,
-                    inheritHandles: true,
-                    creationFlags: flags,
-                    environment: environment,
-                    currentDirectory: Environment.CurrentDirectory,
-                    startupInfo: ref startup,
-                    processInformation: out ProcessInformation info))
-            {
-                int error = Marshal.GetLastWin32Error();
-
-                if (error != 5)
-                {
-                    log.Warn($"独立 daemon breakaway 启动失败 Win32={error}，回退普通启动");
-                }
-                else
-                {
-                    log.Info("当前 Job 不允许 breakaway，回退普通 daemon 启动");
-                }
-
-                return null;
-            }
-
-            try
-            {
-                CloseHandle(info.hThread);
-                CloseHandle(info.hProcess);
-                log.Info($"已启动独立 daemon（breakaway）pid={info.dwProcessId} profile={profile}");
-                return Process.GetProcessById((int)info.dwProcessId);
-            }
-            catch (Exception exception)
-            {
-                log.Warn($"breakaway daemon 已创建但无法获取进程对象: {exception.Message}");
-                return null;
-            }
+            return CreateBreakawayProcess(exe, profile, environment, nul, log);
         }
         catch (Exception exception)
         {
@@ -246,6 +189,86 @@ internal static class DaemonSpawner
             {
                 Marshal.FreeHGlobal(environment);
             }
+        }
+    }
+
+    private static IntPtr OpenNulHandle(LogRing log)
+    {
+        var inheritable = new SecurityAttributes
+        {
+            nLength = Marshal.SizeOf<SecurityAttributes>(),
+            bInheritHandle = true,
+        };
+        IntPtr nul = CreateFileW(
+            "NUL", GenericReadWrite, FileShareReadWrite, ref inheritable,
+            OpenExisting, 0, IntPtr.Zero);
+
+        if (nul != new IntPtr(-1) && nul != IntPtr.Zero)
+        {
+            return nul;
+        }
+
+        log.Warn("独立 daemon breakaway 启动跳过：无法打开 NUL 句柄");
+        return IntPtr.Zero;
+    }
+
+    private static Process? CreateBreakawayProcess(
+        string exe, string profile, IntPtr environment, IntPtr nul, LogRing log)
+    {
+        var startup = new StartupInfo
+        {
+            cb = Marshal.SizeOf<StartupInfo>(),
+            dwFlags = (int)StartfUseStdHandles,
+            hStdInput = nul,
+            hStdOutput = nul,
+            hStdError = nul,
+        };
+
+        string commandLine = $"\"{exe}\" --daemon --profile \"{profile}\"";
+        uint flags = CreateBreakawayFromJob | CreateNoWindow | CreateUnicodeEnvironment;
+
+        if (!CreateProcessW(
+                exe,
+                commandLine,
+                IntPtr.Zero,
+                IntPtr.Zero,
+                inheritHandles: true,
+                creationFlags: flags,
+                environment: environment,
+                currentDirectory: Environment.CurrentDirectory,
+                startupInfo: ref startup,
+                processInformation: out ProcessInformation info))
+        {
+            int error = Marshal.GetLastWin32Error();
+
+            if (error != 5)
+            {
+                log.Warn($"独立 daemon breakaway 启动失败 Win32={error}，回退普通启动");
+            }
+            else
+            {
+                log.Info("当前 Job 不允许 breakaway，回退普通 daemon 启动");
+            }
+
+            return null;
+        }
+
+        return AttachBreakawayProcess(info, profile, log);
+    }
+
+    private static Process? AttachBreakawayProcess(ProcessInformation info, string profile, LogRing log)
+    {
+        try
+        {
+            CloseHandle(info.hThread);
+            CloseHandle(info.hProcess);
+            log.Info($"已启动独立 daemon（breakaway）pid={info.dwProcessId} profile={profile}");
+            return Process.GetProcessById((int)info.dwProcessId);
+        }
+        catch (Exception exception)
+        {
+            log.Warn($"breakaway daemon 已创建但无法获取进程对象: {exception.Message}");
+            return null;
         }
     }
 

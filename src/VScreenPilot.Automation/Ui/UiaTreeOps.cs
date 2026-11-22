@@ -41,32 +41,12 @@ internal sealed class UiaTreeOps
         IUIAutomationElement? rootElement = null;
         UiaElementHandle? rootHandle = null;
         var stopwatch = Stopwatch.StartNew();
-
-        maxDepth = Math.Clamp(maxDepth, 1, 10);
-        maxNodes = Math.Clamp(maxNodes, 1, 2000);
+        int depthLimit = Math.Clamp(maxDepth, 1, 10);
+        int nodeLimit = Math.Clamp(maxNodes, 1, 2000);
 
         try
         {
-            if (!string.IsNullOrWhiteSpace(rootRuntimeId))
-            {
-                rootHandle = _core.LocateOps.FindByRuntimeId(hwnd, rootRuntimeId);
-                rootElement = rootHandle?.Element;
-
-                if (rootElement is null)
-                {
-                    return new UiaTreeResult(null, 0, 0, 0, false, "root_not_found", 0, 0);
-                }
-
-                // 句柄负责释放；这里用同一对象继续查询。
-            }
-            else
-            {
-                // 必须使用 BuildCache 版本，否则后续读取 Cached* 属性会抛 ArgumentException。
-                rootElement = hwnd != IntPtr.Zero
-                    ? _core._automation.ElementFromHandleBuildCache(
-                        _core.FindOps.ResolveUwpContentHwnd(hwnd), _core._elementCache)
-                    : _core._automation.GetRootElementBuildCache(_core._elementCache);
-            }
+            rootElement = AcquireRoot(hwnd, rootRuntimeId, out rootHandle);
 
             if (rootElement is null)
             {
@@ -74,22 +54,14 @@ internal sealed class UiaTreeOps
             }
 
             UiaElementInfo? rootInfo = _core.Factory.Describe(rootElement, cached: true);
+
             if (rootInfo is null)
             {
                 return new UiaTreeResult(null, 0, 0, 0, false, "root_unavailable", 0, 0);
             }
 
-            var state = new TreeBuildState
-            {
-                MaxDepth = maxDepth,
-                MaxNodes = maxNodes,
-                InteractiveOnly = interactiveOnly,
-                Deadline = timeBudgetMs,
-                Stopwatch = stopwatch,
-                VisitedLimit = Math.Max(64, maxNodes * 6),
-                IsCancelled = isCancelled,
-                Nodes = 1,
-            };
+            TreeBuildState state = CreateTreeState(
+                depthLimit, nodeLimit, interactiveOnly, timeBudgetMs, stopwatch, isCancelled);
 
             var root = new UiaTreeNode { Info = rootInfo };
             BuildChildren(rootElement, root, 1, state);
@@ -113,12 +85,52 @@ internal sealed class UiaTreeOps
         finally
         {
             rootHandle?.Dispose();
+
             if (rootHandle is null)
             {
                 UiaElementFactoryOps.ReleaseElement(rootElement);
             }
         }
     }
+
+    private IUIAutomationElement? AcquireRoot(
+        IntPtr hwnd, string? rootRuntimeId, out UiaElementHandle? rootHandle)
+    {
+        if (!string.IsNullOrWhiteSpace(rootRuntimeId))
+        {
+            rootHandle = _core.LocateOps.FindByRuntimeId(hwnd, rootRuntimeId);
+
+            // 句柄负责释放；这里用同一对象继续查询。
+            return rootHandle?.Element;
+        }
+
+        rootHandle = null;
+
+        // 必须使用 BuildCache 版本，否则后续读取 Cached* 属性会抛 ArgumentException。
+        return hwnd != IntPtr.Zero
+            ? _core._automation.ElementFromHandleBuildCache(
+                _core.FindOps.ResolveUwpContentHwnd(hwnd), _core._elementCache)
+            : _core._automation.GetRootElementBuildCache(_core._elementCache);
+    }
+
+    private static TreeBuildState CreateTreeState(
+        int maxDepth,
+        int maxNodes,
+        bool interactiveOnly,
+        int timeBudgetMs,
+        Stopwatch stopwatch,
+        Func<bool>? isCancelled) =>
+        new()
+        {
+            MaxDepth = maxDepth,
+            MaxNodes = maxNodes,
+            InteractiveOnly = interactiveOnly,
+            Deadline = timeBudgetMs,
+            Stopwatch = stopwatch,
+            VisitedLimit = Math.Max(64, maxNodes * 6),
+            IsCancelled = isCancelled,
+            Nodes = 1,
+        };
 
     internal void BuildChildren(
         IUIAutomationElement element, UiaTreeNode node, int depth, TreeBuildState state)

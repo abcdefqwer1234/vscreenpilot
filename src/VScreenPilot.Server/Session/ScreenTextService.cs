@@ -16,7 +16,7 @@ internal sealed record ScreenTextContext(
     Func<int, int, int, int, (byte[] Bgra, int Width, int Height)> CaptureRegion,
     Func<CancellationToken> Cancellation,
     Action RecordOcr,
-    Func<int, int, string, int, string, bool, bool, bool, ClickView> Click);
+    Func<SessionClickRequest, ClickView> Click);
 
 /// <summary>read_screen_text / click_text：OCR 读取、匹配与按文本点击。</summary>
 internal sealed class ScreenTextService
@@ -170,8 +170,8 @@ internal sealed class ScreenTextService
 
         int clickX = left + match.Left + match.Width / 2;
         int clickY = top + match.Top + match.Height / 2;
-        ClickView click = _host.Click(
-            clickX, clickY, "left", 1, channel, keepForeground, observe, fallbackInput);
+        ClickView click = _host.Click(new SessionClickRequest(
+            clickX, clickY, "left", 1, channel, keepForeground, observe, fallbackInput));
 
         int clickRedactions = 0;
         string clickedText = PrivacyRedactor.RedactEmails(match.Text, ref clickRedactions);

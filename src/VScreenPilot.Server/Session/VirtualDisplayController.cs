@@ -106,92 +106,140 @@ internal sealed class VirtualDisplayController
                 throw new ToolException("E_RELEASED", "会话已结束，无法重新建立虚拟屏");
             }
 
-            if (State.VirtualDisplay is { Attached: true } current &&
-                Vdd.IsOpen &&
-                CreateOps.GeometryStillValid(current))
+            DisplayInfo? current = TryReuseCurrent();
+
+            if (current is not null)
             {
                 return current;
             }
 
-            string? selfHealReason = null;
-
-            VddDeviceStatus status = VddDevice.QueryStatus();
-            if (status != VddDeviceStatus.Ok)
-            {
-                throw new ToolException("E_DRIVER", $"Parsec VDD 驱动状态异常: {status}");
-            }
-
-            if (Vdd.NeedsReopen)
-            {
-                _log.Warn(
-                    $"VDD 心跳连续失败 ({Vdd.ConsecutiveUpdateFailures})，重新打开设备");
-                Vdd.Dispose();
-                State.VddReopenCount++;
-                selfHealReason = "vdd_reopen";
-            }
-
-            if (!Vdd.TryOpen(out int openError))
-            {
-                throw new ToolException("E_DRIVER_OPEN", $"打开 VDD 设备失败 (Win32 {openError})");
-            }
-
-            Vdd.StartKeepAlive();
+            string? selfHealReason = PrepareDriver();
 
             bool configured = false;
             bool displayAdded = false;
             DisplayInfo? existing = OwnDisplay();
 
-            existing = AdoptOps.AdoptOrphanIfNeeded(existing, ref configured, ref displayAdded, ref selfHealReason);
-            existing = AdoptOps.ReconcileExisting(ref existing, ref configured, ref displayAdded, ref selfHealReason);
+            existing = AdoptOps.AdoptOrphanIfNeeded(
+                existing, ref configured, ref displayAdded, ref selfHealReason);
+            existing = AdoptOps.ReconcileExisting(
+                ref existing, ref configured, ref displayAdded, ref selfHealReason);
 
-            string? targetDevice = existing?.DeviceName;
+            string? targetDevice = PrepareDisplay(existing, ref configured, ref displayAdded);
+            EnsureMode(targetDevice, ref configured, displayAdded);
+            DisplayInfo activated = RequireActivated(targetDevice, displayAdded);
 
-            if (!configured && State.Index < 0)
-            {
-                CreateOps.CreateNewDisplay(ref targetDevice, ref displayAdded);
-            }
+            return Publish(activated, selfHealReason);
+        }
+    }
 
-            if (!configured)
-            {
-                if (string.IsNullOrWhiteSpace(targetDevice))
-                {
-                    LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
-                    throw new ToolException("E_DISPLAY_ADD", "无法确定本次虚拟屏的 device");
-                }
+    private DisplayInfo? TryReuseCurrent()
+    {
+        if (State.VirtualDisplay is { Attached: true } current &&
+            Vdd.IsOpen &&
+            CreateOps.GeometryStillValid(current))
+        {
+            return current;
+        }
 
-                configured = CreateOps.TryActivateDisplay(targetDevice, out string? failure);
+        return null;
+    }
 
-                if (!configured)
-                {
-                    LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
-                    throw new ToolException(
-                        "E_DISPLAY_MODE",
-                        "虚拟显示器模式/坐标未稳定",
-                        new JsonObject { ["detail"] = failure });
-                }
-            }
+    private string? PrepareDriver()
+    {
+        string? selfHealReason = null;
 
-            DisplayInfo? activated = DisplayTopology.FindParsecDisplayByDevice(targetDevice);
-            if (activated is null)
-            {
-                LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
-                throw new ToolException("E_DISPLAY_ADD", "虚拟显示器激活后消失");
-            }
+        VddDeviceStatus status = VddDevice.QueryStatus();
 
-            State.VirtualDisplay = activated;
-            State.DeviceName = activated.DeviceName;
-            State.Initialized = true;
+        if (status != VddDeviceStatus.Ok)
+        {
+            throw new ToolException("E_DRIVER", $"Parsec VDD 驱动状态异常: {status}");
+        }
 
-            if (selfHealReason is not null)
-            {
-                NoteSelfHeal(selfHealReason);
-            }
+        if (Vdd.NeedsReopen)
+        {
+            _log.Warn(
+                $"VDD 心跳连续失败 ({Vdd.ConsecutiveUpdateFailures})，重新打开设备");
+            Vdd.Dispose();
+            State.VddReopenCount++;
+            selfHealReason = "vdd_reopen";
+        }
 
-            _onReady(activated);
-            _log.Info($"环境就绪: {activated}");
-            _saveState();
+        if (!Vdd.TryOpen(out int openError))
+        {
+            throw new ToolException("E_DRIVER_OPEN", $"打开 VDD 设备失败 (Win32 {openError})");
+        }
+
+        Vdd.StartKeepAlive();
+        return selfHealReason;
+    }
+
+    private string? PrepareDisplay(DisplayInfo? existing, ref bool configured, ref bool displayAdded)
+    {
+        string? targetDevice = existing?.DeviceName;
+
+        if (!configured && State.Index < 0)
+        {
+            CreateOps.CreateNewDisplay(ref targetDevice, ref displayAdded);
+        }
+
+        return targetDevice;
+    }
+
+    private void EnsureMode(string? targetDevice, ref bool configured, bool displayAdded)
+    {
+        if (configured)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(targetDevice))
+        {
+            LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
+            throw new ToolException("E_DISPLAY_ADD", "无法确定本次虚拟屏的 device");
+        }
+
+        configured = CreateOps.TryActivateDisplay(targetDevice, out string? failure);
+
+        if (configured)
+        {
+            return;
+        }
+
+        LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
+        throw new ToolException(
+            "E_DISPLAY_MODE",
+            "虚拟显示器模式/坐标未稳定",
+            new JsonObject { ["detail"] = failure });
+    }
+
+    private DisplayInfo RequireActivated(string? targetDevice, bool displayAdded)
+    {
+        DisplayInfo? activated = DisplayTopology.FindParsecDisplayByDevice(targetDevice);
+
+        if (activated is not null)
+        {
             return activated;
         }
+
+        LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
+        throw new ToolException("E_DISPLAY_ADD", "虚拟显示器激活后消失");
+    }
+
+    private DisplayInfo Publish(DisplayInfo activated, string? selfHealReason)
+    {
+        State.VirtualDisplay = activated;
+        State.DeviceName = activated.DeviceName;
+        State.Initialized = true;
+
+        if (selfHealReason is not null)
+        {
+            NoteSelfHeal(selfHealReason);
+        }
+
+        _onReady(activated);
+        _log.Info($"环境就绪: {activated}");
+        _saveState();
+        return activated;
     }
 
     /// <summary>

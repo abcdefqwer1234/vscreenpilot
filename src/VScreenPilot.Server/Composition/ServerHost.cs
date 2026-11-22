@@ -75,31 +75,57 @@ internal sealed class ServerHost : IDisposable
 
     public int Run(InstanceRegistry.Entry entry, string[] args)
     {
+        StartServices(entry);
+        WatchParent(args);
+        StartWarmup(entry);
+        RegisterExitHandlers();
+
+        PosixSignalRegistration? sigterm = TryRegisterSigterm();
+
+        try
+        {
+            return RunServer();
+        }
+        finally
+        {
+            sigterm?.Dispose();
+            _pipeHost.Dispose();
+            _control.Dispose();
+            _session.Dispose();
+            _registry.Delete();
+            _job.Dispose();
+            _mutex.Dispose();
+            _trace?.Dispose();
+            _log.Dispose();
+        }
+    }
+
+    private void StartServices(InstanceRegistry.Entry entry)
+    {
         _control.Start();
         _pipeHost.Start();
 
         entry.Ready = true;
         entry.DisplayDevice = _session.VirtualDisplay?.DeviceName ?? string.Empty;
         _registry.Write(entry);
+    }
 
+    private void WatchParent(string[] args)
+    {
         int? parentPid = GetParentPid(args);
-        if (parentPid is not null)
+
+        if (parentPid is null)
         {
-            ParentProcessWatcher.Start(
-                parentPid.Value, _session, _log, () => _pipeHost.ActiveClients > 0);
+            return;
         }
 
-        StartWarmup(entry);
+        ParentProcessWatcher.Start(
+            parentPid.Value, _session, _log, () => _pipeHost.ActiveClients > 0);
+    }
 
-        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
-        {
-            _pipeHost.Dispose();
-            _control.Dispose();
-            _session.Dispose();
-            _registry.Delete();
-            _log.Dispose();
-        };
-
+    private void RegisterExitHandlers()
+    {
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => DisposeProcessResources();
         Console.CancelKeyPress += (_, eventArgs) =>
         {
             eventArgs.Cancel = true;
@@ -115,12 +141,13 @@ internal sealed class ServerHost : IDisposable
             return false;
         };
         SetConsoleCtrlHandler(_ctrlHandler, true);
+    }
 
-        PosixSignalRegistration? sigterm = null;
-
+    private PosixSignalRegistration? TryRegisterSigterm()
+    {
         try
         {
-            sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
+            return PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
             {
                 context.Cancel = true;
                 Shutdown();
@@ -130,37 +157,34 @@ internal sealed class ServerHost : IDisposable
         {
             // Windows 上部分场景不支持，忽略。
             LogSink.Debug($"忽略异常: {exception.Message}");
+            return null;
         }
+    }
 
-        try
+    private void DisposeProcessResources()
+    {
+        _pipeHost.Dispose();
+        _control.Dispose();
+        _session.Dispose();
+        _registry.Delete();
+        _log.Dispose();
+    }
+
+    private int RunServer()
+    {
+        var server = new McpTransport(new McpTransportOptions
         {
-            var server = new McpTransport(new McpTransportOptions
-            {
-                Services = ToolServices.Create(_session),
-                Runtime = new McpRuntime(_session),
-                Control = new SessionExecutionControl(_session),
-                Scheduler = _session.Scheduler,
-                Log = _log,
-                Trace = _trace,
-            });
-            int exitCode = server.RunAsync().GetAwaiter().GetResult();
+            Services = ToolServices.Create(_session),
+            Runtime = new McpRuntime(_session),
+            Control = new SessionExecutionControl(_session),
+            Scheduler = _session.Scheduler,
+            Log = _log,
+            Trace = _trace,
+        });
+        int exitCode = server.RunAsync().GetAwaiter().GetResult();
 
-            WaitForIdleExit();
-
-            return exitCode;
-        }
-        finally
-        {
-            sigterm?.Dispose();
-            _pipeHost.Dispose();
-            _control.Dispose();
-            _session.Dispose();
-            _registry.Delete();
-            _job.Dispose();
-            _mutex.Dispose();
-            _trace?.Dispose();
-            _log.Dispose();
-        }
+        WaitForIdleExit();
+        return exitCode;
     }
 
     private void StartWarmup(InstanceRegistry.Entry entry)
@@ -253,12 +277,7 @@ internal sealed class ServerHost : IDisposable
             using var host = new ServerHost(
                 session, log, trace, registry, job, mutex, allowScript, stop);
 
-            AppDomain.CurrentDomain.ProcessExit += (_, _) => stop.Set();
-            Console.CancelKeyPress += (_, eventArgs) =>
-            {
-                eventArgs.Cancel = true;
-                stop.Set();
-            };
+            RegisterStopSignal(stop);
 
             if (allowScript)
             {
@@ -270,35 +289,7 @@ internal sealed class ServerHost : IDisposable
 
             log.Info($"独立 daemon 已启动 profile={profile} clients={host.ActiveClients}");
 
-            int idleMs = VspOptions.FromEnvironment().DaemonIdleMs;
-            bool hadClient = false;
-            DateTime? idleSince = DateTime.UtcNow;
-
-            while (!stop.Wait(100))
-            {
-                int active = host.ActiveClients;
-
-                if (active > 0)
-                {
-                    hadClient = true;
-                    idleSince = null;
-                    continue;
-                }
-
-                idleSince ??= DateTime.UtcNow;
-
-                // 首次启动给客户端留 10s 连接窗口；有过客户端后严格按配置退出。
-                int graceMs = hadClient ? idleMs : Math.Max(idleMs, 10_000);
-
-                if (graceMs == 0 ||
-                    DateTime.UtcNow - idleSince.Value >= TimeSpan.FromMilliseconds(graceMs))
-                {
-                    break;
-                }
-            }
-
-            log.Info("独立 daemon 进入退出流程");
-            return 0;
+            return RunIdleLoop(host, stop, log);
         }
         catch (Exception exception)
         {
@@ -311,6 +302,49 @@ internal sealed class ServerHost : IDisposable
             job.Dispose();
             mutex.Dispose();
         }
+    }
+
+    private static void RegisterStopSignal(ManualResetEventSlim stop)
+    {
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => stop.Set();
+        Console.CancelKeyPress += (_, eventArgs) =>
+        {
+            eventArgs.Cancel = true;
+            stop.Set();
+        };
+    }
+
+    private static int RunIdleLoop(ServerHost host, ManualResetEventSlim stop, LogRing log)
+    {
+        int idleMs = VspOptions.FromEnvironment().DaemonIdleMs;
+        bool hadClient = false;
+        DateTime? idleSince = DateTime.UtcNow;
+
+        while (!stop.Wait(100))
+        {
+            int active = host.ActiveClients;
+
+            if (active > 0)
+            {
+                hadClient = true;
+                idleSince = null;
+                continue;
+            }
+
+            idleSince ??= DateTime.UtcNow;
+
+            // 首次启动给客户端留 10s 连接窗口；有过客户端后严格按配置退出。
+            int graceMs = hadClient ? idleMs : Math.Max(idleMs, 10_000);
+
+            if (graceMs == 0 ||
+                DateTime.UtcNow - idleSince.Value >= TimeSpan.FromMilliseconds(graceMs))
+            {
+                break;
+            }
+        }
+
+        log.Info("独立 daemon 进入退出流程");
+        return 0;
     }
 
     private void StartDaemonPipes(InstanceRegistry.Entry entry, string profile)

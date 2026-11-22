@@ -23,88 +23,10 @@ internal static class MsaaComOps
 
     internal static List<Node> Traverse(IAccessible root, int limit, out bool truncated)
     {
-        var nodes = new List<Node>();
-        bool localTruncated = false;
-
-        void Walk(IAccessible parent, int depth)
-        {
-            if (nodes.Count >= limit || depth > MsaaService.MaxDepth)
-            {
-                localTruncated = true;
-                return;
-            }
-
-            int count;
-
-            try
-            {
-                count = parent.ChildCount;
-            }
-            catch (COMException)
-            {
-                return;
-            }
-
-            if (count <= 0)
-            {
-                return;
-            }
-
-            if (count > MsaaService.MaxChildrenPerNode)
-            {
-                localTruncated = true;
-            }
-
-            var children = new object[Math.Min(count, MsaaService.MaxChildrenPerNode)];
-            int obtained = 0;
-
-            try
-            {
-                _ = AccessibleChildren(parent, 0, children.Length, children, out obtained);
-            }
-            catch (COMException)
-            {
-                return;
-            }
-
-            if (obtained < count)
-            {
-                localTruncated = true;
-            }
-
-            for (int index = 0; index < obtained && nodes.Count < limit; index++)
-            {
-                object child = children[index];
-
-                try
-                {
-                    bool self = child is IAccessible;
-                    int childId = self ? 0 : Convert.ToInt32(child, System.Globalization.CultureInfo.InvariantCulture);
-                    int ordinal = nodes.Count;
-                    nodes.Add(new Node(parent, child, self, childId, ordinal));
-
-                    if (self)
-                    {
-                        Walk((IAccessible)child, depth + 1);
-                    }
-                }
-                catch (Exception exception) when (
-                    exception is InvalidCastException or FormatException or OverflowException)
-                {
-                    // 非 child-id / IAccessible 的 VARIANT：跳过，不影响其它控件。
-                    LogSink.Debug($"忽略异常: {exception.Message}");
-                }
-            }
-
-            if (nodes.Count >= limit)
-            {
-                localTruncated = true;
-            }
-        }
-
-        Walk(root, 0);
-        truncated = localTruncated;
-        return nodes;
+        var walker = new MsaaWalker(limit);
+        walker.Walk(root, 0);
+        truncated = walker.Truncated;
+        return walker.Nodes.ToList();
     }
 
     internal static UiaElementInfo? Describe(Node node, IntPtr hwnd, int processId)

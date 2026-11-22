@@ -21,10 +21,7 @@ internal sealed class SessionInputOps
         string reference, string? channel, bool keepForeground, bool fallbackInput = false) =>
         _host._input.ClickOps.ClickElementRef(reference, channel, keepForeground, fallbackInput);
 
-    public ClickView Click(
-        int x, int y, string button, int clicks, string mode,
-        bool keepForeground = false, bool observe = true, bool fallbackInput = false) =>
-        _host._input.ClickOps.Click(x, y, button, clicks, mode, keepForeground, observe, fallbackInput);
+    public ClickView Click(SessionClickRequest request) => _host._input.ClickOps.Click(request);
 
     public TypeTextView TypeText(
         string text, int? pid = null, bool verify = true, int chunkChars = 32, string? channel = null) =>

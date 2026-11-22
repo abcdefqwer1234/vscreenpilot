@@ -95,10 +95,10 @@ internal sealed class ElementValueOps
                     new JsonObject { ["ref"] = probe.Ref });
             }
 
-            _host._input.Click(
+            _host._input.Click(new SessionClickRequest(
                 bounds.Value.Left + bounds.Value.Width / 2,
                 bounds.Value.Top + bounds.Value.Height / 2,
-                "left", 1, "message");
+                "left", 1, "message"));
 
             TypeTextView typed = _host._input.TypeText(value, null, verify: true, chunkChars: 32, channel: "auto");
             return new SetElementValueView(

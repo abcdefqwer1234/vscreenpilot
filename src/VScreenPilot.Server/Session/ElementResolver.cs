@@ -190,9 +190,9 @@ internal sealed class ElementResolver
     }
 
     private UiaElementHandle? FindByFingerprint(ElementRefEntry entry, IntPtr hwnd) =>
-        _host.Uia.FindByFingerprint(
+        _host.Uia.FindByFingerprint(new FingerprintQuery(
             hwnd, entry.Name, entry.AutomationId, entry.ControlTypeName,
-            entry.Left, entry.Top, entry.Right, entry.Bottom);
+            entry.Left, entry.Top, entry.Right, entry.Bottom));
 
     /* ------------------------------------------------------------------ */
     /* 工具：get_ui_tree                                                   */

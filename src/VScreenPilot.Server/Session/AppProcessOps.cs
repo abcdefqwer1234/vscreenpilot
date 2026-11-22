@@ -84,23 +84,15 @@ internal sealed class AppProcessOps
     internal Process? FindRunningProcess(string path)
     {
         string name = Path.GetFileNameWithoutExtension(path);
+
         if (string.IsNullOrWhiteSpace(name))
         {
             return null;
         }
 
-        string fullPath;
-        try
-        {
-            fullPath = _core._apps.ResolvePath(path);
-        }
-        catch (Exception exception)
-        {
-            LogSink.Debug($"忽略异常: {exception.Message}");
-            fullPath = path;
-        }
-
+        string fullPath = ResolveFullPath(path);
         Process[] processes;
+
         try
         {
             processes = Process.GetProcessesByName(name);
@@ -111,66 +103,83 @@ internal sealed class AppProcessOps
             return null;
         }
 
-        Process? fullMatch = null;
-        Process? nameFallback = null;
-        Process? pathFallback = null;
-
         try
         {
-            foreach (Process process in processes)
-            {
-                try
-                {
-                    if (process.HasExited)
-                    {
-                        continue;
-                    }
-
-                    bool samePath = IsSameExecutable(process, fullPath);
-                    bool hasWindow = process.MainWindowHandle != IntPtr.Zero;
-
-                    if (samePath && hasWindow)
-                    {
-                        fullMatch ??= process;
-                    }
-                    else if (samePath)
-                    {
-                        pathFallback ??= process;
-                    }
-                    else if (hasWindow)
-                    {
-                        nameFallback ??= process;
-                    }
-                }
-                catch (Exception exception)
-                {
-                    LogSink.Debug($"忽略异常: {exception.Message}");
-                    nameFallback ??= process;
-                }
-            }
-
-            // 同名但不同路径的进程只作为最后兜底，避免误接管其他位置的同名程序。
-            Process? chosen = fullMatch ?? pathFallback ?? nameFallback;
-
-            foreach (Process process in processes)
-            {
-                if (!ReferenceEquals(process, chosen))
-                {
-                    process.Dispose();
-                }
-            }
-
+            Process? chosen = SelectProcess(processes, fullPath);
+            DisposeAllExcept(processes, chosen);
             return chosen;
         }
         catch (Exception exception)
         {
             LogSink.Debug($"忽略异常: {exception.Message}");
-            foreach (Process process in processes)
+            DisposeAllExcept(processes, keep: null);
+            return null;
+        }
+    }
+
+    private string ResolveFullPath(string path)
+    {
+        try
+        {
+            return _core._apps.ResolvePath(path);
+        }
+        catch (Exception exception)
+        {
+            LogSink.Debug($"忽略异常: {exception.Message}");
+            return path;
+        }
+    }
+
+    private static Process? SelectProcess(Process[] processes, string fullPath)
+    {
+        Process? fullMatch = null;
+        Process? nameFallback = null;
+        Process? pathFallback = null;
+
+        foreach (Process process in processes)
+        {
+            try
+            {
+                if (process.HasExited)
+                {
+                    continue;
+                }
+
+                bool samePath = IsSameExecutable(process, fullPath);
+                bool hasWindow = process.MainWindowHandle != IntPtr.Zero;
+
+                if (samePath && hasWindow)
+                {
+                    fullMatch ??= process;
+                }
+                else if (samePath)
+                {
+                    pathFallback ??= process;
+                }
+                else if (hasWindow)
+                {
+                    nameFallback ??= process;
+                }
+            }
+            catch (Exception exception)
+            {
+                LogSink.Debug($"忽略异常: {exception.Message}");
+                nameFallback ??= process;
+            }
+        }
+
+        // 同名但不同路径的进程只作为最后兜底，避免误接管其他位置的同名程序。
+        return fullMatch ?? pathFallback ?? nameFallback;
+    }
+
+    private static void DisposeAllExcept(Process[] processes, Process? keep)
+    {
+        foreach (Process process in processes)
+        {
+            if (!ReferenceEquals(process, keep))
             {
                 process.Dispose();
             }
-
-            return null;
         }
     }
 

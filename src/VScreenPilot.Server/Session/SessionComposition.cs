@@ -15,6 +15,18 @@ internal static class SessionComposition
 {
     public static void Build(SessionManager host)
     {
+        BuildSnapshots(host);
+        BuildEnvironment(host);
+        BuildLaunch(host);
+        BuildInput(host);
+        BuildElements(host);
+        BuildCapture(host);
+        BuildRelease(host);
+        BuildMaintenance(host);
+    }
+
+    private static void BuildSnapshots(SessionManager host)
+    {
         host.Snapshots = new SnapshotBuilder(
             new SnapshotStateContext(host.Uia, host.Refs, () => host.ElementOps.SnapshotId, () => SessionManager.ElementRefCapacity,
                 host.Metrics, host.ElementOps.BeginSnapshot, host.ElementOps.RegisterElement),
@@ -24,6 +36,16 @@ internal static class SessionComposition
                 (scale, previewScale) => host.CaptureOps.CaptureScreenEx(new CaptureRequest(
                     null, null, null, null, scale, null, StoreFrame: false, previewScale)),
                 host.CancellationProbe));
+        host._capture = new ScreenCaptureService(new ScreenCaptureContext(
+            host.EnsureEnvironmentFast, host.CaptureOps.CaptureRegion,
+            host.CaptureOps.StoreFrame, host._paths.ValidateSavePath));
+        host._screenText = new ScreenTextService(new ScreenTextContext(
+            host.EnsureEnvironmentFast, host.CaptureOps.CaptureRegion,
+            () => host.Cancellation, host.Metrics.RecordOcr, host.InputOps.Click));
+    }
+
+    private static void BuildEnvironment(SessionManager host)
+    {
         host._display = new VirtualDisplayController(
             host._gate, host._log, host.ProfileName,
             () => Volatile.Read(ref host._disposed) != 0,
@@ -44,6 +66,18 @@ internal static class SessionComposition
                 () => host._display.State.VddReopenCount, () => host._display.State.PositionFallback),
             new EnvironmentDisplayContext(host._display.Vdd, () => host._display.State.Index,
                 () => host._display.State.DeviceName, host.EnsureEnvironment, host.LifecycleOps.OwnDisplay));
+        host._tracker = new TrackedAppTracker(new TrackedAppContext(host._apps, host._gate, host.ClientOps.IsOwned, host._log));
+        host._stateKeeper = new SessionStateKeeper(
+            new SessionStateContext(host._gate, host._stateStore, host._display.State, host._apps, host._log));
+        host._allowlist = new AppAllowlistPolicy(new AppAllowlistContext(
+            () => host.Clients.Current?.AppAllowlist ?? Array.Empty<string>(), host._paths.Resolve));
+        host.FocusGuard = new FocusGuard(new FocusContext(
+            host.FocusOps.IsTrackedWindow, host.FocusOps.IsAnyClientWindow,
+            target => host.InputOps.RestoreForeground(target, logFailure: false), host._log));
+    }
+
+    private static void BuildLaunch(SessionManager host)
+    {
         host._releaser = new AppReleaser(host._log, host._uiaHost, host.ResetUia);
         host._launcher = new AppLauncher(
             new LaunchSessionContext(host._log, host._job, host.Clients, host._gate, host.LifecycleOps.SaveState),
@@ -51,11 +85,10 @@ internal static class SessionComposition
                 host.LifecycleOps.EnsureAppAllowed, host.ClientOps.IsOwned, TrackedAppTracker.IsLive),
             new LaunchFocusContext(previous => host.InputOps.RestoreForeground(previous, logFailure: true),
                 host.FocusOps.StartFocusGuard, () => host.FocusOps.PauseFocusGuard(), host.FocusOps.ResumeFocusGuard, host.InputOps.EnsureForeground));
-        host.VisualMatch = new VisualMatchService(new VisualContext(host.EnsureEnvironment, host.CaptureOps.CaptureRegion, host._paths.ValidatePngPath, () => host.Cancellation.IsCancellationRequested));
-        host._finder = new ElementFinder(new ElementFinderContext(host.FindLiveTrackedApp, host.EnsureEnvironment, host.InputOps.RequireWindowOnDisplay, host.Uia, host.ElementOps.EnsureSnapshot, host.ElementOps.RegisterElement));
-        host._regionVerifier = new RegionVerifier(new RegionVerifierContext(host.EnsureEnvironmentFast, host.CaptureOps.CaptureRegion, host.CaptureOps.FindFrame, host.CaptureOps.FindLatestFrame, () => host._frames.Latest(), () => host._frames.Snapshot()));
-        host._waits = new WaitService(new WaitDisplayContext(host.EnsureEnvironmentFast, host.CaptureOps.CaptureRegion), new WaitSessionContext(host.EnterRead, host.ExitRead, () => host.Cancellation.IsCancellationRequested, ToolProgress.Report), new WaitAppContext(host.FindLiveTrackedApp, host.LifecycleOps.OwnedAppsSnapshotCore, host.VerifyOps.TrackedPids, host.Uia), new WaitFrameContext((source, x, y, w, h) => host._regionVerifier.ResolveBaselineFrame(source, x, y, w, h), host._regionVerifier.FramesJson, host.VisualOps.MatchVisual));
-        host._resolver = new ElementResolver(new ElementResolverContext(host.Refs, () => host.Clients.CurrentId, () => host.ElementOps.SnapshotId, host._uiaHost, host.LifecycleOps.IsTrackedPidCore, host.InputOps.RequireWindowOnDisplay, host._log));
+    }
+
+    private static void BuildInput(SessionManager host)
+    {
         host._input = new InputRouter(
             new InputSessionContext(host._log, host.Clients, () => host.Cancellation),
             new InputFocusContext(host.InputOps.EnsureForeground, host.InputOps.IsAppForeground, previous => host.InputOps.RestoreForeground(previous),
@@ -66,6 +99,15 @@ internal static class SessionComposition
             new InputElementContext(host._resolver.Require, host._resolver.Resolve, host.LifecycleOps.FindTrackedAppAtWindowCore,
                 host.InputOps.RequirePointInTrackedApp, host.LastLiveTrackedApp, host.FindLiveTrackedApp),
             new InputUiaContext(host.Uia, host.ResetUia, host.ObserveOps.BuildObserved));
+        host._finder = new ElementFinder(new ElementFinderContext(host.FindLiveTrackedApp, host.EnsureEnvironment, host.InputOps.RequireWindowOnDisplay, host.Uia, host.ElementOps.EnsureSnapshot, host.ElementOps.RegisterElement));
+        host._regionVerifier = new RegionVerifier(new RegionVerifierContext(host.EnsureEnvironmentFast, host.CaptureOps.CaptureRegion, host.CaptureOps.FindFrame, host.CaptureOps.FindLatestFrame, () => host._frames.Latest(), () => host._frames.Snapshot()));
+        host._waits = new WaitService(new WaitDisplayContext(host.EnsureEnvironmentFast, host.CaptureOps.CaptureRegion), new WaitSessionContext(host.EnterRead, host.ExitRead, () => host.Cancellation.IsCancellationRequested, ToolProgress.Report), new WaitAppContext(host.FindLiveTrackedApp, host.LifecycleOps.OwnedAppsSnapshotCore, host.VerifyOps.TrackedPids, host.Uia), new WaitFrameContext((source, x, y, w, h) => host._regionVerifier.ResolveBaselineFrame(source, x, y, w, h), host._regionVerifier.FramesJson, host.VisualOps.MatchVisual));
+        host._resolver = new ElementResolver(new ElementResolverContext(host.Refs, () => host.Clients.CurrentId, () => host.ElementOps.SnapshotId, host._uiaHost, host.LifecycleOps.IsTrackedPidCore, host.InputOps.RequireWindowOnDisplay, host._log));
+        host.VisualMatch = new VisualMatchService(new VisualContext(host.EnsureEnvironment, host.CaptureOps.CaptureRegion, host._paths.ValidatePngPath, () => host.Cancellation.IsCancellationRequested));
+    }
+
+    private static void BuildElements(SessionManager host)
+    {
         host._elements = new ElementOperations(
             new ElementStateContext(host._uiaHost, host._resolver, host.Refs, host.ElementOps.RegisterElement,
                 SessionManager.ElementRefCapacity, host._log, host.Snapshots.ConvertTreeNode),
@@ -76,12 +118,15 @@ internal static class SessionComposition
             new ElementInputContext(host.InputOps.Click, host.InputOps.TypeText, (app, handle, value, replace, timeout) => host._input.TextOps.WriteTextVerified(app, handle, value, replace, timeout), host.ResetUia),
             new ElementFocusContext(host.InputOps.EnsureForeground, () => host.FocusOps.PauseFocusGuard(),
                 host.FocusOps.ResumeFocusGuard, previous => host.InputOps.RestoreForeground(previous)));
-        host._screenText = new ScreenTextService(new ScreenTextContext(host.EnsureEnvironmentFast, host.CaptureOps.CaptureRegion, () => host.Cancellation, host.Metrics.RecordOcr, host.InputOps.Click));
-        host._capture = new ScreenCaptureService(new ScreenCaptureContext(host.EnsureEnvironmentFast, host.CaptureOps.CaptureRegion, host.CaptureOps.StoreFrame, host._paths.ValidateSavePath));
-        host.FocusGuard = new FocusGuard(new FocusContext(host.FocusOps.IsTrackedWindow, host.FocusOps.IsAnyClientWindow, target => host.InputOps.RestoreForeground(target, logFailure: false), host._log));
-        host._tracker = new TrackedAppTracker(new TrackedAppContext(host._apps, host._gate, host.ClientOps.IsOwned, host._log));
-        host._stateKeeper = new SessionStateKeeper(new SessionStateContext(host._gate, host._stateStore, host._display.State, host._apps, host._log));
-        host._allowlist = new AppAllowlistPolicy(new AppAllowlistContext(() => host.Clients.Current?.AppAllowlist ?? Array.Empty<string>(), host._paths.Resolve));
+    }
+
+    private static void BuildCapture(SessionManager host)
+    {
+        host._log.ClientIdProvider = () => host.Clients.CurrentId;
+    }
+
+    private static void BuildRelease(SessionManager host)
+    {
         host._releaserService = new EnvironmentReleaser(
             new ReleaseSessionContext(host._gate, host.IncrementEpoch, () => host.Clients.ActiveCount, host._log),
             new ReleaseAppsContext(host._apps, host.ClientOps.IsOwned,
@@ -99,8 +144,11 @@ internal static class SessionComposition
                 host.LifecycleOps.TryRemoveDisplay,
                 host.LifecycleOps.StopAndDisposeVddCore),
             new ReleaseStateContext(host.LifecycleOps.TrimIdleMemory, host.LifecycleOps.SaveState, () => host._stateStore.Clear()));
+    }
+
+    private static void BuildMaintenance(SessionManager host)
+    {
         host.MaintenanceService = new MaintenanceService(new MaintenanceContext(host.ArtifactRoot, () => Volatile.Read(ref host._disposed) != 0, () => host.LifecycleOps.ArtifactDirectorySnapshot(), host._log));
-        host._log.ClientIdProvider = () => host.Clients.CurrentId;
         AppLauncher.CleanupStaleProfiles();
         host.ArtifactOps.SweepOldArtifacts();
         host.LifecycleOps.RecoverFromPreviousCrash();
