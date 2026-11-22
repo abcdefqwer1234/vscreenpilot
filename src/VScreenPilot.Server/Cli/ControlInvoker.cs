@@ -8,13 +8,20 @@ using static VScreenPilot.Cli.ControlOutput;
 
 namespace VScreenPilot.Cli;
 
+/// <summary>c tl 子命令参数。</summary>
+internal sealed record ControlCommand(
+    string Name, string Profile, bool ForceStop, bool Ensure, bool IncludeAll);
+
 /// <summary>有实例时通过 ctl 管道执行 env/snapshot/screen/status/stop。</summary>
 internal static class ControlInvoker
 {
-    public static int Run(
-        string command, string profile, LogRing log, bool forceStop, bool ensure, bool includeAll,
-        out bool needsLocalSession)
+    public static int Run(ControlCommand request, LogRing log, out bool needsLocalSession)
     {
+        string command = request.Name;
+        string profile = request.Profile;
+        bool forceStop = request.ForceStop;
+        bool ensure = request.Ensure;
+        bool includeAll = request.IncludeAll;
         needsLocalSession = false;
         string op = command.Trim().ToLowerInvariant();
         int retries = ResolveRetries(profile);

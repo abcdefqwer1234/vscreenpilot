@@ -21,6 +21,10 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
+/// <summary>文本写入请求。</summary>
+internal sealed record TextWriteRequest(
+    string Text, bool Replace, int TimeoutMs, int ChunkChars = 32, int VerifyEveryChunks = 1);
+
 /// <summary>TextOps：InputRouter 的输入子通道。</summary>
 internal sealed class InputTextOps
 {
@@ -32,14 +36,13 @@ internal sealed class InputTextOps
     /// 关键点：只有确认完成后调用方才允许归还前台，避免剩余按键落到用户窗口。
     /// </summary>
     public TextWriteResult WriteTextVerified(
-        TrackedApp app,
-        UiaElementHandle? target,
-        string text,
-        bool replace,
-        int timeoutMs,
-        int chunkChars = 32,
-        int verifyEveryChunks = 1)
+        TrackedApp app, UiaElementHandle? target, TextWriteRequest request)
     {
+        string text = request.Text;
+        bool replace = request.Replace;
+        int timeoutMs = request.TimeoutMs;
+        int chunkChars = request.ChunkChars;
+        int verifyEveryChunks = request.VerifyEveryChunks;
         string? before = target is null ? null : _host._uia.Uia.GetText(target.Element, 65536);
         bool textSupported = before is not null;
         var stopwatch = Stopwatch.StartNew();

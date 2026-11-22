@@ -117,7 +117,7 @@ internal static class SessionComposition
                 () => host.Cancellation.IsCancellationRequested, host.CancellationProbe),
             new ElementAppContext(host.EnsureEnvironment, host.FindLiveTrackedApp, host.LifecycleOps.OwnedAppForPidCore,
                 host.InputOps.RequireWindowOnDisplay, (display, x, y, label) => { _ = host.InputOps.RequirePointInTrackedApp(display, x, y, label); }),
-            new ElementInputContext(host.InputOps.Click, host.InputOps.TypeText, (app, handle, value, replace, timeout) => host._input.TextOps.WriteTextVerified(app, handle, value, replace, timeout), host.ResetUia),
+            new ElementInputContext(host.InputOps.Click, host.InputOps.TypeText, (app, handle, request) => host._input.TextOps.WriteTextVerified(app, handle, request), host.ResetUia),
             new ElementFocusContext(host.InputOps.EnsureForeground, () => host.FocusOps.PauseFocusGuard(),
                 host.FocusOps.ResumeFocusGuard, previous => host.InputOps.RestoreForeground(previous)));
     }

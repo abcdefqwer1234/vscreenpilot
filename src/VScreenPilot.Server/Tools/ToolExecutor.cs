@@ -52,6 +52,9 @@ internal sealed class ToolExecutor
         _handlerFinished = handlerFinished;
     }
 
+    private sealed record ToolCallOutcome(
+        ToolDescriptor Tool, ToolContext Context, ToolPolicy Policy, long Epoch);
+
     private sealed record TimeoutOutcome(
         ToolResponse Response,
         WriteScheduler.Lease? PendingLease,
@@ -75,7 +78,11 @@ internal sealed class ToolExecutor
 
             ToolResponse response = await AwaitHandlerAsync(tool, context, state).ConfigureAwait(false);
 
-            return CompleteResponse(tool, context, policy, epoch, response, stopwatch, out releaseSucceeded);
+            return CompleteResponse(
+                new ToolCallOutcome(tool, context, policy, epoch),
+                response,
+                stopwatch,
+                out releaseSucceeded);
         }
         catch (OperationCanceledException)
         {
@@ -361,14 +368,13 @@ internal sealed class ToolExecutor
     }
 
     private ToolResponse CompleteResponse(
-        ToolDescriptor tool,
-        ToolContext context,
-        ToolPolicy policy,
-        long epoch,
-        ToolResponse response,
-        System.Diagnostics.Stopwatch stopwatch,
+        ToolCallOutcome outcome, ToolResponse response, System.Diagnostics.Stopwatch stopwatch,
         out bool releaseSucceeded)
     {
+        ToolDescriptor tool = outcome.Tool;
+        ToolContext context = outcome.Context;
+        ToolPolicy policy = outcome.Policy;
+        long epoch = outcome.Epoch;
         releaseSucceeded = false;
 
         if (context.Control.Epoch != epoch && !policy.SessionWrite)

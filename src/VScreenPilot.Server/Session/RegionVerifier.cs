@@ -8,6 +8,9 @@ using VScreenPilot.Json;
 
 namespace VScreenPilot.Session;
 
+/// <summary>采集到的 BGRA 图像。</summary>
+internal readonly record struct CapturedImage(byte[] Bgra, int Width, int Height);
+
 /// <summary>assert_region 所需的最小宿主接口。</summary>
 internal sealed record RegionVerifierContext(
     Func<DisplayInfo> EnsureDisplay,
@@ -103,7 +106,8 @@ internal sealed class RegionVerifier
             (changedElement.ValueKind is JsonValueKind.True or JsonValueKind.False))
         {
             return AssertChanged(
-                bgra, capturedWidth, capturedHeight, changedElement.GetBoolean(), expectation, x, y);
+                new CapturedImage(bgra, capturedWidth, capturedHeight),
+                changedElement.GetBoolean(), expectation, x, y);
         }
 
         if (expectation.TryGetProperty("baseline", out JsonElement baselineElement) &&
@@ -111,7 +115,8 @@ internal sealed class RegionVerifier
         {
             ValidateBaseline(baselineElement.GetString());
             return AssertChanged(
-                bgra, capturedWidth, capturedHeight, expectChanged: false, expectation, x, y);
+                new CapturedImage(bgra, capturedWidth, capturedHeight),
+                expectChanged: false, expectation, x, y);
         }
 
         throw new ToolException(
@@ -235,12 +240,14 @@ internal sealed class RegionVerifier
     }
 
     private AssertRegionView AssertChanged(
-        byte[] bgra, int width, int height, bool expectChanged, JsonElement expectation, int x, int y)
+        CapturedImage image, bool expectChanged, JsonElement expectation, int x, int y)
     {
         // 先校验阈值：非法阈值应在“找基线之前”就返回 E_INVALID_ARG，
         // 否则会被 E_NO_BASELINE 掩盖（REG-08）。
         ValidateChangedExpectation(expectation);
 
+        int width = image.Width;
+        int height = image.Height;
         FrameSnapshot? baseline = ResolveBaselineFrame(expectation, x, y, width, height);
 
         if (baseline is null)
@@ -263,7 +270,7 @@ internal sealed class RegionVerifier
 
         double threshold = GetDouble(expectation, "threshold", 0.01);
         int tolerance = GetInt(expectation, "tolerance", 8);
-        double ratio = VisualSupport.ChangedRatio(bgra, baseline.Bgra, tolerance);
+        double ratio = VisualSupport.ChangedRatio(image.Bgra, baseline.Bgra, tolerance);
         bool passed = expectChanged ? ratio >= threshold : ratio <= threshold;
 
         return new AssertRegionView(

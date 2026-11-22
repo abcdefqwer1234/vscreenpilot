@@ -143,8 +143,14 @@ internal static class Bootstrap
         }
 
         int cliExit = ControlInvoker.Run(
-            cliCommand, profile, log, HasFlag(args, "--force"),
-            HasFlag(args, "--ensure"), HasFlag(args, "--all"), out cliNeedsLocalSession);
+            new ControlCommand(
+                cliCommand,
+                profile,
+                HasFlag(args, "--force"),
+                HasFlag(args, "--ensure"),
+                HasFlag(args, "--all")),
+            log,
+            out cliNeedsLocalSession);
 
         return cliExit >= 0 ? cliExit : null;
     }

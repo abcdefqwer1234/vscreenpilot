@@ -18,6 +18,9 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
+/// <summary>MSAA 元素定位。</summary>
+internal readonly record struct MsaaTarget(ElementRefEntry Entry, IntPtr Hwnd, int ChildId);
+
 /// <summary>set_element_value 的入参。</summary>
 internal sealed record ElementValueRequest(
     string Reference,
@@ -53,16 +56,23 @@ internal sealed class ElementValueOps
 
         if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaChildId))
         {
-            return SetMsaaValue(probe, msaaHwnd, msaaChildId, value, allowKeyboard, mode, allowDestructive);
+            return SetMsaaValue(
+                new MsaaTarget(probe, msaaHwnd, msaaChildId),
+                new ElementValueRequest(reference, value, allowKeyboard, mode, allowDestructive));
         }
 
         return SetUiaValue(display, new ElementValueRequest(reference, value, allowKeyboard, mode, allowDestructive));
     }
 
-    private SetElementValueView SetMsaaValue(
-        ElementRefEntry probe, IntPtr msaaHwnd, int msaaChildId, string value,
-        bool allowKeyboard, string? mode, bool allowDestructive)
+    private SetElementValueView SetMsaaValue(MsaaTarget target, ElementValueRequest request)
     {
+        ElementRefEntry probe = target.Entry;
+        IntPtr msaaHwnd = target.Hwnd;
+        int msaaChildId = target.ChildId;
+        string value = request.Value;
+        bool allowKeyboard = request.AllowKeyboard;
+        string? mode = request.Mode;
+        bool allowDestructive = request.AllowDestructive;
         string? existing = _host._state.Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
 
         if (!string.IsNullOrEmpty(existing) &&

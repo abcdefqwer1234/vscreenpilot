@@ -16,6 +16,13 @@ using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 
+/// <summary>launch_or_place_app 的目标。</summary>
+internal sealed record LaunchRequest(
+    string? Path, string? WindowTitle, string? Arguments, int? Pid, LaunchOptions Options);
+
+/// <summary>launch_or_place_app 的行为选项。</summary>
+internal sealed record LaunchOptions(int WaitMs, bool NewInstance, bool EnsureDocument);
+
 /// <summary>LaunchOps：AppLauncher 的拆分子集。</summary>
 internal sealed class AppLaunchOps
 {
@@ -29,15 +36,15 @@ internal sealed class AppLaunchOps
         StartOps = new AppLaunchStartOps(core);
     }
 
-    public LaunchOrPlaceView Launch(
-        string? path,
-        string? windowTitle,
-        string? arguments,
-        int waitMs,
-        bool newInstance,
-        bool ensureDocument = true,
-        int? pid = null)
+    public LaunchOrPlaceView Launch(LaunchRequest request)
     {
+        string? path = request.Path;
+        string? windowTitle = request.WindowTitle;
+        string? arguments = request.Arguments;
+        int waitMs = request.Options.WaitMs;
+        bool newInstance = request.Options.NewInstance;
+        bool ensureDocument = request.Options.EnsureDocument;
+        int? pid = request.Pid;
         var s = new LaunchState
         {
             Path = path,

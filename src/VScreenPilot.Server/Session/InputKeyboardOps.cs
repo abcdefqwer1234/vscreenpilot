@@ -20,6 +20,9 @@ using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 
+/// <summary>写入通道的选择。</summary>
+internal sealed record WriteChannelPlan(string? Channel, bool Verify, int ChunkChars, int VerifyEvery);
+
 /// <summary>KeyboardOps：InputRouter 的输入子通道。</summary>
 internal sealed class InputKeyboardOps
 {
@@ -49,7 +52,9 @@ internal sealed class InputKeyboardOps
                 using UiaElementHandle? focused = FocusedElementInForeground(app);
 
                 (TextWriteResult write, bool patternUsed, bool useClipboard) = WriteByChannel(
-                    app, focused, text, channel, verify, effectiveChunk, verifyEvery);
+                    app, focused,
+                    new TextWriteRequest(text, Replace: false, TimeoutMs: 12000),
+                    new WriteChannelPlan(channel, verify, effectiveChunk, verifyEvery));
 
                 // 写入前焦点控件偶发不可用（UWP/新版记事本）；写完后再取一次补校验。
                 // 避免“内容其实写对了，但 verified 永远是 false”。
@@ -163,10 +168,10 @@ internal sealed class InputKeyboardOps
     }
 
     internal (TextWriteResult Write, bool PatternUsed, bool UseClipboard) WriteByChannel(
-        TrackedApp app, UiaElementHandle? focused, string text, string? channel,
-        bool verify, int effectiveChunk, int verifyEvery)
+        TrackedApp app, UiaElementHandle? focused, TextWriteRequest request, WriteChannelPlan plan)
     {
-        string mode = (channel ?? "auto").Trim().ToLowerInvariant();
+        string text = request.Text;
+        string mode = (plan.Channel ?? "auto").Trim().ToLowerInvariant();
         bool hasSurrogate = text.Any(char.IsSurrogate);
         bool patternUsed = false;
         bool useClipboard = false;
@@ -231,10 +236,11 @@ internal sealed class InputKeyboardOps
             }
             else
             {
-                write = verify
+                write = plan.Verify
                     ? _host.TextOps.WriteTextVerified(
-                        app, focused, text, replace: false, timeoutMs: 10000,
-                        chunkChars: effectiveChunk, verifyEveryChunks: verifyEvery)
+                        app, focused,
+                        new TextWriteRequest(text, Replace: false, TimeoutMs: 10000,
+                            request.ChunkChars, request.VerifyEveryChunks))
                     : _host.TextOps.WriteTextUnverified(app, focused, text);
             }
         }

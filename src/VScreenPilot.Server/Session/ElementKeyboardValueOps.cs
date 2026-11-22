@@ -41,7 +41,7 @@ internal sealed class ElementKeyboardValueOps
 
             Thread.Sleep(30);
             TextWriteResult write = _host._input.WriteTextVerified(
-                app, request.Handle, request.Value, replace, timeoutMs: 12000);
+                app, request.Handle, new TextWriteRequest(request.Value, replace, TimeoutMs: 12000));
 
             return BuildKeyboardView(request, effectiveMode, replace, write, stopwatch);
         }

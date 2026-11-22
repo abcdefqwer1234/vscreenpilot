@@ -56,8 +56,9 @@ internal sealed class MsaaWalker
         {
             return parent.ChildCount;
         }
-        catch (COMException)
+        catch (COMException exception)
         {
+            LogSink.Debug($"读取 MSAA 子节点数失败: {exception.Message}");
             return 0;
         }
     }
@@ -71,8 +72,9 @@ internal sealed class MsaaWalker
             _ = MsaaComOps.AccessibleChildren(parent, 0, children.Length, children, out int obtained);
             return obtained < children.Length ? children[..obtained] : children;
         }
-        catch (COMException)
+        catch (COMException exception)
         {
+            LogSink.Debug($"读取 MSAA 子节点失败: {exception.Message}");
             return Array.Empty<object>();
         }
     }

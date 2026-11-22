@@ -51,7 +51,7 @@ internal delegate TypeTextView TypeTextHandler(
     string text, int? pid, bool verify, int chunkChars, string channel);
 
 internal delegate TextWriteResult WriteTextVerifiedHandler(
-    TrackedApp app, UiaElementHandle? handle, string value, bool replace, int timeoutMs);
+    TrackedApp app, UiaElementHandle? handle, TextWriteRequest request);
 
 internal sealed record ElementInputContext(
     ClickHandler Click,

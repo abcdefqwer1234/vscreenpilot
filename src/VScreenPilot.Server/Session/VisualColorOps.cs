@@ -49,8 +49,7 @@ internal sealed class VisualColorOps
                 mask, capturedWidth, capturedHeight, query.MinPixels, () => _core._host.IsCancelled());
 
             List<VisualComponentsOps.ColorComponent> selected = SelectComponents(
-                components, query.MinPixels, query.MaxAreaRatio, query.ExcludeBorder,
-                capturedWidth, capturedHeight, query.MaxResults);
+                components, query, capturedWidth, capturedHeight);
 
             EnsureComponents(selected, matched, query);
 
@@ -159,23 +158,23 @@ internal sealed class VisualColorOps
     }
 
     internal static List<VisualComponentsOps.ColorComponent> SelectComponents(
-        List<VisualComponentsOps.ColorComponent> components, int minPixels, double maxAreaRatio,
-        bool excludeBorder, int capturedWidth, int capturedHeight, int maxResults)
+        List<VisualComponentsOps.ColorComponent> components, ColorQuery query,
+        int capturedWidth, int capturedHeight)
     {
         var selected = components
-            .Where(item => item.Pixels >= minPixels)
+            .Where(item => item.Pixels >= query.MinPixels)
             .Where(item =>
             {
                 int componentWidth = item.Right - item.Left + 1;
                 int componentHeight = item.Bottom - item.Top + 1;
                 double areaRatio = (double)componentWidth * componentHeight / (capturedWidth * capturedHeight);
 
-                if (areaRatio > maxAreaRatio)
+                if (areaRatio > query.MaxAreaRatio)
                 {
                     return false;
                 }
 
-                if (excludeBorder &&
+                if (query.ExcludeBorder &&
                     (item.Left <= 0 || item.Top <= 0 ||
                      item.Right >= capturedWidth - 1 || item.Bottom >= capturedHeight - 1))
                 {
@@ -185,7 +184,7 @@ internal sealed class VisualColorOps
                 return true;
             })
             .OrderByDescending(item => item.Pixels)
-            .Take(maxResults)
+            .Take(query.MaxResults)
             .ToList();
 
         return selected;

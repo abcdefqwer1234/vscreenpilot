@@ -8,13 +8,6 @@ internal sealed class SessionAppOps
     internal readonly SessionManager _host;
 
     public SessionAppOps(SessionManager host) => _host = host;
-    public LaunchOrPlaceView LaunchOrPlaceApp(
-        string? path,
-        string? windowTitle,
-        string? arguments,
-        int waitMs,
-        bool newInstance,
-        bool ensureDocument = true,
-        int? pid = null) =>
-        _host._launcher.LaunchOps.Launch(path, windowTitle, arguments, waitMs, newInstance, ensureDocument, pid);
+    public LaunchOrPlaceView LaunchOrPlaceApp(LaunchRequest request) =>
+        _host._launcher.LaunchOps.Launch(request);
 }
