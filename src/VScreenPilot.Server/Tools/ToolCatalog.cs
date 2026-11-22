@@ -1,46 +1,20 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-
 using VScreenPilot.Server.Infrastructure;
 
 namespace VScreenPilot.Mcp;
 
-/// <summary>22 个工具的定义从 Tools/Definitions/*.json 加载，处理器在下方集中登记。</summary>
-internal sealed partial class McpTransport
+/// <summary>从 Tools/Definitions/*.json 加载 22 个工具定义，并校验 handler 覆盖。</summary>
+internal static class ToolCatalog
 {
     private const string DefinitionResourceMarker = ".Tools.Definitions.";
 
-    internal ToolRegistry BuildTools()
+    public static ToolRegistry Build(
+        IReadOnlyDictionary<string, Func<JsonElement, ToolResponse>> handlers)
     {
-        var handlers = new Dictionary<string, Func<JsonElement, ToolResponse>>(StringComparer.Ordinal)
-        {
-            ["get_environment"] = GetEnvironment,
-            ["launch_or_place_app"] = LaunchOrPlace,
-            ["snapshot"] = Snapshot,
-            ["capture_screen"] = CaptureScreen,
-            ["find_element"] = FindElement,
-            ["get_ui_tree"] = GetUiTree,
-            ["invoke_element"] = InvokeElement,
-            ["set_element_value"] = SetElementValue,
-            ["get_element_text"] = GetElementText,
-            ["read_screen_text"] = ReadScreenText,
-            ["click"] = Click,
-            ["click_ref"] = ClickRef,
-            ["gesture"] = Gesture,
-            ["click_text"] = ClickText,
-            ["type_text"] = TypeText,
-            ["press_keys"] = PressKeys,
-            ["wait_for"] = WaitFor,
-            ["assert_region"] = AssertRegion,
-            ["match_visual"] = MatchVisual,
-            ["release_environment"] = ReleaseEnvironment,
-            ["get_log"] = GetLog,
-            ["run_script"] = RunScript,
-        };
-
         var tools = new ToolRegistry();
-        Assembly assembly = typeof(McpTransport).Assembly;
+        Assembly assembly = typeof(ToolCatalog).Assembly;
 
         foreach (string resource in assembly.GetManifestResourceNames()
                      .Where(name => name.Contains(DefinitionResourceMarker, StringComparison.Ordinal) &&
