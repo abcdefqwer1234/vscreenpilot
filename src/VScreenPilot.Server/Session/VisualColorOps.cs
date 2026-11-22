@@ -11,6 +11,18 @@ using VScreenPilot.Json;
 
 namespace VScreenPilot.Session;
 
+/// <summary>颜色匹配参数。</summary>
+internal sealed record ColorQuery(
+    string Target,
+    byte R,
+    byte G,
+    byte B,
+    int Tolerance,
+    int MaxResults,
+    int MinPixels,
+    double MaxAreaRatio,
+    bool ExcludeBorder);
+
 /// <summary>ColorOps：VisualMatchService 的匹配子集。</summary>
 internal sealed class VisualColorOps
 {
@@ -20,20 +32,7 @@ internal sealed class VisualColorOps
     internal MatchVisualView MatchColor(
         JsonElement arguments, int regionX, int regionY, int width, int height)
     {
-        string target = GetString(arguments, "target")
-            ?? throw new ToolException("E_INVALID_ARG", "color 模式需要 target=\"#RRGGBB\"");
-
-        if (!VisualSupport.TryParseHex(target, out byte r, out byte g, out byte b))
-        {
-            throw new ToolException("E_INVALID_ARG", $"颜色格式无效: {target}");
-        }
-
-        int tolerance = Math.Clamp(GetInt(arguments, "tolerance", 16), 0, 255);
-        int maxResults = Math.Clamp(GetInt(arguments, "max_results", 10), 1, 100);
-        int minPixels = Math.Max(1, GetInt(arguments, "min_pixels", 4));
-        double maxAreaRatio = Math.Clamp(
-            GetDouble(arguments, "max_area_ratio", 1.0), 0.01, 1.0);
-        bool excludeBorder = GetBool(arguments, "exclude_border", false);
+        ColorQuery query = ParseColorQuery(arguments);
 
         (byte[] bgra, int capturedWidth, int capturedHeight) =
             _core._host.CaptureRegion(regionX, regionY, width, height);
@@ -43,53 +42,17 @@ internal sealed class VisualColorOps
 
         try
         {
-            int matched = 0;
-
-            for (int pixel = 0, offset = 0; pixel < total; pixel++, offset += 4)
-            {
-                bool hit = Math.Abs(bgra[offset + 2] - r) <= tolerance &&
-                           Math.Abs(bgra[offset + 1] - g) <= tolerance &&
-                           Math.Abs(bgra[offset] - b) <= tolerance;
-
-                mask[pixel] = hit ? (byte)1 : (byte)0;
-                if (hit)
-                {
-                    matched++;
-                }
-            }
-
-            if (matched == 0)
-            {
-                throw new ToolException(
-                    "E_NO_MATCH",
-                    "指定区域内没有匹配颜色",
-                    new JsonObject
-                    {
-                        ["target"] = target,
-                        ["tolerance"] = tolerance,
-                        ["region"] = VisualSupport.RegionJson(regionX, regionY, width, height),
-                    });
-            }
+            int matched = BuildColorMask(bgra, total, query, mask);
+            EnsureMatched(matched, query, regionX, regionY, width, height);
 
             List<VisualComponentsOps.ColorComponent> components = _core.ComponentsOps.ConnectedComponents(
-                mask, capturedWidth, capturedHeight, minPixels, () => _core._host.IsCancelled());
+                mask, capturedWidth, capturedHeight, query.MinPixels, () => _core._host.IsCancelled());
 
             List<VisualComponentsOps.ColorComponent> selected = SelectComponents(
-                components, minPixels, maxAreaRatio, excludeBorder,
-                capturedWidth, capturedHeight, maxResults);
+                components, query.MinPixels, query.MaxAreaRatio, query.ExcludeBorder,
+                capturedWidth, capturedHeight, query.MaxResults);
 
-            if (selected.Count == 0)
-            {
-                throw new ToolException(
-                    "E_NO_MATCH",
-                    $"匹配像素存在，但连通区域都小于 min_pixels={minPixels}",
-                    new JsonObject
-                    {
-                        ["target"] = target,
-                        ["matched_pixels"] = matched,
-                        ["min_pixels"] = minPixels,
-                    });
-            }
+            EnsureComponents(selected, matched, query);
 
             List<VisualMatchView> matches = BuildColorViews(selected, regionX, regionY);
 
@@ -98,11 +61,11 @@ internal sealed class VisualColorOps
                 ElapsedMs: 0,
                 Point: null, Color: null, Rgb: null,
                 new OptionalBoundsView(regionX, regionY, width, height),
-                target,
-                tolerance,
-                minPixels,
-                maxAreaRatio,
-                excludeBorder,
+                query.Target,
+                query.Tolerance,
+                query.MinPixels,
+                query.MaxAreaRatio,
+                query.ExcludeBorder,
                 matched,
                 matches.Count,
                 matches,
@@ -114,6 +77,86 @@ internal sealed class VisualColorOps
         }
     }
 
+    private static ColorQuery ParseColorQuery(JsonElement arguments)
+    {
+        string target = GetString(arguments, "target")
+            ?? throw new ToolException("E_INVALID_ARG", "color 模式需要 target=\"#RRGGBB\"");
+
+        if (!VisualSupport.TryParseHex(target, out byte r, out byte g, out byte b))
+        {
+            throw new ToolException("E_INVALID_ARG", $"颜色格式无效: {target}");
+        }
+
+        return new ColorQuery(
+            target,
+            r,
+            g,
+            b,
+            Math.Clamp(GetInt(arguments, "tolerance", 16), 0, 255),
+            Math.Clamp(GetInt(arguments, "max_results", 10), 1, 100),
+            Math.Max(1, GetInt(arguments, "min_pixels", 4)),
+            Math.Clamp(GetDouble(arguments, "max_area_ratio", 1.0), 0.01, 1.0),
+            GetBool(arguments, "exclude_border", false));
+    }
+
+    private static int BuildColorMask(byte[] bgra, int total, ColorQuery query, byte[] mask)
+    {
+        int matched = 0;
+
+        for (int pixel = 0, offset = 0; pixel < total; pixel++, offset += 4)
+        {
+            bool hit = Math.Abs(bgra[offset + 2] - query.R) <= query.Tolerance &&
+                       Math.Abs(bgra[offset + 1] - query.G) <= query.Tolerance &&
+                       Math.Abs(bgra[offset] - query.B) <= query.Tolerance;
+
+            mask[pixel] = hit ? (byte)1 : (byte)0;
+
+            if (hit)
+            {
+                matched++;
+            }
+        }
+
+        return matched;
+    }
+
+    private static void EnsureMatched(
+        int matched, ColorQuery query, int regionX, int regionY, int width, int height)
+    {
+        if (matched > 0)
+        {
+            return;
+        }
+
+        throw new ToolException(
+            "E_NO_MATCH",
+            "指定区域内没有匹配颜色",
+            new JsonObject
+            {
+                ["target"] = query.Target,
+                ["tolerance"] = query.Tolerance,
+                ["region"] = VisualSupport.RegionJson(regionX, regionY, width, height),
+            });
+    }
+
+    private static void EnsureComponents(
+        List<VisualComponentsOps.ColorComponent> selected, int matched, ColorQuery query)
+    {
+        if (selected.Count > 0)
+        {
+            return;
+        }
+
+        throw new ToolException(
+            "E_NO_MATCH",
+            $"匹配像素存在，但连通区域都小于 min_pixels={query.MinPixels}",
+            new JsonObject
+            {
+                ["target"] = query.Target,
+                ["matched_pixels"] = matched,
+                ["min_pixels"] = query.MinPixels,
+            });
+    }
 
     internal static List<VisualComponentsOps.ColorComponent> SelectComponents(
         List<VisualComponentsOps.ColorComponent> components, int minPixels, double maxAreaRatio,

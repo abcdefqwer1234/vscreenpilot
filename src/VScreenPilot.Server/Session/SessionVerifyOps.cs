@@ -20,21 +20,7 @@ internal sealed class SessionVerifyOps
     internal readonly SessionManager _host;
 
     public SessionVerifyOps(SessionManager host) => _host = host;
-    public object FindElement(
-        string? name,
-        string? controlType,
-        string? automationId,
-        string nameMatch,
-        int index,
-        bool all,
-        int maxResults,
-        bool includeOffscreen,
-        int? pid,
-        string? role = null,
-        string prefer = "auto") =>
-        _host._finder.Find(
-            name, controlType, automationId, nameMatch, index, all, maxResults,
-            includeOffscreen, pid, role, prefer);
+    public object FindElement(FindQuery query) => _host._finder.Find(query);
 
     public WaitForView WaitFor(JsonElement condition, int timeoutMs, int? intervalMs = null) =>
         _host._waits.Wait(condition, timeoutMs, intervalMs);

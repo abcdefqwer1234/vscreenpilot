@@ -21,6 +21,20 @@ internal sealed record ElementFinderContext(
     Func<string> EnsureSnapshot,
     Func<UiaElementInfo, IntPtr, string> RegisterElement);
 
+/// <summary>find_element 的查询参数。</summary>
+internal sealed record FindQuery(
+    string? Name,
+    string? ControlType,
+    string? AutomationId,
+    string NameMatch,
+    int Index,
+    bool All,
+    int MaxResults,
+    bool IncludeOffscreen,
+    int? Pid,
+    string? Role = null,
+    string Prefer = "auto");
+
 /// <summary>find_element：跨主窗口/弹窗查找、MSAA 回退、排序与 ref 登记。</summary>
 internal sealed class ElementFinder
 {
@@ -28,37 +42,20 @@ internal sealed class ElementFinder
 
     public ElementFinder(ElementFinderContext host) => _host = host;
 
-    public object Find(
-        string? name,
-        string? controlType,
-        string? automationId,
-        string nameMatch,
-        int index,
-        bool all,
-        int maxResults,
-        bool includeOffscreen,
-        int? pid,
-        string? role = null,
-        string prefer = "auto")
+    public object Find(FindQuery query)
     {
-        IntPtr hwnd = ResolveWindow(pid);
+        IntPtr hwnd = ResolveWindow(query.Pid);
         DisplayInfo display = _host.EnsureDisplay();
         _host.RequireOnDisplay(display, hwnd, "find_element");
 
-        (controlType, automationId) = ApplyRole(role, controlType, automationId);
-        (UiaNameMatch mode, string preferMode) = ParseQuery(nameMatch, prefer, name);
+        (string? controlType, string? automationId) =
+            ApplyRole(query.Role, query.ControlType, query.AutomationId);
+        (UiaNameMatch mode, string preferMode) = ParseQuery(query.NameMatch, query.Prefer, query.Name);
 
-        int requested = Math.Clamp(all ? maxResults : Math.Max(index + 1, 1), 1, 200);
-        // largest/focused 需要尽量完整的候选集；auto/last 只多取少量，避免每次查找都扫全树。
-        int limit = preferMode switch
-        {
-            "first" => requested,
-            "largest" or "focused" => 2000,
-            _ => Math.Min(200, Math.Max(requested, 20)),
-        };
+        int limit = ResolveLimit(query, preferMode);
 
         (List<(UiaElementInfo Info, IntPtr Hwnd)> candidates, List<UiaElementInfo> matches, bool findTruncated) =
-            FindMatches(hwnd, name, mode, controlType, automationId, limit, includeOffscreen);
+            FindMatches(hwnd, query.Name, mode, controlType, automationId, limit, query.IncludeOffscreen);
 
         if (matches.Count == 0)
         {
@@ -67,38 +64,59 @@ internal sealed class ElementFinder
                 "未找到匹配控件",
                 new JsonObject
                 {
-                    ["name"] = name,
-                    ["name_match"] = nameMatch,
+                    ["name"] = query.Name,
+                    ["name_match"] = query.NameMatch,
                     ["control_type"] = controlType,
                     ["automation_id"] = automationId,
-                    ["role"] = role,
+                    ["role"] = query.Role,
                 });
         }
 
         matches = SortMatches(matches, preferMode);
 
-        IntPtr HwndFor(UiaElementInfo info) =>
-            candidates.FirstOrDefault(item => ReferenceEquals(item.Info, info)).Hwnd is var found && found != IntPtr.Zero
-                ? found
-                : hwnd;
-
         // find_element 属于“当前快照”：不推进代际，避免让刚拿到的 ref 立刻失效。
         string snapshotId = _host.EnsureSnapshot();
 
-        if (all)
+        if (query.All)
         {
-            return BuildAllView(matches, maxResults, findTruncated, nameMatch, role, preferMode, snapshotId, HwndFor);
+            return BuildAllView(query, matches, findTruncated, preferMode, snapshotId, candidates, hwnd);
         }
 
-        if (index < 0 || index >= matches.Count)
+        return BuildSingleView(query, candidates, matches, hwnd, preferMode, snapshotId, findTruncated);
+    }
+
+    private static int ResolveLimit(FindQuery query, string preferMode)
+    {
+        int requested = Math.Clamp(
+            query.All ? query.MaxResults : Math.Max(query.Index + 1, 1), 1, 200);
+
+        // largest/focused 需要尽量完整的候选集；auto/last 只多取少量，避免每次查找都扫全树。
+        return preferMode switch
+        {
+            "first" => requested,
+            "largest" or "focused" => 2000,
+            _ => Math.Min(200, Math.Max(requested, 20)),
+        };
+    }
+
+    private object BuildSingleView(
+        FindQuery query,
+        List<(UiaElementInfo Info, IntPtr Hwnd)> candidates,
+        List<UiaElementInfo> matches,
+        IntPtr hwnd,
+        string preferMode,
+        string snapshotId,
+        bool findTruncated)
+    {
+        if (query.Index < 0 || query.Index >= matches.Count)
         {
             throw new ToolException(
                 "E_ELEMENT_NOT_FOUND",
-                $"index={index} 超出候选范围（共 {matches.Count} 个）",
-                new JsonObject { ["index"] = index, ["count"] = matches.Count });
+                $"index={query.Index} 超出候选范围（共 {matches.Count} 个）",
+                new JsonObject { ["index"] = query.Index, ["count"] = matches.Count });
         }
 
-        UiaElementInfo info = matches[index];
+        UiaElementInfo info = matches[query.Index];
         ElementView element = ElementPresenter.ToView(info, compact: true);
 
         return new FindElementView(
@@ -110,14 +128,21 @@ internal sealed class ElementFinder
             element.Offscreen,
             element.Focused,
             element.Value,
-            _host.RegisterElement(info, HwndFor(info)),
-            nameMatch,
-            role,
+            _host.RegisterElement(info, HwndFor(candidates, info, hwnd)),
+            query.NameMatch,
+            query.Role,
             preferMode,
-            index,
+            query.Index,
             matches.Count,
             findTruncated,
             snapshotId);
+    }
+
+    private static IntPtr HwndFor(
+        List<(UiaElementInfo Info, IntPtr Hwnd)> candidates, UiaElementInfo info, IntPtr fallback)
+    {
+        IntPtr found = candidates.FirstOrDefault(item => ReferenceEquals(item.Info, info)).Hwnd;
+        return found == IntPtr.Zero ? fallback : found;
     }
 
     private IntPtr ResolveWindow(int? pid)
@@ -244,28 +269,28 @@ internal sealed class ElementFinder
     }
 
     private object BuildAllView(
+        FindQuery query,
         List<UiaElementInfo> matches,
-        int maxResults,
         bool findTruncated,
-        string nameMatch,
-        string? role,
         string preferMode,
         string snapshotId,
-        Func<UiaElementInfo, IntPtr> hwndFor)
+        List<(UiaElementInfo Info, IntPtr Hwnd)> candidates,
+        IntPtr hwnd)
     {
         var elements = new List<FindElementItemView>();
 
-        foreach (UiaElementInfo item in matches.Take(maxResults))
+        foreach (UiaElementInfo item in matches.Take(query.MaxResults))
         {
-            elements.Add(ElementPresenter.ToFindItem(item, _host.RegisterElement(item, hwndFor(item))));
+            elements.Add(ElementPresenter.ToFindItem(
+                item, _host.RegisterElement(item, HwndFor(candidates, item, hwnd))));
         }
 
         return new FindElementsView(
             elements.Count,
             matches.Count,
-            findTruncated || matches.Count > maxResults,
-            nameMatch,
-            role,
+            findTruncated || matches.Count > query.MaxResults,
+            query.NameMatch,
+            query.Role,
             preferMode,
             snapshotId,
             elements);

@@ -21,7 +21,7 @@ internal sealed class ElementToolService : IElementService
     public ElementToolService(SessionManager session) => _session = session;
 
     public object Find(ElementQuery query) =>
-        _session.VerifyOps.FindElement(
+        _session.VerifyOps.FindElement(new FindQuery(
             query.Name,
             query.ControlType,
             query.AutomationId,
@@ -32,7 +32,7 @@ internal sealed class ElementToolService : IElementService
             query.IncludeOffscreen,
             query.Pid,
             query.Role,
-            query.Prefer);
+            query.Prefer));
 
     public UiTreeView GetUiTree(UiTreeQuery query) =>
         _session.ElementOps.GetUiTree(

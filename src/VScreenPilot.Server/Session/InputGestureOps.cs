@@ -20,6 +20,13 @@ using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 
+/// <summary>一次 gesture 调用的公共上下文。</summary>
+internal sealed record GestureContext(
+    DisplayInfo Display, bool Observe, bool UseInput, Stopwatch Stopwatch, IntPtr PreviousForeground);
+
+/// <summary>拖拽两端的坐标。</summary>
+internal readonly record struct DragPoints(int FromX, int FromY, int ToX, int ToY);
+
 /// <summary>GestureOps：InputRouter 的输入子通道。</summary>
 internal sealed class InputGestureOps
 {
@@ -62,72 +69,110 @@ internal sealed class InputGestureOps
                 stage: "input");
         }
 
+        var context = new GestureContext(display, observe, useInput, stopwatch, previousForeground);
+
         return type.ToLowerInvariant() switch
         {
-            "drag" => GestureDrag(arguments, display, button, duration, observe, useInput, stopwatch, previousForeground),
-            "scroll" => GestureScroll(arguments, display, observe, useInput, stopwatch, previousForeground),
-            "move" => GestureMove(arguments, display, useInput, stopwatch, previousForeground),
+            "drag" => GestureDrag(arguments, button, duration, context),
+            "scroll" => GestureScroll(arguments, context),
+            "move" => GestureMove(arguments, context),
             _ => throw new ToolException("E_INVALID_ARG", $"未知 gesture 类型: {type}"),
         };
     }
 
     internal GestureView GestureDrag(
-        JsonElement arguments, DisplayInfo display, string button, int duration, bool observe,
-        bool useInput, Stopwatch stopwatch, IntPtr previousForeground)
+        JsonElement arguments, string button, int duration, GestureContext context)
+    {
+        DragPoints points = ResolveDragPoints(arguments, context.Display);
+        int clampedDuration = Math.Clamp(duration, 20, 5000);
+
+        int dragLeft = Math.Min(points.FromX, points.ToX) - 80;
+        int dragTop = Math.Min(points.FromY, points.ToY) - 80;
+        int dragWidth = Math.Abs(points.ToX - points.FromX) + 160;
+        int dragHeight = Math.Abs(points.ToY - points.FromY) + 160;
+
+        ObserveSignature? dragBefore = context.Observe
+            ? _host._display.CaptureSignature(context.Display, dragLeft, dragTop, dragWidth, dragHeight)
+            : null;
+
+        string? detail = InjectDrag(context.UseInput, points, button, clampedDuration);
+
+        double injectMs = context.Stopwatch.Elapsed.TotalMilliseconds;
+        Thread.Sleep(50);
+
+        if (WindowManager.GetForegroundWindow() != context.PreviousForeground)
+        {
+            _host.RestoreFocusAfterClick(context.PreviousForeground);
+        }
+
+        GestureView dragResult = BuildDragView(context.UseInput, points, button, detail, injectMs, context.Stopwatch);
+
+        ObserveSignature? dragAfter = dragBefore is null
+            ? null
+            : _host._display.CaptureSignature(context.Display, dragLeft, dragTop, dragWidth, dragHeight);
+        ObservedView? dragObserved = _host._uia.BuildObserved(
+            dragBefore, dragAfter, context.Stopwatch.Elapsed.TotalMilliseconds);
+
+        if (dragObserved is not null)
+        {
+            dragResult = dragResult with { Observed = dragObserved, Verified = dragObserved.Changed };
+        }
+
+        return dragResult;
+    }
+
+    private DragPoints ResolveDragPoints(JsonElement arguments, DisplayInfo display)
     {
         (int fromX, int fromY) = _host.GetPoint(arguments, "from")
             ?? throw new ToolException("E_INVALID_ARG", "drag 需要 from");
         (int toX, int toY) = _host.GetPoint(arguments, "to")
             ?? throw new ToolException("E_INVALID_ARG", "drag 需要 to");
 
-        int clampedDuration = Math.Clamp(duration, 20, 5000);
         _host._element.RequirePointInTrackedApp(display, fromX, fromY, "drag.from");
         _host._element.RequirePointInTrackedApp(display, toX, toY, "drag.to");
 
-        int dragLeft = Math.Min(fromX, toX) - 80;
-        int dragTop = Math.Min(fromY, toY) - 80;
-        int dragWidth = Math.Abs(toX - fromX) + 160;
-        int dragHeight = Math.Abs(toY - fromY) + 160;
-        ObserveSignature? dragBefore = observe
-            ? _host._display.CaptureSignature(display, dragLeft, dragTop, dragWidth, dragHeight)
-            : null;
+        return new DragPoints(fromX, fromY, toX, toY);
+    }
 
-        string? detail = null;
-
+    private string? InjectDrag(bool useInput, DragPoints points, string button, int duration)
+    {
         if (useInput)
         {
             _host._focus.PauseCursor();
             _host._focus.PauseFocusGuard(0);
+
             try
             {
-                InputInjector.Drag(fromX, fromY, toX, toY, button, clampedDuration);
+                InputInjector.Drag(points.FromX, points.FromY, points.ToX, points.ToY, button, duration);
             }
             finally
             {
                 _host._focus.ResumeCursor();
                 _host._focus.ResumeFocusGuard();
             }
-        }
-        else if (!MessageInput.Drag(
-                     fromX, fromY, toX, toY, button, clampedDuration, out detail))
-        {
-            throw new ToolException(
-                "E_INPUT_UNSUPPORTED",
-                "窗口消息拖拽失败；如接受光标跳变，请显式使用 mode=\"input\"",
-                new JsonObject { ["detail"] = detail });
+
+            return null;
         }
 
-        double injectMs = stopwatch.Elapsed.TotalMilliseconds;
-        Thread.Sleep(50);
-        if (WindowManager.GetForegroundWindow() != previousForeground)
+        if (MessageInput.Drag(
+                points.FromX, points.FromY, points.ToX, points.ToY, button, duration, out string? detail))
         {
-            _host.RestoreFocusAfterClick(previousForeground);
+            return detail;
         }
 
-        var dragResult = new GestureView(
+        throw new ToolException(
+            "E_INPUT_UNSUPPORTED",
+            "窗口消息拖拽失败；如接受光标跳变，请显式使用 mode=\"input\"",
+            new JsonObject { ["detail"] = detail });
+    }
+
+    private static GestureView BuildDragView(
+        bool useInput, DragPoints points, string button, string? detail, double injectMs, Stopwatch stopwatch)
+    {
+        var view = new GestureView(
             "drag",
-            new PointView(fromX, fromY),
-            new PointView(toX, toY),
+            new PointView(points.FromX, points.FromY),
+            new PointView(points.ToX, points.ToY),
             null,
             null,
             button,
@@ -139,33 +184,24 @@ internal sealed class InputGestureOps
             null,
             null);
 
-        if (!useInput)
+        if (useInput)
         {
-            dragResult = dragResult with
-            {
-                Hint = "窗口消息拖拽可能被应用忽略；如无效请改用 mode=input，并用截图/断言验证",
-            };
+            return view;
         }
 
-        ObserveSignature? dragAfter = dragBefore is null
-            ? null
-            : _host._display.CaptureSignature(display, dragLeft, dragTop, dragWidth, dragHeight);
-        ObservedView? dragObserved = _host._uia.BuildObserved(
-            dragBefore, dragAfter, stopwatch.Elapsed.TotalMilliseconds);
-
-        if (dragObserved is not null)
+        return view with
         {
-            dragResult = dragResult with { Observed = dragObserved, Verified = dragObserved.Changed };
-
-        }
-
-        return dragResult;
+            Hint = "窗口消息拖拽可能被应用忽略；如无效请改用 mode=input，并用截图/断言验证",
+        };
     }
 
-    internal GestureView GestureScroll(
-        JsonElement arguments, DisplayInfo display, bool observe,
-        bool useInput, Stopwatch stopwatch, IntPtr previousForeground)
+    internal GestureView GestureScroll(JsonElement arguments, GestureContext context)
     {
+        DisplayInfo display = context.Display;
+        bool observe = context.Observe;
+        bool useInput = context.UseInput;
+        Stopwatch stopwatch = context.Stopwatch;
+        IntPtr previousForeground = context.PreviousForeground;
         (int x, int y) = ResolveScrollPoint(arguments);
 
         int dx = GetInt(arguments, "dx", 0);
@@ -280,10 +316,12 @@ internal sealed class InputGestureOps
         };
     }
 
-    internal GestureView GestureMove(
-        JsonElement arguments, DisplayInfo display, bool useInput,
-        Stopwatch stopwatch, IntPtr previousForeground)
+    internal GestureView GestureMove(JsonElement arguments, GestureContext context)
     {
+        DisplayInfo display = context.Display;
+        bool useInput = context.UseInput;
+        Stopwatch stopwatch = context.Stopwatch;
+        IntPtr previousForeground = context.PreviousForeground;
         (int toX, int toY) = _host.GetPoint(arguments, "to")
             ?? throw new ToolException("E_INVALID_ARG", "move 需要 to");
 
