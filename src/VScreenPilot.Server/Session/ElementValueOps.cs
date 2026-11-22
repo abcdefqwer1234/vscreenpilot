@@ -18,13 +18,17 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class ElementOperations
+/// <summary>ValueOps：ElementOperations 的拆分子集。</summary>
+internal sealed class ElementValueOps
 {
+    private readonly ElementOperations _host;
+
+    public ElementValueOps(ElementOperations host) => _host = host;
     public SetElementValueView SetElementValue(
         string reference, string value, bool allowKeyboard, string? mode = null, bool allowDestructive = false)
     {
-        DisplayInfo display = _apps.EnsureDisplay();
-        ElementRefEntry probe = _state.Resolver.Require(reference);
+        DisplayInfo display = _host._apps.EnsureDisplay();
+        ElementRefEntry probe = _host._state.Resolver.Require(reference);
 
         if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaChildId))
         {
@@ -38,7 +42,7 @@ internal sealed partial class ElementOperations
         ElementRefEntry probe, IntPtr msaaHwnd, int msaaChildId, string value,
         bool allowKeyboard, string? mode, bool allowDestructive)
     {
-        string? existing = _state.Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
+        string? existing = _host._state.Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
 
         if (!string.IsNullOrEmpty(existing) &&
             !string.Equals(existing, value, StringComparison.Ordinal) &&
@@ -50,7 +54,7 @@ internal sealed partial class ElementOperations
                 new JsonObject { ["ref"] = probe.Ref, ["existing_length"] = existing.Length });
         }
 
-        if (!_state.Uia.InvokeMsaa(() => MsaaService.SetValue(msaaHwnd, msaaChildId, value)))
+        if (!_host._state.Uia.InvokeMsaa(() => MsaaService.SetValue(msaaHwnd, msaaChildId, value)))
         {
             if (!allowKeyboard)
             {
@@ -60,7 +64,7 @@ internal sealed partial class ElementOperations
                     new JsonObject { ["ref"] = probe.Ref });
             }
 
-            var bounds = _state.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaChildId));
+            var bounds = _host._state.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaChildId));
 
             if (bounds is null)
             {
@@ -70,12 +74,12 @@ internal sealed partial class ElementOperations
                     new JsonObject { ["ref"] = probe.Ref });
             }
 
-            _input.Click(
+            _host._input.Click(
                 bounds.Value.Left + bounds.Value.Width / 2,
                 bounds.Value.Top + bounds.Value.Height / 2,
                 "left", 1, "message");
 
-            TypeTextView typed = _input.TypeText(value, null, verify: true, chunkChars: 32, channel: "auto");
+            TypeTextView typed = _host._input.TypeText(value, null, verify: true, chunkChars: 32, channel: "auto");
             return new SetElementValueView(
                 probe.Ref,
                 "msaa+keyboard",
@@ -91,7 +95,7 @@ internal sealed partial class ElementOperations
                 Warning: null);
         }
 
-        string? observed = _state.Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
+        string? observed = _host._state.Uia.InvokeMsaa(() => MsaaService.GetValue(msaaHwnd, msaaChildId));
         return new SetElementValueView(
             probe.Ref,
             "msaa",
@@ -111,7 +115,7 @@ internal sealed partial class ElementOperations
         DisplayInfo display, string reference, string value,
         bool allowKeyboard, string? mode, bool allowDestructive)
     {
-        using UiaElementHandle handle = _state.Resolver.Resolve(reference, display, out ElementRefEntry entry, out bool refreshed);
+        using UiaElementHandle handle = _host._state.Resolver.Resolve(reference, display, out ElementRefEntry entry, out bool refreshed);
         UiaElementInfo info = handle.Info;
 
         if (!info.Enabled)
@@ -122,7 +126,7 @@ internal sealed partial class ElementOperations
                 new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
         }
 
-        string effectiveMode = ResolveWriteMode(mode, info);
+        string effectiveMode = _host.KeyboardValueOps.ResolveWriteMode(mode, info);
 
         if (effectiveMode == "replace" && !allowDestructive)
         {
@@ -157,7 +161,7 @@ internal sealed partial class ElementOperations
                     });
             }
 
-            return SetElementValueByKeyboard(
+            return _host.KeyboardValueOps.SetElementValueByKeyboard(
                 display, handle, entry, value, refreshed, effectiveMode, allowDestructive);
         }
 
@@ -247,232 +251,7 @@ internal sealed partial class ElementOperations
                 new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
         }
 
-        return SetElementValueByKeyboard(
+        return _host.KeyboardValueOps.SetElementValueByKeyboard(
             display, handle, entry, value, refreshed, mode, allowDestructive);
-    }
-
-
-    private SetElementValueView SetElementValueByKeyboard(
-        DisplayInfo display,
-        UiaElementHandle handle,
-        ElementRefEntry entry,
-        string value,
-        bool refreshed,
-        string? mode,
-        bool allowDestructive)
-    {
-        (TrackedApp app, string effectiveMode, bool replace) =
-            ResolveKeyboardTarget(display, entry, handle, mode, allowDestructive);
-
-
-        IntPtr previous = WindowManager.GetForegroundWindow();
-        _focus.PauseFocusGuard();
-
-        try
-        {
-            if (!_focus.EnsureForeground(app))
-            {
-                throw new ToolException(
-                    "E_FOCUS",
-                    "无法把目标窗口切到前台，已取消键入以避免输入到用户窗口",
-                    new JsonObject { ["ref"] = entry.Ref },
-                    retryable: true,
-                    hint: "确认没有模态框禁用主窗口；可改用消息点击或先关闭弹窗",
-                    stage: "focus");
-            }
-
-            bool focused = TryFocusElement(handle, display);
-
-            if (!focused)
-            {
-                throw new ToolException(
-                    "E_FOCUS",
-                    "无法把焦点设置到控件，已取消键入",
-                    new JsonObject { ["ref"] = entry.Ref },
-                    retryable: true,
-                    stage: "focus");
-            }
-
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-            if (replace)
-            {
-                InputInjector.PressKeys("Ctrl+A");
-                Thread.Sleep(60);
-
-                if (value.Length == 0)
-                {
-                    // 新版记事本的 Document 控件对 Ctrl+A→Delete 的处理是异步的；
-                    // 连续发送可能丢掉 Delete，导致“清空”实际未生效。
-                    for (int attempt = 0; attempt < 3; attempt++)
-                    {
-                        InputInjector.PressKeys(attempt == 0 ? "Delete" : "Backspace");
-                        Thread.Sleep(80);
-
-                        string? probe = handle.GetText(32);
-                        if (string.IsNullOrEmpty(probe))
-                        {
-                            break;
-                        }
-
-                        if (attempt + 1 < 3)
-                        {
-                            InputInjector.PressKeys("Ctrl+A");
-                            Thread.Sleep(50);
-                        }
-                    }
-                }
-            }
-            else if (effectiveMode == "append")
-            {
-                InputInjector.PressKeys("Ctrl+End");
-            }
-
-            Thread.Sleep(30);
-            TextWriteResult write = _input.WriteTextVerified(
-                app, handle, value, replace, timeoutMs: 12000);
-
-            string? after = handle.GetText(65536);
-            bool verified = write.Verified;
-
-            return new SetElementValueView(
-                entry.Ref,
-                "keyboard",
-                effectiveMode,
-                replace,
-                verified,
-                value,
-                after is null ? null : JsonValue.Create(after),
-                refreshed,
-                write.Chunks,
-                Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
-                after?.Length,
-                !verified
-                    ? "键盘写入未能通过 TextPattern/ValuePattern 回读确认；请用 get_element_text 或截图复核"
-                    : null);
-        }
-        finally
-        {
-            _focus.RestoreForeground(previous);
-            _focus.ResumeFocusGuard();
-        }
-    }
-
-    private (TrackedApp App, string EffectiveMode, bool Replace) ResolveKeyboardTarget(
-        DisplayInfo display, ElementRefEntry entry, UiaElementHandle handle,
-        string? mode, bool allowDestructive)
-    {
-        TrackedApp? app;
-
-        app = _apps.OwnedAppForPid(entry.Pid);
-
-        if (app is null)
-        {
-            throw new ToolException(
-                "E_NO_TARGET",
-                "element_ref 所属应用不在本会话中，无法键入",
-                new JsonObject { ["ref"] = entry.Ref });
-        }
-
-        _apps.RequireOnDisplay(display, entry.Hwnd, "set_element_value");
-
-        string effectiveMode = ResolveWriteMode(mode, handle.Info);
-        bool replace = effectiveMode == "replace";
-
-        if (replace && !allowDestructive)
-        {
-            throw new ToolException(
-                "E_DESTRUCTIVE_REQUIRED",
-                "replace 会先全选目标内容再覆盖；请显式传 allow_destructive=true，或改用 mode=append/insert",
-                new JsonObject
-                {
-                    ["ref"] = entry.Ref,
-                    ["mode"] = effectiveMode,
-                    ["control_type"] = handle.Info.ControlTypeName,
-                    ["automation_id"] = handle.Info.AutomationId,
-                });
-        }
-
-        return (app, effectiveMode, replace);
-    }
-
-    /// <summary>
-    /// auto：文档类控件默认追加（避免覆盖），普通控件默认插入；
-    /// replace 必须显式 allow_destructive=true。
-    /// </summary>
-    private static string ResolveWriteMode(string? mode, UiaElementInfo info)
-    {
-        string requested = (mode ?? "auto").Trim().ToLowerInvariant();
-
-        if (requested is "replace" or "append" or "insert")
-        {
-            return requested;
-        }
-
-        if (requested is not ("auto" or ""))
-        {
-            throw new ToolException(
-                "E_INVALID_ARG",
-                $"未知 set_element_value mode: {mode}（可选 auto/append/insert/replace）");
-        }
-
-        bool documentLike = info.ControlTypeName == "Document" ||
-                            string.Equals(info.AutomationId, "Body", StringComparison.OrdinalIgnoreCase);
-
-        return documentLike ? "append" : "insert";
-    }
-
-    private bool TryFocusElement(UiaElementHandle handle, DisplayInfo display)
-    {
-        try
-        {
-            handle.Focus();
-            Thread.Sleep(40);
-            return VerifyFocus(handle);
-        }
-        catch (Exception exception) when (
-            exception is System.Runtime.InteropServices.COMException or InvalidOperationException)
-        {
-            // Word 正文的 Edit/Body 不支持 UIA SetFocus；退化到消息点击元素中心。
-            LogSink.Debug($"忽略异常: {exception.Message}");
-        }
-
-        UiaElementInfo info = handle.Info;
-        int centerX = info.Left + info.Width / 2;
-        int centerY = info.Top + info.Height / 2;
-
-        if (centerX < display.X || centerX >= display.X + display.Width ||
-            centerY < display.Y || centerY >= display.Y + display.Height)
-        {
-            return false;
-        }
-
-        if (!MessageInput.Click(centerX, centerY, "left", 1, out _))
-        {
-            return false;
-        }
-
-        Thread.Sleep(80);
-        return VerifyFocus(handle);
-    }
-
-    /// <summary>SetFocus/消息点击后确认焦点确实落在目标控件上，避免键入到相邻控件。</summary>
-    private bool VerifyFocus(UiaElementHandle expected)
-    {
-        using UiaElementHandle? focused = _state.Uia.GetFocusedElementHandle(expected.Info.ProcessId);
-        if (focused is null)
-        {
-            return false;
-        }
-
-        if (!string.IsNullOrEmpty(expected.Info.RuntimeId) &&
-            string.Equals(focused.Info.RuntimeId, expected.Info.RuntimeId, StringComparison.Ordinal))
-        {
-            return true;
-        }
-
-        return string.Equals(focused.Info.AutomationId, expected.Info.AutomationId, StringComparison.Ordinal) &&
-               string.Equals(focused.Info.ControlTypeName, expected.Info.ControlTypeName, StringComparison.OrdinalIgnoreCase) &&
-               string.Equals(focused.Info.Name, expected.Info.Name, StringComparison.Ordinal);
     }
 }

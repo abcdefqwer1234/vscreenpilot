@@ -63,13 +63,17 @@ internal sealed record ElementFocusContext(
     Action ResumeFocusGuard,
     Action<IntPtr> RestoreForeground);
 
-internal sealed partial class ElementOperations
+internal sealed class ElementOperations
 {
-    private readonly ElementStateContext _state;
-    private readonly ElementSnapshotContext _snapshot;
-    private readonly ElementAppContext _apps;
-    private readonly ElementInputContext _input;
-    private readonly ElementFocusContext _focus;
+    internal readonly ElementStateContext _state;
+    internal readonly ElementSnapshotContext _snapshot;
+    internal readonly ElementAppContext _apps;
+    internal readonly ElementInputContext _input;
+    internal readonly ElementFocusContext _focus;
+
+    internal readonly ElementInvokeOps InvokeOps;
+    internal readonly ElementValueOps ValueOps;
+    internal readonly ElementKeyboardValueOps KeyboardValueOps;
 
     public ElementOperations(
         ElementStateContext state,
@@ -78,6 +82,9 @@ internal sealed partial class ElementOperations
         ElementInputContext input,
         ElementFocusContext focus)
     {
+        InvokeOps = new ElementInvokeOps(this);
+        ValueOps = new ElementValueOps(this);
+        KeyboardValueOps = new ElementKeyboardValueOps(this);
         _state = state;
         _snapshot = snapshot;
         _apps = apps;
@@ -159,7 +166,7 @@ internal sealed partial class ElementOperations
     }
 
     /// <summary>解析 get_ui_tree 的树根：MSAA ref、UIA ref 或当前应用窗口。</summary>
-    private (IntPtr Hwnd, string RootRuntimeId, UiTreeView? Early) ResolveRoot(
+    internal (IntPtr Hwnd, string RootRuntimeId, UiTreeView? Early) ResolveRoot(
         string? root, int? pid, int nodes, string? format)
     {
         IntPtr hwnd;
@@ -225,7 +232,7 @@ internal sealed partial class ElementOperations
     /// <summary>
     /// MSAA 对话框没有 UIA 树；把控件展开成一层扁平树，ref 可直接 invoke/click/get_text。
     /// </summary>
-    private UiTreeView BuildMsaaTree(
+    internal UiTreeView BuildMsaaTree(
         ElementRefEntry rootEntry, IntPtr hwnd, int ordinal, int maxNodes, string? format)
     {
         MsaaFindResult found = _state.Uia.InvokeMsaa(() => MsaaService.FindElements(
@@ -341,4 +348,10 @@ internal sealed partial class ElementOperations
             refreshed);
     }
 
+    public InvokeElementView InvokeElement(string reference, bool allowClick, string? pattern = null) =>
+        InvokeOps.InvokeElement(reference, allowClick, pattern);
+
+    public SetElementValueView SetElementValue(
+        string reference, string value, bool allowKeyboard, string? mode = null, bool allowDestructive = false) =>
+        ValueOps.SetElementValue(reference, value, allowKeyboard, mode, allowDestructive);
 }

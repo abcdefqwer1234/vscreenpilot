@@ -18,19 +18,23 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class ElementOperations
+/// <summary>InvokeOps：ElementOperations 的拆分子集。</summary>
+internal sealed class ElementInvokeOps
 {
+    internal readonly ElementOperations _host;
+
+    public ElementInvokeOps(ElementOperations host) => _host = host;
     public InvokeElementView InvokeElement(string reference, bool allowClick, string? pattern = null)
     {
-        DisplayInfo display = _apps.EnsureDisplay();
-        ElementRefEntry probe = _state.Resolver.Require(reference);
+        DisplayInfo display = _host._apps.EnsureDisplay();
+        ElementRefEntry probe = _host._state.Resolver.Require(reference);
 
         if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaChildId))
         {
             return InvokeMsaaElement(probe, msaaHwnd, msaaChildId, allowClick);
         }
 
-        UiaElementHandle handle = _state.Resolver.Resolve(reference, display, out ElementRefEntry entry, out bool refreshed);
+        UiaElementHandle handle = _host._state.Resolver.Resolve(reference, display, out ElementRefEntry entry, out bool refreshed);
         bool handleTransferred = false;
 
         try
@@ -70,7 +74,7 @@ internal sealed partial class ElementOperations
 
             if (!invokeTask.Wait(5000))
             {
-                _input.ResetUia();
+                _host._input.ResetUia();
                 throw new ToolException(
                     "E_TIMEOUT",
                     "UIA 触发 5s 未返回，常见于会打开模态对话框的按钮",
@@ -110,7 +114,7 @@ internal sealed partial class ElementOperations
                     new JsonObject { ["ref"] = entry.Ref });
             }
 
-            _apps.RequirePointInTrackedApp(display, centerX, centerY, "invoke_element");
+            _host._apps.RequirePointInTrackedApp(display, centerX, centerY, "invoke_element");
 
             if (!MessageInput.Click(centerX, centerY, "left", 1, out string? detail))
             {
@@ -134,7 +138,7 @@ internal sealed partial class ElementOperations
         }
     }
 
-    private static UiaInvokePattern ParseInvokePattern(string? pattern) =>
+    internal static UiaInvokePattern ParseInvokePattern(string? pattern) =>
         (pattern ?? "auto").Trim().ToLowerInvariant() switch
         {
             "" or "auto" => UiaInvokePattern.Auto,
@@ -153,7 +157,7 @@ internal sealed partial class ElementOperations
     /// 显式“打开/默认动作”：聚焦控件后发送 Space+Enter（树节点）或 Enter。
     /// 用于 WinForms 树节点等没有 InvokePattern、只能靠键盘默认动作打开的场景。
     /// </summary>
-    private InvokeElementView InvokeDefaultAction(
+    internal InvokeElementView InvokeDefaultAction(
         DisplayInfo display,
         UiaElementHandle handle,
         ElementRefEntry entry,
@@ -161,7 +165,7 @@ internal sealed partial class ElementOperations
     {
         TrackedApp? app;
 
-        app = _apps.OwnedAppForPid(entry.Pid);
+        app = _host._apps.OwnedAppForPid(entry.Pid);
 
         if (app is null)
         {
@@ -171,14 +175,14 @@ internal sealed partial class ElementOperations
                 new JsonObject { ["ref"] = entry.Ref });
         }
 
-        _apps.RequireOnDisplay(display, app.Hwnd, "invoke_element");
+        _host._apps.RequireOnDisplay(display, app.Hwnd, "invoke_element");
 
         IntPtr previous = WindowManager.GetForegroundWindow();
-        _focus.PauseFocusGuard();
+        _host._focus.PauseFocusGuard();
 
         try
         {
-            if (!_focus.EnsureForeground(app))
+            if (!_host._focus.EnsureForeground(app))
             {
                 throw new ToolException(
                     "E_FOCUS",
@@ -220,20 +224,20 @@ internal sealed partial class ElementOperations
         }
         finally
         {
-            _focus.RestoreForeground(previous);
-            _focus.ResumeFocusGuard();
+            _host._focus.RestoreForeground(previous);
+            _host._focus.ResumeFocusGuard();
         }
     }
 
 
-    private InvokeElementView InvokeMsaaElement(
+    internal InvokeElementView InvokeMsaaElement(
         ElementRefEntry probe, IntPtr msaaHwnd, int msaaChildId, bool allowClick)
     {
-        bool invoked = _state.Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaChildId));
+        bool invoked = _host._state.Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaChildId));
 
         if (!invoked && allowClick)
         {
-            var bounds = _state.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaChildId));
+            var bounds = _host._state.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaChildId));
 
             if (bounds is not null)
             {
