@@ -1,27 +1,26 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using ModelContextProtocol;
-using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
-using VScreenPilot.Infrastructure;
-using VScreenPilot.Server.Infrastructure;
+using VScreenPilot.Errors;
 using VScreenPilot.Json;
-using VScreenPilot.Perception;
-using VScreenPilot.Session;
+using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Views;
 using static VScreenPilot.Json.JsonArgReader;
-using VScreenPilot.Errors;
 
-using VScreenPilot.Tools;
+namespace VScreenPilot.Tools;
 
-namespace VScreenPilot.Mcp;
-
-internal sealed partial class McpTransport
+/// <summary>System 组的 <c>get_log</c>：内存/文件日志筛选与错误摘要。</summary>
+internal sealed class LogTool
 {
-    private ToolResponse GetLog(JsonElement arguments)
+    private readonly LogRing _log;
+    private readonly Func<string> _clientId;
+
+    public LogTool(LogRing log, Func<string> clientId)
+    {
+        _log = log;
+        _clientId = clientId;
+    }
+
+    public ToolResponse GetLog(JsonElement arguments)
     {
         int tail = Math.Clamp(OptionalInt(arguments, "tail", 100), 1, 500);
         string source = (OptionalString(arguments, "source") ?? "memory").Trim().ToLowerInvariant();
@@ -49,7 +48,7 @@ internal sealed partial class McpTransport
 
         string? contains = OptionalString(arguments, "contains");
         bool includeOther = OptionalBool(arguments, "include_other_clients", false);
-        string currentClient = _client?.Id ?? "c0";
+        string currentClient = _clientId();
 
         bool Visible(LogEntry entry) =>
             includeOther ||
@@ -127,13 +126,10 @@ internal sealed partial class McpTransport
         return ToolResponseWriter.FromView(view);
     }
 
-
-    /// <summary>日志条目 → 视图。time 统一用往返格式（O），与旧输出一致。</summary>
     private static LogEntryView ToLogView(LogEntry entry) =>
         new(
             entry.Time.ToString("O"),
             entry.Level,
             entry.Message,
             string.IsNullOrWhiteSpace(entry.ClientId) ? null : entry.ClientId);
-
 }

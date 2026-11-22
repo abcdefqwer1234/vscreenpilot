@@ -47,7 +47,7 @@ internal sealed partial class McpTransport
             ["assert_region"] = AssertRegion,
             ["match_visual"] = MatchVisual,
             ["release_environment"] = ReleaseEnvironment,
-            ["get_log"] = GetLog,
+            ["get_log"] = _logTool.GetLog,
             ["run_script"] = RunScript,
         };
 

@@ -47,6 +47,7 @@ internal sealed partial class McpTransport
 
     private readonly WriteScheduler _scheduler;
     private readonly ResourceHandler _resources;
+    private readonly LogTool _logTool;
 
     // 令牌桶限流：daemon 内所有连接共享，避免 N 个客户端把限制放大 N 倍。
     private readonly object _rateGate = new();
@@ -86,6 +87,7 @@ internal sealed partial class McpTransport
         _scheduler = session is null ? new WriteScheduler() : session.Scheduler;
         _client = client;
         _resources = new ResourceHandler(session!, client);
+        _logTool = new LogTool(log, () => _client?.Id ?? "c0");
         _tools = BuildTools();
         _trace = sharedTrace ?? (trace ? new TraceLog() : null);
         _ownsTrace = sharedTrace is null && _trace is not null;
