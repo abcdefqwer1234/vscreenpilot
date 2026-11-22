@@ -50,29 +50,7 @@ internal sealed class InputTextOps
 
         foreach (string chunk in SplitTextChunks(text, chunkChars))
         {
-            if (_host._session.Cancellation().IsCancellationRequested)
-            {
-                throw new ToolException(
-                    "E_CANCELLED",
-                    "type_text 已被取消，停止继续注入",
-                    new JsonObject { ["typed"] = typed, ["chunks"] = chunks },
-                    retryable: true,
-                    hint: "重新调用 type_text；已输入的内容不会自动撤销",
-                    stage: "input");
-            }
-
-            if (!_host._focus.IsAppForeground(app))
-            {
-                throw new ToolException(
-                    "E_FOCUS_LOST",
-                    "输入过程中目标窗口失去前台，已中止以避免输入到用户窗口",
-                    new JsonObject
-                    {
-                        ["target_pid"] = app.Pid,
-                        ["typed"] = typed,
-                        ["chunks"] = chunks,
-                    });
-            }
+            EnsureTypingContinues(app, typed, chunks);
 
             var chunkWatch = Stopwatch.StartNew();
             typed += InputInjector.TypeText(chunk);
@@ -87,25 +65,19 @@ internal sealed class InputTextOps
             // 长文本逐块读全文是 O(n²)；每 N 块确认一次，最后再整体确认。
             if (textSupported && target is not null)
             {
-                if (chunks % Math.Max(1, verifyEveryChunks) == 0)
+                if (chunks % Math.Max(1, verifyEveryChunks) == 0 &&
+                    !WaitForChunk(target, before!, sentBuilder.ToString(), replace, timeoutMs, stopwatch))
                 {
-                    int remaining = Math.Max(0, timeoutMs - (int)stopwatch.ElapsedMilliseconds);
-                    int chunkTimeout = Math.Clamp(
-                        500 + sentBuilder.Length * 8, 500, Math.Max(500, remaining));
+                    string? observed = target.GetText(65536);
 
-                    if (!WaitForText(target, before!, sentBuilder.ToString(), replace, chunkTimeout))
-                    {
-                        string? observed = target.GetText(65536);
-
-                        return new TextWriteResult(
-                            typed,
-                            chunks,
-                            TextSupported: true,
-                            Verified: false,
-                            ObservedLength: observed?.Length,
-                            InjectMs: injectMs,
-                            DurationMs: stopwatch.Elapsed.TotalMilliseconds);
-                    }
+                    return new TextWriteResult(
+                        typed,
+                        chunks,
+                        TextSupported: true,
+                        Verified: false,
+                        ObservedLength: observed?.Length,
+                        InjectMs: injectMs,
+                        DurationMs: stopwatch.Elapsed.TotalMilliseconds);
                 }
             }
             else
@@ -118,21 +90,7 @@ internal sealed class InputTextOps
         // 不支持回读时至少给应用留出消费时间，并确认前台仍然属于目标。
         if (!textSupported)
         {
-            int settle = Math.Clamp(120 + text.Length * 4, 180, 1500);
-            var deadline = DateTime.UtcNow.AddMilliseconds(settle);
-
-            while (DateTime.UtcNow < deadline)
-            {
-                if (!_host._focus.IsAppForeground(app))
-                {
-                    throw new ToolException(
-                        "E_FOCUS_LOST",
-                        "输入结束前目标窗口失去前台，请用 get_element_text/截图复核",
-                        new JsonObject { ["target_pid"] = app.Pid, ["typed"] = typed });
-                }
-
-                Thread.Sleep(20);
-            }
+            SettleWithoutTextSupport(app, text.Length, typed);
         }
 
         string? after = target is null ? null : target.GetText(65536);
@@ -148,6 +106,65 @@ internal sealed class InputTextOps
             after?.Length,
             injectMs,
             stopwatch.Elapsed.TotalMilliseconds);
+    }
+
+    private void EnsureTypingContinues(TrackedApp app, int typed, int chunks)
+    {
+        if (_host._session.Cancellation().IsCancellationRequested)
+        {
+            throw new ToolException(
+                "E_CANCELLED",
+                "type_text 已被取消，停止继续注入",
+                new JsonObject { ["typed"] = typed, ["chunks"] = chunks },
+                retryable: true,
+                hint: "重新调用 type_text；已输入的内容不会自动撤销",
+                stage: "input");
+        }
+
+        if (!_host._focus.IsAppForeground(app))
+        {
+            throw new ToolException(
+                "E_FOCUS_LOST",
+                "输入过程中目标窗口失去前台，已中止以避免输入到用户窗口",
+                new JsonObject
+                {
+                    ["target_pid"] = app.Pid,
+                    ["typed"] = typed,
+                    ["chunks"] = chunks,
+                });
+        }
+    }
+
+    private bool WaitForChunk(
+        UiaElementHandle target,
+        string before,
+        string sent,
+        bool replace,
+        int timeoutMs,
+        Stopwatch stopwatch)
+    {
+        int remaining = Math.Max(0, timeoutMs - (int)stopwatch.ElapsedMilliseconds);
+        int chunkTimeout = Math.Clamp(500 + sent.Length * 8, 500, Math.Max(500, remaining));
+        return WaitForText(target, before, sent, replace, chunkTimeout);
+    }
+
+    private void SettleWithoutTextSupport(TrackedApp app, int textLength, int typed)
+    {
+        int settle = Math.Clamp(120 + textLength * 4, 180, 1500);
+        var deadline = DateTime.UtcNow.AddMilliseconds(settle);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (!_host._focus.IsAppForeground(app))
+            {
+                throw new ToolException(
+                    "E_FOCUS_LOST",
+                    "输入结束前目标窗口失去前台，请用 get_element_text/截图复核",
+                    new JsonObject { ["target_pid"] = app.Pid, ["typed"] = typed });
+            }
+
+            Thread.Sleep(20);
+        }
     }
 
     internal bool WaitForText(

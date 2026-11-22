@@ -22,114 +22,124 @@ internal sealed class VirtualCreateOps
 
         try
         {
-            // Parsec 驱动在 REMOVE 后约 3-5 秒内会拒绝 ADD；重试并等待本次新变可用的屏。
-            // 不能用“设备名是否出现过”判断：驱动会复用已 detached 适配器的名字（本次 DISPLAY5~20）。
+            // ADD 前记录 live 与全部设备名：驱动会复用 detached 名字，必须按“本次新变”判断。
             HashSet<string> beforeLive = DisplayTopology.LiveParsecDevices();
-            // 记录 ADD 前已存在的全部 Parsec 设备名（含 detached）：
-            // 部分驱动/系统组合只会创建 detached monitor，必须由我们显式设模式才会挂载。
             HashSet<string> beforeAll = DisplayTopology.List()
                 .Where(item => item.IsParsec)
                 .Select(item => item.DeviceName)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            int[] delays = { 0, 500, 1000, 1500, 2000 };
-
-            foreach (int delay in delays)
-            {
-                if (delay > 0)
-                {
-                    Thread.Sleep(delay);
-                }
-
-                _core.State.Index = _core.Vdd.AddDisplay();
-
-                if (_core.State.Index >= 0)
-                {
-                    displayAdded = true;
-                    break;
-                }
-
-                if (DisplayTopology.PickNewLiveParsec(
-                        DisplayTopology.List(), beforeLive, _core.AdoptOps.IsDisplayOwnedByOther) is not null)
-                {
-                    _core._log.Warn("驱动拒绝 ADD，但检测到本次新变可用的 Parsec 屏，按已创建处理");
-                    break;
-                }
-
-                _core._log.Warn("驱动拒绝创建虚拟显示器，准备重试");
-            }
-
-            if (_core.State.Index < 0 &&
-                DisplayTopology.PickNewLiveParsec(
-                    DisplayTopology.List(), beforeLive, _core.AdoptOps.IsDisplayOwnedByOther) is null)
-            {
-                throw new ToolException(
-                    "E_DISPLAY_ADD",
-                    "驱动拒绝创建虚拟显示器",
-                    new JsonObject
-                    {
-                        ["before_live"] = _core.LifecycleOps.DescribeDevices(beforeLive),
-                        ["after_live"] = _core.LifecycleOps.DescribeDevices(DisplayTopology.LiveParsecDevices()),
-                    },
-                    retryable: true,
-                    hint: "驱动 REMOVE 后需要 3-5 秒冷却；稍后重试或重启驱动",
-                    stage: "display");
-            }
+            displayAdded = TryAddDisplayWithRetries(beforeLive);
 
             if (!string.IsNullOrWhiteSpace(targetDevice))
             {
                 return;
             }
 
-            bool liveArrived = DisplayTopology.WaitForNewLiveParsecDisplay(
-                beforeLive,
-                TimeSpan.FromSeconds(3),
-                out DisplayInfo? added,
-                _core.AdoptOps.IsDisplayOwnedByOther);
-
-            if ((!liveArrived || added is null) &&
-                DisplayTopology.List()
-                    .FirstOrDefault(item =>
-                        item.IsParsec &&
-                        !beforeAll.Contains(item.DeviceName) &&
-                        !_core.AdoptOps.IsDisplayOwnedByOther(item.DeviceName)) is { } detachedNew)
-            {
-                // 驱动创建的 monitor 未被 Windows 自动挂载：直接对新建的
-                // detached 设备设模式，TryActivateDisplay 会完成挂载。
-                targetDevice = detachedNew.DeviceName;
-                _core._log.Info($"新建虚拟屏处于 detached，直接激活: {detachedNew.DeviceName}");
-            }
-
-            if (string.IsNullOrWhiteSpace(targetDevice) &&
-                (!liveArrived || added is null))
-            {
-                JsonObject details = new()
-                {
-                    ["display_index"] = _core.State.Index,
-                    ["before_live"] = _core.LifecycleOps.DescribeDevices(beforeLive),
-                    ["after_live"] = _core.LifecycleOps.DescribeDevices(DisplayTopology.LiveParsecDevices()),
-                };
-
-                _core._log.Warn($"新建虚拟屏未转可用: {details.ToJsonString()}");
-                _core.LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
-                throw new ToolException(
-                    "E_DISPLAY_ADD",
-                    "新建的虚拟显示器未出现在拓扑中",
-                    details,
-                    retryable: true,
-                    hint: "确认 Parsec VDD 正常；detached 适配器不算已存在，若仍失败请提供 details",
-                    stage: "display");
-            }
-
-            if (liveArrived && added is not null)
-            {
-                targetDevice = added.DeviceName;
-                _core._log.Info($"新建虚拟屏已可用: {added}");
-            }
+            ResolveAddedDevice(beforeLive, beforeAll, ref targetDevice, displayAdded);
         }
         finally
         {
             _core.ReleaseDisplayAllocation(allocation, allocationHeld);
+        }
+    }
+
+    /// <summary>Parsec 驱动 REMOVE 后 3-5 秒内会拒绝 ADD；重试并确认本次新变可用的屏。</summary>
+    private bool TryAddDisplayWithRetries(HashSet<string> beforeLive)
+    {
+        int[] delays = { 0, 500, 1000, 1500, 2000 };
+
+        foreach (int delay in delays)
+        {
+            if (delay > 0)
+            {
+                Thread.Sleep(delay);
+            }
+
+            _core.State.Index = _core.Vdd.AddDisplay();
+
+            if (_core.State.Index >= 0)
+            {
+                return true;
+            }
+
+            if (DisplayTopology.PickNewLiveParsec(
+                    DisplayTopology.List(), beforeLive, _core.AdoptOps.IsDisplayOwnedByOther) is not null)
+            {
+                _core._log.Warn("驱动拒绝 ADD，但检测到本次新变可用的 Parsec 屏，按已创建处理");
+                return false;
+            }
+
+            _core._log.Warn("驱动拒绝创建虚拟显示器，准备重试");
+        }
+
+        if (DisplayTopology.PickNewLiveParsec(
+                DisplayTopology.List(), beforeLive, _core.AdoptOps.IsDisplayOwnedByOther) is null)
+        {
+            throw new ToolException(
+                "E_DISPLAY_ADD",
+                "驱动拒绝创建虚拟显示器",
+                new JsonObject
+                {
+                    ["before_live"] = _core.LifecycleOps.DescribeDevices(beforeLive),
+                    ["after_live"] = _core.LifecycleOps.DescribeDevices(DisplayTopology.LiveParsecDevices()),
+                },
+                retryable: true,
+                hint: "驱动 REMOVE 后需要 3-5 秒冷却；稍后重试或重启驱动",
+                stage: "display");
+        }
+
+        return false;
+    }
+
+    /// <summary>等待新屏变为 live；只有 detached 新设备时直接激活它。</summary>
+    private void ResolveAddedDevice(
+        HashSet<string> beforeLive, HashSet<string> beforeAll,
+        ref string? targetDevice, bool displayAdded)
+    {
+        bool liveArrived = DisplayTopology.WaitForNewLiveParsecDisplay(
+            beforeLive,
+            TimeSpan.FromSeconds(3),
+            out DisplayInfo? added,
+            _core.AdoptOps.IsDisplayOwnedByOther);
+
+        if ((!liveArrived || added is null) &&
+            DisplayTopology.List()
+                .FirstOrDefault(item =>
+                    item.IsParsec &&
+                    !beforeAll.Contains(item.DeviceName) &&
+                    !_core.AdoptOps.IsDisplayOwnedByOther(item.DeviceName)) is { } detachedNew)
+        {
+            // 驱动创建的 monitor 未被 Windows 自动挂载：直接对新建的
+            // detached 设备设模式，TryActivateDisplay 会完成挂载。
+            targetDevice = detachedNew.DeviceName;
+            _core._log.Info($"新建虚拟屏处于 detached，直接激活: {detachedNew.DeviceName}");
+        }
+
+        if (string.IsNullOrWhiteSpace(targetDevice) && (!liveArrived || added is null))
+        {
+            JsonObject details = new()
+            {
+                ["display_index"] = _core.State.Index,
+                ["before_live"] = _core.LifecycleOps.DescribeDevices(beforeLive),
+                ["after_live"] = _core.LifecycleOps.DescribeDevices(DisplayTopology.LiveParsecDevices()),
+            };
+
+            _core._log.Warn($"新建虚拟屏未转可用: {details.ToJsonString()}");
+            _core.LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
+            throw new ToolException(
+                "E_DISPLAY_ADD",
+                "新建的虚拟显示器未出现在拓扑中",
+                details,
+                retryable: true,
+                hint: "确认 Parsec VDD 正常；detached 适配器不算已存在，若仍失败请提供 details",
+                stage: "display");
+        }
+
+        if (liveArrived && added is not null)
+        {
+            targetDevice = added.DeviceName;
+            _core._log.Info($"新建虚拟屏已可用: {added}");
         }
     }
 
