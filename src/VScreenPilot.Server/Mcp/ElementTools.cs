@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using VScreenPilot.Errors;
-using VScreenPilot.Session;
+using VScreenPilot.Services;
 using VScreenPilot.Tools;
 using static VScreenPilot.Json.JsonArgReader;
 
@@ -10,18 +10,13 @@ namespace VScreenPilot.Mcp;
 /// <summary>Element 组：find_element / get_ui_tree / invoke_element / set_element_value / get_element_text。</summary>
 internal sealed class ElementTools
 {
-    private readonly SessionManager _session;
+    private readonly IElementService _elements;
 
-    public ElementTools(SessionManager session)
-    {
-        _session = session;
-    }
+    public ElementTools(IElementService elements) => _elements = elements;
 
     public ToolResponse FindElement(JsonElement arguments)
     {
-        string? name = OptionalString(arguments, "name");
         string? controlType = OptionalString(arguments, "control_type");
-        string? automationId = OptionalString(arguments, "automation_id");
         if (controlType is not null && !VScreenPilot.Uia.UiaService.IsKnownControlType(controlType))
         {
             var supported = new JsonArray();
@@ -40,33 +35,33 @@ internal sealed class ElementTools
                 stage: "validate");
         }
 
-        string nameMatch = OptionalString(arguments, "name_match") ?? "exact";
-        int index = OptionalInt(arguments, "index", 0);
-        bool all = OptionalBool(arguments, "all", false);
-        int maxResults = OptionalInt(arguments, "max_results", 20);
-        bool includeOffscreen = OptionalBool(arguments, "include_offscreen", false);
-        int? pid = OptionalNullableInt(arguments, "pid");
-        string? role = OptionalString(arguments, "role");
-        string prefer = OptionalString(arguments, "prefer") ?? "auto";
-
-        return ToolResponseWriter.FromView(_session.FindElement(
-            name, controlType, automationId, nameMatch, index, all, maxResults,
-            includeOffscreen, pid, role, prefer));
+        return ToolResponseWriter.FromView(_elements.Find(new ElementQuery
+        {
+            Name = OptionalString(arguments, "name"),
+            ControlType = controlType,
+            AutomationId = OptionalString(arguments, "automation_id"),
+            NameMatch = OptionalString(arguments, "name_match") ?? "exact",
+            Index = OptionalInt(arguments, "index", 0),
+            All = OptionalBool(arguments, "all", false),
+            MaxResults = OptionalInt(arguments, "max_results", 20),
+            IncludeOffscreen = OptionalBool(arguments, "include_offscreen", false),
+            Pid = OptionalNullableInt(arguments, "pid"),
+            Role = OptionalString(arguments, "role"),
+            Prefer = OptionalString(arguments, "prefer") ?? "auto",
+        }));
     }
 
-    public ToolResponse GetUiTree(JsonElement arguments)
-    {
-        int? maxDepth = OptionalNullableInt(arguments, "max_depth");
-        bool? interactiveOnly = OptionalNullableBool(arguments, "interactive_only");
-        int? maxNodes = OptionalNullableInt(arguments, "max_nodes");
-        string? root = OptionalString(arguments, "root");
-        int? pid = OptionalNullableInt(arguments, "pid");
-        string? format = OptionalString(arguments, "format");
-        bool newSnapshot = OptionalBool(arguments, "new_snapshot", false);
-
-        return ToolResponseWriter.FromView(
-            _session.GetUiTree(maxDepth, interactiveOnly, maxNodes, root, pid, format, newSnapshot));
-    }
+    public ToolResponse GetUiTree(JsonElement arguments) =>
+        ToolResponseWriter.FromView(_elements.GetUiTree(new UiTreeQuery
+        {
+            MaxDepth = OptionalNullableInt(arguments, "max_depth"),
+            InteractiveOnly = OptionalNullableBool(arguments, "interactive_only"),
+            MaxNodes = OptionalNullableInt(arguments, "max_nodes"),
+            Root = OptionalString(arguments, "root"),
+            Pid = OptionalNullableInt(arguments, "pid"),
+            Format = OptionalString(arguments, "format"),
+            NewSnapshot = OptionalBool(arguments, "new_snapshot", false),
+        }));
 
     public ToolResponse InvokeElement(JsonElement arguments)
     {
@@ -75,7 +70,7 @@ internal sealed class ElementTools
         bool allowClick = OptionalBool(arguments, "allow_click", false);
         string? pattern = OptionalString(arguments, "pattern");
 
-        return ToolResponseWriter.FromView(_session.InvokeElement(reference, allowClick, pattern));
+        return ToolResponseWriter.FromView(_elements.Invoke(reference, allowClick, pattern));
     }
 
     public ToolResponse SetElementValue(JsonElement arguments)
@@ -84,12 +79,13 @@ internal sealed class ElementTools
             ?? throw new ToolException("E_INVALID_ARG", "set_element_value 需要 ref");
         string value = OptionalString(arguments, "value")
             ?? throw new ToolException("E_INVALID_ARG", "set_element_value 需要 value");
-        bool allowKeyboard = OptionalBool(arguments, "allow_keyboard", false);
-        string? mode = OptionalString(arguments, "mode");
-        bool allowDestructive = OptionalBool(arguments, "allow_destructive", false);
 
-        return ToolResponseWriter.FromView(_session.SetElementValue(
-            reference, value, allowKeyboard, mode, allowDestructive));
+        return ToolResponseWriter.FromView(_elements.SetValue(
+            reference,
+            value,
+            OptionalBool(arguments, "allow_keyboard", false),
+            OptionalString(arguments, "mode"),
+            OptionalBool(arguments, "allow_destructive", false)));
     }
 
     public ToolResponse GetElementText(JsonElement arguments)
@@ -98,6 +94,6 @@ internal sealed class ElementTools
             ?? throw new ToolException("E_INVALID_ARG", "get_element_text 需要 ref");
         int maxChars = OptionalInt(arguments, "max_chars", 4096);
 
-        return ToolResponseWriter.FromView(_session.GetElementText(reference, maxChars));
+        return ToolResponseWriter.FromView(_elements.GetText(reference, maxChars));
     }
 }

@@ -17,7 +17,7 @@ public sealed class ToolSchemaSnapshotTests
     private static Dictionary<string, ToolDescriptor> Catalog()
     {
         // trace=false：只构建目录，不读会话、不写 trace。
-        return new McpTransport(null!, null!, trace: false).BuildTools().All.ToDictionary(item => item.Name);
+        return ToolHandlerMap.Build(null!, null, null).All.ToDictionary(item => item.Name);
     }
 
     private static string RepoRoot()

@@ -21,8 +21,7 @@ public sealed class ToolCatalogTests
     private static Dictionary<string, ToolDescriptor> Catalog()
     {
         // trace=false：只构建目录，不读会话、不写 trace。
-        var server = new McpTransport(null!, null!, trace: false);
-        return server.BuildTools().All.ToDictionary(item => item.Name);
+        return ToolHandlerMap.Build(null!, null, null).All.ToDictionary(item => item.Name);
     }
 
     [Fact]

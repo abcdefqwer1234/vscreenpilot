@@ -1,6 +1,6 @@
 using System.Text.Json;
 using VScreenPilot.Errors;
-using VScreenPilot.Session;
+using VScreenPilot.Services;
 using VScreenPilot.Tools;
 using static VScreenPilot.Json.JsonArgReader;
 
@@ -9,11 +9,13 @@ namespace VScreenPilot.Mcp;
 /// <summary>System 组：read_screen_text / run_script。</summary>
 internal sealed class SystemTools
 {
-    private readonly SessionManager _session;
+    private readonly IScreenTextService _screenText;
+    private readonly IScriptService _script;
 
-    public SystemTools(SessionManager session)
+    public SystemTools(IScreenTextService screenText, IScriptService script)
     {
-        _session = session;
+        _screenText = screenText;
+        _script = script;
     }
 
     public ToolResponse ReadScreenText(JsonElement arguments)
@@ -41,10 +43,15 @@ internal sealed class SystemTools
             }
         }
 
-        return ToolResponseWriter.FromView(_session.ReadScreenText(
-            x, y, width, height,
-            OptionalString(arguments, "query"),
-            OptionalInt(arguments, "max_lines", 50)));
+        return ToolResponseWriter.FromView(_screenText.Read(new ScreenTextRequest
+        {
+            X = x,
+            Y = y,
+            Width = width,
+            Height = height,
+            Query = OptionalString(arguments, "query"),
+            MaxLines = OptionalInt(arguments, "max_lines", 50),
+        }));
     }
 
     public ToolResponse RunScript(JsonElement arguments)
@@ -53,6 +60,6 @@ internal sealed class SystemTools
             ?? throw new ToolException("E_INVALID_ARG", "run_script 需要 code");
 
         int timeoutMs = OptionalInt(arguments, "timeout_ms", 30000);
-        return ToolResponseWriter.FromView(_session.RunScript(code, timeoutMs));
+        return ToolResponseWriter.FromView(_script.Run(code, timeoutMs));
     }
 }

@@ -7,96 +7,50 @@ using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using VScreenPilot.Infrastructure;
-using VScreenPilot.Server.Infrastructure;
-using VScreenPilot.Json;
-using VScreenPilot.Perception;
-using VScreenPilot.Session;
-using VScreenPilot.Views;
-using static VScreenPilot.Json.JsonArgReader;
-using VScreenPilot.Errors;
 using VScreenPilot.Platform.Logging;
-
+using VScreenPilot.Server.Infrastructure;
+using VScreenPilot.Services;
 using VScreenPilot.Tools;
 
 namespace VScreenPilot.Mcp;
 
 /// <summary>
-/// MCP 服务端：协议/分帧/生命周期交给官方 ModelContextProtocol SDK，
-/// 本类只负责工具目录、参数校验、写操作调度、进度与追踪。
+/// MCP 传输层：协议、连接生命周期与工具目录装配。
+/// 工具调度交给 <see cref="ToolCallPipeline"/>，handler 只做参数解析。
 /// </summary>
-internal sealed partial class McpTransport
+internal sealed class McpTransport
 {
-    private readonly SessionManager _session;
+    private readonly ToolServices _services;
+    private readonly IMcpRuntime _runtime;
     private readonly LogRing _log;
-    private readonly ClientContext? _client;
+    private readonly ClientInfo? _client;
     private readonly TraceLog? _trace;
     private readonly bool _ownsTrace;
     private readonly ToolRegistry _tools;
-    private int _inflightHandlers;
-    /// <summary>
-    /// 组合根接线：把会话需要的租约/日志提供者指向本进程的唯一实例。
-    /// 必须在 SessionManager 构造完成后调用（提供者是懒加载，但语义上属于宿主装配）。
-    /// </summary>
-    internal static void WireProviders(SessionManager session, LogRing log)
-    {
-        session.LeaseHolderProvider = () => session.Lease.HolderId;
-        session.ScreenLeaseProvider = () => session.Lease.Describe();
-        session.Lease.LogSink = log.Info;
-        session.Lease.ClientCwdProvider = id => session.Clients.FindCwd(id);
-    }
-
-    private readonly WriteScheduler _scheduler;
+    private readonly ToolCallPipeline _pipeline;
+    private readonly McpClientLifecycle _lifecycle;
     private readonly ResourceHandler _resources;
-    private readonly LogTool _logTool;
-    private readonly VisualTools _visualTools;
-    private readonly ElementTools _elementTools;
-    private readonly SystemTools _systemTools;
 
-    // 令牌桶限流：daemon 内所有连接共享，避免 N 个客户端把限制放大 N 倍。
-    private readonly object _rateGate = new();
-    private double _rateTokens = 300;
-    private long _rateLastTicks = Environment.TickCount64;
-    private const double RateCapacity = 300;
-    private const double RateRefillPerSecond = 100;
-
-    public McpTransport(SessionManager session, LogRing log)
-        : this(session, log, trace: true, client: null, sharedTrace: null)
+    internal McpTransport(McpTransportOptions options)
     {
-    }
-
-    internal McpTransport(SessionManager session, LogRing log, TraceLog sharedTrace)
-        : this(session, log, trace: true, client: null, sharedTrace: sharedTrace)
-    {
-    }
-
-    internal McpTransport(
-        SessionManager session, LogRing log, ClientContext client, TraceLog sharedTrace)
-        : this(session, log, trace: true, client: client, sharedTrace: sharedTrace)
-    {
-    }
-
-    /// <summary>trace=false 供单测检查工具目录；此时不读取会话，也不写 trace 文件。</summary>
-    internal McpTransport(SessionManager session, LogRing log, bool trace)
-        : this(session, log, trace, client: null, sharedTrace: null)
-    {
-    }
-
-    private McpTransport(
-        SessionManager session, LogRing log, bool trace, ClientContext? client, TraceLog? sharedTrace)
-    {
-        _session = session;
-        _log = log;
-        // 单测只构造目录（session/log 传 null!），此时给一个独立调度器即可。
-        _scheduler = session is null ? new WriteScheduler() : session.Scheduler;
-        _client = client;
-        _resources = new ResourceHandler(session!, client);
-        _logTool = new LogTool(log, () => _client?.Id ?? "c0");
-        _visualTools = new VisualTools(session!);
-        _elementTools = new ElementTools(session!);
-        _systemTools = new SystemTools(session!);
-        _tools = BuildTools();
-        _trace = sharedTrace ?? (trace ? new TraceLog() : null);
-        _ownsTrace = sharedTrace is null && _trace is not null;
+        _services = options.Services;
+        _runtime = options.Runtime;
+        _log = options.Log;
+        _client = options.Client;
+        _trace = options.Trace ?? (options.TraceEnabled ? new TraceLog() : null);
+        _ownsTrace = options.Trace is null && _trace is not null;
+        _resources = new ResourceHandler(_services.Artifacts);
+        McpTelemetry telemetry = new(
+            _runtime.Metrics, _trace, options.Client?.Id ?? "c0");
+        _tools = ToolHandlerMap.Build(_services, _log, _client);
+        _pipeline = new ToolCallPipeline(
+            _tools,
+            _log,
+            options.Scheduler,
+            telemetry,
+            options.Control,
+            _client);
+        _lifecycle = new McpClientLifecycle(_runtime, _log, () => _pipeline.InflightHandlers, _client);
 
         if (_trace is null)
         {
@@ -108,8 +62,8 @@ internal sealed partial class McpTransport
             ["version"] = BuildInfo.Version,
             ["pid"] = Environment.ProcessId,
             ["tools"] = _tools.Count,
-            ["profile"] = _session.ProfileName,
-            ["client"] = client?.Id,
+            ["profile"] = _runtime.ProfileName,
+            ["client"] = options.Client?.Id,
         });
     }
 
@@ -154,55 +108,24 @@ internal sealed partial class McpTransport
             mcp.WithStreamServerTransport(input, output);
         }
 
-        mcp.WithListToolsHandler(HandleListToolsAsync)
+        mcp.WithListToolsHandler(_pipeline.HandleListToolsAsync)
             .WithListResourcesHandler(_resources.ListAsync)
             .WithReadResourceHandler(_resources.ReadAsync)
-            .WithCallToolHandler(HandleCallToolAsync);
+            .WithCallToolHandler(_pipeline.HandleCallToolAsync);
 
-        ClientContext effectiveClient = _client ?? new ClientContext
-        {
-            Id = "c0",
-            Name = "stdio",
-            Cwd = Environment.CurrentDirectory,
-        };
+        ClientInfo effective = _client
+            ?? new ClientInfo("c0", Environment.CurrentDirectory, Array.Empty<string>(), "stdio");
 
         try
         {
-            _session.Clients.Enter(effectiveClient);
+            _lifecycle.Begin(effective);
             await builder.Build().RunAsync(cancellationToken).ConfigureAwait(false);
             return 0;
         }
         finally
         {
-            string clientId = effectiveClient.Id;
-
-            // 连接结束：先释放租约（若自己的 handler 仍在跑或别人持有，返回 false）。
-            // refs/artifacts 可以立即清；apps/窗口必须等租约和 handler 都空闲后再按 force 清理。
-            bool leaseFree = _session.Lease.ReleaseHolderIfIdle(clientId);
-            bool handlersIdle = Volatile.Read(ref _inflightHandlers) == 0;
-
-            try
-            {
-                _session.DropClientRefs(clientId);
-
-                if (leaseFree && handlersIdle &&
-                    _session.ReleaseClient(_client, includeApps: true))
-                {
-                    // 已立即完成清理。
-                }
-                else
-                {
-                    ScheduleClientCleanup(_client, clientId);
-                }
-            }
-            catch (Exception exception)
-            {
-                // 清理失败不能影响连接计数/trace 释放；稍后由 daemon 维护或重试兜底。
-                _log.Warn($"客户端 {clientId} 清理失败: {exception.Message}");
-                ScheduleClientCleanup(_client, clientId);
-            }
-
-            _session.Clients.Leave(clientId);
+            string clientId = effective.Id;
+            _lifecycle.End(clientId);
             _trace?.Write("session_end", new JsonObject { ["client_id"] = clientId });
 
             if (_ownsTrace)
@@ -210,41 +133,6 @@ internal sealed partial class McpTransport
                 _trace?.Dispose();
             }
         }
-    }
-
-    /// <summary>
-    /// 客户端已断开但仍有在途 handler/租约时，等真正空闲后再按 force 清理窗口。
-    /// daemon 退出时会做全量清理，这里是长期运行 daemon 的补充。
-    /// </summary>
-    private void ScheduleClientCleanup(ClientContext? client, string clientId)
-    {
-        _ = Task.Run(async () =>
-        {
-            DateTime deadline = DateTime.UtcNow.AddMinutes(30);
-
-            while (DateTime.UtcNow < deadline)
-            {
-                if (Volatile.Read(ref _inflightHandlers) == 0 &&
-                    _session.Lease.ReleaseHolderIfIdle(clientId))
-                {
-                    try
-                    {
-                        if (_session.ReleaseClient(client, includeApps: true))
-                        {
-                            return;
-                        }
-                    }
-                    catch (Exception exception)
-                    {
-                        _log.Warn($"客户端 {clientId} 延后清理失败: {exception.Message}");
-                    }
-                }
-
-                await Task.Delay(250).ConfigureAwait(false);
-            }
-
-            _log.Warn($"客户端 {clientId} 的延后清理超过 30 分钟，留待 daemon 退出处理");
-        });
     }
 
     private const string Instructions =
@@ -259,5 +147,4 @@ internal sealed partial class McpTransport
         "`release_environment` when finished; the display is kept by default. This is a shared desktop " +
         "session, not a security sandbox; use a VM for untrusted work. run_script is disabled unless the " +
         "server was started with --allow-script.";
-
 }

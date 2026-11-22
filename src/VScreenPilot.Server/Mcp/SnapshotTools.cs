@@ -1,52 +1,28 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using ModelContextProtocol;
-using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
-using VScreenPilot.Infrastructure;
-using VScreenPilot.Server.Infrastructure;
+using VScreenPilot.Errors;
 using VScreenPilot.Json;
-using VScreenPilot.Perception;
-using VScreenPilot.Session;
+using VScreenPilot.Server.Infrastructure;
+using VScreenPilot.Services;
+using VScreenPilot.Tools;
 using VScreenPilot.Views;
 using static VScreenPilot.Json.JsonArgReader;
-using VScreenPilot.Errors;
-
-using VScreenPilot.Tools;
 
 namespace VScreenPilot.Mcp;
 
-/// <summary>工具处理器：只解析参数并调用会话/领域组件，不承担调度与协议。</summary>
-internal sealed partial class McpTransport
+/// <summary>Snapshot 组：snapshot / capture_screen。</summary>
+internal sealed class SnapshotTools
 {
-    private ToolResponse GetEnvironment(JsonElement arguments)
+    private readonly ISnapshotService _snapshot;
+    private readonly IArtifactService _artifacts;
+
+    public SnapshotTools(ISnapshotService snapshot, IArtifactService artifacts)
     {
-        EnvironmentView environment = _session.GetEnvironment(OptionalBool(arguments, "ensure", false));
-        JsonObject data = VspJson.ToNode(environment).AsObject();
-        data["client_id"] = _client?.Id ?? "c0";
-        data["screen_lease"] = _session.Lease.Describe();
-        return ToolResponse.Text(data);
+        _snapshot = snapshot;
+        _artifacts = artifacts;
     }
 
-    private ToolResponse LaunchOrPlace(JsonElement arguments)
-    {
-        string? path = OptionalString(arguments, "path");
-        string? window = OptionalString(arguments, "window");
-        string? args = OptionalString(arguments, "args");
-        int waitMs = OptionalInt(arguments, "wait_ms", 15000);
-        bool newInstance = OptionalBool(arguments, "new_instance", true);
-        int? pid = OptionalNullableInt(arguments, "pid");
-
-        return ToolResponseWriter.FromView(
-            _session.LaunchOrPlaceApp(
-                path, window, args, waitMs, newInstance,
-                OptionalBool(arguments, "ensure_document", true), pid));
-    }
-
-    private ToolResponse Snapshot(JsonElement arguments)
+    public ToolResponse Snapshot(JsonElement arguments)
     {
         double scale = OptionalDouble(arguments, "scale", 0.5);
 
@@ -63,7 +39,7 @@ internal sealed partial class McpTransport
 
         bool annotate = OptionalBool(arguments, "annotate", false);
 
-        SnapshotResult result = _session.Snapshot(
+        SnapshotOutput result = _snapshot.Snapshot(new SnapshotRequest(
             OptionalNullableInt(arguments, "pid"),
             OptionalInt(arguments, "max_depth", 4),
             OptionalBool(arguments, "interactive_only", true),
@@ -71,7 +47,7 @@ internal sealed partial class McpTransport
             OptionalBool(arguments, "include_values", true),
             OptionalBool(arguments, "include_screenshot", false) || annotate,
             scale,
-            annotate);
+            annotate));
 
         if (result.Png is null)
         {
@@ -90,14 +66,14 @@ internal sealed partial class McpTransport
 
         try
         {
-            (string path, string uri) = WriteArtifact(result.Png, "snapshot", result.PreviewPng);
-            artifactUri = uri;
-            artifactName = Path.GetFileName(path);
+            ArtifactOutput artifact = _artifacts.Write(result.Png, "snapshot", result.PreviewPng);
+            artifactUri = artifact.Uri;
+            artifactName = Path.GetFileName(artifact.Path);
             data = result.Data with
             {
-                ScreenshotPath = path,
-                ScreenshotUri = uri,
-                ScreenshotResourceUri = uri,
+                ScreenshotPath = artifact.Path,
+                ScreenshotUri = artifact.Uri,
+                ScreenshotResourceUri = artifact.Uri,
             };
         }
         catch (Exception exception)
@@ -125,23 +101,7 @@ internal sealed partial class McpTransport
         return response.AddImage(result.PreviewPng!);
     }
 
-    private (string Path, string Uri) WriteArtifact(byte[] png, string prefix, byte[]? preview = null)
-    {
-        string fileName =
-            $"{prefix}-{DateTime.Now:HHmmss-fff}-{Guid.NewGuid().ToString("N")[..8]}.png";
-        string path = Path.Combine(_session.ArtifactDirectory, fileName);
-        File.WriteAllBytes(path, png);
-
-        if (preview is not null)
-        {
-            // 资源读取时用 ?preview=1 指向这张小图，避免把 300KB+ 原图塞回 Blob。
-            File.WriteAllBytes(Path.ChangeExtension(path, ".preview.png"), preview);
-        }
-
-        return (path, $"vsp://artifacts/{fileName}");
-    }
-
-    private ToolResponse CaptureScreen(JsonElement arguments)
+    public ToolResponse CaptureScreen(JsonElement arguments)
     {
         int? x = null, y = null, width = null, height = null;
 
@@ -172,6 +132,7 @@ internal sealed partial class McpTransport
                 hint: "0 或 10 这类值不会再被静默钳制；需要小图请用 0.1–1.0",
                 stage: "validate");
         }
+
         string? savePath = OptionalString(arguments, "save_path");
         bool inline = OptionalBool(arguments, "inline", true);
 
@@ -182,10 +143,10 @@ internal sealed partial class McpTransport
         bool hasSavePath = !string.IsNullOrWhiteSpace(savePath);
 
         // preview 与主图同帧；small 图会多编码一次缩略图，但省掉了第二次截屏。
-        CaptureResult capture = _session.CaptureScreenEx(
+        CaptureOutput capture = _snapshot.Capture(new CaptureRequest(
             x, y, width, height, scale, savePath,
-            storeFrame: true,
-            previewScale: inline ? Math.Max(Limits.MinScale, scale * Limits.PreviewScale) : null);
+            StoreFrame: true,
+            PreviewScale: inline ? Math.Max(Limits.MinScale, scale * Limits.PreviewScale) : null));
 
         byte[] png = capture.Png;
         JsonObject meta = VspJson.ToNode(capture.Meta).AsObject();
@@ -204,13 +165,13 @@ internal sealed partial class McpTransport
         {
             try
             {
-                (string path, string uri) = WriteArtifact(png, "shot", capture.PreviewPng);
-                meta["artifact_path"] = path;
-                meta["artifact_uri"] = uri;
-                meta["resource_uri"] = uri;
-                meta["path"] = path;
-                artifactUri = uri;
-                artifactName = Path.GetFileName(path);
+                ArtifactOutput artifact = _artifacts.Write(png, "shot", capture.PreviewPng);
+                meta["artifact_path"] = artifact.Path;
+                meta["artifact_uri"] = artifact.Uri;
+                meta["resource_uri"] = artifact.Uri;
+                meta["path"] = artifact.Path;
+                artifactUri = artifact.Uri;
+                artifactName = Path.GetFileName(artifact.Path);
             }
             catch (Exception exception)
             {

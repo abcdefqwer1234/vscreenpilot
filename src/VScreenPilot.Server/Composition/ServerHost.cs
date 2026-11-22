@@ -7,6 +7,7 @@ using VScreenPilot.Ipc;
 using VScreenPilot.Mcp;
 using VScreenPilot.Options;
 using VScreenPilot.Session;
+using VScreenPilot.Services;
 using VScreenPilot.Platform.Processes;
 using VScreenPilot.Platform.Logging;
 
@@ -133,7 +134,15 @@ internal sealed class ServerHost : IDisposable
 
         try
         {
-            var server = new McpTransport(_session, _log, _trace!);
+            var server = new McpTransport(new McpTransportOptions
+            {
+                Services = ToolServices.Create(_session),
+                Runtime = new McpRuntime(_session),
+                Control = new SessionExecutionControl(_session),
+                Scheduler = _session.Scheduler,
+                Log = _log,
+                Trace = _trace,
+            });
             int exitCode = server.RunAsync().GetAwaiter().GetResult();
 
             WaitForIdleExit();
@@ -230,7 +239,7 @@ internal sealed class ServerHost : IDisposable
         var job = new JobObject();
         var stateStore = new StateStore(log);
         var session = new SessionManager(log, stateStore, job, allowScript);
-        McpTransport.WireProviders(session, log);
+        SessionWiring.Wire(session, log);
         var trace = new TraceLog();
         var registry = new InstanceRegistry(profile);
         InstanceRegistry.Entry entry = InstanceRegistry.Create(profile, ready: false);

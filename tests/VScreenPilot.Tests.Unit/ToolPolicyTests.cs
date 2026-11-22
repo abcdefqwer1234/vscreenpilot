@@ -14,7 +14,7 @@ public sealed class ToolPolicyTests
     private static ToolRegistry BuildCatalog()
     {
         // trace=false：只构建目录，不读会话、不写 trace。
-        return new McpTransport(null!, null!, trace: false).BuildTools();
+        return ToolHandlerMap.Build(null!, null, null);
     }
 
     [Fact]

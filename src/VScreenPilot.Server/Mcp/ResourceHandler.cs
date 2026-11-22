@@ -1,4 +1,3 @@
-using System.Text.Json.Nodes;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -6,7 +5,8 @@ using VScreenPilot.Infrastructure;
 using VScreenPilot.Perception;
 using VScreenPilot.Platform.Logging;
 using VScreenPilot.Server.Infrastructure;
-using VScreenPilot.Session;
+using VScreenPilot.Services;
+
 
 namespace VScreenPilot.Mcp;
 
@@ -16,21 +16,13 @@ internal sealed class ResourceHandler
     public const string ArtifactPrefix = "vsp://artifacts/";
     private const int PageSize = 50;
 
-    private readonly SessionManager _session;
-    private readonly ClientContext? _client;
+    private readonly IArtifactService _artifacts;
 
-    public ResourceHandler(SessionManager session, ClientContext? client)
-    {
-        _session = session;
-        _client = client;
-    }
+    public ResourceHandler(IArtifactService artifacts) => _artifacts = artifacts;
 
     public ValueTask<ListResourcesResult> ListAsync(
         RequestContext<ListResourcesRequestParams> context, CancellationToken cancellationToken)
     {
-        using IDisposable? clientScope = _client is null
-            ? null
-            : _session.Clients.Use(_client);
         var resources = new List<Resource>();
         int offset = 0;
         string? cursor = context.Params?.Cursor;
@@ -46,7 +38,7 @@ internal sealed class ResourceHandler
         try
         {
             List<string> files = Directory
-                .EnumerateFiles(_session.ArtifactDirectory, "*.png")
+                .EnumerateFiles(_artifacts.Directory, "*.png")
                 .Where(file => !file.EndsWith(".preview.png", StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(File.GetLastWriteTimeUtc)
                 .ToList();
@@ -86,9 +78,6 @@ internal sealed class ResourceHandler
     public ValueTask<ReadResourceResult> ReadAsync(
         RequestContext<ReadResourceRequestParams> context, CancellationToken cancellationToken)
     {
-        using IDisposable? clientScope = _client is null
-            ? null
-            : _session.Clients.Use(_client);
         string uri = context.Params?.Uri ?? string.Empty;
 
         if (!uri.StartsWith(ArtifactPrefix, StringComparison.Ordinal))
@@ -115,7 +104,7 @@ internal sealed class ResourceHandler
             throw new McpException($"Invalid artifact name: {name}");
         }
 
-        string path = Path.Combine(_session.ArtifactDirectory, name);
+        string path = Path.Combine(_artifacts.Directory, name);
 
         if (!preview && !forceFull && File.Exists(path))
         {

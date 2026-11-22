@@ -1,28 +1,50 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
-using VScreenPilot.Json;
-using VScreenPilot.Perception;
-using VScreenPilot.Session;
-using VScreenPilot.Views;
-using static VScreenPilot.Json.JsonArgReader;
-using VScreenPilot.Errors;
+using VScreenPilot.Services;
 using VScreenPilot.Platform.Logging;
-
 using VScreenPilot.Tools;
 
 namespace VScreenPilot.Mcp;
 
-internal sealed partial class McpTransport
+/// <summary>一次 MCP 传输所需的全量依赖；用 init 属性避免长参数构造。</summary>
+internal sealed record McpTransportOptions
 {
-    private bool TryAcquireRateLimit(out int retryAfterMs)
+    public ToolServices Services { get; init; } = null!;
+    public IMcpRuntime Runtime { get; init; } = null!;
+    public IExecutionControl Control { get; init; } = null!;
+    public WriteScheduler Scheduler { get; init; } = null!;
+    public LogRing Log { get; init; } = null!;
+    public ClientInfo? Client { get; init; }
+    public TraceLog? Trace { get; init; }
+    public bool TraceEnabled { get; init; } = true;
+}
+
+/// <summary>请求限速、进度通知、参数摘要与 trace/metrics 记录。</summary>
+internal sealed class McpTelemetry
+{
+    private const double RateCapacity = 300;
+    private const double RateRefillPerSecond = 100;
+
+    private readonly MetricsRegistry _metrics;
+    private readonly TraceLog? _trace;
+    private readonly string _clientId;
+    private readonly object _rateGate = new();
+    private double _rateTokens = RateCapacity;
+    private long _rateLastTicks = Environment.TickCount64;
+
+    public McpTelemetry(MetricsRegistry metrics, TraceLog? trace, string clientId)
+    {
+        _metrics = metrics;
+        _trace = trace;
+        _clientId = clientId;
+    }
+
+    public bool TryAcquireRateLimit(out int retryAfterMs)
     {
         retryAfterMs = 0;
 
@@ -44,8 +66,8 @@ internal sealed partial class McpTransport
         }
     }
 
-    /// <summary>参数摘要用于审计：文本/脚本等敏感字段只记录长度。</summary>
-    private static string? SummarizeArguments(JsonElement arguments)
+    /// <summary>参数摘要：截断长文本；改写/脚本/路径类字段只记录长度。</summary>
+    public static string? SummarizeArguments(JsonElement arguments)
     {
         if (arguments.ValueKind != JsonValueKind.Object)
         {
@@ -73,7 +95,7 @@ internal sealed partial class McpTransport
         return json.Length <= 300 ? json : json[..300] + "…";
     }
 
-    private void ReportProgress(
+    public void ReportProgress(
         RequestContext<CallToolRequestParams> context, int current, int total, string message)
     {
         JsonNode? token = context.Params?.Meta?["progressToken"];
@@ -102,7 +124,7 @@ internal sealed partial class McpTransport
         }
     }
 
-    private void Trace(
+    public void Trace(
         string tool, string requestId, string? arguments, double milliseconds, ToolResponse response)
     {
         string? code = null;
@@ -146,11 +168,10 @@ internal sealed partial class McpTransport
             }
         }
 
-        _session.Metrics.RecordTool(
+        _metrics.RecordTool(
             tool, milliseconds, code, response.IsError, textBytes, imageBytes);
 
         _trace?.ToolCall(tool, requestId, arguments, milliseconds, code, response.IsError,
-            textBytes, imageBytes, channel: null, stage: stage, clientId: _client?.Id ?? "c0");
+            textBytes, imageBytes, channel: null, stage: stage, clientId: _clientId);
     }
-
 }

@@ -6,6 +6,7 @@ using VScreenPilot.Mcp;
 using VScreenPilot.Session;
 using VScreenPilot.Platform.Ipc;
 using VScreenPilot.Platform.Logging;
+using VScreenPilot.Services;
 
 namespace VScreenPilot.Ipc;
 
@@ -190,7 +191,21 @@ internal sealed class PipeHost : IDisposable
 
                 using var limiter = new MessageLimiter(connection, _messageBudget);
                 using var connectionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                var server = new McpTransport(_session, _log, client, _trace);
+                var server = new McpTransport(new McpTransportOptions
+                {
+                    Services = ToolServices.Create(_session),
+                    Runtime = new McpRuntime(_session),
+                    Control = new SessionExecutionControl(_session),
+                    Scheduler = _session.Scheduler,
+                    Log = _log,
+                    Client = new ClientInfo(
+                        client.Id,
+                        client.Cwd,
+                        client.Roots,
+                        client.Name,
+                        client.IncludeAllApps),
+                    Trace = _trace,
+                });
                 await server.RunAsync(limiter, limiter, connectionCts.Token).ConfigureAwait(false);
             }
         }

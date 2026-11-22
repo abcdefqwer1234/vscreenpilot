@@ -1,7 +1,6 @@
 using System.Text.Json;
 using VScreenPilot.Errors;
-using VScreenPilot.Json;
-using VScreenPilot.Session;
+using VScreenPilot.Services;
 using VScreenPilot.Tools;
 using static VScreenPilot.Json.JsonArgReader;
 
@@ -10,11 +9,13 @@ namespace VScreenPilot.Mcp;
 /// <summary>Visual 组：wait_for / assert_region / match_visual。</summary>
 internal sealed class VisualTools
 {
-    private readonly SessionManager _session;
+    private readonly IVisualService _visual;
+    private readonly IWaitService _wait;
 
-    public VisualTools(SessionManager session)
+    public VisualTools(IVisualService visual, IWaitService wait)
     {
-        _session = session;
+        _visual = visual;
+        _wait = wait;
     }
 
     public ToolResponse WaitFor(JsonElement arguments)
@@ -27,7 +28,7 @@ internal sealed class VisualTools
 
         int timeoutMs = OptionalInt(arguments, "timeout_ms", 5000);
         int? intervalMs = OptionalNullableInt(arguments, "interval_ms");
-        return ToolResponseWriter.FromView(_session.WaitFor(condition, timeoutMs, intervalMs));
+        return ToolResponseWriter.FromView(_wait.WaitFor(condition, timeoutMs, intervalMs));
     }
 
     public ToolResponse AssertRegion(JsonElement arguments)
@@ -44,9 +45,9 @@ internal sealed class VisualTools
             throw new ToolException("E_INVALID_ARG", "assert_region 需要 expectation");
         }
 
-        return ToolResponseWriter.FromView(_session.AssertRegion(region, expectation));
+        return ToolResponseWriter.FromView(_visual.AssertRegion(region, expectation));
     }
 
     public ToolResponse MatchVisual(JsonElement arguments) =>
-        ToolResponseWriter.FromView(_session.MatchVisual(arguments));
+        ToolResponseWriter.FromView(_visual.MatchVisual(arguments));
 }

@@ -226,7 +226,7 @@ internal static class Bootstrap
         var stateStore = new StateStore(log);
         var job = new JobObject();
         var localSession = new SessionManager(log, stateStore, job, allowScript);
-        McpTransport.WireProviders(localSession, log);
+        SessionWiring.Wire(localSession, log);
         return LocalSessionInvoker.Run(cliCommand, args, new SessionFacade(localSession), log, job, mutex);
     }
 
@@ -240,7 +240,7 @@ internal static class Bootstrap
         var appStateStore = new StateStore(log);
         var appJob = new JobObject();
         var session = new SessionManager(log, appStateStore, appJob, allowScript);
-        McpTransport.WireProviders(session, log);
+        SessionWiring.Wire(session, log);
         var trace = new TraceLog();
 
         using var host = new ServerHost(

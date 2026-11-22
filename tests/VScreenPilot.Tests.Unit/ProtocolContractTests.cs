@@ -34,7 +34,7 @@ public sealed class ProtocolContractTests
         byte[] png = PngWriter.Encode(bgra, width, height, 1.0, out _, out _);
         ToolResponse response = ToolResponse.Text(new JsonObject { ["ok"] = true }).AddImage(png);
 
-        CallToolResult result = McpTransport.ToResult(response);
+        CallToolResult result = ToolResultMapper.ToResult(response);
         var image = Assert.IsType<ImageContentBlock>(result.Content[1]);
 
         // SDK 的 Data 契约是“base64 编码后的 UTF-8 字节”，不是原始 PNG 字节。
