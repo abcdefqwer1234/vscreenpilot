@@ -49,12 +49,12 @@ internal sealed class AppReleaser
             // 只有窗口忽略 WM_CLOSE 时，才退化为 UIA 查找关闭按钮。
             NativeMethods.PostMessageW(app.Hwnd, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero);
 
-            if (!WaitForWindowClosed(app.Hwnd, 500))
+            if (!AppTermination.WaitForWindowClosed(app.Hwnd, 500))
             {
                 InvokeWindowCloseButton(app.Hwnd);
             }
 
-            WaitForWindowClosed(app.Hwnd, 500);
+            AppTermination.WaitForWindowClosed(app.Hwnd, 500);
 
             if (NativeMethods.IsWindow(app.Hwnd))
             {
@@ -78,11 +78,11 @@ internal sealed class AppReleaser
 
                 if (dialogHandled)
                 {
-                    WaitForWindowClosed(app.Hwnd, 3000);
+                    AppTermination.WaitForWindowClosed(app.Hwnd, 3000);
 
                     if (!NativeMethods.IsWindow(app.Hwnd))
                     {
-                        WaitForProcessExit(app.Pid, 1000);
+                        AppTermination.WaitForProcessExit(app.Pid, 1000);
                         return save ? "saved" : "discarded";
                     }
 
@@ -99,10 +99,10 @@ internal sealed class AppReleaser
             NativeMethods.PostMessageW(app.Hwnd, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero);
         }
 
-        if (!WaitForWindowClosed(app.Hwnd, 2500) && NativeMethods.IsWindow(app.Hwnd))
+        if (!AppTermination.WaitForWindowClosed(app.Hwnd, 2500) && NativeMethods.IsWindow(app.Hwnd))
         {
             if (app.DedicatedProcess ||
-                (app.StartedProcess && !HasOtherWindows(app.Pid, app.Hwnd)))
+                (app.StartedProcess && !AppTermination.HasOtherWindows(app.Pid, app.Hwnd)))
             {
                 if (uwp && string.IsNullOrEmpty(closePath))
                 {
@@ -110,8 +110,8 @@ internal sealed class AppReleaser
                     return "kept";
                 }
 
-                KillProcessTreeIfMatches(closePid, closePath);
-                WaitForProcessExit(closePid, 2000);
+                AppTermination.KillProcessTreeIfMatches(closePid, closePath);
+                AppTermination.WaitForProcessExit(closePid, 2000);
                 return "forced";
             }
 
@@ -119,10 +119,10 @@ internal sealed class AppReleaser
             return "kept";
         }
 
-        if (app.DedicatedProcess && IsProcessAlive(closePid))
+        if (app.DedicatedProcess && AppTermination.IsProcessAlive(closePid))
         {
             // 窗口已关闭但进程常驻（Office/Edge 常见）；保持原有兜底。
-            KillProcessTreeIfMatches(closePid, closePath);
+            AppTermination.KillProcessTreeIfMatches(closePid, closePath);
             return "forced";
         }
 
@@ -281,139 +281,6 @@ internal sealed class AppReleaser
             exception is COMException or InvalidOperationException or ArgumentException)
         {
             return false;
-        }
-    }
-
-    internal static bool IsProcessAlive(int pid)
-    {
-        try
-        {
-            using var process = System.Diagnostics.Process.GetProcessById(pid);
-            return !process.HasExited;
-        }
-        catch (Exception exception)
-        {
-            LogSink.Debug($"忽略异常: {exception.Message}");
-            return false;
-        }
-    }
-
-    internal static void WaitForProcessExit(int pid, int timeoutMs)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(200, timeoutMs));
-
-        while (DateTime.UtcNow < deadline && IsProcessAlive(pid))
-        {
-            Thread.Sleep(50);
-        }
-    }
-
-    internal static bool WaitForWindowClosed(IntPtr hwnd, int timeoutMs)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            if (!NativeMethods.IsWindow(hwnd))
-            {
-                return true;
-            }
-
-            Thread.Sleep(50);
-        }
-
-        return !NativeMethods.IsWindow(hwnd);
-    }
-
-    internal static bool HasOtherWindows(int pid, IntPtr exclude)
-    {
-        try
-        {
-            return WindowManager.ListTopLevel().Any(
-                w => w.Pid == pid && w.Hwnd != exclude && !string.IsNullOrWhiteSpace(w.Title));
-        }
-        catch (Exception exception)
-        {
-            LogSink.Debug($"忽略异常: {exception.Message}");
-            return false;
-        }
-    }
-
-    internal static void KillProcessTree(int pid)
-    {
-        try
-        {
-            using var process = System.Diagnostics.Process.GetProcessById(pid);
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-        }
-        catch (Exception exception)
-        {
-            // 进程可能已退出。
-            LogSink.Debug($"忽略异常: {exception.Message}");
-        }
-    }
-
-    /// <summary>仅在 PID 仍对应记录的 exe 时才杀进程树，避免 PID 复用误杀。</summary>
-    private static readonly HashSet<string> ProtectedSystemProcesses = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "applicationframehost", "explorer", "dwm", "sihost", "shellexperiencehost",
-        "startmenuexperiencehost", "textinputhost", "searchhost", "taskhostw", "runtimebroker",
-    };
-
-    internal static void KillProcessTreeIfMatches(int pid, string expectedPath)
-    {
-        if (string.IsNullOrEmpty(expectedPath))
-        {
-            return;
-        }
-
-        if (ProtectedSystemProcesses.Contains(Path.GetFileNameWithoutExtension(expectedPath)))
-        {
-            return;
-        }
-
-        try
-        {
-            using var process = System.Diagnostics.Process.GetProcessById(pid);
-            if (process.HasExited)
-            {
-                return;
-            }
-
-            string? modulePath = process.MainModule?.FileName;
-            if (modulePath is null ||
-                !string.Equals(
-                    Path.GetFullPath(modulePath),
-                    Path.GetFullPath(expectedPath),
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            process.Kill(entireProcessTree: true);
-        }
-        catch (Exception exception)
-        {
-            // 进程可能已退出或无法读取模块路径。
-            LogSink.Debug($"忽略异常: {exception.Message}");
-        }
-    }
-
-    internal static void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-            }
-        }
-        catch (Exception exception)
-        {
-            // Edge 可能仍持有锁，留给下次启动清理。
-            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 }

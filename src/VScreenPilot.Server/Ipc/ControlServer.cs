@@ -24,24 +24,25 @@ namespace VScreenPilot.Ipc;
 /// </summary>
 internal sealed class ControlServer : IDisposable
 {
-    private const int MaxRequestBytes = 1024 * 1024;
-    private const int MaxResponseBytes = 4 * 1024 * 1024;
+    internal const int MaxRequestBytes = 1024 * 1024;
+    internal const int MaxResponseBytes = 4 * 1024 * 1024;
 
-    private readonly ISessionFacade _facade;
-    private readonly IControlService _control;
-    private readonly LogRing _log;
-    private readonly InstanceRegistry _registry;
-    private readonly string _pipeName;
-    private readonly Action _shutdown;
-    private readonly CancellationTokenSource _cts = new();
-    private Task[]? _loops;
-    private int _disposed;
+    internal readonly ISessionFacade _facade;
+    internal readonly IControlService _control;
+    internal readonly LogRing _log;
+    internal readonly InstanceRegistry _registry;
+    internal readonly string _pipeName;
+    internal readonly Action _shutdown;
+    internal readonly CancellationTokenSource _cts = new();
+    internal readonly ControlCommands Commands;
+    internal Task[]? _loops;
+    internal int _disposed;
 
     // 两个监听循环：一个较慢的 --cli screen/snapshot 不会让 env/status 连不上。
     // Windows 的 maxNumberOfServerInstances 计的是“连接中 + 监听中”，
     // 因此 2 个循环各保留 1 个监听实例、最多 2 个连接，取 4。
-    private const int ListerCount = 2;
-    private const int MaxInstances = 4;
+    internal const int ListerCount = 2;
+    internal const int MaxInstances = 4;
 
     public ControlServer(
         ISessionFacade facade,
@@ -51,6 +52,7 @@ internal sealed class ControlServer : IDisposable
         string profile,
         Action shutdown)
     {
+        Commands = new ControlCommands(this);
         _facade = facade;
         _control = control;
         _log = log;
@@ -69,7 +71,7 @@ internal sealed class ControlServer : IDisposable
         _log.Info($"控制管道已启动: {_pipeName}");
     }
 
-    private async Task LoopAsync(CancellationToken cancellationToken)
+    internal async Task LoopAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -117,7 +119,7 @@ internal sealed class ControlServer : IDisposable
         }
     }
 
-    private async Task HandleAsync(NamedPipeServerStream pipe, CancellationToken cancellationToken)
+    internal async Task HandleAsync(NamedPipeServerStream pipe, CancellationToken cancellationToken)
     {
         using var reader = new StreamReader(pipe, new UTF8Encoding(false), false, 4096, leaveOpen: true);
         using var writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, leaveOpen: true)
@@ -176,11 +178,11 @@ internal sealed class ControlServer : IDisposable
             bool shutdownRequested = false;
             JsonObject result = op switch
             {
-                "env" => EnvironmentResult(request),
-                "snapshot" => Snapshot(request),
-                "screen" => Capture(),
-                "status" => Status(),
-                "stop" => Stop(request["force"]?.GetValue<bool>() ?? false, out shutdownRequested),
+                "env" => Commands.EnvironmentResult(request),
+                "snapshot" => Commands.Snapshot(request),
+                "screen" => Commands.Capture(),
+                "status" => Commands.Status(),
+                "stop" => Commands.Stop(request["force"]?.GetValue<bool>() ?? false, out shutdownRequested),
                 _ => throw new ToolException(
                     "E_INVALID_ARG",
                     $"未知控制操作: {op}（可选 env/snapshot/screen/status/stop）"),
@@ -228,198 +230,7 @@ internal sealed class ControlServer : IDisposable
         }
     }
 
-    private JsonObject Snapshot(JsonObject request)
-    {
-        int maxNodes = Math.Clamp(GetInt(request, "max_nodes", 300), 1, 1024);
-        int maxDepth = Math.Clamp(GetInt(request, "max_depth", 4), 1, 10);
-        bool interactive = GetBool(request, "interactive_only", true);
-        int? pid = GetNullableInt(request, "pid");
-        var result = new JsonObject
-        {
-            ["admin_view"] = true,
-            ["apps"] = new JsonArray(),
-            ["count"] = 0,
-        };
-        var apps = result["apps"]!.AsArray();
-        JsonObject? legacy = null;
-        int totalNodes = 0;
-        bool truncated = false;
-
-        try
-        {
-            foreach (TrackedApp app in _facade.GetApps()
-                         .Where(item => pid is null || item.Pid == pid)
-                         .Take(32))
-            {
-                string title = app.Title;
-
-                try
-                {
-                    if (app.Hwnd != IntPtr.Zero)
-                    {
-                        title = WindowManager.GetTitle(app.Hwnd);
-                    }
-                }
-                catch (Exception exception)
-                {
-                    // 窗口已失效时保留登记时的标题。
-                    LogSink.Debug($"忽略异常: {exception.Message}");
-                }
-
-                var item = new JsonObject
-                {
-                    ["pid"] = app.Pid,
-                    ["hwnd"] = app.Hwnd.ToInt64(),
-                    ["title"] = title,
-                    ["alive"] = TrackedAppTracker.IsLive(app),
-                    ["owner_client_id"] = app.OwnerClientId,
-                };
-
-                try
-                {
-                    JsonObject data = VspJson.ToNode(_facade.Snapshot(new SnapshotRequest(
-                        app.Pid,
-                        maxDepth,
-                        interactive,
-                        maxNodes,
-                        IncludeValues: true,
-                        IncludeScreenshot: false,
-                        Scale: 0.5)).Data).AsObject();
-                    item["snapshot_id"] = data["snapshot_id"]?.DeepClone();
-                    item["tree"] = data["tree"]?.DeepClone();
-                    item["nodes"] = data["nodes"]?.DeepClone();
-                    item["truncated"] = data["truncated"]?.DeepClone();
-                    legacy = data;
-                    totalNodes += data["nodes"]?.GetValue<int>() ?? 0;
-                }
-                catch (ToolException exception)
-                {
-                    item["error"] = new JsonObject
-                    {
-                        ["code"] = exception.Code,
-                        ["message"] = exception.Message,
-                    };
-                }
-
-                apps.Add((JsonNode)item);
-
-                if (totalNodes >= 2000)
-                {
-                    truncated = true;
-                    break;
-                }
-            }
-
-            result["count"] = apps.Count;
-            result["truncated"] = truncated;
-
-            // 兼容旧的单 app 顶层字段；新客户端应优先读 apps[]。
-            if (legacy is not null)
-            {
-                foreach ((string key, JsonNode? value) in legacy)
-                {
-                    if (!result.ContainsKey(key))
-                    {
-                        result[key] = value?.DeepClone();
-                    }
-                }
-            }
-
-            return result;
-        }
-        finally
-        {
-            // ctl 是一次性管理员视图，输出后立即丢弃 refs。
-            _control.DropClientRefs("ctl");
-        }
-    }
-
-    private JsonObject EnvironmentResult(JsonObject request)
-    {
-        JsonObject result = VspJson.ToNode(_facade.GetEnvironment(ensure: false)).AsObject();
-
-        if (GetBool(request, "ensure", false))
-        {
-            result["ensure_ignored"] = true;
-            result["warning"] = "ctl env 保持只读；需要挂载/修复虚拟屏请通过 MCP get_environment{ensure:true}";
-        }
-
-        return result;
-    }
-
-    private JsonObject Capture()
-    {
-        CaptureResult capture = _facade.CaptureScreen(
-            new CaptureRequest(null, null, null, null, 0.5, SavePath: null,
-                StoreFrame: false, PreviewScale: null));
-        string path = Path.Combine(
-            _facade.ArtifactDirectory,
-            $"cli-{DateTime.Now:HHmmss-fff}.png");
-        File.WriteAllBytes(path, capture.Png);
-        JsonObject meta = VspJson.ToNode(capture.Meta).AsObject();
-        meta["path"] = path;
-        return meta;
-    }
-
-    private JsonObject Status()
-    {
-        var result = new JsonObject
-        {
-            ["pid"] = Environment.ProcessId,
-            ["version"] = BuildInfo.Version,
-            ["profile"] = _facade.ProfileName,
-            ["mutex_host"] = Profile.MutexName(_facade.ProfileName),
-            ["ctl_pipe"] = _pipeName,
-            ["mcp_pipe"] = PipeNames.Mcp(_facade.ProfileName),
-            ["initialized"] = _facade.Initialized,
-            ["apps"] = _control.OwnedAppCount,
-            ["clients"] = _control.ActiveClientCount,
-            ["client_list"] = _control.ClientSummaries(includeCwd: true),
-            ["screen_lease"] = _control.LeaseDescribe(),
-            ["working_set_mb"] = CurrentWorkingSetMb(),
-            ["handles"] = CurrentHandleCount(),
-        };
-
-        DisplayInfo? display = _control.VirtualDisplay;
-        result["display"] = new JsonObject
-        {
-            ["enabled"] = display is not null,
-            ["device"] = display?.DeviceName,
-            ["x"] = display?.X,
-            ["y"] = display?.Y,
-            ["width"] = display?.Width,
-            ["height"] = display?.Height,
-        };
-
-        var entry = _registry.Read();
-        if (entry is not null)
-        {
-            result["registry"] = entry.ToJson();
-        }
-
-        return result;
-    }
-
-    private JsonObject Stop(bool force, out bool shutdownRequested)
-    {
-        if (!force && _control.ActiveClientCount > 0)
-        {
-            throw new ToolException(
-                "E_CLIENTS_ACTIVE",
-                $"仍有 {_control.ActiveClientCount} 个 MCP 客户端连接，拒绝停止",
-                new JsonObject { ["clients"] = _control.ActiveClientCount },
-                retryable: true,
-                hint: "关闭这些客户端，或使用 --cli stop --force",
-                stage: "control");
-        }
-
-        _log.Warn(force ? "控制管道请求强制停止" : "控制管道请求停止");
-        shutdownRequested = true;
-        return new JsonObject { ["stopping"] = true, ["force"] = force };
-    }
-
-    /// <summary>按字符读取一行并限制长度，避免超长请求在 5s 内把内存撑大。</summary>
-    private static async Task<string?> ReadLimitedLineAsync(
+    internal static async Task<string?> ReadLimitedLineAsync(
         StreamReader reader, int maxChars, CancellationToken cancellationToken)
     {
         var line = new StringBuilder();
@@ -453,7 +264,7 @@ internal sealed class ControlServer : IDisposable
         }
     }
 
-    private static async Task WriteAsync(StreamWriter writer, JsonObject payload)
+    internal static async Task WriteAsync(StreamWriter writer, JsonObject payload)
     {
         string json = payload.ToJsonString();
 
@@ -468,7 +279,7 @@ internal sealed class ControlServer : IDisposable
         await writer.FlushAsync().ConfigureAwait(false);
     }
 
-    private static JsonObject Error(string code, string message) => new()
+    internal static JsonObject Error(string code, string message) => new()
     {
         ["vsp"] = 1,
         ["ok"] = false,
@@ -476,7 +287,7 @@ internal sealed class ControlServer : IDisposable
         ["message"] = message,
     };
 
-    private static double CurrentWorkingSetMb()
+    internal double CurrentWorkingSetMb()
     {
         try
         {
@@ -490,7 +301,7 @@ internal sealed class ControlServer : IDisposable
         }
     }
 
-    private static int CurrentHandleCount()
+    internal int CurrentHandleCount()
     {
         try
         {

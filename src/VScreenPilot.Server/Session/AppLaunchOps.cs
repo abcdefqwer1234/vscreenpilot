@@ -220,10 +220,10 @@ internal sealed class AppLaunchOps
 
         if (s.Window is null)
         {
-            AppReleaser.KillProcessTree(processId);
+            AppTermination.KillProcessTree(processId);
             if (s.TempProfile is not null)
             {
-                AppReleaser.TryDeleteDirectory(s.TempProfile);
+                AppTermination.TryDeleteDirectory(s.TempProfile);
             }
 
             if (s.HadRunningInstance)
@@ -344,7 +344,7 @@ internal sealed class AppLaunchOps
 
             if (s.Window is null)
             {
-                AppReleaser.KillProcessTree(processId);
+                AppTermination.KillProcessTree(processId);
                 throw new ToolException("E_WINDOW_TIMEOUT", "等待新窗口超时");
             }
 

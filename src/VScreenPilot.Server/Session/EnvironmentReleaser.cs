@@ -216,7 +216,7 @@ internal sealed class EnvironmentReleaser
 
             if (app.StartedProcess && app.TempProfile is not null)
             {
-                AppReleaser.KillProcessTreeIfMatches(app.Pid, app.ExePath);
+                AppTermination.KillProcessTreeIfMatches(app.Pid, app.ExePath);
                 state.Forced.Add(app.Pid);
             }
         }
@@ -227,17 +227,17 @@ internal sealed class EnvironmentReleaser
             if (app.StartedProcess &&
                 (app.Hwnd == IntPtr.Zero || !NativeMethods.IsWindow(app.Hwnd)))
             {
-                AppReleaser.KillProcessTreeIfMatches(app.Pid, app.ExePath);
+                AppTermination.KillProcessTreeIfMatches(app.Pid, app.ExePath);
             }
 
-            AppReleaser.TryDeleteDirectory(app.TempProfile);
+            AppTermination.TryDeleteDirectory(app.TempProfile);
         }
         else if (app.CloseWindowOnRelease && app.DedicatedProcess &&
                  app.StartedProcess &&
                  (app.Hwnd == IntPtr.Zero || !NativeMethods.IsWindow(app.Hwnd)))
         {
             // 专用实例的窗口被用户先关掉时，回收可能残留的进程。
-            AppReleaser.KillProcessTreeIfMatches(app.Pid, app.ExePath);
+            AppTermination.KillProcessTreeIfMatches(app.Pid, app.ExePath);
         }
     }
 

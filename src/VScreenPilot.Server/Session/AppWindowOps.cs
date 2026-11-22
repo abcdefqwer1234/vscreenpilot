@@ -216,7 +216,7 @@ internal sealed class AppWindowOps
             {
                 // 启动 splash 关闭后到主窗口出现之间可能没有可见窗口；
                 // 只要进程还活着就继续等，别把已失效的 splash 当成主窗口返回。
-                if (!AppReleaser.IsProcessAlive(window.Pid))
+                if (!AppTermination.IsProcessAlive(window.Pid))
                 {
                     break;
                 }

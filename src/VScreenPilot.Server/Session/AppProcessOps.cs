@@ -203,7 +203,7 @@ internal sealed class AppProcessOps
             {
                 if (Directory.GetCreationTimeUtc(directory) < DateTime.UtcNow.AddDays(-1))
                 {
-                    AppReleaser.TryDeleteDirectory(directory);
+                    AppTermination.TryDeleteDirectory(directory);
                 }
             }
         }
