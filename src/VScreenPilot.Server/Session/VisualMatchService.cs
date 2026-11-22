@@ -12,20 +12,18 @@ using VScreenPilot.Json;
 namespace VScreenPilot.Session;
 
 /// <summary>match_visual 所需的最小宿主接口。</summary>
-internal interface IVisualHost
-{
-    DisplayInfo EnsureDisplay();
-    (byte[] Bgra, int Width, int Height) CaptureRegion(int x, int y, int width, int height);
-    string ValidatePngPath(string path, string field);
-    bool IsCancelled();
-}
+internal sealed record VisualContext(
+    Func<DisplayInfo> EnsureDisplay,
+    Func<int, int, int, int, (byte[] Bgra, int Width, int Height)> CaptureRegion,
+    Func<string, string, string> ValidatePngPath,
+    Func<bool> IsCancelled);
 
 /// <summary>match_visual：像素 / 颜色连通域 / 模板多尺度匹配。</summary>
 internal sealed partial class VisualMatchService
 {
-    private readonly IVisualHost _host;
+    private readonly VisualContext _host;
 
-    public VisualMatchService(IVisualHost host) => _host = host;
+    public VisualMatchService(VisualContext host) => _host = host;
 
     private const int MaxTemplateBytes = 4 * 1024 * 1024;
 

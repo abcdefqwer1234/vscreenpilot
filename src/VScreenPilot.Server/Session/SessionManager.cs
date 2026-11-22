@@ -233,7 +233,7 @@ internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaser
         _releaser = new AppReleaser(log, _uiaHost, ResetUia);
         _launcher = new AppLauncher(this);
         _input = new InputRouter(this);
-        _visual = new VisualMatchService(this);
+        _visual = new VisualMatchService(new VisualContext(EnsureEnvironment, CaptureRegion, _paths.ValidatePngPath, () => Cancellation.IsCancellationRequested));
         _finder = new ElementFinder(new ElementFinderContext(FindLiveTrackedApp, EnsureEnvironment, RequireWindowOnDisplay, Uia, EnsureSnapshot, RegisterElement));
         _regionVerifier = new RegionVerifier(new RegionVerifierContext(EnsureEnvironmentFast, CaptureRegion, FindFrame, FindLatestFrame, () => _frames.Latest(), () => _frames.Snapshot()));
         _waits = new WaitService(this);
