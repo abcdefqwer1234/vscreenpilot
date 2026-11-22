@@ -16,42 +16,59 @@ using VScreenPilot.Platform.Logging;
 namespace VScreenPilot.Session;
 
 /// <summary>环境诊断视图所需的最小宿主接口。</summary>
-internal interface IEnvironmentHost
-{
-    MetricsRegistry Metrics { get; }
-    object Gate { get; }
-    VddDevice Vdd { get; }
-    bool Initialized { get; }
-    string ProfileName { get; }
-    long Epoch { get; }
-    JobObject Job { get; }
-    ClientSessionRegistry Clients { get; }
-    JsonArray ClientSummaries();
-    Func<JsonObject>? ScreenLease { get; }
-    TrackedAppRegistry Apps { get; }
-    bool IsOwned(TrackedApp app);
-    bool IsLive(TrackedApp app);
-    UiaHost Uia { get; }
-    bool SelfHealed { get; }
-    int SelfHealCount { get; }
-    string? LastSelfHealReason { get; }
-    bool AdoptedOrphan { get; }
-    int DisplayRecreateCount { get; }
-    int VddReopenCount { get; }
-    bool DisplayPositionFallback { get; }
-    int DisplayIndex { get; }
-    string DisplayDevice { get; }
-    DisplayInfo Ensure();
-    void PruneApps();
-    DisplayInfo? OwnDisplay();
-}
+internal sealed record EnvironmentRuntimeContext(
+    MetricsRegistry Metrics,
+    object Gate,
+    Func<bool> Initialized,
+    string ProfileName,
+    Func<long> Epoch,
+    JobObject Job,
+    Func<JsonObject>? ScreenLease);
+
+internal sealed record EnvironmentClientContext(
+    ClientSessionRegistry Clients,
+    Func<JsonArray> ClientSummaries);
+
+internal sealed record EnvironmentAppContext(
+    TrackedAppRegistry Apps,
+    Func<TrackedApp, bool> IsOwned,
+    Func<TrackedApp, bool> IsLive,
+    Action PruneApps,
+    UiaHost Uia);
+
+internal sealed record EnvironmentHealContext(
+    Func<bool> SelfHealed,
+    Func<int> SelfHealCount,
+    Func<string?> LastSelfHealReason,
+    Func<bool> AdoptedOrphan,
+    Func<int> DisplayRecreateCount,
+    Func<int> VddReopenCount,
+    Func<bool> DisplayPositionFallback);
+
+internal sealed record EnvironmentDisplayContext(
+    VddDevice Vdd,
+    Func<int> DisplayIndex,
+    Func<string> DisplayDevice,
+    Func<DisplayInfo> Ensure,
+    Func<DisplayInfo?> OwnDisplay);
 
 /// <summary>get_environment 的只读诊断组装；不持有状态。</summary>
 internal sealed class EnvironmentReporter
 {
-    private readonly IEnvironmentHost _host;
+    private readonly EnvironmentRuntimeContext _runtime;
+    private readonly EnvironmentClientContext _clients;
+    private readonly EnvironmentAppContext _apps;
+    private readonly EnvironmentHealContext _heal;
+    private readonly EnvironmentDisplayContext _display;
 
-    public EnvironmentReporter(IEnvironmentHost host) => _host = host;
+    public EnvironmentReporter(EnvironmentRuntimeContext runtime, EnvironmentClientContext clients, EnvironmentAppContext apps, EnvironmentHealContext heal, EnvironmentDisplayContext display)
+    {
+        _runtime = runtime;
+        _clients = clients;
+        _apps = apps;
+        _heal = heal;
+        _display = display;
+    }
 
     private sealed record ProbeInputs(
         string DriverStatus,
@@ -68,10 +85,10 @@ internal sealed class EnvironmentReporter
     {
         if (ensure)
         {
-            _host.Ensure();
+            _display.Ensure();
         }
 
-        _host.PruneApps();
+        _apps.PruneApps();
 
         ProbeInputs probe = ProbeOutsideGate();
         EnvironmentView view = BuildLockedView(probe, out int? focusedPid);
@@ -91,7 +108,7 @@ internal sealed class EnvironmentReporter
     private ProbeInputs ProbeOutsideGate()
     {
         string driverStatus = VddDevice.QueryStatus().ToString();
-        DisplayInfo? parsecDisplay = _host.OwnDisplay();
+        DisplayInfo? parsecDisplay = _display.OwnDisplay();
         (int vx, int vy, int vw, int vh) = DisplayTopology.VirtualScreenBounds();
         DisplayInfo? primaryDisplay = DisplayTopology.FindPrimary();
         int monitorCount = EnvironmentProbe.GetMonitorCount();
@@ -103,7 +120,7 @@ internal sealed class EnvironmentReporter
 
     private EnvironmentView BuildLockedView(ProbeInputs probe, out int? focusedPid)
     {
-        lock (_host.Gate)
+        lock (_runtime.Gate)
         {
             string? driverVersion = ReadDriverVersion();
             int sessionId = CurrentSessionId();
@@ -121,7 +138,7 @@ internal sealed class EnvironmentReporter
             (ForegroundView foregroundView, TrackedApp? foregroundApp) = BuildForegroundView(probe.Foreground);
             CursorView cursorView = BuildCursorView();
 
-            bool includeOwner = _host.Clients.Current?.IncludeAllApps == true;
+            bool includeOwner = _clients.Clients.Current?.IncludeAllApps == true;
             List<AppView> apps = BuildAppViews(includeOwner);
 
             focusedPid = foregroundApp?.Pid;
@@ -136,19 +153,19 @@ internal sealed class EnvironmentReporter
                 Foreground = foregroundView,
                 Cursor = cursorView,
                 Apps = apps,
-                Metrics = _host.Metrics.ToView(),
+                Metrics = _runtime.Metrics.ToView(),
             };
         }
     }
 
     private string? ReadDriverVersion()
     {
-        if (!_host.Vdd.IsOpen)
+        if (!_display.Vdd.IsOpen)
         {
             return null;
         }
 
-        int version = _host.Vdd.GetVersion();
+        int version = _display.Vdd.GetVersion();
         return version >= 0 ? $"{((version >> 16) & 0xFFFF)}.{version & 0xFFFF}" : null;
     }
 
@@ -163,7 +180,7 @@ internal sealed class EnvironmentReporter
     {
         var clientRoots = new List<string>();
 
-        foreach (string root in _host.Clients.CurrentRoots)
+        foreach (string root in _clients.Clients.CurrentRoots)
         {
             if (!string.IsNullOrWhiteSpace(root))
             {
@@ -171,10 +188,10 @@ internal sealed class EnvironmentReporter
             }
         }
 
-        JsonArray clientList = _host.ClientSummaries();
+        JsonArray clientList = _clients.ClientSummaries();
         int otherClients = clientList.Count;
 
-        if (_host.Clients.Current is null || !_host.Clients.Current.IncludeAllApps)
+        if (_clients.Clients.Current is null || !_clients.Clients.Current.IncludeAllApps)
         {
             otherClients = Math.Max(0, otherClients - 1);
         }
@@ -182,7 +199,7 @@ internal sealed class EnvironmentReporter
         int? proxyPid = null;
         string? clientVersion = null;
 
-        if (_host.Clients.Current is { ProxyPid: > 0 } currentClient)
+        if (_clients.Clients.Current is { ProxyPid: > 0 } currentClient)
         {
             proxyPid = currentClient.ProxyPid;
 
@@ -222,8 +239,8 @@ internal sealed class EnvironmentReporter
         new()
         {
             Pid = Environment.ProcessId,
-            Initialized = _host.Initialized,
-            MutexHost = Profile.MutexName(_host.ProfileName),
+            Initialized = _runtime.Initialized(),
+            MutexHost = Profile.MutexName(_runtime.ProfileName),
             StartedAt = EnvironmentProbe.ProcessStartTime(),
             SessionId = sessionId,
             Interactive = Environment.UserInteractive,
@@ -231,19 +248,19 @@ internal sealed class EnvironmentReporter
             InputDesktop = EnvironmentProbe.IsInputDesktopAvailable(),
             Elevated = Elevation.IsProcessElevated(),
             Isolation = "shared_desktop",
-            Profile = _host.ProfileName,
-            Epoch = _host.Epoch,
-            JobObject = _host.Job.Status,
+            Profile = _runtime.ProfileName,
+            Epoch = _runtime.Epoch(),
+            JobObject = _runtime.Job.Status,
             Role = "daemon",
             DaemonPid = Environment.ProcessId,
-            ClientId = _host.Clients.CurrentId,
-            ClientCwd = _host.Clients.CurrentCwd,
+            ClientId = _clients.Clients.CurrentId,
+            ClientCwd = _clients.Clients.CurrentCwd,
             ClientRoots = clientRoots,
             ProxyPid = proxyPid,
             ClientVersion = clientVersion,
             Clients = clientList,
             OtherClients = otherClients,
-            ScreenLease = _host.ScreenLease?.Invoke(),
+            ScreenLease = _runtime.ScreenLease?.Invoke(),
             WorkingSetMb = workingSetMb,
             Handles = handles,
         };
@@ -260,12 +277,12 @@ internal sealed class EnvironmentReporter
             {
                 Enabled = false,
                 Owned = false,
-                SelfHealed = _host.SelfHealed,
-                SelfHealCount = _host.SelfHealCount,
-                LastSelfHealReason = _host.LastSelfHealReason,
-                AdoptedOrphan = _host.AdoptedOrphan,
-                DisplayRecreateCount = _host.DisplayRecreateCount,
-                VddReopenCount = _host.VddReopenCount,
+                SelfHealed = _heal.SelfHealed(),
+                SelfHealCount = _heal.SelfHealCount(),
+                LastSelfHealReason = _heal.LastSelfHealReason(),
+                AdoptedOrphan = _heal.AdoptedOrphan(),
+                DisplayRecreateCount = _heal.DisplayRecreateCount(),
+                VddReopenCount = _heal.VddReopenCount(),
                 PositionEnforced = true,
             };
         }
@@ -274,9 +291,9 @@ internal sealed class EnvironmentReporter
             virtualDisplay = new VirtualDisplayView
             {
                 Enabled = true,
-                Owned = _host.DisplayIndex >= 0 &&
-                        !string.IsNullOrWhiteSpace(_host.DisplayDevice) &&
-                        string.Equals(display.DeviceName, _host.DisplayDevice, StringComparison.OrdinalIgnoreCase),
+                Owned = _display.DisplayIndex() >= 0 &&
+                        !string.IsNullOrWhiteSpace(_display.DisplayDevice()) &&
+                        string.Equals(display.DeviceName, _display.DisplayDevice(), StringComparison.OrdinalIgnoreCase),
                 Device = display.DeviceName,
                 X = display.X,
                 Y = display.Y,
@@ -284,13 +301,13 @@ internal sealed class EnvironmentReporter
                 Height = display.Height,
                 Dpi = (int)display.Dpi,
                 ScalePercent = display.Dpi == 0 ? 0 : (int)Math.Round(display.Dpi / 96.0 * 100),
-                SelfHealed = _host.SelfHealed,
-                SelfHealCount = _host.SelfHealCount,
-                LastSelfHealReason = _host.LastSelfHealReason,
-                AdoptedOrphan = _host.AdoptedOrphan,
-                DisplayRecreateCount = _host.DisplayRecreateCount,
-                VddReopenCount = _host.VddReopenCount,
-                PositionEnforced = !_host.DisplayPositionFallback,
+                SelfHealed = _heal.SelfHealed(),
+                SelfHealCount = _heal.SelfHealCount(),
+                LastSelfHealReason = _heal.LastSelfHealReason(),
+                AdoptedOrphan = _heal.AdoptedOrphan(),
+                DisplayRecreateCount = _heal.DisplayRecreateCount(),
+                VddReopenCount = _heal.VddReopenCount(),
+                PositionEnforced = !_heal.DisplayPositionFallback(),
                 Lifetime = "host_session",
             };
         }
@@ -328,8 +345,8 @@ internal sealed class EnvironmentReporter
         }
 
         _ = NativeMethods.GetWindowThreadProcessId(foreground, out uint foregroundPid);
-        TrackedApp? foregroundApp = _host.Apps.FirstOrDefault(
-            app => _host.IsOwned(app) && app.Pid == (int)foregroundPid && _host.IsLive(app));
+        TrackedApp? foregroundApp = _apps.Apps.FirstOrDefault(
+            app => _apps.IsOwned(app) && app.Pid == (int)foregroundPid && _apps.IsLive(app));
 
         // 只暴露本会话窗口的标题/PID。用户主屏上的窗口标题常含邮件主题、
         // 文档名等隐私信息，不应交给模型。
@@ -358,7 +375,7 @@ internal sealed class EnvironmentReporter
     {
         var apps = new List<AppView>();
 
-        foreach (TrackedApp app in _host.Apps.Where(_host.IsOwned))
+        foreach (TrackedApp app in _apps.Apps.Where(_apps.IsOwned))
         {
             WindowInfo? liveWindow = app.Hwnd == IntPtr.Zero
                 ? null
@@ -370,7 +387,7 @@ internal sealed class EnvironmentReporter
                 Hwnd = app.Hwnd.ToInt64(),
                 Title = liveWindow?.Title ?? app.Title,
                 Exe = app.ExePath,
-                Alive = _host.IsLive(app),
+                Alive = _apps.IsLive(app),
                 LaunchedByUs = app.StartedProcess,
                 Owned = app.Owned,
                 CloseOnRelease = app.CloseWindowOnRelease,
@@ -392,7 +409,7 @@ internal sealed class EnvironmentReporter
 
         try
         {
-            UiaElementInfo? focused = _host.Uia.GetFocusedElement();
+            UiaElementInfo? focused = _apps.Uia.GetFocusedElement();
             JsonNode? focusedElement = focused is null ? null : ElementPresenter.ToJson(focused);
 
             // 二次校验：焦点元素必须属于当前客户端（含 UWP 内容进程）。
@@ -402,10 +419,10 @@ internal sealed class EnvironmentReporter
             {
                 bool owned;
 
-                lock (_host.Gate)
+                lock (_runtime.Gate)
                 {
-                    owned = _host.Apps.Any(app =>
-                        _host.IsOwned(app) &&
+                    owned = _apps.Apps.Any(app =>
+                        _apps.IsOwned(app) &&
                         (app.Pid == focusPid || app.ContentPid == focusPid));
                 }
 

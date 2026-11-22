@@ -254,8 +254,6 @@ internal sealed partial class SessionManager : IDisposable, IElementOperationsHo
 
     Func<bool> IElementOperationsHost.CancellationProbe() => CancellationProbe();
 
-    MetricsRegistry IEnvironmentHost.Metrics => Metrics;
-
     private void ClearElementRefsCore(bool allClients)
     {
         if (allClients)

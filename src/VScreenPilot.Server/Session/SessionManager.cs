@@ -33,6 +33,7 @@ internal sealed partial class SessionManager : IDisposable, IElementOperationsHo
     internal ClientSessionRegistry Clients { get; } = new();
 
     private readonly ClientPathPolicy _paths;
+    private readonly EnvironmentReporter _environment;
 
     private readonly SessionGuard _guard = new();
     private readonly LogRing _log;
@@ -228,7 +229,6 @@ internal sealed partial class SessionManager : IDisposable, IElementOperationsHo
                 (scale, previewScale) => CaptureScreenEx(null, null, null, null, scale,
                     savePath: null, storeFrame: false, previewScale: previewScale),
                 CancellationProbe));
-        _environment = new EnvironmentReporter(this);
         _display = new VirtualDisplayController(
             _gate, log, ProfileName,
             () => Volatile.Read(ref _disposed) != 0,
@@ -238,6 +238,17 @@ internal sealed partial class SessionManager : IDisposable, IElementOperationsHo
             VirtualWidth,
             VirtualHeight,
             VirtualRefresh);
+        _environment = new EnvironmentReporter(
+            new EnvironmentRuntimeContext(Metrics, _gate, () => _display.State.Initialized, ProfileName,
+                () => Epoch, _job, ScreenLeaseProvider),
+            new EnvironmentClientContext(Clients, () => ClientSummariesJson()),
+            new EnvironmentAppContext(_apps, IsOwned, TrackedAppTracker.IsLive, PruneDeadApps, Uia),
+            new EnvironmentHealContext(() => _display.State.SelfHealed,
+                () => _display.State.SelfHealCount, () => _display.State.LastSelfHealReason,
+                () => _display.State.AdoptedOrphan, () => _display.State.RecreateCount,
+                () => _display.State.VddReopenCount, () => _display.State.PositionFallback),
+            new EnvironmentDisplayContext(_display.Vdd, () => _display.State.Index,
+                () => _display.State.DeviceName, EnsureEnvironment, OwnDisplay));
         _releaser = new AppReleaser(log, _uiaHost, ResetUia);
         _launcher = new AppLauncher(
             new LaunchSessionContext(_log, _job, Clients, _gate, SaveState),
@@ -269,9 +280,9 @@ internal sealed partial class SessionManager : IDisposable, IElementOperationsHo
                 ResumeFocusGuard),
             new ReleaseDisplayContext(
                 ClearElementRefsCore, ClearFramesCore, ClearInputBlockCore,
-                () => _display.State.SelfHealed = false,
+                () => _display.State!.SelfHealed = false,
                 initialized => _display.State.Initialized = initialized,
-                () => _display.State.VirtualDisplay is { Attached: true },
+                () => _display.State!.VirtualDisplay is { Attached: true },
                 TryRemoveDisplay,
                 StopAndDisposeVddCore),
             new ReleaseStateContext(TrimIdleMemory, SaveState, () => _stateStore.Clear()));
