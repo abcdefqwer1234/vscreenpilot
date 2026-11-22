@@ -51,8 +51,8 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 
 ## 3. 启动、组合根与会话
 
-- 入口：`Program.Main` 解析 `--version` / `--doctor` / `--cli` / `--daemon` / `--profile` 等，然后进入 `ServerHost`。
-- 组合根：`SessionManager`（18 个 partial 文件；类型跨度约 1,609 行，文件合计 1,805 行）。它持有会话锁、显示控制器、应用注册表、元素 ref、UIA 宿主、写调度器与日志。
+- 入口：`Program.Main` 只委托 `Composition.Bootstrap.Run`；`Bootstrap` 解析 `--version` / `--doctor` / `--cli` / `--daemon` / `--profile` 等，然后进入 `ServerHost`。
+- 组合根：`SessionManager`（18 个 partial 文件；类型跨度约 1,609 行）。它持有会话锁、显示控制器、应用注册表、元素 ref、UIA 宿主、写调度器与日志；`SessionFacade`/`SessionExecutionControl` 把它收窄为 IPC/CLI 与工具层边界。
 - 已知双 wiring：`Program` 与 `ServerHost` 各构造一次 `SessionManager`；R3 未合并，T3-2 收敛为单一组合根。
 - 组件通过 `I*Host` 反向依赖门面：18 个接口、187 个成员（唯一名 108），最大 `IInputHost` 26。组件不做跨组件 `new`；T3-2～T3-6 替换为端口。
 - 会话组件（Server/Session）：
@@ -68,7 +68,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 
 - 22 个工具定义在 `src/VScreenPilot.Server/Tools/Definitions/*.json`，由 `ToolCatalog` 加载（113 行）；顺序按 `Ordinal`。
 - `ToolDescriptor`/`ToolPolicy`/`ToolRegistry` 负责 schema、权限、超时与并发策略；`ToolHandlers` 负责参数解析与调用。
-- `ToolExecutor` 统一处理写锁、屏幕租约、超时、取消与 epoch；`ToolContext` 仍持有 `SessionManager`（T3-3 解耦）。失败路径的屏幕租约在 `InvocationGate` 中回滚。
+- `ToolExecutor` 统一处理写锁、屏幕租约、超时、取消与 epoch；`ToolContext` 已改为 `IExecutionControl` + `ClientInfo`，不再持有 `SessionManager`。失败路径的屏幕租约在 `InvocationGate` 中回滚。
 - 错误统一走 `ToolException` + `ErrorCatalog`；错误包字段、错误码、`docs` 锚点是冻结契约。
 - 内容块顺序固定：`text` → `structuredContent` → `image` → `resource_link`。
 - 传输：官方 `ModelContextProtocol` SDK（stdio）；首个进程可 spawn 独立 daemon，后续进程经 `StdioProxy` 转发。
