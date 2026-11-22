@@ -175,33 +175,40 @@ internal sealed class ToolExecutor
         CancellationTokenSource? callCts = null;
 
         string clientId = context.Client?.Id ?? "c0";
+        TimeSpan wait = TimeSpan.FromMilliseconds(policy.WriteTimeoutMs);
 
-        if (RequiresScreenLease(context, policy))
+        try
         {
-            screenLease = context.Session.Lease.Acquire(clientId, tool.Name);
+            (lease, screenLease) = await InvocationGate.AcquireAsync(
+                context.Session.Lease,
+                _scheduler,
+                clientId,
+                tool.Name,
+                RequiresScreenLease(context, policy),
+                policy.Mutates,
+                wait,
+                policy.BypassWriteLock,
+                context.CancellationToken).ConfigureAwait(false);
 
-            if (KeepsForeground(context.Arguments))
+            if (screenLease is not null && KeepsForeground(context.Arguments))
             {
                 context.Session.Lease.Extend(clientId, 30_000);
                 context.Session.PauseFocusGuard(30_000);
             }
-        }
 
-        if (policy.Mutates)
+            callCts = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken);
+            callCts.CancelAfter(tool.TimeoutMs);
+            context.Session.SetCancellation(callCts);
+
+            return (lease, screenLease, callCts);
+        }
+        catch
         {
-            // release 用 6s：正常写操作应在这之前结束；只有锁定超过 5s 的卡死 handler 才旁路。
-            TimeSpan wait = TimeSpan.FromMilliseconds(policy.WriteTimeoutMs);
-
-            lease = await _scheduler.AcquireAsync(
-                tool.Name, wait, context.CancellationToken,
-                bypass: policy.BypassWriteLock).ConfigureAwait(false);
+            lease?.Dispose();
+            screenLease?.Dispose();
+            callCts?.Dispose();
+            throw;
         }
-
-        callCts = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken);
-        callCts.CancelAfter(tool.TimeoutMs);
-        context.Session.SetCancellation(callCts);
-
-        return (lease, screenLease, callCts!);
     }
 
     private Task<ToolResponse> StartHandlerTask(
