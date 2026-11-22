@@ -16,7 +16,7 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IWaitHost, IElementResolverHost, IElementOperationsHost
+internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IWaitHost, IElementOperationsHost
 {
     /// <summary>
     /// 在释放/预热等低负载节点裁剪工作集。不是定时看门狗，只按事件触发。
@@ -212,26 +212,13 @@ internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaser
     void IWaitHost.ReportProgress(int done, int total, string message) =>
         ToolProgress.Report(done, total, message);
 
-    ElementRefStore IElementResolverHost.Refs => _refs;
-
-    UiaHost IElementResolverHost.Uia => _uiaHost;
-
-    string IElementResolverHost.CurrentClientId => Clients.CurrentId;
-
-    string IElementResolverHost.SnapshotId => SnapshotId;
-
-    bool IElementResolverHost.IsTrackedPid(int pid)
+    private bool IsTrackedPidCore(int pid)
     {
         lock (_gate)
         {
             return _apps.Any(app => IsOwned(app) && app.Pid == pid && TrackedAppTracker.IsLive(app));
         }
     }
-
-    LogRing IElementResolverHost.Log => _log;
-
-    void IElementResolverHost.RequireOnDisplay(DisplayInfo display, IntPtr hwnd, string label) =>
-        RequireWindowOnDisplay(display, hwnd, label);
 
     DisplayInfo IElementOperationsHost.EnsureDisplay() => EnsureEnvironment();
 

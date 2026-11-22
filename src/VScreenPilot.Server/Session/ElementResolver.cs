@@ -13,23 +13,21 @@ using VScreenPilot.Errors;
 namespace VScreenPilot.Session;
 
 /// <summary>element_ref 解析所需的最小宿主接口。</summary>
-internal interface IElementResolverHost
-{
-    ElementRefStore Refs { get; }
-    string CurrentClientId { get; }
-    string SnapshotId { get; }
-    UiaHost Uia { get; }
-    bool IsTrackedPid(int pid);
-    void RequireOnDisplay(DisplayInfo display, IntPtr hwnd, string label);
-    LogRing Log { get; }
-}
+internal sealed record ElementResolverContext(
+    ElementRefStore Refs,
+    Func<string> CurrentClientId,
+    Func<string> SnapshotId,
+    UiaHost Uia,
+    Func<int, bool> IsTrackedPid,
+    Action<DisplayInfo, IntPtr, string> RequireOnDisplay,
+    LogRing Log);
 
 /// <summary>element_ref 校验与 UIA 句柄重定位（runtime_id → 指纹）。</summary>
 internal sealed class ElementResolver
 {
-    private readonly IElementResolverHost _host;
+    private readonly ElementResolverContext _host;
 
-    public ElementResolver(IElementResolverHost host) => _host = host;
+    public ElementResolver(ElementResolverContext host) => _host = host;
 
     public ElementRefEntry Require(string reference)
     {
@@ -40,14 +38,14 @@ internal sealed class ElementResolver
             throw new ToolException("E_INVALID_ARG", "element_ref 不能为空");
         }
 
-        ElementRefEntry? entry = _host.Refs.TryResolve(_host.CurrentClientId, key, out bool stale);
+        ElementRefEntry? entry = _host.Refs.TryResolve(_host.CurrentClientId(), key, out bool stale);
 
         if (stale)
         {
             throw new ToolException(
                 "E_STALE_SNAPSHOT",
                 $"element_ref {key} 属于旧快照，已失效",
-                new JsonObject { ["ref"] = key, ["current_snapshot"] = _host.SnapshotId },
+                new JsonObject { ["ref"] = key, ["current_snapshot"] = _host.SnapshotId() },
                 retryable: true,
                 hint: "重新调用 snapshot，并只使用新返回的 ref",
                 stage: "snapshot");
