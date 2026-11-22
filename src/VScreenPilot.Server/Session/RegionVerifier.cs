@@ -9,22 +9,20 @@ using VScreenPilot.Json;
 namespace VScreenPilot.Session;
 
 /// <summary>assert_region 所需的最小宿主接口。</summary>
-internal interface IRegionVerifierHost
-{
-    DisplayInfo EnsureDisplay();
-    (byte[] Bgra, int Width, int Height) CaptureRegion(int x, int y, int width, int height);
-    FrameSnapshot? FindFrame(string frameId);
-    FrameSnapshot? FindLatestFrame(int x, int y, int width, int height);
-    FrameSnapshot? LatestFrame();
-    IReadOnlyList<FrameSnapshot> Frames();
-}
+internal sealed record RegionVerifierContext(
+    Func<DisplayInfo> EnsureDisplay,
+    Func<int, int, int, int, (byte[] Bgra, int Width, int Height)> CaptureRegion,
+    Func<string, FrameSnapshot?> FindFrame,
+    Func<int, int, int, int, FrameSnapshot?> FindLatestFrame,
+    Func<FrameSnapshot?> LatestFrame,
+    Func<IReadOnlyList<FrameSnapshot>> Frames);
 
 /// <summary>assert_region：颜色覆盖率与基线变化两种断言。</summary>
 internal sealed class RegionVerifier
 {
-    private readonly IRegionVerifierHost _host;
+    private readonly RegionVerifierContext _host;
 
-    public RegionVerifier(IRegionVerifierHost host) => _host = host;
+    public RegionVerifier(RegionVerifierContext host) => _host = host;
 
     public AssertRegionView Assert(JsonElement region, JsonElement expectation)
     {

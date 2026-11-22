@@ -16,7 +16,7 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost
+internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IElementFinderHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost
 {
     /// <summary>
     /// 在释放/预热等低负载节点裁剪工作集。不是定时看门狗，只按事件触发。
@@ -190,21 +190,6 @@ internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaser
 
     string IElementFinderHost.RegisterElement(UiaElementInfo info, IntPtr hwnd) =>
         RegisterElement(info, hwnd);
-
-    DisplayInfo IRegionVerifierHost.EnsureDisplay() => EnsureEnvironmentFast();
-
-    (byte[] Bgra, int Width, int Height) IRegionVerifierHost.CaptureRegion(
-        int x, int y, int width, int height) => CaptureRegion(x, y, width, height);
-
-    FrameSnapshot? IRegionVerifierHost.FindFrame(string frameId) => FindFrame(frameId);
-
-    FrameSnapshot? IRegionVerifierHost.FindLatestFrame(int x, int y, int width, int height) =>
-        FindLatestFrame(x, y, width, height);
-
-    IReadOnlyList<FrameSnapshot> IRegionVerifierHost.Frames() =>
-        _frames.Snapshot();
-
-    FrameSnapshot? IRegionVerifierHost.LatestFrame() => _frames.Latest();
 
     DisplayInfo IWaitHost.EnsureDisplay() => EnsureEnvironmentFast();
 
