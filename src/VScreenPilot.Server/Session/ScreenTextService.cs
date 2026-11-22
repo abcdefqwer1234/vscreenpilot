@@ -11,24 +11,20 @@ using VScreenPilot.Server.Infrastructure;
 namespace VScreenPilot.Session;
 
 /// <summary>OCR 工具所需的最小宿主接口。</summary>
-internal interface IScreenTextHost
-{
-    DisplayInfo EnsureDisplay();
-    (byte[] Bgra, int Width, int Height) CaptureRegion(int x, int y, int width, int height);
-    CancellationToken Cancellation { get; }
-    void RecordOcr();
-    ClickView Click(
-        int x, int y, string button, int clicks, string mode,
-        bool keepForeground = false, bool observe = true, bool fallbackInput = false);
-}
+internal sealed record ScreenTextContext(
+    Func<DisplayInfo> EnsureDisplay,
+    Func<int, int, int, int, (byte[] Bgra, int Width, int Height)> CaptureRegion,
+    Func<CancellationToken> Cancellation,
+    Action RecordOcr,
+    Func<int, int, string, int, string, bool, bool, bool, ClickView> Click);
 
 /// <summary>read_screen_text / click_text：OCR 读取、匹配与按文本点击。</summary>
 internal sealed class ScreenTextService
 {
-    private readonly IScreenTextHost _host;
+    private readonly ScreenTextContext _host;
     private readonly OcrService _ocr = new();
 
-    public ScreenTextService(IScreenTextHost host) => _host = host;
+    public ScreenTextService(ScreenTextContext host) => _host = host;
 
     /// <summary>
     /// OCR 读取屏幕文本。坐标返回的是虚拟屏绝对坐标，可直接用于 click。
@@ -62,7 +58,7 @@ internal sealed class ScreenTextService
             lines = _ocr.Read(
                 bgra, captureWidth, captureHeight,
                 out string engine, out string language, query ?? string.Empty,
-                _host.Cancellation);
+                _host.Cancellation());
             return BuildTextResult(
                 lines, left, top, captureWidth, captureHeight, query, maxLines, engine, language, stopwatch);
         }
@@ -183,7 +179,7 @@ internal sealed class ScreenTextService
         try
         {
             lines = _ocr.Read(
-                bgra, captureWidth, captureHeight, out _, out _, text, _host.Cancellation);
+                bgra, captureWidth, captureHeight, out _, out _, text, _host.Cancellation());
             _host.RecordOcr();
         }
         catch (NotSupportedException exception)
