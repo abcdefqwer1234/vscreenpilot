@@ -2,6 +2,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
+using VScreenPilot.Server.Infrastructure;
+
 namespace VScreenPilot.Mcp;
 
 /// <summary>

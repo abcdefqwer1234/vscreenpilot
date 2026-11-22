@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using VScreenPilot.Platform.Security;
-using VScreenPilot.Ipc;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Platform.Logging;
 

@@ -1,8 +1,7 @@
 using System.Text.Json.Nodes;
-using VScreenPilot.Mcp;
 using VScreenPilot.Errors;
 
-namespace VScreenPilot.Session;
+namespace VScreenPilot.Server.Infrastructure;
 
 /// <summary>
 /// 进程内屏幕租约：同一时刻只允许一个客户端执行 GUI/视觉操作。

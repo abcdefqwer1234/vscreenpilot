@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json.Nodes;
 using VScreenPilot.Platform.Logging;
 
+using VScreenPilot.Server.Infrastructure;
+
 namespace VScreenPilot.Ipc;
 
 internal static class ControlClient

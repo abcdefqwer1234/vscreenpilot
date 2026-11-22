@@ -2,6 +2,8 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
+using VScreenPilot.Server.Infrastructure;
+
 namespace VScreenPilot.Mcp;
 
 /// <summary>22 个工具的定义从 Tools/Definitions/*.json 加载，处理器在下方集中登记。</summary>

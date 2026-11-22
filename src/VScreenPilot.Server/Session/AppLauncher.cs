@@ -6,7 +6,6 @@ using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Input;
 using VScreenPilot.Interop;
-using VScreenPilot.Mcp;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;

@@ -4,7 +4,6 @@ using System.Text.RegularExpressions;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Apps;
 using VScreenPilot.Interop;
-using VScreenPilot.Mcp;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
 using VScreenPilot.Views;

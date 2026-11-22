@@ -4,7 +4,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Perception;
-using VScreenPilot.Mcp;
 using static VScreenPilot.Json.JsonArgReader;
 using VScreenPilot.Views;
 using VScreenPilot.Errors;

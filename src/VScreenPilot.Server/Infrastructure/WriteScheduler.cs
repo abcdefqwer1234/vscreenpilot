@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 using VScreenPilot.Errors;
 using VScreenPilot.Platform.Logging;
 
-namespace VScreenPilot.Mcp;
+namespace VScreenPilot.Server.Infrastructure;
 
 /// <summary>
 /// 写操作调度：只读观察（snapshot/find/capture/wait/assert）不排队，

@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
-namespace VScreenPilot.Diagnostics;
+namespace VScreenPilot.Server.Infrastructure;
 
 /// <summary>
 /// 隐私脱敏：邮箱替换为 <c>***@domain</c>，并递归处理 JSON 树里的所有字符串。

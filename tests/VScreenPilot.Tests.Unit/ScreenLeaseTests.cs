@@ -1,5 +1,5 @@
 using VScreenPilot.Mcp;
-using VScreenPilot.Session;
+using VScreenPilot.Server.Infrastructure;
 using Xunit;
 using VScreenPilot.Errors;
 

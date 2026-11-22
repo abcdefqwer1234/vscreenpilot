@@ -5,8 +5,6 @@ using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Interop;
 using VScreenPilot.Json;
-using VScreenPilot.Diagnostics;
-using VScreenPilot.Mcp;
 using VScreenPilot.Ui;
 using VScreenPilot.Perception;
 using VScreenPilot.Uia;

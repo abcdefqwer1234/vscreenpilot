@@ -1,4 +1,3 @@
-using VScreenPilot.Session;
 
 namespace VScreenPilot.Apps;
 

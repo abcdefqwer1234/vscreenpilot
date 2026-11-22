@@ -1,6 +1,6 @@
 using VScreenPilot.Errors;
 using VScreenPilot.Mcp;
-using VScreenPilot.Session;
+using VScreenPilot.Server.Infrastructure;
 using Xunit;
 
 namespace VScreenPilot.Tests;

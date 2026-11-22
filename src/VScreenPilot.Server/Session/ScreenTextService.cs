@@ -1,12 +1,12 @@
 using System.Diagnostics;
 using System.Text.Json.Nodes;
 using VScreenPilot.Platform.Displays;
-using VScreenPilot.Diagnostics;
 using VScreenPilot.Json;
-using VScreenPilot.Mcp;
 using VScreenPilot.Perception;
 using VScreenPilot.Views;
 using VScreenPilot.Errors;
+
+using VScreenPilot.Server.Infrastructure;
 
 namespace VScreenPilot.Session;
 

@@ -5,7 +5,7 @@ using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Platform.Logging;
 
-namespace VScreenPilot.Ipc;
+namespace VScreenPilot.Server.Infrastructure;
 
 /// <summary>
 /// 命名管道名：按 profile + 当前用户 SID 哈希隔离。

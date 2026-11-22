@@ -11,7 +11,6 @@ using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Input;
 using VScreenPilot.Json;
 using VScreenPilot.Interop;
-using VScreenPilot.Mcp;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
 using static VScreenPilot.Json.JsonArgReader;

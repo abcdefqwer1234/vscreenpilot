@@ -1,5 +1,5 @@
 using VScreenPilot.Platform.Logging;
-namespace VScreenPilot.Mcp;
+namespace VScreenPilot.Server.Infrastructure;
 
 /// <summary>
 /// 把当前工具调用的 progress 回调沿 AsyncLocal 传给 SessionManager 的长循环。

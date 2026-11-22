@@ -2,6 +2,8 @@ using System.Text.Json.Nodes;
 using VScreenPilot.Ui;
 using VScreenPilot.Apps;
 
+using VScreenPilot.Server.Infrastructure;
+
 namespace VScreenPilot.Session;
 
 internal sealed partial class SessionManager

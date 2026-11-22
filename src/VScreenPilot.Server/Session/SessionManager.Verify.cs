@@ -7,7 +7,6 @@ using VScreenPilot.Apps;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Interop;
 using VScreenPilot.Json;
-using VScreenPilot.Mcp;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
 using VScreenPilot.Views;

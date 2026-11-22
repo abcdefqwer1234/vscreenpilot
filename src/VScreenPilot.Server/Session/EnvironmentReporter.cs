@@ -1,13 +1,11 @@
 using System.Text.Json.Nodes;
 using VScreenPilot.Apps;
 using VScreenPilot.Json;
-using VScreenPilot.Mcp;
 using VScreenPilot.Platform.Displays;
 using VScreenPilot.Platform.Security;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Interop;
-using VScreenPilot.Diagnostics;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
 using VScreenPilot.Views;

@@ -2,7 +2,7 @@ using VScreenPilot.Composition;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
 
-namespace VScreenPilot.Ipc;
+namespace VScreenPilot.Composition;
 
 /// <summary>独立 daemon 入口：实现已并入 <see cref="ServerHost.RunDaemon"/>。</summary>
 internal static class DaemonHost

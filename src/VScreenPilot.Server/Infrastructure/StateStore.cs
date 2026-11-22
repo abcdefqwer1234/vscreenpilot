@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using VScreenPilot.Session;
 using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Server.Infrastructure;

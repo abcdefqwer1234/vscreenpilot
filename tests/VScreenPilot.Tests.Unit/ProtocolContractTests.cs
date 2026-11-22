@@ -8,6 +8,8 @@ using VScreenPilot.Session;
 using Xunit;
 using VScreenPilot.Errors;
 
+using VScreenPilot.Server.Infrastructure;
+
 namespace VScreenPilot.Tests;
 
 public sealed class ProtocolContractTests

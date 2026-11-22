@@ -1,4 +1,4 @@
-using VScreenPilot.Session;
+using VScreenPilot.Server.Infrastructure;
 
 namespace VScreenPilot.Mcp;
 
