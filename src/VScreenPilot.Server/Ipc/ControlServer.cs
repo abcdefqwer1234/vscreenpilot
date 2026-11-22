@@ -9,6 +9,7 @@ using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Json;
 using VScreenPilot.Mcp;
 using VScreenPilot.Session;
+using VScreenPilot.Services;
 using static VScreenPilot.Json.JsonArgReader;
 using VScreenPilot.Platform.Ipc;
 using VScreenPilot.Platform.Windows;
@@ -26,7 +27,8 @@ internal sealed class ControlServer : IDisposable
     private const int MaxRequestBytes = 1024 * 1024;
     private const int MaxResponseBytes = 4 * 1024 * 1024;
 
-    private readonly SessionManager _session;
+    private readonly ISessionFacade _facade;
+    private readonly IControlService _control;
     private readonly LogRing _log;
     private readonly InstanceRegistry _registry;
     private readonly string _pipeName;
@@ -42,13 +44,15 @@ internal sealed class ControlServer : IDisposable
     private const int MaxInstances = 4;
 
     public ControlServer(
-        SessionManager session,
+        ISessionFacade facade,
+        IControlService control,
         LogRing log,
         InstanceRegistry registry,
         string profile,
         Action shutdown)
     {
-        _session = session;
+        _facade = facade;
+        _control = control;
         _log = log;
         _registry = registry;
         _pipeName = PipeNames.Ctl(profile);
@@ -166,13 +170,8 @@ internal sealed class ControlServer : IDisposable
 
         try
         {
-            using IDisposable controlScope = _session.Clients.Use(new ClientContext
-            {
-                Id = "ctl",
-                Name = "control",
-                Cwd = Environment.CurrentDirectory,
-                IncludeAllApps = true,
-            });
+            using IDisposable controlScope = _control.UseClient(
+                new ClientInfo("ctl", Environment.CurrentDirectory, Array.Empty<string>(), "control", true));
 
             bool shutdownRequested = false;
             JsonObject result = op switch
@@ -248,7 +247,7 @@ internal sealed class ControlServer : IDisposable
 
         try
         {
-            foreach (TrackedApp app in _session.GetAppsSnapshot()
+            foreach (TrackedApp app in _facade.GetApps()
                          .Where(item => pid is null || item.Pid == pid)
                          .Take(32))
             {
@@ -278,14 +277,14 @@ internal sealed class ControlServer : IDisposable
 
                 try
                 {
-                    JsonObject data = VspJson.ToNode(_session.Snapshot(
+                    JsonObject data = VspJson.ToNode(_facade.Snapshot(new SnapshotRequest(
                         app.Pid,
                         maxDepth,
                         interactive,
                         maxNodes,
-                        includeValues: true,
-                        includeScreenshot: false,
-                        scale: 0.5).Data).AsObject();
+                        IncludeValues: true,
+                        IncludeScreenshot: false,
+                        Scale: 0.5)).Data).AsObject();
                     item["snapshot_id"] = data["snapshot_id"]?.DeepClone();
                     item["tree"] = data["tree"]?.DeepClone();
                     item["nodes"] = data["nodes"]?.DeepClone();
@@ -331,13 +330,13 @@ internal sealed class ControlServer : IDisposable
         finally
         {
             // ctl 是一次性管理员视图，输出后立即丢弃 refs。
-            _session.DropClientRefs("ctl");
+            _control.DropClientRefs("ctl");
         }
     }
 
     private JsonObject EnvironmentResult(JsonObject request)
     {
-        JsonObject result = VspJson.ToNode(_session.GetEnvironment(ensure: false)).AsObject();
+        JsonObject result = VspJson.ToNode(_facade.GetEnvironment(ensure: false)).AsObject();
 
         if (GetBool(request, "ensure", false))
         {
@@ -350,10 +349,11 @@ internal sealed class ControlServer : IDisposable
 
     private JsonObject Capture()
     {
-        CaptureResult capture = _session.CaptureScreenEx(
-            null, null, null, null, 0.5, savePath: null, storeFrame: false, previewScale: null);
+        CaptureResult capture = _facade.CaptureScreen(
+            new CaptureRequest(null, null, null, null, 0.5, SavePath: null,
+                StoreFrame: false, PreviewScale: null));
         string path = Path.Combine(
-            _session.ArtifactDirectory,
+            _facade.ArtifactDirectory,
             $"cli-{DateTime.Now:HHmmss-fff}.png");
         File.WriteAllBytes(path, capture.Png);
         JsonObject meta = VspJson.ToNode(capture.Meta).AsObject();
@@ -367,20 +367,20 @@ internal sealed class ControlServer : IDisposable
         {
             ["pid"] = Environment.ProcessId,
             ["version"] = BuildInfo.Version,
-            ["profile"] = _session.ProfileName,
-            ["mutex_host"] = Profile.MutexName(_session.ProfileName),
+            ["profile"] = _facade.ProfileName,
+            ["mutex_host"] = Profile.MutexName(_facade.ProfileName),
             ["ctl_pipe"] = _pipeName,
-            ["mcp_pipe"] = PipeNames.Mcp(_session.ProfileName),
-            ["initialized"] = _session.Initialized,
-            ["apps"] = _session.Apps.Count,
-            ["clients"] = _session.Clients.ActiveCount,
-            ["client_list"] = _session.ClientSummariesJson(includeCwd: true),
-            ["screen_lease"] = _session.Lease.Describe(),
+            ["mcp_pipe"] = PipeNames.Mcp(_facade.ProfileName),
+            ["initialized"] = _facade.Initialized,
+            ["apps"] = _control.OwnedAppCount,
+            ["clients"] = _control.ActiveClientCount,
+            ["client_list"] = _control.ClientSummaries(includeCwd: true),
+            ["screen_lease"] = _control.LeaseDescribe(),
             ["working_set_mb"] = CurrentWorkingSetMb(),
             ["handles"] = CurrentHandleCount(),
         };
 
-        DisplayInfo? display = _session.VirtualDisplay;
+        DisplayInfo? display = _control.VirtualDisplay;
         result["display"] = new JsonObject
         {
             ["enabled"] = display is not null,
@@ -402,12 +402,12 @@ internal sealed class ControlServer : IDisposable
 
     private JsonObject Stop(bool force, out bool shutdownRequested)
     {
-        if (!force && _session.Clients.ActiveCount > 0)
+        if (!force && _control.ActiveClientCount > 0)
         {
             throw new ToolException(
                 "E_CLIENTS_ACTIVE",
-                $"仍有 {_session.Clients.ActiveCount} 个 MCP 客户端连接，拒绝停止",
-                new JsonObject { ["clients"] = _session.Clients.ActiveCount },
+                $"仍有 {_control.ActiveClientCount} 个 MCP 客户端连接，拒绝停止",
+                new JsonObject { ["clients"] = _control.ActiveClientCount },
                 retryable: true,
                 hint: "关闭这些客户端，或使用 --cli stop --force",
                 stage: "control");

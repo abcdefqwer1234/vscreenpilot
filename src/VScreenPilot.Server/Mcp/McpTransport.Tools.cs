@@ -10,6 +10,7 @@ using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Json;
 using VScreenPilot.Perception;
+using VScreenPilot.Services;
 using VScreenPilot.Session;
 using VScreenPilot.Views;
 using static VScreenPilot.Json.JsonArgReader;
@@ -124,8 +125,13 @@ internal sealed partial class McpTransport
             () => Interlocked.Increment(ref _inflightHandlers),
             () => Interlocked.Decrement(ref _inflightHandlers));
 
+        ClientInfo? client = _client is null
+            ? null
+            : new ClientInfo(_client.Id, _client.Cwd, _client.Roots,
+                _client.Name, _client.IncludeAllApps);
         var call = new ToolContext(
-            _session, _client, arguments, requestId, argumentSummary, cancellationToken);
+            new SessionExecutionControl(_session), client, arguments, requestId,
+            argumentSummary, cancellationToken);
         ToolResponse response = await executor
             .ExecuteAsync(tool, call)
             .ConfigureAwait(false);

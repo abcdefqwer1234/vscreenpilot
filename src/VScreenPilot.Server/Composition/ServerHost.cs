@@ -50,7 +50,8 @@ internal sealed class ServerHost : IDisposable
         _job = job;
         _mutex = mutex;
         _allowScript = allowScript;
-        _control = new ControlServer(session, log, registry, session.ProfileName, Shutdown);
+        var facade = new SessionFacade(session);
+        _control = new ControlServer(facade, facade, log, registry, session.ProfileName, Shutdown);
         _pipeHost = new PipeHost(session, log, trace!, session.ProfileName);
     }
 

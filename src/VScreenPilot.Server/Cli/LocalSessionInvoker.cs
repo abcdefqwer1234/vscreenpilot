@@ -4,6 +4,7 @@ using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Json;
 using VScreenPilot.Session;
+using VScreenPilot.Services;
 using static VScreenPilot.Cli.CommandLineOptions;
 using VScreenPilot.Platform.Processes;
 
@@ -20,7 +21,7 @@ internal static class LocalSessionInvoker
     /// 编码代理用 CLI + skill 可以省掉工具 schema 的上下文成本。
     /// </summary>
     public static int Run(
-        string command, string[] args, SessionManager session,
+        string command, string[] args, ISessionFacade session,
         LogRing log, JobObject job, MutexGuard mutex)
     {
         try
@@ -34,21 +35,21 @@ internal static class LocalSessionInvoker
                     break;
 
                 case "snapshot":
-                    SnapshotResult snapshot = session.Snapshot(
-                        pid: null,
-                        maxDepth: 4,
-                        interactiveOnly: !HasFlag(args, "--all"),
-                        maxNodes: 300,
-                        includeValues: true,
-                        includeScreenshot: false,
-                        scale: 0.5);
+                    SnapshotResult snapshot = session.Snapshot(new SnapshotRequest(
+                        Pid: null,
+                        MaxDepth: 4,
+                        InteractiveOnly: !HasFlag(args, "--all"),
+                        MaxNodes: 300,
+                        IncludeValues: true,
+                        IncludeScreenshot: false,
+                        Scale: 0.5));
                     result = VspJson.ToNode(snapshot.Data).AsObject();
                     break;
 
                 case "screen":
-                    CaptureResult capture = session.CaptureScreenEx(
-                        null, null, null, null, 0.5, savePath: null,
-                        storeFrame: false, previewScale: null);
+                    CaptureResult capture = session.CaptureScreen(
+                        new CaptureRequest(null, null, null, null, 0.5, SavePath: null,
+                            StoreFrame: false, PreviewScale: null));
                     string path = Path.Combine(
                         session.ArtifactDirectory,
                         $"cli-{DateTime.Now:HHmmss-fff}.png");
