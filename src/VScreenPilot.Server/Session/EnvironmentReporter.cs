@@ -15,6 +15,15 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
+/// <summary>session 视图的输入快照。</summary>
+internal sealed record SessionClientSnapshot(
+    List<string> Roots, JsonArray List, int OtherClients, int? ProxyPid, string? Version);
+
+internal sealed record SessionUsage(double? WorkingSetMb, int? Handles);
+
+internal sealed record SessionSnapshotInput(
+    int SessionId, SessionClientSnapshot Clients, SessionUsage Usage);
+
 /// <summary>环境诊断视图所需的最小宿主接口。</summary>
 internal sealed record EnvironmentRuntimeContext(
     MetricsRegistry Metrics,
@@ -128,9 +137,10 @@ internal sealed class EnvironmentReporter
                 ReadClientContext();
             (double? workingSetMb, int? handles) = ReadProcessMetrics();
 
-            SessionView session = BuildSessionView(
-                sessionId, clientRoots, clientList, otherClients, proxyPid, clientVersion,
-                workingSetMb, handles);
+            SessionView session = BuildSessionView(new SessionSnapshotInput(
+                sessionId,
+                new SessionClientSnapshot(clientRoots, clientList, otherClients, proxyPid, clientVersion),
+                new SessionUsage(workingSetMb, handles)));
 
             (VirtualDisplayView virtualDisplay, VirtualScreenView virtualScreen, PrimaryView primaryView) =
                 BuildDisplayViews(probe);
@@ -227,22 +237,14 @@ internal sealed class EnvironmentReporter
         }
     }
 
-    private SessionView BuildSessionView(
-        int sessionId,
-        List<string> clientRoots,
-        JsonArray clientList,
-        int otherClients,
-        int? proxyPid,
-        string? clientVersion,
-        double? workingSetMb,
-        int? handles) =>
+    private SessionView BuildSessionView(SessionSnapshotInput input) =>
         new()
         {
             Pid = Environment.ProcessId,
             Initialized = _runtime.Initialized(),
             MutexHost = Profile.MutexName(_runtime.ProfileName),
             StartedAt = EnvironmentProbe.ProcessStartTime(),
-            SessionId = sessionId,
+            SessionId = input.SessionId,
             Interactive = Environment.UserInteractive,
             RemoteSession = NativeMethods.GetSystemMetrics(0x1000) != 0,
             InputDesktop = EnvironmentProbe.IsInputDesktopAvailable(),
@@ -255,14 +257,14 @@ internal sealed class EnvironmentReporter
             DaemonPid = Environment.ProcessId,
             ClientId = _clients.Clients.CurrentId,
             ClientCwd = _clients.Clients.CurrentCwd,
-            ClientRoots = clientRoots,
-            ProxyPid = proxyPid,
-            ClientVersion = clientVersion,
-            Clients = clientList,
-            OtherClients = otherClients,
+            ClientRoots = input.Clients.Roots,
+            ProxyPid = input.Clients.ProxyPid,
+            ClientVersion = input.Clients.Version,
+            Clients = input.Clients.List,
+            OtherClients = input.Clients.OtherClients,
             ScreenLease = _runtime.ScreenLease?.Invoke(),
-            WorkingSetMb = workingSetMb,
-            Handles = handles,
+            WorkingSetMb = input.Usage.WorkingSetMb,
+            Handles = input.Usage.Handles,
         };
 
     private (VirtualDisplayView VirtualDisplay, VirtualScreenView VirtualScreen, PrimaryView Primary)

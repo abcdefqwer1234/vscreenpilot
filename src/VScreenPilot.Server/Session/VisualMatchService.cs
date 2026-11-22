@@ -139,14 +139,9 @@ internal sealed class VisualMatchService
         List<double> scales = ParseScales(arguments);
 
         List<VisualMatch> found = TemplateMatcher.MatchMultiScale(
-            bgra,
-            capturedWidth,
-            capturedHeight,
+            new ScreenFrame(bgra, capturedWidth, capturedHeight),
             image,
-            threshold,
-            maxResults,
-            scales,
-            () => _host.IsCancelled());
+            new TemplateSearchOptions(threshold, maxResults, scales, () => _host.IsCancelled()));
 
         if (found.Count == 0)
         {

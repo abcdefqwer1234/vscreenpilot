@@ -14,15 +14,6 @@ internal sealed class SessionSnapshotOps
 
     public SessionSnapshotOps(SessionManager host) => _host = host;
 
-    public SnapshotResult Snapshot(
-        int? pid,
-        int maxDepth,
-        bool interactiveOnly,
-        int maxNodes,
-        bool includeValues,
-        bool includeScreenshot,
-        double scale,
-        bool annotate = false) =>
-        _host.Snapshots.Snapshot(
-            pid, maxDepth, interactiveOnly, maxNodes, includeValues, includeScreenshot, scale, annotate);
+    public SnapshotResult Snapshot(UiSnapshotRequest request) =>
+        _host.Snapshots.Snapshot(request);
 }

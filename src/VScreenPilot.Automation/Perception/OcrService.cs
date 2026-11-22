@@ -6,6 +6,9 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Perception;
 
+/// <summary>OCR 输入的 BGRA 位图。</summary>
+internal readonly record struct OcrBitmap(byte[] Bgra, int Width, int Height);
+
 internal sealed record ScreenTextLine(
     string Text, int Left, int Top, int Width, int Height);
 
@@ -28,13 +31,18 @@ internal sealed class OcrService
     }
 
     public List<ScreenTextLine> Read(
-        byte[] bgra, int width, int height,
-        out string engine, out string language, string textHint,
-        CancellationToken cancellationToken = default)
+        OcrBitmap input,
+        string textHint,
+        CancellationToken cancellationToken,
+        out string engine,
+        out string language)
     {
+        byte[] bgra = input.Bgra;
+        int width = input.Width;
+        int height = input.Height;
         if (width <= 0 || height <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(width));
+            throw new ArgumentOutOfRangeException(nameof(input));
         }
 
         bool preferLatin = IsAsciiOnly(textHint);

@@ -13,6 +13,14 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Diagnostics;
 
+/// <summary>驱动相关检查事实。</summary>
+internal sealed record DoctorDriverFacts(JsonObject? Status, bool Ok, bool Open);
+
+/// <summary>环境相关检查事实。</summary>
+internal sealed record DoctorEnvFacts(
+    bool PowerPointFound, string PowerPointDetail, bool ArtifactsWritable, string ArtifactsDetail,
+    DisplayInfo? Parsec);
+
 /// <summary>`--doctor` 的只读诊断输出。字段、checks 与退出码属于冻结契约。</summary>
 internal static class DoctorReportBuilder
 {
@@ -37,8 +45,10 @@ internal static class DoctorReportBuilder
         bool powerPointFound = ProbePowerPoint(out string powerPointDetail);
         (bool artifactsWritable, string artifactsDetail) = ProbeArtifactsWritable();
 
-        AddChecks(checks, driver, driverOk, driverOpen, powerPointFound, powerPointDetail,
-            artifactsWritable, artifactsDetail, parsec);
+        AddChecks(
+            checks,
+            new DoctorDriverFacts(driver, driverOk, driverOpen),
+            new DoctorEnvFacts(powerPointFound, powerPointDetail, artifactsWritable, artifactsDetail, parsec));
         result["checks"] = checks;
 
         // 旧实现只看 driver.status，忽略 driver.open=false，会误报 OK。
@@ -263,47 +273,39 @@ internal static class DoctorReportBuilder
     }
 
     private static void AddChecks(
-        JsonArray checks, JsonObject driver, bool driverOk, bool driverOpen,
-        bool powerPointFound, string powerPointDetail,
-        bool artifactsWritable, string artifactsDetail, DisplayInfo? parsec)
+        JsonArray checks, DoctorDriverFacts driver, DoctorEnvFacts env)
     {
-        checks.Add((JsonNode)new JsonObject
-        {
-            ["id"] = "driver.status",
-            ["ok"] = driverOk,
-            ["detail"] = driver["status"]?.GetValue<string>(),
-        });
-        checks.Add((JsonNode)new JsonObject
-        {
-            ["id"] = "driver.open",
-            ["ok"] = driverOpen,
-            ["detail"] = driverOpen ? driver["version"]?.GetValue<string>() : driver["open_error"]?.ToString(),
-        });
-        checks.Add((JsonNode)new JsonObject
-        {
-            ["id"] = "session.interactive",
-            ["ok"] = Environment.UserInteractive,
-            ["detail"] = Environment.UserInteractive ? "ok" : "non-interactive session",
-        });
-        checks.Add((JsonNode)new JsonObject
-        {
-            ["id"] = "office.powerpoint",
-            ["ok"] = powerPointFound,
-            ["detail"] = powerPointDetail,
-        });
-        checks.Add((JsonNode)new JsonObject
-        {
-            ["id"] = "artifacts.writable",
-            ["ok"] = artifactsWritable,
-            ["detail"] = artifactsDetail,
-        });
-        checks.Add((JsonNode)new JsonObject
-        {
-            ["id"] = "virtual_display",
-            ["ok"] = parsec is not null,
-            ["detail"] = parsec is null ? "not mounted" : $"{(int)parsec.X},{(int)parsec.Y} {parsec.Width}x{parsec.Height}",
-        });
+        AddCheck(checks, "driver.status", driver.Ok, driver.Status?["status"]?.GetValue<string>());
+        AddCheck(
+            checks,
+            "driver.open",
+            driver.Open,
+            driver.Open
+                ? driver.Status?["version"]?.GetValue<string>()
+                : driver.Status?["open_error"]?.ToString());
+        AddCheck(
+            checks,
+            "session.interactive",
+            Environment.UserInteractive,
+            Environment.UserInteractive ? "ok" : "non-interactive session");
+        AddCheck(checks, "office.powerpoint", env.PowerPointFound, env.PowerPointDetail);
+        AddCheck(checks, "artifacts.writable", env.ArtifactsWritable, env.ArtifactsDetail);
+        AddCheck(
+            checks,
+            "virtual_display",
+            env.Parsec is not null,
+            env.Parsec is null
+                ? "not mounted"
+                : $"{(int)env.Parsec.X},{(int)env.Parsec.Y} {env.Parsec.Width}x{env.Parsec.Height}");
     }
+
+    private static void AddCheck(JsonArray checks, string id, bool ok, string? detail) =>
+        checks.Add((JsonNode)new JsonObject
+        {
+            ["id"] = id,
+            ["ok"] = ok,
+            ["detail"] = detail,
+        });
 
     private static JsonArray ReadAppAllowlist()
     {

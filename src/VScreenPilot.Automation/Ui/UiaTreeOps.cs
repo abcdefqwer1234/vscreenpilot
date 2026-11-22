@@ -6,38 +6,39 @@ using VScreenPilot.Interop;
 
 namespace VScreenPilot.Uia;
 
+/// <summary>UI 树构建请求。</summary>
+internal sealed record UiTreeRequest(
+    IntPtr Hwnd,
+    string? RootRuntimeId,
+    int MaxDepth,
+    bool InteractiveOnly,
+    int MaxNodes,
+    int TimeBudgetMs);
+
 /// <summary>Tree：UiaService 的拆分子集。</summary>
 internal sealed class UiaTreeOps
 {
     private readonly UiaService _core;
 
     public UiaTreeOps(UiaService core) => _core = core;
-    public UiaTreeResult BuildTree(
-        IntPtr hwnd,
-        string? rootRuntimeId,
-        int maxDepth,
-        bool interactiveOnly,
-        int maxNodes,
-        int timeBudgetMs,
-        Func<bool>? isCancelled)
+    public UiaTreeResult BuildTree(UiTreeRequest request, Func<bool>? isCancelled)
     {
         // 树构建同样访问 IUIAutomation；必须与 find/invoke 串行，否则会跨线程使用 COM 对象。
         lock (_core._sync)
         {
-            return BuildTreeCore(
-                hwnd, rootRuntimeId, maxDepth, interactiveOnly, maxNodes, timeBudgetMs, isCancelled);
+            return BuildTreeCore(request, isCancelled);
         }
     }
 
-    internal UiaTreeResult BuildTreeCore(
-        IntPtr hwnd,
-        string? rootRuntimeId,
-        int maxDepth,
-        bool interactiveOnly,
-        int maxNodes,
-        int timeBudgetMs,
-        Func<bool>? isCancelled)
+    internal UiaTreeResult BuildTreeCore(UiTreeRequest request, Func<bool>? isCancelled)
     {
+        IntPtr hwnd = request.Hwnd;
+        string? rootRuntimeId = request.RootRuntimeId;
+        int maxDepth = request.MaxDepth;
+        bool interactiveOnly = request.InteractiveOnly;
+        int maxNodes = request.MaxNodes;
+        int timeBudgetMs = request.TimeBudgetMs;
+
         IUIAutomationElement? rootElement = null;
         UiaElementHandle? rootHandle = null;
         var stopwatch = Stopwatch.StartNew();

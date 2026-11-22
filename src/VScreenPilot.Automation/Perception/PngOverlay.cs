@@ -1,5 +1,11 @@
 namespace VScreenPilot.Perception;
 
+/// <summary>BGRA 画布。</summary>
+internal readonly record struct PngCanvas(byte[] Bgra, int Width, int Height);
+
+/// <summary>画布上的矩形。</summary>
+internal readonly record struct PngBox(int X, int Y, int Width, int Height);
+
 /// <summary>
 /// 在 BGRA 缓冲区上画元素框、序号与网格。纯托管实现，避免引入 System.Drawing。
 /// 坐标使用屏幕绝对坐标减去捕获原点后传入。
@@ -22,44 +28,42 @@ internal static class PngOverlay
 
     public static (byte R, byte G, byte B) ColorFor(int index) => Palette[index % Palette.Length];
 
-    public static void DrawGrid(byte[] bgra, int width, int height, int step = 100)
+    public static void DrawGrid(PngCanvas canvas, int step = 100)
     {
         if (step <= 0)
         {
             return;
         }
 
-        for (int x = step; x < width; x += step)
+        for (int x = step; x < canvas.Width; x += step)
         {
-            for (int y = 0; y < height; y++)
+            for (int y = 0; y < canvas.Height; y++)
             {
-                Blend(bgra, width, height, x, y, 110, 110, 110, 0.35);
+                Blend(canvas, x, y, (110, 110, 110), 0.35);
             }
         }
 
-        for (int y = step; y < height; y += step)
+        for (int y = step; y < canvas.Height; y += step)
         {
-            for (int x = 0; x < width; x++)
+            for (int x = 0; x < canvas.Width; x++)
             {
-                Blend(bgra, width, height, x, y, 110, 110, 110, 0.35);
+                Blend(canvas, x, y, (110, 110, 110), 0.35);
             }
         }
     }
 
     public static void DrawBox(
-        byte[] bgra, int width, int height,
-        int x, int y, int boxWidth, int boxHeight,
-        byte r, byte g, byte b, int thickness = 2)
+        PngCanvas canvas, PngBox box, (byte R, byte G, byte B) color, int thickness = 2)
     {
-        if (boxWidth <= 0 || boxHeight <= 0)
+        if (box.Width <= 0 || box.Height <= 0)
         {
             return;
         }
 
-        int left = Math.Max(0, x);
-        int top = Math.Max(0, y);
-        int right = Math.Min(width - 1, x + boxWidth - 1);
-        int bottom = Math.Min(height - 1, y + boxHeight - 1);
+        int left = Math.Max(0, box.X);
+        int top = Math.Max(0, box.Y);
+        int right = Math.Min(canvas.Width - 1, box.X + box.Width - 1);
+        int bottom = Math.Min(canvas.Height - 1, box.Y + box.Height - 1);
 
         if (right < left || bottom < top)
         {
@@ -70,21 +74,20 @@ internal static class PngOverlay
         {
             for (int column = left; column <= right; column++)
             {
-                Set(bgra, width, height, column, Math.Clamp(top + t, 0, height - 1), r, g, b);
-                Set(bgra, width, height, column, Math.Clamp(bottom - t, 0, height - 1), r, g, b);
+                Set(canvas, column, Math.Clamp(top + t, 0, canvas.Height - 1), color);
+                Set(canvas, column, Math.Clamp(bottom - t, 0, canvas.Height - 1), color);
             }
 
             for (int row = top; row <= bottom; row++)
             {
-                Set(bgra, width, height, Math.Clamp(left + t, 0, width - 1), row, r, g, b);
-                Set(bgra, width, height, Math.Clamp(right - t, 0, width - 1), row, r, g, b);
+                Set(canvas, Math.Clamp(left + t, 0, canvas.Width - 1), row, color);
+                Set(canvas, Math.Clamp(right - t, 0, canvas.Width - 1), row, color);
             }
         }
     }
 
     /// <summary>在 (x,y) 处画一个带底色的小序号，最多两位。</summary>
-    public static void DrawNumber(
-        byte[] bgra, int width, int height, int x, int y, int value, int scale = 2)
+    public static void DrawNumber(PngCanvas canvas, int x, int y, int value, int scale = 2)
     {
         string digits = Math.Clamp(value, 0, 99).ToString(System.Globalization.CultureInfo.InvariantCulture);
         int glyphWidth = 3 * scale;
@@ -93,14 +96,14 @@ internal static class PngOverlay
         int padding = scale;
         int boxWidth = padding * 2 + digits.Length * glyphWidth + (digits.Length - 1) * spacing;
         int boxHeight = padding * 2 + glyphHeight;
-        int left = Math.Clamp(x, 0, Math.Max(0, width - boxWidth));
-        int top = Math.Clamp(y, 0, Math.Max(0, height - boxHeight));
+        int left = Math.Clamp(x, 0, Math.Max(0, canvas.Width - boxWidth));
+        int top = Math.Clamp(y, 0, Math.Max(0, canvas.Height - boxHeight));
 
         for (int row = 0; row < boxHeight; row++)
         {
             for (int column = 0; column < boxWidth; column++)
             {
-                Set(bgra, width, height, left + column, top + row, 245, 245, 245);
+                Set(canvas, left + column, top + row, (245, 245, 245));
             }
         }
 
@@ -131,9 +134,9 @@ internal static class PngOverlay
                     {
                         for (int px = 0; px < scale; px++)
                         {
-                            Set(bgra, width, height,
+                            Set(canvas,
                                 cursor + gx * scale + px, top + padding + gy * scale + py,
-                                20, 20, 20);
+                                (20, 20, 20));
                         }
                     }
                 }
@@ -143,32 +146,31 @@ internal static class PngOverlay
         }
     }
 
-    private static void Set(byte[] bgra, int width, int height, int x, int y, byte r, byte g, byte b)
+    private static void Set(PngCanvas canvas, int x, int y, (byte R, byte G, byte B) color)
     {
-        if (x < 0 || y < 0 || x >= width || y >= height)
+        if (x < 0 || y < 0 || x >= canvas.Width || y >= canvas.Height)
         {
             return;
         }
 
-        int index = (y * width + x) * 4;
-        bgra[index] = b;
-        bgra[index + 1] = g;
-        bgra[index + 2] = r;
-        bgra[index + 3] = 255;
+        int index = (y * canvas.Width + x) * 4;
+        canvas.Bgra[index] = color.B;
+        canvas.Bgra[index + 1] = color.G;
+        canvas.Bgra[index + 2] = color.R;
+        canvas.Bgra[index + 3] = 255;
     }
 
-    private static void Blend(
-        byte[] bgra, int width, int height, int x, int y, byte r, byte g, byte b, double alpha)
+    private static void Blend(PngCanvas canvas, int x, int y, (byte R, byte G, byte B) color, double alpha)
     {
-        if (x < 0 || y < 0 || x >= width || y >= height)
+        if (x < 0 || y < 0 || x >= canvas.Width || y >= canvas.Height)
         {
             return;
         }
 
-        int index = (y * width + x) * 4;
-        bgra[index] = (byte)(bgra[index] * (1 - alpha) + b * alpha);
-        bgra[index + 1] = (byte)(bgra[index + 1] * (1 - alpha) + g * alpha);
-        bgra[index + 2] = (byte)(bgra[index + 2] * (1 - alpha) + r * alpha);
-        bgra[index + 3] = 255;
+        int index = (y * canvas.Width + x) * 4;
+        canvas.Bgra[index] = (byte)(canvas.Bgra[index] * (1 - alpha) + color.B * alpha);
+        canvas.Bgra[index + 1] = (byte)(canvas.Bgra[index + 1] * (1 - alpha) + color.G * alpha);
+        canvas.Bgra[index + 2] = (byte)(canvas.Bgra[index + 2] * (1 - alpha) + color.R * alpha);
+        canvas.Bgra[index + 3] = 255;
     }
 }

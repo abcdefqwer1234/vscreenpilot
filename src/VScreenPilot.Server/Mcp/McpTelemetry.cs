@@ -171,7 +171,8 @@ internal sealed class McpTelemetry
         _metrics.RecordTool(
             tool, milliseconds, code, response.IsError, textBytes, imageBytes);
 
-        _trace?.ToolCall(tool, requestId, arguments, milliseconds, code, response.IsError,
-            textBytes, imageBytes, channel: null, stage: stage, clientId: _clientId);
+        _trace?.ToolCall(
+            new TraceRequest(tool, requestId, arguments, milliseconds, _clientId),
+            new TraceResult(code, response.IsError, textBytes, imageBytes, Channel: null, stage));
     }
 }

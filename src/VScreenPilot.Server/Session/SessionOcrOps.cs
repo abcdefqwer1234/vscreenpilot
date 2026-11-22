@@ -9,17 +9,12 @@ internal sealed class SessionOcrOps
     internal readonly SessionManager _host;
 
     public SessionOcrOps(SessionManager host) => _host = host;
-    public ScreenTextView ReadScreenText(
-        int? x, int? y, int? width, int? height, string? query, int maxLines) =>
-        _host._screenText.ReadScreenText(x, y, width, height, query, maxLines);
+    public ScreenTextView ReadScreenText(OcrReadRequest request) =>
+        _host._screenText.ReadScreenText(request);
 
     internal static bool OcrTextMatches(string haystack, string needle) =>
         ScreenTextService.OcrTextMatches(haystack, needle);
 
-    public ClickTextView ClickText(
-        string text, bool keepForeground, bool observe, string channel, bool requireUnique,
-        int? regionX, int? regionY, int? regionWidth, int? regionHeight, bool fallbackInput) =>
-        _host._screenText.ClickText(
-            text, keepForeground, observe, channel, requireUnique,
-            regionX, regionY, regionWidth, regionHeight, fallbackInput);
+    public ClickTextView ClickText(TextClickRequest request) =>
+        _host._screenText.ClickText(request);
 }

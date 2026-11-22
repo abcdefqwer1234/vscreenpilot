@@ -16,11 +16,11 @@ internal sealed class ScreenTextToolService : IScreenTextService
     public ScreenTextToolService(SessionManager session) => _session = session;
 
     public ScreenTextView Read(ScreenTextRequest request) =>
-        _session.OcrOps.ReadScreenText(
+        _session.OcrOps.ReadScreenText(new OcrReadRequest(
             request.X,
             request.Y,
             request.Width,
             request.Height,
             request.Query,
-            request.MaxLines);
+            request.MaxLines));
 }

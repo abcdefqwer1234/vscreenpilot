@@ -42,17 +42,21 @@ internal sealed class InputToolService : IInputService
     public GestureView Gesture(JsonElement arguments) => _session.InputOps.Gesture(arguments);
 
     public ClickTextView ClickText(ClickTextRequest request) =>
-        _session.OcrOps.ClickText(
+        _session.OcrOps.ClickText(new TextClickRequest(
             request.Text,
-            request.KeepForeground,
-            request.Observe,
-            request.Channel,
-            request.RequireUnique,
-            request.RegionX,
-            request.RegionY,
-            request.RegionWidth,
-            request.RegionHeight,
-            request.FallbackInput);
+            new OcrReadRequest(
+                request.RegionX,
+                request.RegionY,
+                request.RegionWidth,
+                request.RegionHeight,
+                null,
+                0),
+            new TextClickOptions(
+                request.Channel,
+                request.KeepForeground,
+                request.Observe,
+                request.RequireUnique,
+                request.FallbackInput)));
 
     public TypeTextView TypeText(
         string text, int? pid, bool verify, int chunkChars, string? channel) =>

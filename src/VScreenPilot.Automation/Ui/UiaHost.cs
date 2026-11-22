@@ -59,16 +59,8 @@ internal sealed class UiaHost : IDisposable
         return old is not null;
     }
 
-    public UiaTreeResult BuildTree(
-        IntPtr hwnd,
-        string? rootRuntimeId,
-        int maxDepth,
-        bool interactiveOnly,
-        int maxNodes,
-        int timeBudgetMs,
-        Func<bool>? isCancelled) =>
-        Invoke(service => service.TreeOps.BuildTree(
-            hwnd, rootRuntimeId, maxDepth, interactiveOnly, maxNodes, timeBudgetMs, isCancelled));
+    public UiaTreeResult BuildTree(UiTreeRequest request, Func<bool>? isCancelled) =>
+        Invoke(service => service.TreeOps.BuildTree(request, isCancelled));
 
     public UiaElementInfo? FindElement(
         IntPtr hwnd,

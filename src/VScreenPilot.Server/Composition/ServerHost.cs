@@ -13,6 +13,18 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Composition;
 
+/// <summary>ServerHost 依赖的资源。</summary>
+internal sealed record ServerHostResources(
+    SessionManager Session,
+    LogRing Log,
+    TraceLog? Trace,
+    InstanceRegistry Registry,
+    JobObject Job,
+    MutexGuard Mutex);
+
+/// <summary>ServerHost 的运行选项。</summary>
+internal sealed record ServerHostSettings(bool AllowScript, ManualResetEventSlim? Stop = null);
+
 /// <summary>
 /// 单一宿主：持有会话、控制管道、MCP 管道与实例注册表，负责启动顺序、
 /// 预热、父进程监听、信号处理、空闲退出与关闭顺序。
@@ -38,22 +50,23 @@ internal sealed class ServerHost : IDisposable
     private ConsoleCtrlHandler? _ctrlHandler;
     private readonly ManualResetEventSlim? _stop;
 
-    public ServerHost(
-        SessionManager session, LogRing log, TraceLog? trace, InstanceRegistry registry,
-        JobObject job, MutexGuard mutex, bool allowScript,
-        ManualResetEventSlim? stop = null)
+    public ServerHost(ServerHostResources resources, ServerHostSettings settings)
     {
-        _stop = stop;
+        SessionManager session = resources.Session;
+        LogRing log = resources.Log;
+        InstanceRegistry registry = resources.Registry;
+
+        _stop = settings.Stop;
         _session = session;
         _log = log;
-        _trace = trace;
+        _trace = resources.Trace;
         _registry = registry;
-        _job = job;
-        _mutex = mutex;
-        _allowScript = allowScript;
+        _job = resources.Job;
+        _mutex = resources.Mutex;
+        _allowScript = settings.AllowScript;
         var facade = new SessionFacade(session);
         _control = new ControlServer(facade, facade, log, registry, session.ProfileName, Shutdown);
-        _pipeHost = new PipeHost(session, log, trace!, session.ProfileName);
+        _pipeHost = new PipeHost(session, log, resources.Trace!, session.ProfileName);
     }
 
     public void Dispose()
@@ -275,9 +288,10 @@ internal sealed class ServerHost : IDisposable
         try
         {
             using var host = new ServerHost(
-                session, log, trace, registry, job, mutex, allowScript, stop);
+                new ServerHostResources(session, log, trace, registry, job, mutex),
+                new ServerHostSettings(allowScript, stop));
 
-            RegisterStopSignal(stop);
+            DaemonHostLoop.RegisterStopSignal(stop);
 
             if (allowScript)
             {
@@ -289,7 +303,7 @@ internal sealed class ServerHost : IDisposable
 
             log.Info($"独立 daemon 已启动 profile={profile} clients={host.ActiveClients}");
 
-            return RunIdleLoop(host, stop, log);
+            return DaemonHostLoop.Run(host, stop, log);
         }
         catch (Exception exception)
         {
@@ -302,49 +316,6 @@ internal sealed class ServerHost : IDisposable
             job.Dispose();
             mutex.Dispose();
         }
-    }
-
-    private static void RegisterStopSignal(ManualResetEventSlim stop)
-    {
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => stop.Set();
-        Console.CancelKeyPress += (_, eventArgs) =>
-        {
-            eventArgs.Cancel = true;
-            stop.Set();
-        };
-    }
-
-    private static int RunIdleLoop(ServerHost host, ManualResetEventSlim stop, LogRing log)
-    {
-        int idleMs = VspOptions.FromEnvironment().DaemonIdleMs;
-        bool hadClient = false;
-        DateTime? idleSince = DateTime.UtcNow;
-
-        while (!stop.Wait(100))
-        {
-            int active = host.ActiveClients;
-
-            if (active > 0)
-            {
-                hadClient = true;
-                idleSince = null;
-                continue;
-            }
-
-            idleSince ??= DateTime.UtcNow;
-
-            // 首次启动给客户端留 10s 连接窗口；有过客户端后严格按配置退出。
-            int graceMs = hadClient ? idleMs : Math.Max(idleMs, 10_000);
-
-            if (graceMs == 0 ||
-                DateTime.UtcNow - idleSince.Value >= TimeSpan.FromMilliseconds(graceMs))
-            {
-                break;
-            }
-        }
-
-        log.Info("独立 daemon 进入退出流程");
-        return 0;
     }
 
     private void StartDaemonPipes(InstanceRegistry.Entry entry, string profile)

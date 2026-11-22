@@ -52,7 +52,7 @@ internal static class PngWriter
                 }
                 else
                 {
-                    ResizeRow(bgra, width, height, row, outputHeight, current, outputWidth);
+                    ResizeRow(new PngCanvas(bgra, width, height), row, outputHeight, current, outputWidth);
                 }
 
                 int destination = row * (stride + 1);
@@ -110,9 +110,11 @@ internal static class PngWriter
     }
 
     private static void ResizeRow(
-        byte[] bgra, int width, int height, int outputRow, int outputHeight,
-        byte[] destination, int outputWidth)
+        PngCanvas source, int outputRow, int outputHeight, byte[] destination, int outputWidth)
     {
+        byte[] bgra = source.Bgra;
+        int width = source.Width;
+        int height = source.Height;
         int sy0 = outputRow * height / outputHeight;
         int sy1 = Math.Max(sy0 + 1, (outputRow + 1) * height / outputHeight);
         int destinationIndex = 0;

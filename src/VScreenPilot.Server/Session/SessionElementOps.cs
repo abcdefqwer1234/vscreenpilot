@@ -38,9 +38,8 @@ internal sealed class SessionElementOps
     /* element_ref 解析与元素操作已拆到 ElementResolver / ElementOperations */
 
     public UiTreeView GetUiTree(
-        int? maxDepth, bool? interactiveOnly, int? maxNodes, string? root, int? pid,
-        string? format = null, bool newSnapshot = false) =>
-        _host._elements.GetUiTree(maxDepth, interactiveOnly, maxNodes, root, pid, format, newSnapshot);
+        UiTreeOptions options, string? format = null, bool newSnapshot = false) =>
+        _host._elements.GetUiTree(options, format, newSnapshot);
 
     public InvokeElementView InvokeElement(string reference, bool allowClick, string? pattern = null) =>
         _host._elements.InvokeElement(reference, allowClick, pattern);

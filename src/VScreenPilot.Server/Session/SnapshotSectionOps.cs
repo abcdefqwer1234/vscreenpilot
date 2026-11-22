@@ -38,13 +38,8 @@ internal sealed class SnapshotSectionOps
         out bool emptyRetried, out bool effectiveInteractiveOnly)
     {
         UiaTreeResult result = _core._state.Uia.BuildTree(
-            hwnd,
-            rootRuntimeId: string.Empty,
-            maxDepth: depth,
-            interactiveOnly: interactiveOnly,
-            maxNodes: nodes,
-            timeBudgetMs: 3000,
-            isCancelled: _core._capture.CancellationProbe());
+            new UiTreeRequest(hwnd, string.Empty, depth, interactiveOnly, nodes, TimeBudgetMs: 3000),
+            _core._capture.CancellationProbe());
 
         emptyRetried = false;
         effectiveInteractiveOnly = interactiveOnly;
@@ -56,13 +51,8 @@ internal sealed class SnapshotSectionOps
             Thread.Sleep(200);
 
             UiaTreeResult retry = _core._state.Uia.BuildTree(
-                hwnd,
-                rootRuntimeId: string.Empty,
-                maxDepth: Math.Max(depth, 4),
-                interactiveOnly: false,
-                maxNodes: nodes,
-                timeBudgetMs: 3000,
-                isCancelled: _core._capture.CancellationProbe());
+                new UiTreeRequest(hwnd, string.Empty, Math.Max(depth, 4), false, nodes, TimeBudgetMs: 3000),
+                _core._capture.CancellationProbe());
 
             if (retry.Root is not null && retry.Nodes > result.Nodes)
             {

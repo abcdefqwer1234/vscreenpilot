@@ -94,15 +94,15 @@ public sealed class ProtocolContractTests
             bgra[index + 3] = 255;
         }
 
-        PngOverlay.DrawBox(bgra, width, height, 4, 4, 10, 10, 255, 0, 0, 2);
+        PngOverlay.DrawBox(new PngCanvas(bgra, width, height), new PngBox(4, 4, 10, 10), (255, 0, 0), 2);
 
         int inside = (4 * width + 4) * 4;
         Assert.Equal(255, bgra[inside + 2]);
         Assert.Equal(0, bgra[inside]);
 
         // 越界不应抛异常，也不应写到缓冲区外。
-        PngOverlay.DrawBox(bgra, width, height, -20, -20, 5, 5, 0, 255, 0, 2);
-        PngOverlay.DrawNumber(bgra, width, height, 30, 30, 99);
+        PngOverlay.DrawBox(new PngCanvas(bgra, width, height), new PngBox(-20, -20, 5, 5), (0, 255, 0), 2);
+        PngOverlay.DrawNumber(new PngCanvas(bgra, width, height), 30, 30, 99);
     }
 
     [Fact]

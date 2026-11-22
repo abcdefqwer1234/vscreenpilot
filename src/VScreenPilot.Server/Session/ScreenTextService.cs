@@ -18,51 +18,64 @@ internal sealed record ScreenTextContext(
     Action RecordOcr,
     Func<SessionClickRequest, ClickView> Click);
 
+/// <summary>截图的绝对区域。</summary>
+internal readonly record struct CaptureRegion(int Left, int Top, int Width, int Height);
+
+/// <summary>read_screen_text 的请求。</summary>
+internal sealed record OcrReadRequest(
+    int? X, int? Y, int? Width, int? Height, string? Query, int MaxLines);
+
+/// <summary>click_text 的行为选项。</summary>
+internal sealed record TextClickOptions(
+    string Channel, bool KeepForeground, bool Observe, bool RequireUnique, bool FallbackInput);
+
+/// <summary>click_text 的请求。</summary>
+internal sealed record TextClickRequest(string Text, OcrReadRequest Region, TextClickOptions Options);
+
+/// <summary>OCR 结果视图的构建参数。</summary>
+internal sealed record TextReport(
+    List<ScreenTextLine> Lines,
+    CaptureRegion Capture,
+    OcrReadRequest Request,
+    string Engine,
+    string Language,
+    Stopwatch Watch);
+
 /// <summary>read_screen_text / click_text：OCR 读取、匹配与按文本点击。</summary>
 internal sealed class ScreenTextService
 {
     private readonly ScreenTextContext _host;
     private readonly OcrService _ocr = new();
 
-    private sealed record ClickRegion(int Left, int Top, int Width, int Height);
-
     public ScreenTextService(ScreenTextContext host) => _host = host;
 
     /// <summary>
     /// OCR 读取屏幕文本。坐标返回的是虚拟屏绝对坐标，可直接用于 click。
     /// </summary>
-    public ScreenTextView ReadScreenText(
-        int? x, int? y, int? width, int? height, string? query, int maxLines)
+    public ScreenTextView ReadScreenText(OcrReadRequest request)
     {
         DisplayInfo display = _host.EnsureDisplay();
         var stopwatch = Stopwatch.StartNew();
-        int left = display.X;
-        int top = display.Y;
-        int regionWidth = display.Width;
-        int regionHeight = display.Height;
-
-        if (x is not null && y is not null && width is not null && height is not null)
-        {
-            VisualSupport.RequireRegionInDisplay(display, x.Value, y.Value, width.Value, height.Value, "read_screen_text");
-            left = x.Value;
-            top = y.Value;
-            regionWidth = width.Value;
-            regionHeight = height.Value;
-        }
+        CaptureRegion region = ResolveReadRegion(display, request);
 
         (byte[] bgra, int captureWidth, int captureHeight) =
-            _host.CaptureRegion(left, top, regionWidth, regionHeight);
-
-        List<ScreenTextLine> lines;
+            _host.CaptureRegion(region.Left, region.Top, region.Width, region.Height);
 
         try
         {
-            lines = _ocr.Read(
-                bgra, captureWidth, captureHeight,
-                out string engine, out string language, query ?? string.Empty,
-                _host.Cancellation());
-            return BuildTextResult(
-                lines, left, top, captureWidth, captureHeight, query, maxLines, engine, language, stopwatch);
+            List<ScreenTextLine> lines = _ocr.Read(
+                new OcrBitmap(bgra, captureWidth, captureHeight),
+                request.Query ?? string.Empty,
+                _host.Cancellation(),
+                out string engine,
+                out string language);
+            return BuildTextResult(new TextReport(
+                lines,
+                new CaptureRegion(region.Left, region.Top, captureWidth, captureHeight),
+                request,
+                engine,
+                language,
+                stopwatch));
         }
         catch (NotSupportedException exception)
         {
@@ -93,32 +106,41 @@ internal sealed class ScreenTextService
         }
     }
 
-    private static ScreenTextView BuildTextResult(
-        List<ScreenTextLine> lines,
-        int originX, int originY, int width, int height,
-        string? query, int maxLines,
-        string engine, string language,
-        Stopwatch stopwatch)
+    private static CaptureRegion ResolveReadRegion(DisplayInfo display, OcrReadRequest request)
+    {
+        if (request.X is not null && request.Y is not null &&
+            request.Width is not null && request.Height is not null)
+        {
+            VisualSupport.RequireRegionInDisplay(
+                display, request.X.Value, request.Y.Value, request.Width.Value, request.Height.Value,
+                "read_screen_text");
+            return new CaptureRegion(request.X.Value, request.Y.Value, request.Width.Value, request.Height.Value);
+        }
+
+        return new CaptureRegion(display.X, display.Y, display.Width, display.Height);
+    }
+
+    private static ScreenTextView BuildTextResult(TextReport report)
     {
         var all = new List<ScreenTextLineView>();
         var matches = new List<ScreenTextLineView>();
-        int limit = Math.Clamp(maxLines, 1, 200);
+        int limit = Math.Clamp(report.Request.MaxLines, 1, 200);
         int redactions = 0;
+        string? query = report.Request.Query;
 
-        foreach (ScreenTextLine line in lines)
+        foreach (ScreenTextLine line in report.Lines)
         {
             string redacted = PrivacyRedactor.RedactEmails(line.Text, ref redactions);
 
             var item = new ScreenTextLineView(
                 redacted,
                 new BoundsView(
-                    originX + line.Left,
-                    originY + line.Top,
+                    report.Capture.Left + line.Left,
+                    report.Capture.Top + line.Top,
                     line.Width,
                     line.Height));
 
-            if (!string.IsNullOrWhiteSpace(query) &&
-                OcrTextMatches(line.Text, query!))
+            if (!string.IsNullOrWhiteSpace(query) && OcrTextMatches(line.Text, query!))
             {
                 matches.Add(item);
             }
@@ -130,32 +152,30 @@ internal sealed class ScreenTextService
         }
 
         return new ScreenTextView(
-            engine,
-            language,
+            report.Engine,
+            report.Language,
             all,
             matches,
-            lines.Count,
+            report.Lines.Count,
             all.Count,
-            lines.Count > all.Count,
+            report.Lines.Count > all.Count,
             redactions,
-            new BoundsView(originX, originY, width, height),
-            Math.Round(stopwatch.Elapsed.TotalMilliseconds, 1));
+            new BoundsView(report.Capture.Left, report.Capture.Top, report.Capture.Width, report.Capture.Height),
+            Math.Round(report.Watch.Elapsed.TotalMilliseconds, 1));
     }
 
-    /// <summary>OCR 定位 + 点击 + 前后差异，供 click_ref 找不到元素的画布应用使用。</summary>
-    public ClickTextView ClickText(
-        string text, bool keepForeground = false, bool observe = true,
-        string channel = "auto", bool requireUnique = false,
-        int? regionX = null, int? regionY = null,
-        int? regionWidth = null, int? regionHeight = null,
-        bool fallbackInput = false)
+    public ClickTextView ClickText(TextClickRequest request)
     {
+        string text = request.Text;
+        TextClickOptions options = request.Options;
+
         if (string.IsNullOrWhiteSpace(text))
         {
             throw new ToolException("E_INVALID_ARG", "click_text 需要非空 text");
         }
 
-        ClickRegion region = ResolveClickRegion(regionX, regionY, regionWidth, regionHeight);
+        CaptureRegion region = ResolveCaptureRegion(
+            request.Region.X, request.Region.Y, request.Region.Width, request.Region.Height);
         int left = region.Left;
         int top = region.Top;
         int width = region.Width;
@@ -166,12 +186,13 @@ internal sealed class ScreenTextService
         List<ScreenTextLine> matches = lines
             .Where(line => OcrTextMatches(line.Text, text))
             .ToList();
-        ScreenTextLine match = SelectClickMatch(matches, text, requireUnique, region, lines.Count);
+        ScreenTextLine match = SelectClickMatch(matches, text, options.RequireUnique, region, lines.Count);
 
         int clickX = left + match.Left + match.Width / 2;
         int clickY = top + match.Top + match.Height / 2;
         ClickView click = _host.Click(new SessionClickRequest(
-            clickX, clickY, "left", 1, channel, keepForeground, observe, fallbackInput));
+            clickX, clickY, "left", 1, options.Channel,
+            options.KeepForeground, options.Observe, options.FallbackInput));
 
         int clickRedactions = 0;
         string clickedText = PrivacyRedactor.RedactEmails(match.Text, ref clickRedactions);
@@ -189,7 +210,7 @@ internal sealed class ScreenTextService
             clickRedactions);
     }
 
-    private ClickRegion ResolveClickRegion(
+    private CaptureRegion ResolveCaptureRegion(
         int? regionX, int? regionY, int? regionWidth, int? regionHeight)
     {
         DisplayInfo display = _host.EnsureDisplay();
@@ -210,10 +231,10 @@ internal sealed class ScreenTextService
             height = regionHeight.Value;
         }
 
-        return new ClickRegion(left, top, width, height);
+        return new CaptureRegion(left, top, width, height);
     }
 
-    private List<ScreenTextLine> RunOcr(ClickRegion region, string text)
+    private List<ScreenTextLine> RunOcr(CaptureRegion region, string text)
     {
         (byte[] bgra, int captureWidth, int captureHeight) =
             _host.CaptureRegion(region.Left, region.Top, region.Width, region.Height);
@@ -221,7 +242,7 @@ internal sealed class ScreenTextService
         try
         {
             List<ScreenTextLine> lines = _ocr.Read(
-                bgra, captureWidth, captureHeight, out _, out _, text, _host.Cancellation());
+                new OcrBitmap(bgra, captureWidth, captureHeight), text, _host.Cancellation(), out _, out _);
             _host.RecordOcr();
             return lines;
         }
@@ -246,7 +267,7 @@ internal sealed class ScreenTextService
     }
 
     private static ScreenTextLine SelectClickMatch(
-        List<ScreenTextLine> matches, string text, bool requireUnique, ClickRegion region, int totalLines)
+        List<ScreenTextLine> matches, string text, bool requireUnique, CaptureRegion region, int totalLines)
     {
 
         if (matches.Count == 0)

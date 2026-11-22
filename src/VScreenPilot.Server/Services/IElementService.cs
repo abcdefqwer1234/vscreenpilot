@@ -36,11 +36,12 @@ internal sealed class ElementToolService : IElementService
 
     public UiTreeView GetUiTree(UiTreeQuery query) =>
         _session.ElementOps.GetUiTree(
-            query.MaxDepth,
-            query.InteractiveOnly,
-            query.MaxNodes,
-            query.Root,
-            query.Pid,
+            new UiTreeOptions(
+                query.MaxDepth,
+                query.InteractiveOnly,
+                query.MaxNodes,
+                query.Root,
+                query.Pid),
             query.Format,
             query.NewSnapshot);
 

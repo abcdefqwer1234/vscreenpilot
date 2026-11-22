@@ -2,6 +2,16 @@ using VScreenPilot.Perception;
 
 namespace VScreenPilot.Perception;
 
+/// <summary>屏幕源帧。</summary>
+internal readonly record struct ScreenFrame(byte[] Bgra, int Width, int Height);
+
+/// <summary>模板匹配参数。</summary>
+internal sealed record TemplateSearchOptions(
+    double Threshold,
+    int MaxResults,
+    IReadOnlyList<double>? Scales,
+    Func<bool>? IsCancelled);
+
 internal sealed record VisualMatch(
     int X, int Y, int Width, int Height, double Score, double Scale = 1.0);
 
@@ -15,14 +25,15 @@ internal static class TemplateMatcher
     private const int CandidateLimit = 64;
 
     public static List<VisualMatch> Match(
-        byte[] screenBgra,
-        int screenWidth,
-        int screenHeight,
-        PngImage template,
-        double threshold,
-        int maxResults,
-        Func<bool>? isCancelled)
+        ScreenFrame screen, PngImage template, TemplateSearchOptions options)
     {
+        byte[] screenBgra = screen.Bgra;
+        int screenWidth = screen.Width;
+        int screenHeight = screen.Height;
+        List<TemplatePyramid.GrayLevel> screenPyramid;
+        double threshold = options.Threshold;
+        int maxResults = options.MaxResults;
+        Func<bool>? isCancelled = options.IsCancelled;
         if (template.Width > screenWidth || template.Height > screenHeight)
         {
             return new List<VisualMatch>();
@@ -31,10 +42,10 @@ internal static class TemplateMatcher
         threshold = Math.Clamp(threshold, 0.3, 1.0);
         maxResults = Math.Clamp(maxResults, 1, 100);
 
-        List<TemplatePyramid.GrayLevel> screen = TemplatePyramid.BuildScreenPyramid(screenBgra, screenWidth, screenHeight);
+        screenPyramid = TemplatePyramid.BuildScreenPyramid(screenBgra, screenWidth, screenHeight);
         List<TemplatePyramid.TemplateLevel> templates = TemplatePyramid.BuildTemplatePyramid(template);
 
-        int levels = Math.Min(screen.Count, templates.Count);
+        int levels = Math.Min(screenPyramid.Count, templates.Count);
         int last = 0;
 
         for (int level = 1; level < levels; level++)
@@ -44,8 +55,8 @@ internal static class TemplateMatcher
                 break;
             }
 
-            if (templates[level].Width > screen[level].Width ||
-                templates[level].Height > screen[level].Height)
+            if (templates[level].Width > screenPyramid[level].Width ||
+                templates[level].Height > screenPyramid[level].Height)
             {
                 break;
             }
@@ -53,7 +64,7 @@ internal static class TemplateMatcher
             last = level;
         }
 
-        var candidates = SearchCoarse(screen[last], templates[last], last, threshold, isCancelled);
+        var candidates = SearchCoarse(screenPyramid[last], templates[last], last, threshold, isCancelled);
 
         if (candidates.Count == 0)
         {
@@ -67,7 +78,7 @@ internal static class TemplateMatcher
                 return new List<VisualMatch>();
             }
 
-            candidates = Refine(screen[level], templates[level], candidates, isCancelled);
+            candidates = Refine(screenPyramid[level], templates[level], candidates, isCancelled);
         }
 
         return Suppress(candidates, template.Width, template.Height, threshold, maxResults);
@@ -78,19 +89,14 @@ internal static class TemplateMatcher
     /// 每个尺度独立匹配，最后按 score 合并；命中结果带实际 scale。
     /// </summary>
     public static List<VisualMatch> MatchMultiScale(
-        byte[] screenBgra,
-        int screenWidth,
-        int screenHeight,
-        PngImage template,
-        double threshold,
-        int maxResults,
-        IReadOnlyList<double>? scales,
-        Func<bool>? isCancelled)
+        ScreenFrame screen, PngImage template, TemplateSearchOptions options)
     {
+        IReadOnlyList<double>? scales = options.Scales;
+        Func<bool>? isCancelled = options.IsCancelled;
+
         if (scales is null || scales.Count == 0)
         {
-            List<VisualMatch> single = Match(
-                screenBgra, screenWidth, screenHeight, template, threshold, maxResults, isCancelled);
+            List<VisualMatch> single = Match(screen, template, options);
             return single.Select(match => match with { Scale = 1.0 }).ToList();
         }
 
@@ -108,13 +114,12 @@ internal static class TemplateMatcher
                 ? template
                 : Resize(template, scale);
 
-            if (scaled.Width > screenWidth || scaled.Height > screenHeight)
+            if (scaled.Width > screen.Width || scaled.Height > screen.Height)
             {
                 continue;
             }
 
-            List<VisualMatch> matches = Match(
-                screenBgra, screenWidth, screenHeight, scaled, threshold, maxResults, isCancelled);
+            List<VisualMatch> matches = Match(screen, scaled, options);
 
             foreach (VisualMatch match in matches)
             {
@@ -143,7 +148,7 @@ internal static class TemplateMatcher
 
             results.Add(match);
 
-            if (results.Count >= Math.Clamp(maxResults, 1, 100))
+            if (results.Count >= Math.Clamp(options.MaxResults, 1, 100))
             {
                 break;
             }

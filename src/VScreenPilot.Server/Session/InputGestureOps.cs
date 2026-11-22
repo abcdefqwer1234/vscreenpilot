@@ -155,7 +155,8 @@ internal sealed class InputGestureOps
         }
 
         if (MessageInput.Drag(
-                points.FromX, points.FromY, points.ToX, points.ToY, button, duration, out string? detail))
+                new DragRequest(points.FromX, points.FromY, points.ToX, points.ToY, button, duration),
+                out string? detail))
         {
             return detail;
         }

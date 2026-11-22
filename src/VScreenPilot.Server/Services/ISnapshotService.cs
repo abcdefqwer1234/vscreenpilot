@@ -27,15 +27,11 @@ internal sealed class SnapshotToolService : ISnapshotService
 
     public SnapshotOutput Snapshot(SnapshotRequest request)
     {
-        SnapshotResult result = _session.SnapshotOps.Snapshot(
-            request.Pid,
-            request.MaxDepth,
-            request.InteractiveOnly,
-            request.MaxNodes,
-            request.IncludeValues,
-            request.IncludeScreenshot,
-            request.Scale,
-            request.Annotate);
+        SnapshotResult result = _session.SnapshotOps.Snapshot(new UiSnapshotRequest(
+            new SnapshotLimits(
+                request.MaxDepth, request.MaxNodes, request.InteractiveOnly, request.IncludeValues),
+            new SnapshotOptions(
+                request.Pid, request.Scale, request.IncludeScreenshot, request.Annotate)));
         return new SnapshotOutput(result.Data, result.Png, result.PreviewPng, result.PreviewMeta);
     }
 

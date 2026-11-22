@@ -23,9 +23,11 @@ internal sealed class SessionFacade : ISessionFacade, IControlService
     public string ArtifactDirectory => _session.ArtifactDirectory;
 
     public SnapshotResult Snapshot(SnapshotRequest request) =>
-        _session.SnapshotOps.Snapshot(request.Pid, request.MaxDepth, request.InteractiveOnly,
-            request.MaxNodes, request.IncludeValues, request.IncludeScreenshot,
-            request.Scale, request.Annotate);
+        _session.SnapshotOps.Snapshot(new UiSnapshotRequest(
+            new SnapshotLimits(
+                request.MaxDepth, request.MaxNodes, request.InteractiveOnly, request.IncludeValues),
+            new SnapshotOptions(
+                request.Pid, request.Scale, request.IncludeScreenshot, request.Annotate)));
 
     public CaptureResult CaptureScreen(CaptureRequest request) =>
         _session.CaptureOps.CaptureScreenEx(request);

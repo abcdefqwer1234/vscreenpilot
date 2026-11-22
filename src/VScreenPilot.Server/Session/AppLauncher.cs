@@ -106,13 +106,9 @@ internal sealed class AppLauncher
         }
 
         UiaTreeResult tree = _apps.Uia.BuildTree(
-            frameHwnd,
-            rootRuntimeId: string.Empty,
-            maxDepth: 4,
-            interactiveOnly: false,
-            maxNodes: 300,
-            timeBudgetMs: 1200,
-            isCancelled: () => false);
+            new UiTreeRequest(frameHwnd, string.Empty, MaxDepth: 4, InteractiveOnly: false,
+                MaxNodes: 300, TimeBudgetMs: 1200),
+            () => false);
 
         if (tree.Root is null)
         {

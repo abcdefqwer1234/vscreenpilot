@@ -17,6 +17,10 @@ using VScreenPilot.Json;
 
 namespace VScreenPilot.Session;
 
+/// <summary>get_ui_tree 的入参。</summary>
+internal sealed record UiTreeOptions(
+    int? MaxDepth, bool? InteractiveOnly, int? MaxNodes, string? Root, int? Pid);
+
 internal delegate JsonObject ConvertTreeNodeHandler(UiaTreeNode node, IntPtr hwnd, ref string rootRef);
 
 internal sealed record ElementStateContext(
@@ -91,12 +95,13 @@ internal sealed class ElementOperations
     }
 
     public UiTreeView GetUiTree(
-        int? maxDepth, bool? interactiveOnly, int? maxNodes, string? root, int? pid,
-        string? format = null, bool newSnapshot = false)
+        UiTreeOptions options, string? format = null, bool newSnapshot = false)
     {
-        int depth = Math.Clamp(maxDepth ?? 3, 1, 10);
-        int nodes = Math.Clamp(maxNodes ?? 300, 1, Math.Min(1024, _state.RefCapacity));
-        bool interactive = interactiveOnly ?? true;
+        int depth = Math.Clamp(options.MaxDepth ?? 3, 1, 10);
+        int nodes = Math.Clamp(options.MaxNodes ?? 300, 1, Math.Min(1024, _state.RefCapacity));
+        bool interactive = options.InteractiveOnly ?? true;
+        string? root = options.Root;
+        int? pid = options.Pid;
         int effectiveNodes = nodes;
 
         (IntPtr hwnd, string rootRuntimeId, UiTreeView? early) = ResolveRoot(root, pid, nodes, format);
@@ -107,13 +112,8 @@ internal sealed class ElementOperations
         }
 
         UiaTreeResult result = _state.Uia.BuildTree(
-            hwnd,
-            rootRuntimeId,
-            depth,
-            interactive,
-            nodes,
-            timeBudgetMs: 3000,
-            isCancelled: _snapshot.CancellationProbe());
+            new UiTreeRequest(hwnd, rootRuntimeId, depth, interactive, nodes, TimeBudgetMs: 3000),
+            _snapshot.CancellationProbe());
 
         if (result.Root is null)
         {
@@ -153,7 +153,7 @@ internal sealed class ElementOperations
             snapshotId,
             newSnapshot,
             Backend: null,
-            nodes != (maxNodes ?? 300) ? true : null,
+            nodes != (options.MaxNodes ?? 300) ? true : null,
             result.Reason,
             string.Equals(format, "text", StringComparison.OrdinalIgnoreCase)
                 ? SnapshotTextFormatter.Render(tree, includeValues: true)

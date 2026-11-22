@@ -113,7 +113,7 @@ internal static class Program
         Console.WriteLine($"adapter       : {display} (+{stopwatch.Elapsed.TotalMilliseconds:F1}ms)");
 
         int setResult = DisplayTopology.SetModeAndPosition(
-            display.DeviceName, width, height, frequency, x, y, out int applyResult);
+            display.DeviceName, (width, height, frequency), (x, y), out int applyResult);
         Console.WriteLine($"set mode      : result={setResult} apply={applyResult} (+{stopwatch.Elapsed.TotalMilliseconds:F1}ms)");
 
         // 新挂载的 IDD 显示器有时不会被系统自动并入桌面，需要显式扩展拓扑。
@@ -125,7 +125,7 @@ internal static class Program
             Console.WriteLine($"extend        : result={extendResult} (+{stopwatch.Elapsed.TotalMilliseconds:F1}ms)");
 
             setResult = DisplayTopology.SetModeAndPosition(
-                display.DeviceName, width, height, frequency, x, y, out applyResult);
+            display.DeviceName, (width, height, frequency), (x, y), out applyResult);
             Console.WriteLine($"set mode(2)   : result={setResult} apply={applyResult} (+{stopwatch.Elapsed.TotalMilliseconds:F1}ms)");
         }
 
@@ -133,7 +133,7 @@ internal static class Program
         {
             // 部分驱动对刷新率字段敏感，退回只设置分辨率与位置。
             setResult = DisplayTopology.SetModeAndPosition(
-                display.DeviceName, width, height, 0, x, y, out applyResult);
+            display.DeviceName, (width, height, 0), (x, y), out applyResult);
             Console.WriteLine($"set mode(3)   : result={setResult} apply={applyResult} (+{stopwatch.Elapsed.TotalMilliseconds:F1}ms)");
         }
 
@@ -367,7 +367,7 @@ internal static class Program
 
             sw.Restart();
             int setResult = DisplayTopology.SetModeAndPosition(
-                display.DeviceName, width, height, frequency, x, y, out _);
+            display.DeviceName, (width, height, frequency), (x, y), out _);
 
             if (!DisplayTopology.WaitUntil(
                     () => DisplayTopology.FindParsecDisplay() is { Attached: true },
@@ -375,13 +375,13 @@ internal static class Program
             {
                 DisplayTopology.ExtendDesktop();
                 setResult = DisplayTopology.SetModeAndPosition(
-                    display.DeviceName, width, height, frequency, x, y, out _);
+            display.DeviceName, (width, height, frequency), (x, y), out _);
             }
 
             if (setResult != 0)
             {
                 setResult = DisplayTopology.SetModeAndPosition(
-                    display.DeviceName, width, height, 0, x, y, out _);
+            display.DeviceName, (width, height, 0), (x, y), out _);
             }
 
             bool settled = DisplayTopology.WaitUntil(
@@ -586,7 +586,7 @@ internal static class Program
                 $"{target.Width}x{target.Height} at ({target.X},{target.Y})");
 
             int forceResult = DisplayTopology.SetModeAndPosition(
-                target.DeviceName, width, height, frequency, x, y, out int forceApply);
+            target.DeviceName, (width, height, frequency), (x, y), out int forceApply);
             Console.WriteLine($"force set     : result={forceResult} apply={forceApply}");
 
             bool forceAttached = DisplayTopology.WaitUntil(
@@ -657,7 +657,7 @@ internal static class Program
             default:
                 {
                     int result = DisplayTopology.SetModeAndPosition(
-                        adapter.DeviceName, width, height, frequency, x, y, out int apply);
+            adapter.DeviceName, (width, height, frequency), (x, y), out int apply);
                     Console.WriteLine($"global        : result={result} apply={apply} (+{stopwatch.Elapsed.TotalMilliseconds:F0}ms)");
                     break;
                 }

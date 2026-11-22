@@ -48,13 +48,15 @@ internal static class SessionComposition
     {
         host._display = new VirtualDisplayController(
             host._gate, host._log, host.ProfileName,
-            () => Volatile.Read(ref host._disposed) != 0,
-            host.OnDisplayReady,
-            host.OnDisplayRemoved,
-            host.LifecycleOps.SaveState,
-            SessionManager.VirtualWidth,
-            SessionManager.VirtualHeight,
-            SessionManager.VirtualRefresh);
+            new DisplayCallbacks(
+                () => Volatile.Read(ref host._disposed) != 0,
+                host.OnDisplayReady,
+                host.OnDisplayRemoved,
+                host.LifecycleOps.SaveState),
+            new DisplayGeometry(
+                SessionManager.VirtualWidth,
+                SessionManager.VirtualHeight,
+                SessionManager.VirtualRefresh));
         host._environment = new EnvironmentReporter(
             new EnvironmentRuntimeContext(host.Metrics, host._gate, () => host._display.State.Initialized, host.ProfileName,
                 () => host.Epoch, host._job, host.ScreenLeaseProvider),

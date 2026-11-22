@@ -244,7 +244,8 @@ internal static class Bootstrap
         var trace = new TraceLog();
 
         using var host = new ServerHost(
-            session, log, trace, registry, appJob, mutex, allowScript);
+            new ServerHostResources(session, log, trace, registry, appJob, mutex),
+            new ServerHostSettings(allowScript));
         return host.Run(entry, args);
     }
 }

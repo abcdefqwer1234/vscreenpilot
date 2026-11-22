@@ -49,11 +49,12 @@ internal sealed class SnapshotScreenshotOps
         int thickness = Math.Max(2, (int)Math.Ceiling(2 / effectiveScale));
         int numberScale = Math.Max(2, (int)Math.Ceiling(2 / effectiveScale));
 
-        PngOverlay.DrawGrid(bgra, captureWidth, captureHeight, 100);
+        var canvas = new PngCanvas(bgra, captureWidth, captureHeight);
+        PngOverlay.DrawGrid(canvas, 100);
 
         foreach (JsonNode? item in annotations)
         {
-            DrawAnnotation(bgra, captureWidth, captureHeight, item, display, thickness, numberScale);
+            DrawAnnotation(canvas, item, display, thickness, numberScale);
         }
 
         byte[] png = PngWriter.Encode(
@@ -72,9 +73,7 @@ internal sealed class SnapshotScreenshotOps
     }
 
     private static void DrawAnnotation(
-        byte[] bgra,
-        int captureWidth,
-        int captureHeight,
+        PngCanvas canvas,
         JsonNode? item,
         DisplayInfo display,
         int thickness,
@@ -93,10 +92,8 @@ internal sealed class SnapshotScreenshotOps
         int bh = bounds["height"]?.GetValue<int>() ?? 0;
         (byte r, byte g, byte b) = PngOverlay.ColorFor(Math.Max(0, index - 1));
 
-        PngOverlay.DrawBox(
-            bgra, captureWidth, captureHeight, bx, by, bw, bh, r, g, b, thickness);
-        PngOverlay.DrawNumber(
-            bgra, captureWidth, captureHeight, bx + 2, by + 2, index, numberScale);
+        PngOverlay.DrawBox(canvas, new PngBox(bx, by, bw, bh), (r, g, b), thickness);
+        PngOverlay.DrawNumber(canvas, bx + 2, by + 2, index, numberScale);
     }
 
     private static JsonObject BuildAnnotatedMeta(

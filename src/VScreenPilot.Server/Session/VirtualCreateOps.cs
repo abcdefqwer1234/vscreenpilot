@@ -242,7 +242,7 @@ internal sealed class VirtualCreateOps
         (int x, int y) = _core.ExpectedPosition();
 
         int setResult = DisplayTopology.SetModeAndPosition(
-            deviceName, _core._width, _core._height, _core._refresh, x, y, out int applyResult);
+            deviceName, (_core._width, _core._height, _core._refresh), (x, y), out int applyResult);
 
         if (!DisplayTopology.WaitUntil(
                 () => DisplayTopology.FindParsecDisplayByDevice(deviceName) is { Attached: true },
@@ -251,7 +251,7 @@ internal sealed class VirtualCreateOps
             int extendResult = DisplayTopology.ExtendDesktop();
             _core._log.Warn($"SetDisplayConfig(EXTEND)={extendResult}，重试设置虚拟屏模式");
             setResult = DisplayTopology.SetModeAndPosition(
-                deviceName, _core._width, _core._height, _core._refresh, x, y, out applyResult);
+                deviceName, (_core._width, _core._height, _core._refresh), (x, y), out applyResult);
         }
 
         bool settled = DisplayTopology.WaitUntil(

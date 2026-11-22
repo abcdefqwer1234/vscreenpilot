@@ -9,6 +9,13 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
+/// <summary>虚拟屏生命周期的回调。</summary>
+internal sealed record DisplayCallbacks(
+    Func<bool> IsDisposed, Action<DisplayInfo> OnReady, Action OnRemoved, Action SaveState);
+
+/// <summary>虚拟屏的几何参数。</summary>
+internal sealed record DisplayGeometry(int Width, int Height, int Refresh);
+
 /// <summary>显示状态：只存字段，不做逻辑；由 <see cref="VirtualDisplayController"/> 在会话锁内读写。</summary>
 internal sealed class DisplayStateStore
 {
@@ -58,13 +65,8 @@ internal sealed class VirtualDisplayController
         object gate,
         LogRing log,
         string profile,
-        Func<bool> isDisposed,
-        Action<DisplayInfo> onReady,
-        Action onRemoved,
-        Action saveState,
-        int width,
-        int height,
-        int refresh)
+        DisplayCallbacks callbacks,
+        DisplayGeometry geometry)
     {
         CreateOps = new VirtualCreateOps(this);
         AdoptOps = new VirtualAdoptOps(this);
@@ -72,13 +74,13 @@ internal sealed class VirtualDisplayController
         _gate = gate;
         _log = log;
         _profile = profile;
-        _isDisposed = isDisposed;
-        _onReady = onReady;
-        _onRemoved = onRemoved;
-        _saveState = saveState;
-        _width = width;
-        _height = height;
-        _refresh = refresh;
+        _isDisposed = callbacks.IsDisposed;
+        _onReady = callbacks.OnReady;
+        _onRemoved = callbacks.OnRemoved;
+        _saveState = callbacks.SaveState;
+        _width = geometry.Width;
+        _height = geometry.Height;
+        _refresh = geometry.Refresh;
     }
 
     public VddDevice Vdd { get; } = new();

@@ -14,6 +14,17 @@ using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 
+/// <summary>快照的规模限制。</summary>
+internal sealed record SnapshotLimits(
+    int MaxDepth, int MaxNodes, bool InteractiveOnly, bool IncludeValues);
+
+/// <summary>快照的输出选项。</summary>
+internal sealed record SnapshotOptions(
+    int? Pid, double Scale, bool IncludeScreenshot, bool Annotate);
+
+/// <summary>snapshot 请求。</summary>
+internal sealed record UiSnapshotRequest(SnapshotLimits Limits, SnapshotOptions Options);
+
 internal sealed record SnapshotResult(
     SnapshotView Data, byte[]? Png, byte[]? PreviewPng, JsonObject? PreviewMeta);
 
@@ -71,15 +82,7 @@ internal sealed class SnapshotBuilder : IDisposable
     /// 一次调用完成“环境 + 语义树 + 弹窗 + 前台 + 可选截图”。
     /// 相比 get_environment + get_ui_tree + find_element 的三次往返，token 和延迟都更低。
     /// </summary>
-    public SnapshotResult Snapshot(
-        int? pid,
-        int maxDepth,
-        bool interactiveOnly,
-        int maxNodes,
-        bool includeValues,
-        bool includeScreenshot,
-        double scale,
-        bool annotate = false)
+    public SnapshotResult Snapshot(UiSnapshotRequest request)
     {
         // snapshot 之间串行：保证 generation 提交顺序与调用顺序一致。
         // 注意这里不持 _refGate——建树（最多 3s）和截图都不能阻塞 ref 解析。
@@ -97,8 +100,7 @@ internal sealed class SnapshotBuilder : IDisposable
 
         try
         {
-            return SnapshotCore(
-                pid, maxDepth, interactiveOnly, maxNodes, includeValues, includeScreenshot, scale, annotate);
+            return SnapshotCore(request);
         }
         finally
         {
@@ -106,16 +108,17 @@ internal sealed class SnapshotBuilder : IDisposable
         }
     }
 
-    private SnapshotResult SnapshotCore(
-        int? pid,
-        int maxDepth,
-        bool interactiveOnly,
-        int maxNodes,
-        bool includeValues,
-        bool includeScreenshot,
-        double scale,
-        bool annotate)
+    private SnapshotResult SnapshotCore(UiSnapshotRequest request)
     {
+        int? pid = request.Options.Pid;
+        int maxDepth = request.Limits.MaxDepth;
+        bool interactiveOnly = request.Limits.InteractiveOnly;
+        int maxNodes = request.Limits.MaxNodes;
+        bool includeValues = request.Limits.IncludeValues;
+        bool includeScreenshot = request.Options.IncludeScreenshot;
+        double scale = request.Options.Scale;
+        bool annotate = request.Options.Annotate;
+
         DisplayInfo display = _apps.EnsureDisplay();
         _apps.PruneApps();
         TrackedApp app = _apps.FindApp(pid)

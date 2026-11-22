@@ -35,6 +35,16 @@ internal sealed record FindQuery(
     string? Role = null,
     string Prefer = "auto");
 
+/// <summary>查找范围（ApplyRole 之后的过滤条件）。</summary>
+internal sealed record FindScope(string? ControlType, string? AutomationId, int Limit);
+
+/// <summary>一次查找的候选与结果。</summary>
+internal sealed record FindResultSet(
+    List<(UiaElementInfo Info, IntPtr Hwnd)> Candidates,
+    List<UiaElementInfo> Matches,
+    IntPtr Hwnd,
+    bool Truncated);
+
 /// <summary>find_element：跨主窗口/弹窗查找、MSAA 回退、排序与 ref 登记。</summary>
 internal sealed class ElementFinder
 {
@@ -53,11 +63,11 @@ internal sealed class ElementFinder
         (UiaNameMatch mode, string preferMode) = ParseQuery(query.NameMatch, query.Prefer, query.Name);
 
         int limit = ResolveLimit(query, preferMode);
+        var scope = new FindScope(controlType, automationId, limit);
 
-        (List<(UiaElementInfo Info, IntPtr Hwnd)> candidates, List<UiaElementInfo> matches, bool findTruncated) =
-            FindMatches(hwnd, query.Name, mode, controlType, automationId, limit, query.IncludeOffscreen);
+        FindResultSet found = FindMatches(hwnd, query, mode, scope);
 
-        if (matches.Count == 0)
+        if (found.Matches.Count == 0)
         {
             throw new ToolException(
                 "E_ELEMENT_NOT_FOUND",
@@ -72,17 +82,14 @@ internal sealed class ElementFinder
                 });
         }
 
-        matches = SortMatches(matches, preferMode);
+        found = found with { Matches = SortMatches(found.Matches, preferMode) };
 
         // find_element 属于“当前快照”：不推进代际，避免让刚拿到的 ref 立刻失效。
         string snapshotId = _host.EnsureSnapshot();
 
-        if (query.All)
-        {
-            return BuildAllView(query, matches, findTruncated, preferMode, snapshotId, candidates, hwnd);
-        }
-
-        return BuildSingleView(query, candidates, matches, hwnd, preferMode, snapshotId, findTruncated);
+        return query.All
+            ? BuildAllView(query, found, preferMode, snapshotId)
+            : BuildSingleView(query, found, preferMode, snapshotId);
     }
 
     private static int ResolveLimit(FindQuery query, string preferMode)
@@ -100,23 +107,17 @@ internal sealed class ElementFinder
     }
 
     private object BuildSingleView(
-        FindQuery query,
-        List<(UiaElementInfo Info, IntPtr Hwnd)> candidates,
-        List<UiaElementInfo> matches,
-        IntPtr hwnd,
-        string preferMode,
-        string snapshotId,
-        bool findTruncated)
+        FindQuery query, FindResultSet found, string preferMode, string snapshotId)
     {
-        if (query.Index < 0 || query.Index >= matches.Count)
+        if (query.Index < 0 || query.Index >= found.Matches.Count)
         {
             throw new ToolException(
                 "E_ELEMENT_NOT_FOUND",
-                $"index={query.Index} 超出候选范围（共 {matches.Count} 个）",
-                new JsonObject { ["index"] = query.Index, ["count"] = matches.Count });
+                $"index={query.Index} 超出候选范围（共 {found.Matches.Count} 个）",
+                new JsonObject { ["index"] = query.Index, ["count"] = found.Matches.Count });
         }
 
-        UiaElementInfo info = matches[query.Index];
+        UiaElementInfo info = found.Matches[query.Index];
         ElementView element = ElementPresenter.ToView(info, compact: true);
 
         return new FindElementView(
@@ -128,13 +129,13 @@ internal sealed class ElementFinder
             element.Offscreen,
             element.Focused,
             element.Value,
-            _host.RegisterElement(info, HwndFor(candidates, info, hwnd)),
+            _host.RegisterElement(info, HwndFor(found.Candidates, info, found.Hwnd)),
             query.NameMatch,
             query.Role,
             preferMode,
             query.Index,
-            matches.Count,
-            findTruncated,
+            found.Matches.Count,
+            found.Truncated,
             snapshotId);
     }
 
@@ -197,10 +198,7 @@ internal sealed class ElementFinder
         return (mode, preferMode);
     }
 
-    private (List<(UiaElementInfo Info, IntPtr Hwnd)> Candidates, List<UiaElementInfo> Matches, bool Truncated)
-        FindMatches(
-            IntPtr hwnd, string? name, UiaNameMatch mode, string? controlType,
-            string? automationId, int limit, bool includeOffscreen)
+    private FindResultSet FindMatches(IntPtr hwnd, FindQuery query, UiaNameMatch mode, FindScope scope)
     {
         List<(UiaElementInfo Info, IntPtr Hwnd)> candidates;
         bool findTruncated;
@@ -208,7 +206,7 @@ internal sealed class ElementFinder
         try
         {
             (candidates, findTruncated) =
-                FindAcrossAppWindows(hwnd, name, mode, controlType, automationId, limit);
+                FindAcrossAppWindows(hwnd, query, mode, scope);
         }
         catch (RegexMatchTimeoutException)
         {
@@ -221,7 +219,7 @@ internal sealed class ElementFinder
 
         List<UiaElementInfo> matches = candidates.Select(item => item.Info).ToList();
 
-        if (!includeOffscreen)
+        if (!query.IncludeOffscreen)
         {
             matches = matches.Where(item => !item.Offscreen && item.Width > 0 && item.Height > 0).ToList();
         }
@@ -229,17 +227,14 @@ internal sealed class ElementFinder
         // UIA 完全看不到时回退 MSAA（Office 旧对话框、bosa_sdm_msword 等）。
         if (matches.Count == 0)
         {
-            (candidates, matches, findTruncated) = FindWithMsaa(
-                hwnd, name, mode, controlType, limit, includeOffscreen, findTruncated);
+            return FindWithMsaa(hwnd, query, mode, scope, findTruncated);
         }
 
-        return (candidates, matches, findTruncated);
+        return new FindResultSet(candidates, matches, hwnd, findTruncated);
     }
 
-    private (List<(UiaElementInfo Info, IntPtr Hwnd)> Candidates, List<UiaElementInfo> Matches, bool Truncated)
-        FindWithMsaa(
-            IntPtr hwnd, string? name, UiaNameMatch mode, string? controlType,
-            int limit, bool includeOffscreen, bool findTruncated)
+    private FindResultSet FindWithMsaa(
+        IntPtr hwnd, FindQuery query, UiaNameMatch mode, FindScope scope, bool findTruncated)
     {
         var fallback = new List<(UiaElementInfo Info, IntPtr Hwnd)>();
         int pidForMsaa = WindowManager.GetProcessId(hwnd);
@@ -247,17 +242,17 @@ internal sealed class ElementFinder
         foreach (WindowInfo window in WindowManager.ListForProcess(pidForMsaa))
         {
             MsaaFindResult msaa = _host.Uia.InvokeMsaa(() => MsaaService.FindElements(
-                window.Hwnd, name, mode, controlType, limit));
+                window.Hwnd, query.Name, mode, scope.ControlType, scope.Limit));
             fallback.AddRange(msaa.Items.Select(info => (info, window.Hwnd)));
             findTruncated |= msaa.Truncated;
 
-            if (fallback.Count >= limit)
+            if (fallback.Count >= scope.Limit)
             {
                 break;
             }
         }
 
-        if (!includeOffscreen)
+        if (!query.IncludeOffscreen)
         {
             fallback = fallback
                 .Where(item => !item.Info.Offscreen && item.Info.Width > 0 && item.Info.Height > 0)
@@ -265,30 +260,24 @@ internal sealed class ElementFinder
         }
 
         List<UiaElementInfo> matches = fallback.Select(item => item.Info).ToList();
-        return (fallback, matches, findTruncated);
+        return new FindResultSet(fallback, matches, hwnd, findTruncated);
     }
 
     private object BuildAllView(
-        FindQuery query,
-        List<UiaElementInfo> matches,
-        bool findTruncated,
-        string preferMode,
-        string snapshotId,
-        List<(UiaElementInfo Info, IntPtr Hwnd)> candidates,
-        IntPtr hwnd)
+        FindQuery query, FindResultSet found, string preferMode, string snapshotId)
     {
         var elements = new List<FindElementItemView>();
 
-        foreach (UiaElementInfo item in matches.Take(query.MaxResults))
+        foreach (UiaElementInfo item in found.Matches.Take(query.MaxResults))
         {
             elements.Add(ElementPresenter.ToFindItem(
-                item, _host.RegisterElement(item, HwndFor(candidates, item, hwnd))));
+                item, _host.RegisterElement(item, HwndFor(found.Candidates, item, found.Hwnd))));
         }
 
         return new FindElementsView(
             elements.Count,
-            matches.Count,
-            findTruncated || matches.Count > query.MaxResults,
+            found.Matches.Count,
+            found.Truncated || found.Matches.Count > query.MaxResults,
             query.NameMatch,
             query.Role,
             preferMode,
@@ -301,12 +290,7 @@ internal sealed class ElementFinder
     /// 只查主窗口会把 MessageBox / 保存框等真实场景漏掉。
     /// </summary>
     private (List<(UiaElementInfo Info, IntPtr Hwnd)> Items, bool Truncated) FindAcrossAppWindows(
-        IntPtr mainHwnd,
-        string? name,
-        UiaNameMatch mode,
-        string? controlType,
-        string? automationId,
-        int limit)
+        IntPtr mainHwnd, FindQuery query, UiaNameMatch mode, FindScope scope)
     {
         var result = new List<(UiaElementInfo Info, IntPtr Hwnd)>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -328,7 +312,7 @@ internal sealed class ElementFinder
             try
             {
                 UiaFindResult uia = _host.Uia.FindElementsDetailed(
-                    window, name, mode, controlType, automationId, limit);
+                    window, query.Name, mode, scope.ControlType, scope.AutomationId, scope.Limit);
                 found = uia.Items;
                 truncated |= uia.Truncated;
 
@@ -337,7 +321,7 @@ internal sealed class ElementFinder
                 if (found.Count == 0)
                 {
                     MsaaFindResult msaa = _host.Uia.InvokeMsaa(() => MsaaService.FindElements(
-                        window, name, mode, controlType, limit));
+                        window, query.Name, mode, scope.ControlType, scope.Limit));
                     found = msaa.Items;
                     truncated |= msaa.Truncated;
                 }

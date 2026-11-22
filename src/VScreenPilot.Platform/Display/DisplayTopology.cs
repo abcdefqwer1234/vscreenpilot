@@ -233,14 +233,14 @@ public static class DisplayTopology
     /// 返回 DISP_CHANGE 错误码，0 表示成功。
     /// </summary>
     public static int SetModeAndPosition(
-        string deviceName,
-        int width,
-        int height,
-        int frequency,
-        int x,
-        int y,
+        string deviceName, (int Width, int Height, int Frequency) target, (int X, int Y) position,
         out int applyResult)
     {
+        int width = target.Width;
+        int height = target.Height;
+        int frequency = target.Frequency;
+        int x = position.X;
+        int y = position.Y;
         var mode = NewDevMode();
         mode.dmFields = Win32.DmPelsWidth | Win32.DmPelsHeight | Win32.DmPosition |
                         Win32.DmDisplayFrequency | Win32.DmBitsPerPel;

@@ -4,6 +4,14 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Server.Infrastructure;
 
+/// <summary>工具调用的请求侧字段。</summary>
+internal sealed record TraceRequest(
+    string Tool, string RequestId, string? Arguments, double Milliseconds, string? ClientId);
+
+/// <summary>工具调用的响应侧字段。</summary>
+internal sealed record TraceResult(
+    string? Code, bool IsError, int TextBytes, int ImageBytes, string? Channel, string? Stage);
+
 /// <summary>
 /// 每会话一份 JSONL 追踪文件。记录每次工具调用的耗时、错误码、返回字节与通道，
 /// 让失败可以被复盘（报告里不再只有“E_INTERNAL”）。
@@ -128,32 +136,21 @@ internal sealed class TraceLog : IDisposable
         }
     }
 
-    public void ToolCall(
-        string tool,
-        string requestId,
-        string? arguments,
-        double milliseconds,
-        string? code,
-        bool isError,
-        int textBytes,
-        int imageBytes,
-        string? channel,
-        string? stage,
-        string? clientId = null)
+    public void ToolCall(TraceRequest request, TraceResult result)
     {
         Write("tool_call", new JsonObject
         {
-            ["request_id"] = requestId,
-            ["client_id"] = clientId,
-            ["tool"] = tool,
-            ["args"] = arguments,
-            ["ms"] = Math.Round(milliseconds, 2),
-            ["code"] = code,
-            ["is_error"] = isError,
-            ["text_bytes"] = textBytes,
-            ["image_bytes"] = imageBytes,
-            ["channel"] = channel,
-            ["stage"] = stage,
+            ["request_id"] = request.RequestId,
+            ["client_id"] = request.ClientId,
+            ["tool"] = request.Tool,
+            ["args"] = request.Arguments,
+            ["ms"] = Math.Round(request.Milliseconds, 2),
+            ["code"] = result.Code,
+            ["is_error"] = result.IsError,
+            ["text_bytes"] = result.TextBytes,
+            ["image_bytes"] = result.ImageBytes,
+            ["channel"] = result.Channel,
+            ["stage"] = result.Stage,
         });
     }
 

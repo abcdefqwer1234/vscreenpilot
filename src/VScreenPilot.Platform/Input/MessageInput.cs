@@ -4,6 +4,10 @@ using VScreenPilot.Errors;
 
 namespace VScreenPilot.Input;
 
+/// <summary>拖拽请求。</summary>
+internal sealed record DragRequest(
+    int FromX, int FromY, int ToX, int ToY, string Button, int DurationMs);
+
 /// <summary>
 /// 不移动系统光标的鼠标注入：向目标窗口投递窗口消息。
 /// 默认路径；Electron/Chromium 等可能忽略，需由调用方验证。
@@ -63,9 +67,10 @@ internal static class MessageInput
         return ok;
     }
 
-    public static bool Drag(
-        int fromX, int fromY, int toX, int toY, string button, int durationMs, out string detail)
+    public static bool Drag(DragRequest request, out string detail)
     {
+        int fromX = request.FromX;
+        int fromY = request.FromY;
         detail = string.Empty;
 
         IntPtr target = NativeMethods.WindowFromPoint(new NativeMethods.POINT { X = fromX, Y = fromY });
