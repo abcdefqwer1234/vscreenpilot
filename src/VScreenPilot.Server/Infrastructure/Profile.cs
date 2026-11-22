@@ -30,7 +30,7 @@ internal static class Profile
     private static string Sanitize(string value)
     {
         string lower = value.Trim().ToLowerInvariant();
-        string clean = NonNameCharacters().Replace(lower, "-").Trim('-', '_');
+        string clean = NonNameCharactersRegex.Replace(lower, "-").Trim('-', '_');
 
         if (clean.Length <= MaxLength)
         {
@@ -43,6 +43,6 @@ internal static class Profile
         return clean[..(MaxLength - hash.Length - 1)] + "-" + hash;
     }
 
-    [GeneratedRegex("[^a-z0-9_-]+")]
-    private static partial Regex NonNameCharacters();
+    private static readonly Regex NonNameCharactersRegex =
+        new("[^a-z0-9_-]+", RegexOptions.Compiled);
 }

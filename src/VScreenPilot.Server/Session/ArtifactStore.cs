@@ -62,7 +62,7 @@ internal sealed class ArtifactStore
             return false;
         }
 
-        if (!DirectoryName().IsMatch(directoryName))
+        if (!DirectoryNameRegex.IsMatch(directoryName))
         {
             return false;
         }
@@ -127,7 +127,7 @@ internal sealed class ArtifactStore
         {
             foreach (string child in Directory.EnumerateDirectories(root))
             {
-                if (DirectoryName().IsMatch(Path.GetFileName(child)))
+                if (DirectoryNameRegex.IsMatch(Path.GetFileName(child)))
                 {
                     // 旧布局：时间戳目录直接在 profile 根下。
                     TryDelete(child);
@@ -174,6 +174,6 @@ internal sealed class ArtifactStore
         }
     }
 
-    [GeneratedRegex(@"^\d{8}-\d{6}-\d+$")]
-    private static partial Regex DirectoryName();
+    private static readonly Regex DirectoryNameRegex =
+        new(@"^\d{8}-\d{6}-\d+$", RegexOptions.Compiled);
 }
