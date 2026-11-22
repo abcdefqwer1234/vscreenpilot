@@ -7,29 +7,33 @@ using VScreenPilot.Errors;
 
 namespace VScreenPilot.Uia;
 
-internal sealed partial class UiaService
+/// <summary>Conditions：UiaService 的拆分子集。</summary>
+internal sealed class UiaConditionOps
 {
-    private IUIAutomationCondition BuildCondition(
+    private readonly UiaService _core;
+
+    public UiaConditionOps(UiaService core) => _core = core;
+    internal IUIAutomationCondition BuildCondition(
         string? name, string? controlType, string? automationId, string? runtimeId)
     {
         IUIAutomationCondition? condition = null;
 
         if (!string.IsNullOrWhiteSpace(name))
         {
-            condition = And(condition, _automation.CreatePropertyCondition(NamePropertyId, name));
+            condition = And(condition, _core._automation.CreatePropertyCondition(UiaService.NamePropertyId, name));
         }
 
         if (!string.IsNullOrWhiteSpace(automationId))
         {
-            condition = And(condition, _automation.CreatePropertyCondition(AutomationIdPropertyId, automationId));
+            condition = And(condition, _core._automation.CreatePropertyCondition(UiaService.AutomationIdPropertyId, automationId));
         }
 
         if (!string.IsNullOrWhiteSpace(controlType))
         {
-            if (!TryParseControlType(controlType, out int controlTypeId))
+            if (!UiaElementFactoryOps.TryParseControlType(controlType, out int controlTypeId))
             {
                 // 静默忽略会让 find_element(control_type:"Buton") 返回第一个元素，模型点错控件。
-                IEnumerable<string> supported = ControlTypes.Values
+                IEnumerable<string> supported = UiaControlTypeOps.ControlTypes.Values
                     .OrderBy(value => value, StringComparer.Ordinal);
 
                 throw new ToolException(
@@ -41,33 +45,33 @@ internal sealed partial class UiaService
                     stage: "validate");
             }
 
-            condition = And(condition, _automation.CreatePropertyCondition(ControlTypePropertyId, controlTypeId));
+            condition = And(condition, _core._automation.CreatePropertyCondition(UiaService.ControlTypePropertyId, controlTypeId));
         }
 
-        if (!string.IsNullOrWhiteSpace(runtimeId) && TryParseRuntimeId(runtimeId, out int[] ids))
+        if (!string.IsNullOrWhiteSpace(runtimeId) && _core.Factory.TryParseRuntimeId(runtimeId, out int[] ids))
         {
-            condition = And(condition, _automation.CreatePropertyCondition(RuntimeIdPropertyId, ids));
+            condition = And(condition, _core._automation.CreatePropertyCondition(UiaService.RuntimeIdPropertyId, ids));
         }
 
-        return condition ?? TrueCondition;
+        return condition ?? _core.TrueCondition;
     }
 
-    private IUIAutomationCondition And(IUIAutomationCondition? existing, IUIAutomationCondition addition)
+    internal IUIAutomationCondition And(IUIAutomationCondition? existing, IUIAutomationCondition addition)
     {
         if (existing is null)
         {
             return addition;
         }
 
-        IUIAutomationCondition combined = _automation.CreateAndCondition(existing, addition);
+        IUIAutomationCondition combined = _core._automation.CreateAndCondition(existing, addition);
 
         // 组合条件已持有子条件引用；释放本地引用，避免每次查询泄漏 RCW。
-        ReleaseElement(existing);
-        ReleaseElement(addition);
+        UiaElementFactoryOps.ReleaseElement(existing);
+        UiaElementFactoryOps.ReleaseElement(addition);
         return combined;
     }
 
-    private static bool MatchesName(string value, string? expected, UiaNameMatch mode)
+    internal bool MatchesName(string value, string? expected, UiaNameMatch mode)
     {
         if (string.IsNullOrEmpty(expected))
         {

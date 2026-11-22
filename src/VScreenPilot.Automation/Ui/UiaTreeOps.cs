@@ -6,8 +6,12 @@ using VScreenPilot.Interop;
 
 namespace VScreenPilot.Uia;
 
-internal sealed partial class UiaService
+/// <summary>Tree：UiaService 的拆分子集。</summary>
+internal sealed class UiaTreeOps
 {
+    private readonly UiaService _core;
+
+    public UiaTreeOps(UiaService core) => _core = core;
     public UiaTreeResult BuildTree(
         IntPtr hwnd,
         string? rootRuntimeId,
@@ -18,14 +22,14 @@ internal sealed partial class UiaService
         Func<bool>? isCancelled)
     {
         // 树构建同样访问 IUIAutomation；必须与 find/invoke 串行，否则会跨线程使用 COM 对象。
-        lock (_sync)
+        lock (_core._sync)
         {
             return BuildTreeCore(
                 hwnd, rootRuntimeId, maxDepth, interactiveOnly, maxNodes, timeBudgetMs, isCancelled);
         }
     }
 
-    private UiaTreeResult BuildTreeCore(
+    internal UiaTreeResult BuildTreeCore(
         IntPtr hwnd,
         string? rootRuntimeId,
         int maxDepth,
@@ -45,7 +49,7 @@ internal sealed partial class UiaService
         {
             if (!string.IsNullOrWhiteSpace(rootRuntimeId))
             {
-                rootHandle = FindByRuntimeId(hwnd, rootRuntimeId);
+                rootHandle = _core.LocateOps.FindByRuntimeId(hwnd, rootRuntimeId);
                 rootElement = rootHandle?.Element;
 
                 if (rootElement is null)
@@ -59,9 +63,9 @@ internal sealed partial class UiaService
             {
                 // 必须使用 BuildCache 版本，否则后续读取 Cached* 属性会抛 ArgumentException。
                 rootElement = hwnd != IntPtr.Zero
-                    ? _automation.ElementFromHandleBuildCache(
-                        ResolveUwpContentHwnd(hwnd), _elementCache)
-                    : _automation.GetRootElementBuildCache(_elementCache);
+                    ? _core._automation.ElementFromHandleBuildCache(
+                        _core.FindOps.ResolveUwpContentHwnd(hwnd), _core._elementCache)
+                    : _core._automation.GetRootElementBuildCache(_core._elementCache);
             }
 
             if (rootElement is null)
@@ -69,7 +73,7 @@ internal sealed partial class UiaService
                 return new UiaTreeResult(null, 0, 0, 0, false, "root_not_found", 0, 0);
             }
 
-            UiaElementInfo? rootInfo = Describe(rootElement, cached: true);
+            UiaElementInfo? rootInfo = _core.Factory.Describe(rootElement, cached: true);
             if (rootInfo is null)
             {
                 return new UiaTreeResult(null, 0, 0, 0, false, "root_unavailable", 0, 0);
@@ -111,12 +115,12 @@ internal sealed partial class UiaService
             rootHandle?.Dispose();
             if (rootHandle is null)
             {
-                ReleaseElement(rootElement);
+                UiaElementFactoryOps.ReleaseElement(rootElement);
             }
         }
     }
 
-    private void BuildChildren(
+    internal void BuildChildren(
         IUIAutomationElement element, UiaTreeNode node, int depth, TreeBuildState state)
     {
         if (depth > state.MaxDepth)
@@ -141,7 +145,7 @@ internal sealed partial class UiaService
         try
         {
             children = element.FindAllBuildCache(
-                TreeScope.TreeScope_Children, TrueCondition, _elementCache);
+                TreeScope.TreeScope_Children, _core.TrueCondition, _core._elementCache);
         }
         catch (COMException)
         {
@@ -191,11 +195,11 @@ internal sealed partial class UiaService
         }
         finally
         {
-            ReleaseElement(children);
+            UiaElementFactoryOps.ReleaseElement(children);
         }
     }
 
-    private void VisitChild(
+    internal void VisitChild(
         IUIAutomationElementArray children, int i, UiaTreeNode node, int depth, TreeBuildState state)
     {
         IUIAutomationElement? child = null;
@@ -211,7 +215,7 @@ internal sealed partial class UiaService
             state.Visited++;
             state.MaxDepthReached = Math.Max(state.MaxDepthReached, depth);
 
-            UiaElementInfo? info = Describe(child, cached: true);
+            UiaElementInfo? info = _core.Factory.Describe(child, cached: true);
             if (info is null)
             {
                 return;
@@ -251,15 +255,15 @@ internal sealed partial class UiaService
         }
         finally
         {
-            ReleaseElement(child);
+            UiaElementFactoryOps.ReleaseElement(child);
         }
     }
 
-    private static bool IsInteresting(UiaTreeNode node) =>
+    internal bool IsInteresting(UiaTreeNode node) =>
         node.Children.Count > 0 ||
         node.Info.Focusable ||
         node.Info.Focused ||
-        InteractiveControlTypes.Contains(node.Info.ControlType) ||
+        UiaService.InteractiveControlTypes.Contains(node.Info.ControlType) ||
         // 画布/自绘应用常把内容暴露成无子节点、不可聚焦的 Text/Image/Custom。
         // 名字为空时再看 Value/Text：很多文本控件只有 TextPattern 内容。
         (node.Info.ControlType is 50020 or 50006 or 50025 &&
@@ -267,10 +271,10 @@ internal sealed partial class UiaService
           !string.IsNullOrWhiteSpace(node.Info.Value) ||
           !string.IsNullOrWhiteSpace(node.Info.Text)));
 
-    private static bool IsNoiseControl(int controlType) =>
+    internal bool IsNoiseControl(int controlType) =>
         controlType is 50012 or 50014 or 50027 or 50038; // ProgressBar/ScrollBar/Thumb/Separator
 
-    private sealed class TreeBuildState
+    internal sealed class TreeBuildState
     {
         public int MaxDepth;
         public int MaxNodes;

@@ -6,14 +6,18 @@ using VScreenPilot.Interop;
 
 namespace VScreenPilot.Uia;
 
-internal sealed partial class UiaService
+/// <summary>Patterns：UiaService 的拆分子集。</summary>
+internal sealed class UiaPatternOps
 {
+    private readonly UiaService _core;
+
+    public UiaPatternOps(UiaService core) => _core = core;
     /// <summary>
     /// 在指定屏幕坐标尝试 UIA 的 InvokePattern；成功则不需要移动光标。
     /// </summary>
     public bool TryInvokeAtPoint(int x, int y, int? expectedPid, out UiaElementInfo? info)
     {
-        lock (_sync)
+        lock (_core._sync)
         {
             info = null;
             IUIAutomationElement? element = null;
@@ -22,13 +26,13 @@ internal sealed partial class UiaService
             try
             {
                 var point = new tagPOINT { x = x, y = y };
-                element = _automation.ElementFromPoint(point);
+                element = _core._automation.ElementFromPoint(point);
                 if (element is null)
                 {
                     return false;
                 }
 
-                info = Describe(element, cached: false);
+                info = _core.Factory.Describe(element, cached: false);
 
                 // 点上的元素可能属于覆盖在上面的其他进程（宿主窗口、WebView 等）。
                 // 只对本会话的目标进程执行 UIA Invoke，否则交回消息注入路径。
@@ -38,7 +42,7 @@ internal sealed partial class UiaService
                     return false;
                 }
 
-                pattern = element.GetCurrentPattern(InvokePatternId);
+                pattern = element.GetCurrentPattern(UiaService.InvokePatternId);
                 if (pattern is IUIAutomationInvokePattern invoke)
                 {
                     invoke.Invoke();
@@ -55,8 +59,8 @@ internal sealed partial class UiaService
             }
             finally
             {
-                ReleaseElement(pattern);
-                ReleaseElement(element);
+                UiaElementFactoryOps.ReleaseElement(pattern);
+                UiaElementFactoryOps.ReleaseElement(element);
             }
 
             return false;
@@ -69,7 +73,7 @@ internal sealed partial class UiaService
 
     public void FocusElement(IUIAutomationElement element)
     {
-        lock (_sync)
+        lock (_core._sync)
         {
             element.SetFocus();
         }
@@ -79,32 +83,32 @@ internal sealed partial class UiaService
     public (bool Ok, string? Strategy) TryInvoke(
         IUIAutomationElement element, UiaInvokePattern pattern = UiaInvokePattern.Auto)
     {
-        lock (_sync)
+        lock (_core._sync)
         {
             switch (pattern)
             {
                 case UiaInvokePattern.Invoke:
                     return TryWithPattern<IUIAutomationInvokePattern>(
-                        element, InvokePatternId, item => item.Invoke(), "Invoke");
+                        element, UiaService.InvokePatternId, item => item.Invoke(), "Invoke");
 
                 case UiaInvokePattern.Toggle:
                     return TryWithPattern<IUIAutomationTogglePattern>(
-                        element, TogglePatternId, item => item.Toggle(), "Toggle");
+                        element, UiaService.TogglePatternId, item => item.Toggle(), "Toggle");
 
                 case UiaInvokePattern.Select:
                     return TryWithPattern<IUIAutomationSelectionItemPattern>(
-                        element, SelectionItemPatternId, item => item.Select(), "SelectionItem");
+                        element, UiaService.SelectionItemPatternId, item => item.Select(), "SelectionItem");
 
                 case UiaInvokePattern.Expand:
                     return TryWithPattern<IUIAutomationExpandCollapsePattern>(
-                        element, ExpandCollapsePatternId, item => item.Expand(), "ExpandCollapse");
+                        element, UiaService.ExpandCollapsePatternId, item => item.Expand(), "ExpandCollapse");
 
                 case UiaInvokePattern.Legacy:
                     return TryLegacyInvoke(element);
 
                 default:
                     (bool Ok, string? Strategy) result = TryWithPattern<IUIAutomationInvokePattern>(
-                        element, InvokePatternId, item => item.Invoke(), "Invoke");
+                        element, UiaService.InvokePatternId, item => item.Invoke(), "Invoke");
 
                     if (result.Ok)
                     {
@@ -112,7 +116,7 @@ internal sealed partial class UiaService
                     }
 
                     result = TryWithPattern<IUIAutomationTogglePattern>(
-                        element, TogglePatternId, item => item.Toggle(), "Toggle");
+                        element, UiaService.TogglePatternId, item => item.Toggle(), "Toggle");
 
                     if (result.Ok)
                     {
@@ -120,7 +124,7 @@ internal sealed partial class UiaService
                     }
 
                     result = TryWithPattern<IUIAutomationSelectionItemPattern>(
-                        element, SelectionItemPatternId, item => item.Select(), "SelectionItem");
+                        element, UiaService.SelectionItemPatternId, item => item.Select(), "SelectionItem");
 
                     if (result.Ok)
                     {
@@ -128,17 +132,17 @@ internal sealed partial class UiaService
                     }
 
                     result = TryWithPattern<IUIAutomationExpandCollapsePattern>(
-                        element, ExpandCollapsePatternId, item => item.Expand(), "ExpandCollapse");
+                        element, UiaService.ExpandCollapsePatternId, item => item.Expand(), "ExpandCollapse");
 
                     return result.Ok ? result : TryLegacyInvoke(element);
             }
         }
     }
 
-    private static (bool Ok, string? Strategy) TryLegacyInvoke(IUIAutomationElement element) =>
+    internal (bool Ok, string? Strategy) TryLegacyInvoke(IUIAutomationElement element) =>
         TryWithPattern<IUIAutomationLegacyIAccessiblePattern>(
             element,
-            LegacyIAccessiblePatternId,
+            UiaService.LegacyIAccessiblePatternId,
             pattern =>
             {
                 if (string.IsNullOrEmpty(pattern.CurrentDefaultAction))
@@ -150,7 +154,7 @@ internal sealed partial class UiaService
             },
             "LegacyIAccessible");
 
-    private static (bool Ok, string? Strategy) TryWithPattern<T>(
+    internal (bool Ok, string? Strategy) TryWithPattern<T>(
         IUIAutomationElement element, int patternId, Action<T> action, string strategy)
         where T : class
     {
@@ -181,14 +185,14 @@ internal sealed partial class UiaService
         }
         finally
         {
-            ReleaseElement(pattern);
+            UiaElementFactoryOps.ReleaseElement(pattern);
         }
     }
 
     /// <summary>通过 ValuePattern 写值；Failure 非空表示写值调用本身失败。</summary>
     public UiaSetValueResult TrySetValue(IUIAutomationElement element, string value)
     {
-        lock (_sync)
+        lock (_core._sync)
         {
             object? pattern = null;
 
@@ -196,7 +200,7 @@ internal sealed partial class UiaService
             {
                 try
                 {
-                    pattern = element.GetCurrentPattern(ValuePatternId);
+                    pattern = element.GetCurrentPattern(UiaService.ValuePatternId);
                 }
                 catch (COMException)
                 {
@@ -238,16 +242,16 @@ internal sealed partial class UiaService
             }
             finally
             {
-                ReleaseElement(pattern);
+                UiaElementFactoryOps.ReleaseElement(pattern);
             }
         }
     }
 
-    private static string? ReadValuePattern(IUIAutomationValuePattern pattern)
+    internal string? ReadValuePattern(IUIAutomationValuePattern pattern)
     {
         try
         {
-            return SafeString(pattern.CurrentValue);
+            return _core.TextOps.SafeString(pattern.CurrentValue);
         }
         catch (COMException)
         {

@@ -6,12 +6,16 @@ using VScreenPilot.Interop;
 
 namespace VScreenPilot.Uia;
 
-internal sealed partial class UiaService
+/// <summary>ControlTypes：UiaService 的拆分子集。</summary>
+internal sealed class UiaControlTypeOps
 {
-    private static string ControlTypeName(int controlType) =>
-        ControlTypes.TryGetValue(controlType, out string? name) ? name : $"Custom({controlType})";
+    private readonly UiaService _core;
 
-    private static readonly Dictionary<int, string> ControlTypes = new()
+    public UiaControlTypeOps(UiaService core) => _core = core;
+    internal string ControlTypeName(int controlType) =>
+        UiaControlTypeOps.ControlTypes.TryGetValue(controlType, out string? name) ? name : $"Custom({controlType})";
+
+    internal static readonly Dictionary<int, string> ControlTypes = new()
     {
         [50000] = "Button",
         [50001] = "Calendar",
@@ -55,4 +59,8 @@ internal sealed partial class UiaService
         [50039] = "SemanticZoom",
         [50040] = "AppBar",
     };
+
+
+    internal static IReadOnlyList<string> SupportedControlTypes =>
+        ControlTypes.Values.OrderBy(value => value, StringComparer.Ordinal).ToList();
 }

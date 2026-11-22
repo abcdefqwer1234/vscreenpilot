@@ -7,12 +7,16 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Uia;
 
-internal sealed partial class UiaService
+/// <summary>Factory：UiaService 的拆分子集。</summary>
+internal sealed class UiaElementFactoryOps
 {
-    private static bool IsUsable(UiaElementInfo? info) =>
+    private readonly UiaService _core;
+
+    public UiaElementFactoryOps(UiaService core) => _core = core;
+    internal bool IsUsable(UiaElementInfo? info) =>
         info is not null && !info.Offscreen && info.Width > 0 && info.Height > 0;
 
-    private static UiaElementInfo? Describe(IUIAutomationElement? element, bool cached)
+    internal UiaElementInfo? Describe(IUIAutomationElement? element, bool cached)
     {
         if (element is null)
         {
@@ -49,7 +53,7 @@ internal sealed partial class UiaService
         return DescribeCurrent(element);
     }
 
-    private static UiaElementInfo? DescribeCached(IUIAutomationElement element)
+    internal UiaElementInfo? DescribeCached(IUIAutomationElement element)
     {
         tagRECT rect = element.CachedBoundingRectangle;
         int controlType = element.CachedControlType;
@@ -61,7 +65,7 @@ internal sealed partial class UiaService
             element.CachedName ?? string.Empty,
             element.CachedAutomationId ?? string.Empty,
             controlType,
-            ControlTypeName(controlType),
+            _core.ControlTypeOps.ControlTypeName(controlType),
             rect.left,
             rect.top,
             rect.right,
@@ -74,10 +78,10 @@ internal sealed partial class UiaService
             Focused: element.CachedHasKeyboardFocus != 0,
             Password: password,
             Value: password ? string.Empty : ReadValue(element, controlType),
-            Text: password ? string.Empty : ReadText(element, controlType));
+            Text: password ? string.Empty : _core.TextOps.ReadText(element, controlType));
     }
 
-    private static UiaElementInfo? DescribeCurrent(IUIAutomationElement? element)
+    internal UiaElementInfo? DescribeCurrent(IUIAutomationElement? element)
     {
         if (element is null)
         {
@@ -96,7 +100,7 @@ internal sealed partial class UiaService
                 element.CurrentName ?? string.Empty,
                 element.CurrentAutomationId ?? string.Empty,
                 controlType,
-                ControlTypeName(controlType),
+                _core.ControlTypeOps.ControlTypeName(controlType),
                 rect.left,
                 rect.top,
                 rect.right,
@@ -109,7 +113,7 @@ internal sealed partial class UiaService
                 Focused: element.CurrentHasKeyboardFocus != 0,
                 Password: password,
                 Value: password ? string.Empty : SafeCurrentValue(element),
-                Text: password ? string.Empty : ReadTextCurrent(element));
+                Text: password ? string.Empty : _core.TextOps.ReadTextCurrent(element));
         }
         catch (Exception exception) when (
             exception is COMException or ArgumentException or InvalidOperationException)
@@ -118,7 +122,7 @@ internal sealed partial class UiaService
         }
     }
 
-    private static string ReadValue(IUIAutomationElement element, int controlType)
+    internal string ReadValue(IUIAutomationElement element, int controlType)
     {
         // 只有文本类控件才值得为 value 付一次跨进程读取；其他控件直接省略。
         if (controlType is not (50004 or 50030))
@@ -128,7 +132,7 @@ internal sealed partial class UiaService
 
         try
         {
-            object? value = element.GetCurrentPropertyValue(ValuePropertyId);
+            object? value = element.GetCurrentPropertyValue(UiaService.ValuePropertyId);
             return value switch
             {
                 null => string.Empty,
@@ -143,11 +147,11 @@ internal sealed partial class UiaService
         }
     }
 
-    private static string SafeCurrentValue(IUIAutomationElement element)
+    internal string SafeCurrentValue(IUIAutomationElement element)
     {
         try
         {
-            object? value = element.GetCurrentPropertyValue(ValuePropertyId);
+            object? value = element.GetCurrentPropertyValue(UiaService.ValuePropertyId);
             return value switch
             {
                 null => string.Empty,
@@ -162,11 +166,11 @@ internal sealed partial class UiaService
         }
     }
 
-    private static int[] GetCachedRuntimeId(IUIAutomationElement element)
+    internal int[] GetCachedRuntimeId(IUIAutomationElement element)
     {
         try
         {
-            return element.GetCachedPropertyValue(RuntimeIdPropertyId) as int[] ?? Array.Empty<int>();
+            return element.GetCachedPropertyValue(UiaService.RuntimeIdPropertyId) as int[] ?? Array.Empty<int>();
         }
         catch (Exception exception) when (
             exception is COMException or ArgumentException or InvalidOperationException)
@@ -193,7 +197,7 @@ internal sealed partial class UiaService
         }
     }
 
-    private static bool TryParseRuntimeId(string value, out int[] ids)
+    internal bool TryParseRuntimeId(string value, out int[] ids)
     {
         string[] parts = value.Split('.', StringSplitOptions.RemoveEmptyEntries);
         ids = new int[parts.Length];
@@ -210,19 +214,17 @@ internal sealed partial class UiaService
         return ids.Length > 0;
     }
 
-    public static bool IsKnownControlType(string value) => TryParseControlType(value, out _);
+    internal static bool IsKnownControlType(string value) => TryParseControlType(value, out _);
 
-    public static IReadOnlyList<string> SupportedControlTypes =>
-        ControlTypes.Values.OrderBy(value => value, StringComparer.Ordinal).ToList();
 
-    private static bool TryParseControlType(string value, out int controlTypeId)
+    internal static bool TryParseControlType(string value, out int controlTypeId)
     {
         if (int.TryParse(value, out controlTypeId))
         {
             return true;
         }
 
-        foreach (var pair in ControlTypes)
+        foreach (var pair in UiaControlTypeOps.ControlTypes)
         {
             if (pair.Value.Equals(value, StringComparison.OrdinalIgnoreCase))
             {

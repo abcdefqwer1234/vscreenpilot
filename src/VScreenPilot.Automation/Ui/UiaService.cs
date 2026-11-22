@@ -37,7 +37,7 @@ internal sealed record UiaElementInfo(
 /// <summary>UI Automation 元素句柄；释放前可安全执行模式方法。</summary>
 internal sealed class UiaElementHandle : IDisposable
 {
-    private readonly UiaService _owner;
+    internal readonly UiaService _owner;
 
     internal UiaElementHandle(UiaService owner, IUIAutomationElement element, UiaElementInfo info)
     {
@@ -74,7 +74,7 @@ internal sealed class UiaElementHandle : IDisposable
         return true;
     });
 
-    private T Dispatch<T>(Func<UiaService, T> action) =>
+    internal T Dispatch<T>(Func<UiaService, T> action) =>
         _owner.Host is { } host ? host.InvokeOn(_owner, action) : action(_owner);
 }
 
@@ -121,37 +121,37 @@ internal enum UiaInvokePattern
 }
 
 /// <summary>UI Automation 语义通道。非线程安全，调用方需串行化。</summary>
-internal sealed partial class UiaService : IDisposable
+internal sealed class UiaService : IDisposable
 {
-    private const int RuntimeIdPropertyId = 30000;
-    private const int BoundingRectanglePropertyId = 30001;
-    private const int ProcessIdPropertyId = 30002;
-    private const int ControlTypePropertyId = 30003;
-    private const int NamePropertyId = 30005;
-    private const int HasKeyboardFocusPropertyId = 30008;
-    private const int IsKeyboardFocusablePropertyId = 30009;
-    private const int IsEnabledPropertyId = 30010;
-    private const int AutomationIdPropertyId = 30011;
-    private const int ClassNamePropertyId = 30012;
-    private const int IsControlElementPropertyId = 30016;
-    private const int IsPasswordPropertyId = 30019;
-    private const int IsOffscreenPropertyId = 30022;
-    private const int ValuePropertyId = 30045;
+    internal const int RuntimeIdPropertyId = 30000;
+    internal const int BoundingRectanglePropertyId = 30001;
+    internal const int ProcessIdPropertyId = 30002;
+    internal const int ControlTypePropertyId = 30003;
+    internal const int NamePropertyId = 30005;
+    internal const int HasKeyboardFocusPropertyId = 30008;
+    internal const int IsKeyboardFocusablePropertyId = 30009;
+    internal const int IsEnabledPropertyId = 30010;
+    internal const int AutomationIdPropertyId = 30011;
+    internal const int ClassNamePropertyId = 30012;
+    internal const int IsControlElementPropertyId = 30016;
+    internal const int IsPasswordPropertyId = 30019;
+    internal const int IsOffscreenPropertyId = 30022;
+    internal const int ValuePropertyId = 30045;
 
-    private const int InvokePatternId = 10000;
-    private const int ValuePatternId = 10002;
-    private const int TextPatternId = 10014;
-    private const int ExpandCollapsePatternId = 10005;
-    private const int SelectionItemPatternId = 10010;
-    private const int TogglePatternId = 10015;
-    private const int LegacyIAccessiblePatternId = 10018;
+    internal const int InvokePatternId = 10000;
+    internal const int ValuePatternId = 10002;
+    internal const int TextPatternId = 10014;
+    internal const int ExpandCollapsePatternId = 10005;
+    internal const int SelectionItemPatternId = 10010;
+    internal const int TogglePatternId = 10015;
+    internal const int LegacyIAccessiblePatternId = 10018;
 
-    private static readonly Guid ClsidCUIAutomation = new("FF48DBA4-60EF-4201-AA87-54103EEF594E");
-    private static readonly Guid IidIUIAutomation = new("30CBE57D-D9D0-452A-AB13-7AC5AC4825EE");
-    private const uint ClsctxInprocServer = 1;
+    internal static readonly Guid ClsidCUIAutomation = new("FF48DBA4-60EF-4201-AA87-54103EEF594E");
+    internal static readonly Guid IidIUIAutomation = new("30CBE57D-D9D0-452A-AB13-7AC5AC4825EE");
+    internal const uint ClsctxInprocServer = 1;
 
     /// <summary>交互控件类型；interactive_only 裁剪时保留。</summary>
-    private static readonly HashSet<int> InteractiveControlTypes = new()
+    internal static readonly HashSet<int> InteractiveControlTypes = new()
     {
         50000, // Button
         50002, // CheckBox
@@ -174,15 +174,24 @@ internal sealed partial class UiaService : IDisposable
     };
 
     [DllImport("ole32.dll")]
-    private static extern int CoCreateInstance(
+    internal static extern int CoCreateInstance(
         ref Guid rclsid, IntPtr pUnkOuter, uint dwClsContext, ref Guid riid, out IntPtr ppv);
 
-    private readonly object _sync = new();
-    private readonly IUIAutomation _automation;
+    internal readonly object _sync = new();
+    internal readonly IUIAutomation _automation;
 
     /// <summary>拥有该实例的 UiaHost；句柄操作据此回到同一 MTA worker。</summary>
     internal UiaHost? Host { get; set; }
-    private int _disposed;
+
+    internal readonly UiaConditionOps Conditions;
+    internal readonly UiaControlTypeOps ControlTypeOps;
+    internal readonly UiaElementFactoryOps Factory;
+    internal readonly UiaFindOps FindOps;
+    internal readonly UiaLocateOps LocateOps;
+    internal readonly UiaPatternOps Patterns;
+    internal readonly UiaTextOps TextOps;
+    internal readonly UiaTreeOps TreeOps;
+    internal int _disposed;
 
     // 线程本地：调用方拿到结果后立刻读，避免其它线程的下一次查询把标志覆盖。
     /// <summary>
@@ -229,11 +238,19 @@ internal sealed partial class UiaService : IDisposable
             LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
-    private readonly IUIAutomationCacheRequest _elementCache;
-    private IUIAutomationCondition? _trueCondition;
+    internal readonly IUIAutomationCacheRequest _elementCache;
+    internal IUIAutomationCondition? _trueCondition;
 
     public UiaService()
     {
+        Conditions = new UiaConditionOps(this);
+        ControlTypeOps = new UiaControlTypeOps(this);
+        Factory = new UiaElementFactoryOps(this);
+        FindOps = new UiaFindOps(this);
+        LocateOps = new UiaLocateOps(this);
+        Patterns = new UiaPatternOps(this);
+        TextOps = new UiaTextOps(this);
+        TreeOps = new UiaTreeOps(this);
         // Native AOT 下 Interop.UIAutomationClient 的 coclass 构造函数不可用
         // （ILC 报 invalid IL），改为直接 CoCreateInstance 再取 RCW。
         Guid clsid = ClsidCUIAutomation;
@@ -278,7 +295,7 @@ internal sealed partial class UiaService : IDisposable
         _elementCache = CreateCacheRequest(null);
     }
 
-    private IUIAutomationCacheRequest CreateCacheRequest(IUIAutomationCondition? treeFilter)
+    internal IUIAutomationCacheRequest CreateCacheRequest(IUIAutomationCondition? treeFilter)
     {
         IUIAutomationCacheRequest cache = _automation.CreateCacheRequest();
 
@@ -314,11 +331,65 @@ internal sealed partial class UiaService : IDisposable
         return cache;
     }
 
-    private IUIAutomationCondition TrueCondition =>
+    internal IUIAutomationCondition TrueCondition =>
         _trueCondition ??= _automation.CreateTrueCondition();
 
     /* ------------------------------------------------------------------ */
     /* 查找                                                                */
     /* ------------------------------------------------------------------ */
 
+    internal static bool IsKnownControlType(string value) =>
+        UiaElementFactoryOps.IsKnownControlType(value);
+
+    internal static IReadOnlyList<string> SupportedControlTypes =>
+        UiaControlTypeOps.SupportedControlTypes;
+
+    internal static void ReleaseElement(IUIAutomationElement element) =>
+        UiaElementFactoryOps.ReleaseElement(element);
+
+    public UiaElementInfo? FindElement(
+        IntPtr hwnd, string? name, string? controlType, string? automationId, string? runtimeId) =>
+        FindOps.FindElement(hwnd, name, controlType, automationId, runtimeId);
+
+    public UiaElementInfo? FindFirstElement(
+        IntPtr hwnd, string? name, string? controlType, string? automationId) =>
+        FindOps.FindFirstElement(hwnd, name, controlType, automationId);
+
+    public UiaElementInfo? FindTextElement(IntPtr hwnd, string text, int maxChars = 65536) =>
+        FindOps.FindTextElement(hwnd, text, maxChars);
+
+    public List<UiaElementInfo> FindElements(
+        IntPtr hwnd, string? name, UiaNameMatch nameMatch,
+        string? controlType, string? automationId, int maxResults) =>
+        FindOps.FindElements(hwnd, name, nameMatch, controlType, automationId, maxResults);
+
+    public UiaFindResult FindElementsDetailed(
+        IntPtr hwnd, string? name, UiaNameMatch nameMatch,
+        string? controlType, string? automationId, int maxResults) =>
+        FindOps.FindElementsDetailed(hwnd, name, nameMatch, controlType, automationId, maxResults);
+
+    public UiaElementHandle? FindByRuntimeId(IntPtr hwnd, string runtimeId) =>
+        LocateOps.FindByRuntimeId(hwnd, runtimeId);
+
+    public UiaElementInfo? GetFocusedElement() => LocateOps.GetFocusedElement();
+
+    public UiaElementHandle? GetFocusedElementHandle(int? expectedPid = null) =>
+        TextOps.GetFocusedElementHandle(expectedPid);
+
+    public void FocusElement(IUIAutomationElement element) => Patterns.FocusElement(element);
+
+    public (bool Ok, string? Strategy) TryInvoke(
+        IUIAutomationElement element, UiaInvokePattern pattern = UiaInvokePattern.Auto) =>
+        Patterns.TryInvoke(element, pattern);
+
+    public bool TryInvokeAtPoint(int x, int y, int? expectedPid, out UiaElementInfo? info) =>
+        Patterns.TryInvokeAtPoint(x, y, expectedPid, out info);
+
+    public UiaSetValueResult TrySetValue(IUIAutomationElement element, string value) =>
+        Patterns.TrySetValue(element, value);
+
+    public string? GetText(IUIAutomationElement element, int maxChars = 65536) =>
+        TextOps.GetText(element, maxChars);
+
+    public string? GetValue(IUIAutomationElement element) => TextOps.GetValue(element);
 }

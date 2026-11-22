@@ -67,7 +67,7 @@ internal sealed class UiaHost : IDisposable
         int maxNodes,
         int timeBudgetMs,
         Func<bool>? isCancelled) =>
-        Invoke(service => service.BuildTree(
+        Invoke(service => service.TreeOps.BuildTree(
             hwnd, rootRuntimeId, maxDepth, interactiveOnly, maxNodes, timeBudgetMs, isCancelled));
 
     public UiaElementInfo? FindElement(
@@ -110,7 +110,7 @@ internal sealed class UiaHost : IDisposable
         int top,
         int right,
         int bottom) =>
-        Invoke(service => service.FindByFingerprint(
+        Invoke(service => service.LocateOps.FindByFingerprint(
             hwnd, name, automationId, controlTypeName, left, top, right, bottom));
 
     public UiaElementInfo? GetFocusedElement() =>

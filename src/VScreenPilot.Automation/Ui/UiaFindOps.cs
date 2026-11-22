@@ -7,20 +7,24 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Uia;
 
-internal sealed partial class UiaService
+/// <summary>Find：UiaService 的拆分子集。</summary>
+internal sealed class UiaFindOps
 {
+    private readonly UiaService _core;
+
+    public UiaFindOps(UiaService core) => _core = core;
     public UiaElementInfo? FindElement(
         IntPtr hwnd, string? name, string? controlType, string? automationId, string? runtimeId)
     {
         if (!string.IsNullOrWhiteSpace(runtimeId))
         {
-            using UiaElementHandle? handle = FindByRuntimeId(hwnd, runtimeId);
+            using UiaElementHandle? handle = _core.LocateOps.FindByRuntimeId(hwnd, runtimeId);
             return handle?.Info;
         }
 
         // 快路径：单次 FindFirstBuildCache，命中可见元素即可返回。
         UiaElementInfo? first = FindFirstElement(hwnd, name, controlType, automationId);
-        if (IsUsable(first))
+        if (_core.Factory.IsUsable(first))
         {
             return first;
         }
@@ -29,14 +33,14 @@ internal sealed partial class UiaService
         List<UiaElementInfo> matches = FindElements(
             hwnd, name, UiaNameMatch.Exact, controlType, automationId, maxResults: 8);
 
-        return matches.FirstOrDefault(IsUsable) ?? matches.FirstOrDefault() ?? first;
+        return matches.FirstOrDefault(_core.Factory.IsUsable) ?? matches.FirstOrDefault() ?? first;
     }
 
     /// <summary>按精确属性查首个命中（单次 UIA 查询，供 wait_for 等轮询使用）。</summary>
     public UiaElementInfo? FindFirstElement(
         IntPtr hwnd, string? name, string? controlType, string? automationId)
     {
-        lock (_sync)
+        lock (_core._sync)
         {
             IUIAutomationCondition? condition = null;
             IUIAutomationElement? root = null;
@@ -51,11 +55,11 @@ internal sealed partial class UiaService
                     return null;
                 }
 
-                condition = BuildCondition(name, controlType, automationId, null);
+                condition = _core.Conditions.BuildCondition(name, controlType, automationId, null);
                 element = root.FindFirstBuildCache(
-                    TreeScope.TreeScope_Subtree, condition, _elementCache);
+                    TreeScope.TreeScope_Subtree, condition, _core._elementCache);
 
-                return element is null ? null : Describe(element, cached: true);
+                return element is null ? null : _core.Factory.Describe(element, cached: true);
             }
             catch (COMException)
             {
@@ -63,12 +67,12 @@ internal sealed partial class UiaService
             }
             finally
             {
-                ReleaseElement(element);
-                ReleaseElement(root);
+                UiaElementFactoryOps.ReleaseElement(element);
+                UiaElementFactoryOps.ReleaseElement(root);
 
-                if (!ReferenceEquals(condition, _trueCondition))
+                if (!ReferenceEquals(condition, _core._trueCondition))
                 {
-                    ReleaseElement(condition);
+                    UiaElementFactoryOps.ReleaseElement(condition);
                 }
             }
         }
@@ -78,7 +82,7 @@ internal sealed partial class UiaService
     /// UWP 顶层是 ApplicationFrameHost，UIA 树根在子窗口 Windows.UI.Core.CoreWindow 上。
     /// 不先下钻会得到“只有边框、没有控件”的树（REG-14）。
     /// </summary>
-    private static IntPtr ResolveUwpContentHwnd(IntPtr hwnd)
+    internal IntPtr ResolveUwpContentHwnd(IntPtr hwnd)
     {
         if (hwnd == IntPtr.Zero)
         {
@@ -99,10 +103,10 @@ internal sealed partial class UiaService
         return content != IntPtr.Zero ? content : hwnd;
     }
 
-    private IUIAutomationElement? RootFromHandle(IntPtr hwnd) =>
+    internal IUIAutomationElement? RootFromHandle(IntPtr hwnd) =>
         hwnd == IntPtr.Zero
-            ? _automation.GetRootElement()
-            : _automation.ElementFromHandle(ResolveUwpContentHwnd(hwnd));
+            ? _core._automation.GetRootElement()
+            : _core._automation.ElementFromHandle(ResolveUwpContentHwnd(hwnd));
 
     /// <summary>
     /// 按可见文本查找元素：先匹配 Name，再对 Document/Edit/Text 读取 TextPattern。
@@ -115,7 +119,7 @@ internal sealed partial class UiaService
             return null;
         }
 
-        lock (_sync)
+        lock (_core._sync)
         {
             IUIAutomationElement? root = null;
             IUIAutomationElementArray? all = null;
@@ -130,7 +134,7 @@ internal sealed partial class UiaService
                 }
 
                 all = root.FindAllBuildCache(
-                    TreeScope.TreeScope_Subtree, _trueCondition, _elementCache);
+                    TreeScope.TreeScope_Subtree, _core._trueCondition, _core._elementCache);
 
                 if (all is null)
                 {
@@ -153,7 +157,7 @@ internal sealed partial class UiaService
 
                     try
                     {
-                        UiaElementInfo? info = Describe(element, cached: true);
+                        UiaElementInfo? info = _core.Factory.Describe(element, cached: true);
 
                         if (info is null || info.Offscreen)
                         {
@@ -176,7 +180,7 @@ internal sealed partial class UiaService
                     {
                         if (!keepForText)
                         {
-                            ReleaseElement(element);
+                            UiaElementFactoryOps.ReleaseElement(element);
                         }
                     }
                 }
@@ -185,12 +189,12 @@ internal sealed partial class UiaService
                 {
                     try
                     {
-                        string? value = GetText(element, maxChars);
+                        string? value = _core.TextOps.GetText(element, maxChars);
 
                         if (value is not null &&
                             value.Contains(text, StringComparison.OrdinalIgnoreCase))
                         {
-                            return Describe(element, cached: false);
+                            return _core.Factory.Describe(element, cached: false);
                         }
                     }
                     catch (COMException exception)
@@ -200,7 +204,7 @@ internal sealed partial class UiaService
                     }
                     finally
                     {
-                        ReleaseElement(element);
+                        UiaElementFactoryOps.ReleaseElement(element);
                     }
                 }
 
@@ -212,8 +216,8 @@ internal sealed partial class UiaService
             }
             finally
             {
-                ReleaseElement(all);
-                ReleaseElement(root);
+                UiaElementFactoryOps.ReleaseElement(all);
+                UiaElementFactoryOps.ReleaseElement(root);
             }
         }
     }
@@ -240,19 +244,19 @@ internal sealed partial class UiaService
         string? automationId,
         int maxResults)
     {
-        lock (_sync)
+        lock (_core._sync)
         {
             var results = new List<UiaElementInfo>();
             bool truncated = false;
             // prefer=largest/focused 需要完整候选集；其余调用仍按较小的上限快速返回。
             maxResults = Math.Clamp(maxResults, 1, 2000);
 
-            IUIAutomationCondition condition = BuildCondition(
+            IUIAutomationCondition condition = _core.Conditions.BuildCondition(
                 nameMatch == UiaNameMatch.Exact ? name : null,
                 controlType,
                 automationId,
                 null);
-            bool ownedCondition = !ReferenceEquals(condition, _trueCondition);
+            bool ownedCondition = !ReferenceEquals(condition, _core._trueCondition);
 
             IUIAutomationElement? root = null;
 
@@ -266,7 +270,7 @@ internal sealed partial class UiaService
                 }
 
                 IUIAutomationElementArray? all = root.FindAllBuildCache(
-                    TreeScope.TreeScope_Subtree, condition, _elementCache);
+                    TreeScope.TreeScope_Subtree, condition, _core._elementCache);
 
                 if (all is null)
                 {
@@ -290,13 +294,13 @@ internal sealed partial class UiaService
 
                         try
                         {
-                            UiaElementInfo? info = Describe(element, cached: true);
-                            if (info is null || !MatchesName(info.Name, name, nameMatch))
+                            UiaElementInfo? info = _core.Factory.Describe(element, cached: true);
+                            if (info is null || !_core.Conditions.MatchesName(info.Name, name, nameMatch))
                             {
                                 continue;
                             }
 
-                            if (IsUsable(info))
+                            if (_core.Factory.IsUsable(info))
                             {
                                 usable.Add(info);
                                 if (usable.Count >= maxResults)
@@ -313,7 +317,7 @@ internal sealed partial class UiaService
                         }
                         finally
                         {
-                            ReleaseElement(element);
+                            UiaElementFactoryOps.ReleaseElement(element);
                         }
                     }
 
@@ -329,259 +333,20 @@ internal sealed partial class UiaService
                 }
                 finally
                 {
-                    ReleaseElement(all);
+                    UiaElementFactoryOps.ReleaseElement(all);
                 }
             }
             finally
             {
-                ReleaseElement(root);
+                UiaElementFactoryOps.ReleaseElement(root);
 
                 if (ownedCondition)
                 {
-                    ReleaseElement(condition);
+                    UiaElementFactoryOps.ReleaseElement(condition);
                 }
             }
         }
     }
 
     /// <summary>按 runtime_id 在窗口内精确定位。</summary>
-    public UiaElementHandle? FindByRuntimeId(IntPtr hwnd, string runtimeId)
-    {
-        lock (_sync)
-        {
-            if (string.IsNullOrWhiteSpace(runtimeId) ||
-                !TryParseRuntimeId(runtimeId, out int[] ids))
-            {
-                return null;
-            }
-
-            IUIAutomationCondition? condition = null;
-            IUIAutomationElement? root = null;
-            IUIAutomationElement? element = null;
-
-            try
-            {
-                root = RootFromHandle(hwnd);
-
-                if (root is null)
-                {
-                    return null;
-                }
-
-                condition = _automation.CreatePropertyCondition(RuntimeIdPropertyId, ids);
-                element = root.FindFirstBuildCache(
-                    TreeScope.TreeScope_Subtree, condition, _elementCache);
-
-                if (element is null)
-                {
-                    return null;
-                }
-
-                UiaElementInfo? info = Describe(element, cached: true);
-                if (info is null)
-                {
-                    return null;
-                }
-
-                var handle = new UiaElementHandle(this, element, info);
-                element = null;
-                return handle;
-            }
-            finally
-            {
-                ReleaseElement(element);
-                ReleaseElement(root);
-                ReleaseElement(condition);
-            }
-        }
-    }
-
-    /// <summary>
-    /// 按指纹（name/automation_id/control_type + 旧边界）重定位控件。
-    /// 只有唯一匹配（或边界附近唯一匹配）时才返回，避免误命中相邻列表项。
-    /// </summary>
-    public UiaElementHandle? FindByFingerprint(
-        IntPtr hwnd,
-        string name,
-        string automationId,
-        string controlTypeName,
-        int left,
-        int top,
-        int right,
-        int bottom)
-    {
-        lock (_sync)
-        {
-            if (string.IsNullOrEmpty(name) &&
-                string.IsNullOrEmpty(automationId) &&
-                string.IsNullOrEmpty(controlTypeName))
-            {
-                return null;
-            }
-
-            IUIAutomationCondition? condition = null;
-            IUIAutomationElement? root = null;
-            IUIAutomationElementArray? all = null;
-            IUIAutomationElement? best = null;
-            UiaElementInfo? bestInfo = null;
-
-            try
-            {
-                root = RootFromHandle(hwnd);
-
-                if (root is null)
-                {
-                    return null;
-                }
-
-                condition = BuildCondition(
-                    string.IsNullOrEmpty(name) ? null : name,
-                    controlTypeName,
-                    string.IsNullOrEmpty(automationId) ? null : automationId,
-                    null);
-
-                all = root.FindAllBuildCache(
-                    TreeScope.TreeScope_Subtree, condition, _elementCache);
-
-                if (all is null)
-                {
-                    return null;
-                }
-
-                (best, bestInfo) = SelectBest(
-                    all, name, automationId, controlTypeName, left, top, right, bottom,
-                    out int exact, out int near);
-
-                if (best is null || bestInfo is null)
-                {
-                    return null;
-                }
-
-                // 多个同名候选且边界附近不是唯一一个：宁可报 stale，也不猜。
-                if (exact > 1 && near != 1)
-                {
-                    ReleaseElement(best);
-                    return null;
-                }
-
-                var handle = new UiaElementHandle(this, best, bestInfo);
-                best = null;
-                return handle;
-            }
-            finally
-            {
-                ReleaseElement(best);
-                ReleaseElement(all);
-                ReleaseElement(root);
-
-                if (!ReferenceEquals(condition, _trueCondition))
-                {
-                    ReleaseElement(condition);
-                }
-            }
-        }
-    }
-
-    private (IUIAutomationElement? Best, UiaElementInfo? BestInfo) SelectBest(
-        IUIAutomationElementArray all, string name, string? automationId, string? controlTypeName,
-        int left, int top, int right, int bottom, out int exact, out int near)
-    {
-        IUIAutomationElement? best = null;
-        UiaElementInfo? bestInfo = null;
-
-        int count = Math.Min(all.Length, 200);
-        exact = 0;
-        near = 0;
-
-        for (int i = 0; i < count; i++)
-        {
-            IUIAutomationElement? element = all.GetElement(i);
-            if (element is null)
-            {
-                continue;
-            }
-
-            bool keep = false;
-
-            try
-            {
-                UiaElementInfo? info = Describe(element, cached: true);
-                if (info is null ||
-                    info.Name != name ||
-                    info.AutomationId != automationId ||
-                    !string.Equals(info.ControlTypeName, controlTypeName, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                exact++;
-                bool isNear = IsNear(info, left, top, right, bottom);
-                if (isNear)
-                {
-                    near++;
-                }
-
-                if (best is null || (isNear && !IsNear(bestInfo!, left, top, right, bottom)))
-                {
-                    ReleaseElement(best);
-                    best = element;
-                    bestInfo = info;
-                    keep = true;
-                }
-            }
-            finally
-            {
-                if (!keep)
-                {
-                    ReleaseElement(element);
-                }
-            }
-        }
-
-        return (best, bestInfo);
-    }
-
-    private static bool IsNear(UiaElementInfo info, int left, int top, int right, int bottom)
-    {
-        const int slack = 24;
-        return info.Left < right + slack &&
-               info.Right > left - slack &&
-               info.Top < bottom + slack &&
-               info.Bottom > top - slack;
-    }
-
-    public UiaElementInfo? GetFocusedElement()
-    {
-        lock (_sync)
-        {
-            try
-            {
-                IUIAutomationElement? element = _automation.GetFocusedElementBuildCache(_elementCache);
-                if (element is null)
-                {
-                    return null;
-                }
-
-                try
-                {
-                    UiaElementInfo? info = Describe(element, cached: true);
-                    if (info is null ||
-                        (info.Width == 0 && info.Height == 0 && info.Name.Length == 0))
-                    {
-                        info = DescribeCurrent(element) ?? info;
-                    }
-
-                    return info;
-                }
-                finally
-                {
-                    ReleaseElement(element);
-                }
-            }
-            catch (COMException)
-            {
-                return null;
-            }
-        }
-    }
 }
