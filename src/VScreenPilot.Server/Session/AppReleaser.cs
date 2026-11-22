@@ -11,6 +11,9 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
+/// <summary>Close 的提前返回结果与告警。</summary>
+internal sealed record CloseOutcome(string? Result, string? Warning);
+
 /// <summary>
 /// 应用释放：abort/save/discard/force 策略、WM_CLOSE → UIA 关闭按钮 → 保存对话框、
 /// 专用/共享进程与临时 profile 的终止规则。调用方负责遍历与分类汇总。
@@ -30,7 +33,11 @@ internal sealed class AppReleaser
 
     public string Close(TrackedApp app, string policy, out string? warning)
     {
-        warning = null;
+        if (policy == "abort")
+        {
+            warning = null;
+            return "kept";
+        }
 
         // UWP 的 Pid/ExePath 是共享的 ApplicationFrameHost；
         // 必须按内容进程关闭/杀，绝不能强杀 frame host。
@@ -38,85 +45,109 @@ internal sealed class AppReleaser
         int closePid = uwp ? app.ContentPid : app.Pid;
         string closePath = uwp ? app.ContentExePath : app.ExePath;
 
-        if (policy == "abort")
+        CloseOutcome outcome = RequestClose(app, policy);
+        warning = outcome.Warning;
+
+        if (outcome.Result is not null)
         {
-            return "kept";
+            return outcome.Result;
         }
 
+        return FinalizeClose(app, uwp, closePid, closePath, ref warning);
+    }
+
+    private CloseOutcome RequestClose(TrackedApp app, string policy)
+    {
         if (policy is "save" or "discard")
         {
-            // 先走标准 WM_CLOSE：它等价于用户点标题栏 X，不会误点文档/标签页的关闭按钮。
-            // 只有窗口忽略 WM_CLOSE 时，才退化为 UIA 查找关闭按钮。
-            NativeMethods.PostMessageW(app.Hwnd, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero);
+            return CloseWithDialog(app, policy);
+        }
 
-            if (!AppTermination.WaitForWindowClosed(app.Hwnd, 500))
-            {
-                InvokeWindowCloseButton(app.Hwnd);
-            }
+        NativeMethods.PostMessageW(app.Hwnd, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero);
+        return new CloseOutcome(null, null);
+    }
 
-            AppTermination.WaitForWindowClosed(app.Hwnd, 500);
+    private CloseOutcome CloseWithDialog(TrackedApp app, string policy)
+    {
+        // 先走标准 WM_CLOSE：它等价于用户点标题栏 X，不会误点文档/标签页的关闭按钮。
+        // 只有窗口忽略 WM_CLOSE 时，才退化为 UIA 查找关闭按钮。
+        NativeMethods.PostMessageW(app.Hwnd, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero);
 
-            if (NativeMethods.IsWindow(app.Hwnd))
-            {
-                bool save = policy == "save";
-                bool dialogHandled;
+        if (!AppTermination.WaitForWindowClosed(app.Hwnd, 500))
+        {
+            InvokeWindowCloseButton(app.Hwnd);
+        }
 
-                // 保存框也走 UIA；如果 provider 卡死，不能让 release 永久挂住。
-                Task<bool> dialogTask = Task.Run(
-                    () => TryHandleSaveDialog(app.Pid, app.Hwnd, save, 1500));
+        AppTermination.WaitForWindowClosed(app.Hwnd, 500);
 
-                if (dialogTask.Wait(3000))
-                {
-                    dialogHandled = dialogTask.Result;
-                }
-                else
-                {
-                    _resetUia();
-                    dialogHandled = false;
-                    warning = "保存对话框处理超时，已放弃 UIA 并继续清理";
-                }
+        if (!NativeMethods.IsWindow(app.Hwnd))
+        {
+            return new CloseOutcome(null, null);
+        }
 
-                if (dialogHandled)
-                {
-                    AppTermination.WaitForWindowClosed(app.Hwnd, 3000);
+        return HandleSaveDialog(app, policy);
+    }
 
-                    if (!NativeMethods.IsWindow(app.Hwnd))
-                    {
-                        AppTermination.WaitForProcessExit(app.Pid, 1000);
-                        return save ? "saved" : "discarded";
-                    }
+    private CloseOutcome HandleSaveDialog(TrackedApp app, string policy)
+    {
+        bool save = policy == "save";
+        bool dialogHandled;
+        string? warning = null;
 
-                    warning = $"{policy} 对话框已处理，但窗口仍未关闭";
-                }
-                else
-                {
-                    warning = "未找到保存对话框，将按后续超时策略处理";
-                }
-            }
+        // 保存框也走 UIA；如果 provider 卡死，不能让 release 永久挂住。
+        Task<bool> dialogTask = Task.Run(
+            () => TryHandleSaveDialog(app.Pid, app.Hwnd, save, 1500));
+
+        if (dialogTask.Wait(3000))
+        {
+            dialogHandled = dialogTask.Result;
         }
         else
         {
-            NativeMethods.PostMessageW(app.Hwnd, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero);
+            _resetUia();
+            dialogHandled = false;
+            warning = "保存对话框处理超时，已放弃 UIA 并继续清理";
         }
 
+        if (!dialogHandled)
+        {
+            return new CloseOutcome(null, "未找到保存对话框，将按后续超时策略处理");
+        }
+
+        AppTermination.WaitForWindowClosed(app.Hwnd, 3000);
+
+        if (!NativeMethods.IsWindow(app.Hwnd))
+        {
+            AppTermination.WaitForProcessExit(app.Pid, 1000);
+            return new CloseOutcome(save ? "saved" : "discarded", warning);
+        }
+
+        return new CloseOutcome(null, $"{policy} 对话框已处理，但窗口仍未关闭");
+    }
+
+    private string FinalizeClose(
+        TrackedApp app, bool uwp, int closePid, string closePath, ref string? warning)
+    {
         if (!AppTermination.WaitForWindowClosed(app.Hwnd, 2500) && NativeMethods.IsWindow(app.Hwnd))
         {
-            if (app.DedicatedProcess ||
-                (app.StartedProcess && !AppTermination.HasOtherWindows(app.Pid, app.Hwnd)))
-            {
-                if (uwp && string.IsNullOrEmpty(closePath))
-                {
-                    warning = "UWP 内容进程路径不可用，拒绝强杀共享 frame host";
-                    return "kept";
-                }
+            bool canForce = app.DedicatedProcess ||
+                            (app.StartedProcess && !AppTermination.HasOtherWindows(app.Pid, app.Hwnd));
 
-                AppTermination.KillProcessTreeIfMatches(closePid, closePath);
-                AppTermination.WaitForProcessExit(closePid, 2000);
-                return "forced";
+            if (!canForce)
+            {
+                warning = $"窗口未能关闭，保留共享进程 {app.Pid}";
+                return "kept";
             }
 
-            warning = $"窗口未能关闭，保留共享进程 {app.Pid}";
-            return "kept";
+            if (uwp && string.IsNullOrEmpty(closePath))
+            {
+                warning = "UWP 内容进程路径不可用，拒绝强杀共享 frame host";
+                return "kept";
+            }
+
+            AppTermination.KillProcessTreeIfMatches(closePid, closePath);
+            AppTermination.WaitForProcessExit(closePid, 2000);
+            return "forced";
         }
 
         if (app.DedicatedProcess && AppTermination.IsProcessAlive(closePid))

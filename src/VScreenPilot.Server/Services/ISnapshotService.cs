@@ -41,15 +41,7 @@ internal sealed class SnapshotToolService : ISnapshotService
 
     public CaptureOutput Capture(CaptureRequest request)
     {
-        CaptureResult result = _session.CaptureOps.CaptureScreenEx(
-            request.X,
-            request.Y,
-            request.Width,
-            request.Height,
-            request.Scale,
-            request.SavePath,
-            request.StoreFrame,
-            request.PreviewScale);
+        CaptureResult result = _session.CaptureOps.CaptureScreenEx(request);
         return new CaptureOutput(result.Png, result.Meta, result.PreviewPng, result.PreviewMeta);
     }
 }

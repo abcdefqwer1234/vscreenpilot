@@ -79,15 +79,7 @@ internal static class Handshake
 
         try
         {
-            if (JsonNode.Parse(line) is not JsonObject json)
-            {
-                return null;
-            }
-
-            // 只接受 VSP/1；其他版本走“未知握手”错误，避免误把它当成新协议。
-            if (json["vsp"] is not JsonValue vspValue ||
-                !vspValue.TryGetValue(out int vsp) ||
-                vsp != 1)
+            if (JsonNode.Parse(line) is not JsonObject json || !HasSupportedProtocol(json))
             {
                 return null;
             }
@@ -101,66 +93,78 @@ internal static class Handshake
             }
 
             string cwd = Path.GetFullPath(rawCwd);
-            var roots = new List<string>();
-
-            if (json["roots"] is JsonArray rootArray)
-            {
-                foreach (JsonNode? root in rootArray)
-                {
-                    string? value = root?.GetValue<string>();
-
-                    if (!string.IsNullOrWhiteSpace(value))
-                    {
-                        roots.Add(NormalizePath(value, cwd));
-                    }
-                }
-            }
-
-            if (roots.Count == 0)
-            {
-                roots.Add(cwd);
-            }
-
-            var allowlist = new List<string>();
-
-            if (json["capabilities"]?["app_allowlist"] is JsonArray allowArray)
-            {
-                foreach (JsonNode? item in allowArray)
-                {
-                    string? value = item?.GetValue<string>();
-
-                    if (!string.IsNullOrWhiteSpace(value))
-                    {
-                        allowlist.Add(NormalizePath(value, cwd));
-                    }
-                }
-            }
-
-            int proxyPid = 0;
-
-            if (json["proxy_pid"] is JsonValue proxyPidValue &&
-                proxyPidValue.TryGetValue(out int parsedPid) &&
-                parsedPid > 0)
-            {
-                proxyPid = parsedPid;
-            }
-
-            string version = json["version"]?.GetValue<string>() ?? string.Empty;
-
-            return new ClientHello(
-                json["client"]?.GetValue<string>() ?? "unknown",
-                cwd,
-                roots,
-                proxyPid,
-                version,
-                json["capabilities"]?["allow_script"]?.GetValue<bool>() ?? false,
-                json["capabilities"]?["allow_unsafe_script"]?.GetValue<bool>() ?? false,
-                allowlist.ToArray());
+            return BuildHello(json, cwd);
         }
         catch (Exception exception)
         {
             LogSink.Debug($"忽略异常: {exception.Message}");
             return null;
         }
+    }
+
+    /// <summary>只接受 VSP/1；其他版本走“未知握手”错误，避免误把它当成新协议。</summary>
+    private static bool HasSupportedProtocol(JsonObject json) =>
+        json["vsp"] is JsonValue vspValue &&
+        vspValue.TryGetValue(out int vsp) &&
+        vsp == 1;
+
+    private static ClientHello BuildHello(JsonObject json, string cwd) =>
+        new(
+            json["client"]?.GetValue<string>() ?? "unknown",
+            cwd,
+            ReadRoots(json, cwd),
+            ReadProxyPid(json),
+            json["version"]?.GetValue<string>() ?? string.Empty,
+            json["capabilities"]?["allow_script"]?.GetValue<bool>() ?? false,
+            json["capabilities"]?["allow_unsafe_script"]?.GetValue<bool>() ?? false,
+            ReadAllowlist(json, cwd).ToArray());
+
+    private static List<string> ReadRoots(JsonObject json, string cwd)
+    {
+        List<string> roots = ReadPathArray(json["roots"] as JsonArray, cwd);
+
+        if (roots.Count == 0)
+        {
+            roots.Add(cwd);
+        }
+
+        return roots;
+    }
+
+    private static List<string> ReadAllowlist(JsonObject json, string cwd) =>
+        ReadPathArray(json["capabilities"]?["app_allowlist"] as JsonArray, cwd);
+
+    private static List<string> ReadPathArray(JsonArray? array, string cwd)
+    {
+        var paths = new List<string>();
+
+        if (array is null)
+        {
+            return paths;
+        }
+
+        foreach (JsonNode? item in array)
+        {
+            string? value = item?.GetValue<string>();
+
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                paths.Add(NormalizePath(value, cwd));
+            }
+        }
+
+        return paths;
+    }
+
+    private static int ReadProxyPid(JsonObject json)
+    {
+        if (json["proxy_pid"] is JsonValue value &&
+            value.TryGetValue(out int parsedPid) &&
+            parsedPid > 0)
+        {
+            return parsedPid;
+        }
+
+        return 0;
     }
 }

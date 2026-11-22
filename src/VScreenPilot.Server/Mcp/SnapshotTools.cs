@@ -103,44 +103,10 @@ internal sealed class SnapshotTools
 
     public ToolResponse CaptureScreen(JsonElement arguments)
     {
-        int? x = null, y = null, width = null, height = null;
-
-        if (arguments.ValueKind == JsonValueKind.Object &&
-            arguments.TryGetProperty("region", out JsonElement region))
-        {
-            if (region.ValueKind != JsonValueKind.Object)
-            {
-                throw new ToolException("E_INVALID_ARG", "region 必须是对象");
-            }
-
-            x = RequiredInt(region, "x");
-            y = RequiredInt(region, "y");
-            width = RequiredInt(region, "width");
-            height = RequiredInt(region, "height");
-        }
-
-        // 全屏默认降到 0.5：UI 截图缩小一半仍然可读，体积/上下文成本降 4 倍。
-        double scale = OptionalDouble(arguments, "scale", x is null ? 0.5 : 1.0);
-
-        if (arguments.TryGetProperty("scale", out _) && (scale < 0.1 || scale > 1.0))
-        {
-            throw new ToolException(
-                "E_INVALID_ARG",
-                $"scale 必须在 0.1..1.0（收到 {scale}）",
-                new JsonObject { ["field"] = "scale", ["value"] = scale },
-                retryable: false,
-                hint: "0 或 10 这类值不会再被静默钳制；需要小图请用 0.1–1.0",
-                stage: "validate");
-        }
-
+        (int? x, int? y, int? width, int? height) = ParseRegion(arguments);
+        double scale = ParseScale(arguments, x is null);
         string? savePath = OptionalString(arguments, "save_path");
         bool inline = OptionalBool(arguments, "inline", true);
-
-        // 关键发现：全屏“悬崖”主要不是 GDI 采集，而是大 PNG 的 Base64/JSON/stdio 回传。
-        // 366KB PNG 内联 → 客户端约 1.2s；落盘 + 200B 元数据 → 约 35ms。
-        // 因此超过 128KB 的图默认落 artifact，并额外内联一张 0.25× 预览。
-        const int InlineLimit = Limits.InlineLimitBytes;
-        bool hasSavePath = !string.IsNullOrWhiteSpace(savePath);
 
         // preview 与主图同帧；small 图会多编码一次缩略图，但省掉了第二次截屏。
         CaptureOutput capture = _snapshot.Capture(new CaptureRequest(
@@ -151,36 +117,15 @@ internal sealed class SnapshotTools
         byte[] png = capture.Png;
         JsonObject meta = VspJson.ToNode(capture.Meta).AsObject();
 
-        if (inline && png.Length <= InlineLimit)
+        if (inline && png.Length <= Limits.InlineLimitBytes)
         {
             meta["inline"] = true;
             return ToolResponse.Text(meta).AddImage(png);
         }
 
-        string? artifactUri = null;
-        string? artifactName = null;
-
-        // 显式 save_path 就是唯一正式产物：不再额外写 artifact（R4）。
-        if (!hasSavePath)
-        {
-            try
-            {
-                ArtifactOutput artifact = _artifacts.Write(png, "shot", capture.PreviewPng);
-                meta["artifact_path"] = artifact.Path;
-                meta["artifact_uri"] = artifact.Uri;
-                meta["resource_uri"] = artifact.Uri;
-                meta["path"] = artifact.Path;
-                artifactUri = artifact.Uri;
-                artifactName = Path.GetFileName(artifact.Path);
-            }
-            catch (Exception exception)
-            {
-                meta["artifact_error"] = exception.Message;
-            }
-        }
-
+        (string? artifactUri, string? artifactName) =
+            AttachArtifact(meta, png, capture.PreviewPng, savePath);
         meta["inline"] = false;
-
         bool hasPreview = inline && capture.PreviewPng is not null;
 
         if (hasPreview)
@@ -188,6 +133,78 @@ internal sealed class SnapshotTools
             meta["preview"] = VspJson.ToNode(capture.PreviewMeta);
         }
 
+        return BuildLargeResponse(meta, png, capture.PreviewPng, hasPreview, artifactUri, artifactName);
+    }
+
+    private static (int? X, int? Y, int? Width, int? Height) ParseRegion(JsonElement arguments)
+    {
+        if (arguments.ValueKind != JsonValueKind.Object ||
+            !arguments.TryGetProperty("region", out JsonElement region))
+        {
+            return (null, null, null, null);
+        }
+
+        if (region.ValueKind != JsonValueKind.Object)
+        {
+            throw new ToolException("E_INVALID_ARG", "region 必须是对象");
+        }
+
+        return (RequiredInt(region, "x"), RequiredInt(region, "y"),
+            RequiredInt(region, "width"), RequiredInt(region, "height"));
+    }
+
+    private static double ParseScale(JsonElement arguments, bool fullScreen)
+    {
+        // 全屏默认降到 0.5：UI 截图缩小一半仍然可读，体积/上下文成本降 4 倍。
+        double scale = OptionalDouble(arguments, "scale", fullScreen ? 0.5 : 1.0);
+
+        if (!arguments.TryGetProperty("scale", out _) || scale is >= 0.1 and <= 1.0)
+        {
+            return scale;
+        }
+
+        throw new ToolException(
+            "E_INVALID_ARG",
+            $"scale 必须在 0.1..1.0（收到 {scale}）",
+            new JsonObject { ["field"] = "scale", ["value"] = scale },
+            retryable: false,
+            hint: "0 或 10 这类值不会再被静默钳制；需要小图请用 0.1–1.0",
+            stage: "validate");
+    }
+
+    private (string? Uri, string? Name) AttachArtifact(
+        JsonObject meta, byte[] png, byte[]? previewPng, string? savePath)
+    {
+        // 显式 save_path 就是唯一正式产物：不再额外写 artifact（R4）。
+        if (!string.IsNullOrWhiteSpace(savePath))
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            ArtifactOutput artifact = _artifacts.Write(png, "shot", previewPng);
+            meta["artifact_path"] = artifact.Path;
+            meta["artifact_uri"] = artifact.Uri;
+            meta["resource_uri"] = artifact.Uri;
+            meta["path"] = artifact.Path;
+            return (artifact.Uri, Path.GetFileName(artifact.Path));
+        }
+        catch (Exception exception)
+        {
+            meta["artifact_error"] = exception.Message;
+            return (null, null);
+        }
+    }
+
+    private static ToolResponse BuildLargeResponse(
+        JsonObject meta,
+        byte[] png,
+        byte[]? previewPng,
+        bool hasPreview,
+        string? artifactUri,
+        string? artifactName)
+    {
         ToolResponse response = ToolResponse.Text(meta);
 
         if (artifactUri is not null)
@@ -198,9 +215,10 @@ internal sealed class SnapshotTools
 
         if (hasPreview)
         {
-            response.AddImage(capture.PreviewPng!);
+            response.AddImage(previewPng!);
         }
 
         return response;
     }
+
 }

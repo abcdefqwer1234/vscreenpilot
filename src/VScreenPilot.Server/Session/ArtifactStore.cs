@@ -88,78 +88,13 @@ internal sealed class ArtifactStore
             return;
         }
 
-        int deleted = 0;
-        int failed = 0;
-        DateTime nowUtc = DateTime.UtcNow;
-        string[] current = currentDirectories.ToArray();
-
-        void TryDelete(string directory)
-        {
-            string name = Path.GetFileName(directory);
-            bool isCurrent = current.Any(path => string.Equals(
-                Path.GetFullPath(directory),
-                Path.GetFullPath(path),
-                StringComparison.OrdinalIgnoreCase));
-
-            try
-            {
-                if (!ShouldDeleteDirectory(
-                        name,
-                        Directory.GetLastWriteTimeUtc(directory),
-                        nowUtc,
-                        days,
-                        isCurrent))
-                {
-                    return;
-                }
-
-                Directory.Delete(directory, recursive: true);
-                deleted++;
-            }
-            catch (Exception exception)
-            {
-                failed++;
-                _warn($"清理旧截图目录失败 {name}: {exception.Message}");
-            }
-        }
+        var context = new SweepContext(currentDirectories, days, DateTime.UtcNow);
 
         try
         {
             foreach (string child in Directory.EnumerateDirectories(root))
             {
-                if (DirectoryNameRegex.IsMatch(Path.GetFileName(child)))
-                {
-                    // 旧布局：时间戳目录直接在 profile 根下。
-                    TryDelete(child);
-                    continue;
-                }
-
-                try
-                {
-                    foreach (string session in Directory.EnumerateDirectories(child))
-                    {
-                        TryDelete(session);
-                    }
-
-                    // 只删空目录：清理完旧会话后不要留下每个连接一个空壳。
-                    if (!Directory.EnumerateFileSystemEntries(child).Any())
-                    {
-                        try
-                        {
-                            Directory.Delete(child, recursive: false);
-                        }
-                        catch (Exception exception)
-                        {
-                            // 刚有新连接写入时删不掉，下一轮再试。
-                            LogSink.Debug($"忽略异常: {exception.Message}");
-                        }
-                    }
-                }
-                catch (Exception exception)
-                {
-                    failed++;
-                    _warn($"枚举客户端产物目录失败 {Path.GetFileName(child)}: {exception.Message}");
-                }
+                SweepChild(child, context);
             }
         }
         catch (Exception exception)
@@ -168,9 +103,79 @@ internal sealed class ArtifactStore
             return;
         }
 
-        if (deleted > 0 || failed > 0)
+        if (context.Deleted > 0 || context.Failed > 0)
         {
-            _info($"截图产物清理：删除 {deleted} 个，失败 {failed} 个，保留 {days} 天");
+            _info($"截图产物清理：删除 {context.Deleted} 个，失败 {context.Failed} 个，保留 {days} 天");
+        }
+    }
+
+    private void SweepChild(string child, SweepContext context)
+    {
+        if (DirectoryNameRegex.IsMatch(Path.GetFileName(child)))
+        {
+            // 旧布局：时间戳目录直接在 profile 根下。
+            TryDelete(child, context);
+            return;
+        }
+
+        try
+        {
+            foreach (string session in Directory.EnumerateDirectories(child))
+            {
+                TryDelete(session, context);
+            }
+
+            // 只删空目录：清理完旧会话后不要留下每个连接一个空壳。
+            DeleteIfEmpty(child);
+        }
+        catch (Exception exception)
+        {
+            context.Failed++;
+            _warn($"枚举客户端产物目录失败 {Path.GetFileName(child)}: {exception.Message}");
+        }
+    }
+
+    private void TryDelete(string directory, SweepContext context)
+    {
+        string name = Path.GetFileName(directory);
+
+        try
+        {
+            if (!ShouldDeleteDirectory(
+                    name,
+                    Directory.GetLastWriteTimeUtc(directory),
+                    context.NowUtc,
+                    context.Days,
+                    context.IsCurrent(directory)))
+            {
+                return;
+            }
+
+            Directory.Delete(directory, recursive: true);
+            context.Deleted++;
+        }
+        catch (Exception exception)
+        {
+            context.Failed++;
+            _warn($"清理旧截图目录失败 {name}: {exception.Message}");
+        }
+    }
+
+    private static void DeleteIfEmpty(string directory)
+    {
+        if (Directory.EnumerateFileSystemEntries(directory).Any())
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.Delete(directory, recursive: false);
+        }
+        catch (Exception exception)
+        {
+            // 刚有新连接写入时删不掉，下一轮再试。
+            LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
 

@@ -6,6 +6,7 @@ using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Ui;
 using VScreenPilot.Uia;
 using VScreenPilot.Platform.Processes;
+using VScreenPilot.Services;
 
 namespace VScreenPilot.Session;
 
@@ -20,8 +21,8 @@ internal static class SessionComposition
             new SnapshotAppContext(host.EnsureEnvironmentFast, host.PruneDeadApps, host.FindLiveTrackedApp,
                 host.InputOps.RequireWindowOnDisplay, () => host._apps.Where(host.ClientOps.IsOwned).ToList(), TrackedAppTracker.IsLive),
             new SnapshotCaptureContext(host.CaptureOps.CaptureRegion,
-                (scale, previewScale) => host.CaptureOps.CaptureScreenEx(null, null, null, null, scale,
-                    savePath: null, storeFrame: false, previewScale: previewScale),
+                (scale, previewScale) => host.CaptureOps.CaptureScreenEx(new CaptureRequest(
+                    null, null, null, null, scale, null, StoreFrame: false, previewScale)),
                 host.CancellationProbe));
         host._display = new VirtualDisplayController(
             host._gate, host._log, host.ProfileName,

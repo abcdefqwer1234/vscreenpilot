@@ -28,8 +28,7 @@ internal sealed class SessionFacade : ISessionFacade, IControlService
             request.Scale, request.Annotate);
 
     public CaptureResult CaptureScreen(CaptureRequest request) =>
-        _session.CaptureOps.CaptureScreenEx(request.X, request.Y, request.Width, request.Height,
-            request.Scale, request.SavePath, request.StoreFrame, request.PreviewScale);
+        _session.CaptureOps.CaptureScreenEx(request);
 
     public EnvironmentView GetEnvironment(bool ensure = false) =>
         _session.LifecycleOps.GetEnvironment(ensure);

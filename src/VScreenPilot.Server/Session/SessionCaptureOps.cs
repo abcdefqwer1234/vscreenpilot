@@ -6,6 +6,7 @@ using VScreenPilot.Interop;
 using VScreenPilot.Perception;
 using VScreenPilot.Views;
 using VScreenPilot.Errors;
+using VScreenPilot.Services;
 
 namespace VScreenPilot.Session;
 
@@ -19,10 +20,8 @@ internal sealed class SessionCaptureOps
         int? x, int? y, int? width, int? height, double scale, string? savePath) =>
         _host._capture.CaptureScreen(x, y, width, height, scale, savePath);
 
-    internal CaptureResult CaptureScreenEx(
-        int? x, int? y, int? width, int? height, double scale, string? savePath,
-        bool storeFrame, double? previewScale) =>
-        _host._capture.CaptureScreenEx(x, y, width, height, scale, savePath, storeFrame, previewScale);
+    internal CaptureResult CaptureScreenEx(CaptureRequest request) =>
+        _host._capture.CaptureScreenEx(request);
 
 
     public (byte[] Bgra, int Width, int Height) CaptureRegion(int x, int y, int width, int height)

@@ -131,82 +131,23 @@ internal sealed class PipeHost : IDisposable
         {
             using (connection)
             {
-                if (!IntegrityCheck.TryCheck(connection.SafePipeHandle, out string integrityReason))
+                if (!await AuthorizeAsync(connection, cancellationToken).ConfigureAwait(false))
                 {
-                    _log.Warn($"拒绝共享连接：{integrityReason}");
-                    await Handshake.WriteLineAsync(connection, new JsonObject
-                    {
-                        ["vsp"] = 1,
-                        ["ok"] = false,
-                        ["code"] = "E_INTEGRITY_MISMATCH",
-                        ["message"] = integrityReason,
-                    }, cancellationToken).ConfigureAwait(false);
                     return;
                 }
 
-                ClientHello? hello;
-
-                using (var handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
-                {
-                    handshakeCts.CancelAfter(TimeSpan.FromSeconds(5));
-                    string? line = await Handshake.ReadLineAsync(connection, handshakeCts.Token)
-                        .ConfigureAwait(false);
-                    hello = Handshake.ParseClientHello(line);
-                }
+                ClientHello? hello = await ReadHelloAsync(connection, cancellationToken).ConfigureAwait(false);
 
                 if (hello is null)
                 {
-                    await Handshake.WriteLineAsync(connection, new JsonObject
-                    {
-                        ["vsp"] = 1,
-                        ["ok"] = false,
-                        ["code"] = "E_HANDSHAKE",
-                        ["message"] = "握手失败：缺少/非法 VSP/1 客户端信息",
-                    }, cancellationToken).ConfigureAwait(false);
                     return;
                 }
 
                 clientId = "c" + Interlocked.Increment(ref _clientSeq);
-                var client = new ClientContext
-                {
-                    Id = clientId,
-                    Name = hello.Client,
-                    Cwd = hello.Cwd,
-                    Roots = hello.Roots,
-                    ProxyPid = hello.ProxyPid,
-                    Version = hello.Version,
-                    AllowScript = hello.AllowScript,
-                    AllowUnsafeScript = hello.AllowUnsafeScript,
-                    AppAllowlist = hello.AppAllowlist,
-                };
+                ClientContext client = CreateClient(clientId, hello);
 
-                await Handshake.WriteLineAsync(connection, new JsonObject
-                {
-                    ["vsp"] = 1,
-                    ["ok"] = true,
-                    ["client_id"] = clientId,
-                    ["protocol"] = 1,
-                    ["daemon_version"] = BuildInfo.Version,
-                }, cancellationToken).ConfigureAwait(false);
-
-                using var limiter = new MessageLimiter(connection, _messageBudget);
-                using var connectionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                var server = new McpTransport(new McpTransportOptions
-                {
-                    Services = ToolServices.Create(_session),
-                    Runtime = new McpRuntime(_session),
-                    Control = new SessionExecutionControl(_session),
-                    Scheduler = _session.Scheduler,
-                    Log = _log,
-                    Client = new ClientInfo(
-                        client.Id,
-                        client.Cwd,
-                        client.Roots,
-                        client.Name,
-                        client.IncludeAllApps),
-                    Trace = _trace,
-                });
-                await server.RunAsync(limiter, limiter, connectionCts.Token).ConfigureAwait(false);
+                await AcknowledgeAsync(connection, clientId, cancellationToken).ConfigureAwait(false);
+                await ServeAsync(connection, client, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException exception)
@@ -223,6 +164,103 @@ internal sealed class PipeHost : IDisposable
             Interlocked.Decrement(ref _activeClients);
             _log.Info($"共享客户端 {clientId} 断开");
         }
+    }
+
+    private async Task<bool> AuthorizeAsync(
+        NamedPipeServerStream connection, CancellationToken cancellationToken)
+    {
+        if (IntegrityCheck.TryCheck(connection.SafePipeHandle, out string integrityReason))
+        {
+            return true;
+        }
+
+        _log.Warn($"拒绝共享连接：{integrityReason}");
+        await Handshake.WriteLineAsync(connection, new JsonObject
+        {
+            ["vsp"] = 1,
+            ["ok"] = false,
+            ["code"] = "E_INTEGRITY_MISMATCH",
+            ["message"] = integrityReason,
+        }, cancellationToken).ConfigureAwait(false);
+
+        return false;
+    }
+
+    private static async Task<ClientHello?> ReadHelloAsync(
+        NamedPipeServerStream connection, CancellationToken cancellationToken)
+    {
+        ClientHello? hello;
+
+        using (var handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            handshakeCts.CancelAfter(TimeSpan.FromSeconds(5));
+            string? line = await Handshake.ReadLineAsync(connection, handshakeCts.Token)
+                .ConfigureAwait(false);
+            hello = Handshake.ParseClientHello(line);
+        }
+
+        if (hello is not null)
+        {
+            return hello;
+        }
+
+        await Handshake.WriteLineAsync(connection, new JsonObject
+        {
+            ["vsp"] = 1,
+            ["ok"] = false,
+            ["code"] = "E_HANDSHAKE",
+            ["message"] = "握手失败：缺少/非法 VSP/1 客户端信息",
+        }, cancellationToken).ConfigureAwait(false);
+
+        return null;
+    }
+
+    private static ClientContext CreateClient(string clientId, ClientHello hello) =>
+        new()
+        {
+            Id = clientId,
+            Name = hello.Client,
+            Cwd = hello.Cwd,
+            Roots = hello.Roots,
+            ProxyPid = hello.ProxyPid,
+            Version = hello.Version,
+            AllowScript = hello.AllowScript,
+            AllowUnsafeScript = hello.AllowUnsafeScript,
+            AppAllowlist = hello.AppAllowlist,
+        };
+
+    private static Task AcknowledgeAsync(
+        NamedPipeServerStream connection, string clientId, CancellationToken cancellationToken) =>
+        Handshake.WriteLineAsync(connection, new JsonObject
+        {
+            ["vsp"] = 1,
+            ["ok"] = true,
+            ["client_id"] = clientId,
+            ["protocol"] = 1,
+            ["daemon_version"] = BuildInfo.Version,
+        }, cancellationToken);
+
+    private async Task ServeAsync(
+        NamedPipeServerStream connection, ClientContext client, CancellationToken cancellationToken)
+    {
+        using var limiter = new MessageLimiter(connection, _messageBudget);
+        using var connectionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var server = new McpTransport(new McpTransportOptions
+        {
+            Services = ToolServices.Create(_session),
+            Runtime = new McpRuntime(_session),
+            Control = new SessionExecutionControl(_session),
+            Scheduler = _session.Scheduler,
+            Log = _log,
+            Client = new ClientInfo(
+                client.Id,
+                client.Cwd,
+                client.Roots,
+                client.Name,
+                client.IncludeAllApps),
+            Trace = _trace,
+        });
+        await server.RunAsync(limiter, limiter, connectionCts.Token).ConfigureAwait(false);
     }
 
     private async Task RejectAsync(

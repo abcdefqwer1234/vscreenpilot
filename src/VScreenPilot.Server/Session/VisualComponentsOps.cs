@@ -74,6 +74,7 @@ internal sealed class VisualComponentsOps
         try
         {
             Array.Clear(visited, 0, total);
+            var scanner = new ColorComponentScanner(mask, width, height, queue);
 
             for (int start = 0; start < total; start++)
             {
@@ -87,70 +88,12 @@ internal sealed class VisualComponentsOps
                     continue;
                 }
 
-                int head = 0;
-                int tail = 0;
-                queue[tail++] = start;
-                visited[start] = 1;
-
-                int minX = width, minY = height, maxX = -1, maxY = -1, pixels = 0;
-
-                while (head < tail)
-                {
-                    int index = queue[head++];
-                    int px = index % width;
-                    int py = index / width;
-                    pixels++;
-
-                    if (px < minX) minX = px;
-                    if (px > maxX) maxX = px;
-                    if (py < minY) minY = py;
-                    if (py > maxY) maxY = py;
-
-                    if (px > 0)
-                    {
-                        int next = index - 1;
-                        if (mask[next] != 0 && visited[next] == 0)
-                        {
-                            visited[next] = 1;
-                            queue[tail++] = next;
-                        }
-                    }
-
-                    if (px < width - 1)
-                    {
-                        int next = index + 1;
-                        if (mask[next] != 0 && visited[next] == 0)
-                        {
-                            visited[next] = 1;
-                            queue[tail++] = next;
-                        }
-                    }
-
-                    if (py > 0)
-                    {
-                        int next = index - width;
-                        if (mask[next] != 0 && visited[next] == 0)
-                        {
-                            visited[next] = 1;
-                            queue[tail++] = next;
-                        }
-                    }
-
-                    if (py < height - 1)
-                    {
-                        int next = index + width;
-                        if (mask[next] != 0 && visited[next] == 0)
-                        {
-                            visited[next] = 1;
-                            queue[tail++] = next;
-                        }
-                    }
-                }
+                ColorComponent component = scanner.Fill(start, visited);
 
                 // 小于阈值的碎片直接丢弃，避免碎片化界面产生海量无用连通域。
-                if (pixels >= minPixels)
+                if (component.Pixels >= minPixels)
                 {
-                    components.Add(new ColorComponent(minX, minY, maxX, maxY, pixels));
+                    components.Add(component);
                 }
             }
         }

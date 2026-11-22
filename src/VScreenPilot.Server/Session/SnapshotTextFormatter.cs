@@ -24,6 +24,33 @@ internal static class SnapshotTextFormatter
             return false;
         }
 
+        AppendHeader(node, depth, includeValues, builder);
+        AppendFlags(node, builder);
+
+        if (node["children"] is not JsonArray children)
+        {
+            return builder.Length < maxChars;
+        }
+
+        foreach (JsonNode? child in children)
+        {
+            if (child is not JsonObject childObject)
+            {
+                continue;
+            }
+
+            if (!Walk(childObject, depth + 1, includeValues, builder, maxChars))
+            {
+                return false;
+            }
+        }
+
+        return builder.Length < maxChars;
+    }
+
+    private static void AppendHeader(
+        JsonObject node, int depth, bool includeValues, StringBuilder builder)
+    {
         string controlType = node["control_type"]?.GetValue<string>() ?? "Node";
         string reference = node["ref"]?.GetValue<string>() ?? string.Empty;
         string? name = node["name"]?.GetValue<string>();
@@ -54,6 +81,11 @@ internal static class SnapshotTextFormatter
             builder.Append(']');
         }
 
+        builder.AppendLine();
+    }
+
+    private static void AppendFlags(JsonObject node, StringBuilder builder)
+    {
         var flags = new List<string>(3);
 
         if (node["enabled"] is JsonValue enabled && enabled.TryGetValue(out bool isEnabled) && !isEnabled)
@@ -71,34 +103,14 @@ internal static class SnapshotTextFormatter
             flags.Add("focused");
         }
 
-        if (flags.Count > 0)
+        if (flags.Count == 0)
         {
-            builder.Append(" {");
-            builder.Append(string.Join(',', flags));
-            builder.Append('}');
+            return;
         }
 
-        builder.AppendLine();
-
-        if (node["children"] is not JsonArray children)
-        {
-            return builder.Length < maxChars;
-        }
-
-        foreach (JsonNode? child in children)
-        {
-            if (child is not JsonObject childObject)
-            {
-                continue;
-            }
-
-            if (!Walk(childObject, depth + 1, includeValues, builder, maxChars))
-            {
-                return false;
-            }
-        }
-
-        return builder.Length < maxChars;
+        builder.Append(" {");
+        builder.Append(string.Join(',', flags));
+        builder.Append('}');
     }
 
     private static void AppendEscaped(StringBuilder builder, string text, int limit)

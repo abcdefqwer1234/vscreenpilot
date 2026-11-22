@@ -26,109 +26,131 @@ internal sealed class ElementKeyboardValueOps
     public ElementKeyboardValueOps(ElementOperations host) => _host = host;
     internal SetElementValueView SetElementValueByKeyboard(ElementWriteRequest request)
     {
-        DisplayInfo display = request.Display;
-        UiaElementHandle handle = request.Handle;
-        ElementRefEntry entry = request.Entry;
-        string value = request.Value;
-        bool refreshed = request.Refreshed;
-        string? mode = request.Mode;
-        bool allowDestructive = request.AllowDestructive;
-
-        (TrackedApp app, string effectiveMode, bool replace) =
-            ResolveKeyboardTarget(display, entry, handle, mode, allowDestructive);
-
+        (TrackedApp app, string effectiveMode, bool replace) = ResolveKeyboardTarget(
+            request.Display, request.Entry, request.Handle, request.Mode, request.AllowDestructive);
 
         IntPtr previous = WindowManager.GetForegroundWindow();
         _host._focus.PauseFocusGuard();
 
         try
         {
-            if (!_host._focus.EnsureForeground(app))
-            {
-                throw new ToolException(
-                    "E_FOCUS",
-                    "无法把目标窗口切到前台，已取消键入以避免输入到用户窗口",
-                    new JsonObject { ["ref"] = entry.Ref },
-                    retryable: true,
-                    hint: "确认没有模态框禁用主窗口；可改用消息点击或先关闭弹窗",
-                    stage: "focus");
-            }
-
-            bool focused = TryFocusElement(handle, display);
-
-            if (!focused)
-            {
-                throw new ToolException(
-                    "E_FOCUS",
-                    "无法把焦点设置到控件，已取消键入",
-                    new JsonObject { ["ref"] = entry.Ref },
-                    retryable: true,
-                    stage: "focus");
-            }
+            EnsureForegroundAndFocus(app, request.Handle, request.Display, request.Entry);
 
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-            if (replace)
-            {
-                InputInjector.PressKeys("Ctrl+A");
-                Thread.Sleep(60);
-
-                if (value.Length == 0)
-                {
-                    // 新版记事本的 Document 控件对 Ctrl+A→Delete 的处理是异步的；
-                    // 连续发送可能丢掉 Delete，导致“清空”实际未生效。
-                    for (int attempt = 0; attempt < 3; attempt++)
-                    {
-                        InputInjector.PressKeys(attempt == 0 ? "Delete" : "Backspace");
-                        Thread.Sleep(80);
-
-                        string? probe = handle.GetText(32);
-                        if (string.IsNullOrEmpty(probe))
-                        {
-                            break;
-                        }
-
-                        if (attempt + 1 < 3)
-                        {
-                            InputInjector.PressKeys("Ctrl+A");
-                            Thread.Sleep(50);
-                        }
-                    }
-                }
-            }
-            else if (effectiveMode == "append")
-            {
-                InputInjector.PressKeys("Ctrl+End");
-            }
+            PrepareInput(replace, effectiveMode, request.Handle, request.Value);
 
             Thread.Sleep(30);
             TextWriteResult write = _host._input.WriteTextVerified(
-                app, handle, value, replace, timeoutMs: 12000);
+                app, request.Handle, request.Value, replace, timeoutMs: 12000);
 
-            string? after = handle.GetText(65536);
-            bool verified = write.Verified;
-
-            return new SetElementValueView(
-                entry.Ref,
-                "keyboard",
-                effectiveMode,
-                replace,
-                verified,
-                value,
-                after is null ? null : JsonValue.Create(after),
-                refreshed,
-                write.Chunks,
-                Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
-                after?.Length,
-                !verified
-                    ? "键盘写入未能通过 TextPattern/ValuePattern 回读确认；请用 get_element_text 或截图复核"
-                    : null);
+            return BuildKeyboardView(request, effectiveMode, replace, write, stopwatch);
         }
         finally
         {
             _host._focus.RestoreForeground(previous);
             _host._focus.ResumeFocusGuard();
         }
+    }
+
+    private void EnsureForegroundAndFocus(
+        TrackedApp app, UiaElementHandle handle, DisplayInfo display, ElementRefEntry entry)
+    {
+        if (!_host._focus.EnsureForeground(app))
+        {
+            throw new ToolException(
+                "E_FOCUS",
+                "无法把目标窗口切到前台，已取消键入以避免输入到用户窗口",
+                new JsonObject { ["ref"] = entry.Ref },
+                retryable: true,
+                hint: "确认没有模态框禁用主窗口；可改用消息点击或先关闭弹窗",
+                stage: "focus");
+        }
+
+        if (TryFocusElement(handle, display))
+        {
+            return;
+        }
+
+        throw new ToolException(
+            "E_FOCUS",
+            "无法把焦点设置到控件，已取消键入",
+            new JsonObject { ["ref"] = entry.Ref },
+            retryable: true,
+            stage: "focus");
+    }
+
+    private static void PrepareInput(bool replace, string effectiveMode, UiaElementHandle handle, string value)
+    {
+        if (!replace)
+        {
+            if (effectiveMode == "append")
+            {
+                InputInjector.PressKeys("Ctrl+End");
+            }
+
+            return;
+        }
+
+        InputInjector.PressKeys("Ctrl+A");
+        Thread.Sleep(60);
+
+        if (value.Length == 0)
+        {
+            ClearSelectedText(handle);
+        }
+    }
+
+    private static void ClearSelectedText(UiaElementHandle handle)
+    {
+        // 新版记事本的 Document 控件对 Ctrl+A→Delete 的处理是异步的；
+        // 连续发送可能丢掉 Delete，导致“清空”实际未生效。
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            InputInjector.PressKeys(attempt == 0 ? "Delete" : "Backspace");
+            Thread.Sleep(80);
+
+            string? probe = handle.GetText(32);
+
+            if (string.IsNullOrEmpty(probe))
+            {
+                return;
+            }
+
+            if (attempt + 1 >= 3)
+            {
+                continue;
+            }
+
+            InputInjector.PressKeys("Ctrl+A");
+            Thread.Sleep(50);
+        }
+    }
+
+    private static SetElementValueView BuildKeyboardView(
+        ElementWriteRequest request,
+        string effectiveMode,
+        bool replace,
+        TextWriteResult write,
+        System.Diagnostics.Stopwatch stopwatch)
+    {
+        string? after = request.Handle.GetText(65536);
+        bool verified = write.Verified;
+
+        return new SetElementValueView(
+            request.Entry.Ref,
+            "keyboard",
+            effectiveMode,
+            replace,
+            verified,
+            request.Value,
+            after is null ? null : JsonValue.Create(after),
+            request.Refreshed,
+            write.Chunks,
+            Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
+            after?.Length,
+            verified
+                ? null
+                : "键盘写入未能通过 TextPattern/ValuePattern 回读确认；请用 get_element_text 或截图复核");
     }
 
     internal (TrackedApp App, string EffectiveMode, bool Replace) ResolveKeyboardTarget(
