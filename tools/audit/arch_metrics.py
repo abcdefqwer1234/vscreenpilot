@@ -26,6 +26,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 SRC = os.path.join(REPO, "src")
 TESTS = os.path.join(REPO, "tests")
 BASELINE = os.path.join(REPO, "tools", "audit", "arch_baseline.json")
+FIXTURES = os.path.join(REPO, "tools", "audit", "fixtures")
 
 TYPE_KEYWORDS = (
     "class", "record", "struct", "interface", "enum", "delegate",
@@ -139,7 +140,7 @@ def parse_methods(text: str):
         if pp < 0 or (pb >= 0 and pb < pp) or (ps >= 0 and ps < pp):
             i += 1
             continue
-        match = re.search(r"([A-Za-z_]\w*)\s*\($", joined[: pp + 1])
+        match = re.search(r"([A-Za-z_]\w*)\s*(?:<[^<>()]*>)?\s*\($", joined[: pp + 1])
         if not match or match.group(1) in CONTROL:
             i += 1
             continue
@@ -328,38 +329,63 @@ def collect():
     }
 
 
+# fixture golden：只断言 tools/audit/fixtures 下的构造，不绑定生产方法长度。
+# key = "<文件名>:<方法名>"，value = 解析器应返回的方法行数。
 GOLDEN = {
-    "Launch": 542,
-    "SnapshotCore": 385,
-    "Ensure": 330,
-    "ExecuteAsync": 295,
-    "GetEnvironment": 294,
-    "Gesture": 289,
-    "EvaluateCondition": 277,
-    "Run": 246,
-    "Release": 210,
-    "MatchTemplate": 205,
-    "TypeText": 201,
-    "Click": 201,
-    "Find": 200,
-    "SetElementValue": 198,
-    "Main": 176,
+    "BasicCases.cs:Alpha": 3,
+    "BasicCases.cs:Beta": 5,
+    "BasicCases.cs:Gamma": 6,
+    "BasicCases.cs:Delta": 4,
+    "BasicCases.cs:Epsilon": 5,
+    "BasicCases.cs:Zeta": 4,
+    "BasicCases.cs:Eta": 4,
+    "BasicCases.cs:Theta": 4,
+    "PartialCases.cs:P1": 3,
+    "PartialCases.cs:P2": 4,
+    "PartialCases.cs:P3": 5,
+    "PartialCases.cs:P4": 4,
+    "PartialCases.cs:P5": 5,
+    "PartialCases.cs:P6": 6,
+    "EdgeCases.cs:E1": 3,
+    "EdgeCases.cs:E2": 4,
+    "EdgeCases.cs:E3": 4,
+    "EdgeCases.cs:E4": 4,
+    "EdgeCases.cs:E5": 7,
+    "EdgeCases.cs:E6": 6,
 }
+
+# 这些构造不应被当成方法：表达式体、嵌套类型成员、record 主构造函数。
+ABSENT = ("Iota", "Inner", "Kappa")
+
+
+def fixture_rows():
+    rows = []
+    for path in source_files(FIXTURES):
+        name = os.path.basename(path)
+        for length, line, method in parse_methods(open(path, encoding="utf-8").read()):
+            rows.append((name, method, length, line))
+    return rows
 
 
 def selftest() -> int:
-    rows = []
-    for path in source_files(SRC):
-        for length, line, name in parse_methods(open(path, encoding="utf-8").read()):
-            rows.append((length, os.path.relpath(path, REPO), line, name))
+    rows = fixture_rows()
     failures = []
-    for name, expected in GOLDEN.items():
-        hits = [row for row in rows if row[3] == name]
+    positive_passed = 0
+    for key, expected in GOLDEN.items():
+        file_name, method = key.split(":")
+        hits = [row for row in rows if row[0] == file_name and row[1] == method]
         if not hits:
-            failures.append(f"{name}: 未解析到")
-        elif not any(row[0] == expected for row in hits):
-            failures.append(f"{name}: 期望 {expected}，实际 {[row[0] for row in hits]}")
-    print(f"selftest: {len(GOLDEN) - len(failures)}/{len(GOLDEN)} 通过")
+            failures.append(f"{key}: 未解析到")
+        elif not any(row[2] == expected for row in hits):
+            failures.append(f"{key}: 期望 {expected}，实际 {[row[2] for row in hits]}")
+        else:
+            positive_passed += 1
+    absent_hits = sorted({row[1] for row in rows if row[1] in ABSENT})
+    failures.extend(f"{name}: 不应被解析为方法" for name in absent_hits)
+    print(
+        f"selftest: {positive_passed}/{len(GOLDEN)} positive, "
+        f"{len(ABSENT) - len(absent_hits)}/{len(ABSENT)} negative"
+    )
     for failure in failures:
         print("  FAIL", failure)
     return 1 if failures else 0
@@ -415,7 +441,13 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--selftest", action="store_true")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--dump-fixtures", action="store_true")
     args = parser.parse_args()
+
+    if args.dump_fixtures:
+        for row in fixture_rows():
+            print(f"{row[0]}:{row[1]} length={row[2]} line={row[3]}")
+        return 0
 
     if args.selftest:
         return selftest()

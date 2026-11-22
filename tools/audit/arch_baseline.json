@@ -1,22 +1,22 @@
 {
-  "generated_at": "2026-11-21T20:50:12Z",
+  "generated_at": "2026-11-22T05:41:27Z",
   "source": {
     "files": 178,
-    "lines": 32261,
-    "max_file": 598,
+    "lines": 32293,
+    "max_file": 599,
     "files_gt_600": 0,
     "files_gt_800": 0,
     "top_files": [
       {
-        "lines": 598,
+        "lines": 599,
         "path": "src/VScreenPilot.Automation/Ui/MsaaService.cs"
       },
       {
-        "lines": 586,
+        "lines": 587,
         "path": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs"
       },
       {
-        "lines": 525,
+        "lines": 526,
         "path": "src/VScreenPilot.Server/Ipc/ControlServer.cs"
       },
       {
@@ -24,7 +24,7 @@
         "path": "src/VScreenPilot.Automation/Perception/TemplateMatcher.cs"
       },
       {
-        "lines": 479,
+        "lines": 480,
         "path": "src/VScreenPilot.Server/Session/ElementOperations.Value.cs"
       },
       {
@@ -32,7 +32,7 @@
         "path": "src/VScreenPilot.Server/Session/SessionManager.Lifecycle.cs"
       },
       {
-        "lines": 463,
+        "lines": 465,
         "path": "src/VScreenPilot.Server/Infrastructure/LogRing.cs"
       },
       {
@@ -40,7 +40,7 @@
         "path": "src/VScreenPilot.Platform/Display/VddDevice.cs"
       },
       {
-        "lines": 448,
+        "lines": 447,
         "path": "src/VScreenPilot.Server/Tools/ToolExecutor.cs"
       },
       {
@@ -48,7 +48,7 @@
         "path": "src/VScreenPilot.Server/Session/EnvironmentReporter.cs"
       },
       {
-        "lines": 418,
+        "lines": 419,
         "path": "src/VScreenPilot.Server/Session/AppReleaser.cs"
       },
       {
@@ -62,7 +62,7 @@
     "gt_150": 0,
     "ge_200": 0,
     "ge_120": 1,
-    "ge_80": 50,
+    "ge_80": 52,
     "top": [
       {
         "lines": 120,
@@ -95,6 +95,12 @@
         "name": "HandleAsync"
       },
       {
+        "lines": 115,
+        "path": "src/VScreenPilot.Abstractions/Errors/ErrorCatalog.cs",
+        "line": 19,
+        "name": "Dictionary"
+      },
+      {
         "lines": 113,
         "path": "src/VScreenPilot.Server/Session/ElementOperations.Invoke.cs",
         "line": 25,
@@ -109,7 +115,7 @@
       {
         "lines": 111,
         "path": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs",
-        "line": 234,
+        "line": 235,
         "name": "FindElementsDetailed"
       },
       {
@@ -129,12 +135,6 @@
         "path": "src/VScreenPilot.Automation/Scripting/ScriptRunner.cs",
         "line": 88,
         "name": "private"
-      },
-      {
-        "lines": 109,
-        "path": "src/VScreenPilot.Server/Tools/ToolExecutor.cs",
-        "line": 61,
-        "name": "ExecuteAsync"
       }
     ]
   },
