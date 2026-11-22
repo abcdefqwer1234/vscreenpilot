@@ -52,9 +52,9 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 ## 3. 启动、组合根与会话
 
 - 入口：`Program.Main` 只委托 `Composition.Bootstrap.Run`；`Bootstrap` 解析 `--version` / `--doctor` / `--cli` / `--daemon` / `--profile` 等，然后进入 `ServerHost`。
-- 组合根：`SessionManager`（18 个 partial 文件；类型跨度约 1,609 行）。它持有会话锁、显示控制器、应用注册表、元素 ref、UIA 宿主、写调度器与日志；`SessionFacade`/`SessionExecutionControl` 把它收窄为 IPC/CLI 与工具层边界。
+- 组合根：`SessionManager`（18 个 partial 文件；类型跨度约 1504 行）。它持有会话锁、显示控制器、应用注册表、元素 ref、UIA 宿主、写调度器与日志；`SessionFacade`/`SessionExecutionControl` 把它收窄为 IPC/CLI 与工具层边界。
 - 已知双 wiring：`Program` 与 `ServerHost` 各构造一次 `SessionManager`；R3 未合并，T3-2 收敛为单一组合根。
-- 组件通过 `I*Host` 反向依赖门面：18 个接口、187 个成员（唯一名 108），最大 `IInputHost` 26。组件不做跨组件 `new`；T3-2～T3-6 替换为端口。
+- 组件通过 `I*Host` 反向依赖门面：8 个接口、143 个成员（唯一名 93），最大 `IInputHost` 26。组件不做跨组件 `new`；T3-2～T3-6 替换为端口。
 - 会话组件（Server/Session）：
   - 显示：`VirtualDisplayController`
   - 应用：`AppLauncher`、`AppReleaser`、`TrackedAppTracker`、`AppAllowlistPolicy`、`SessionStateKeeper`
@@ -108,10 +108,10 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 
 ## 8. 已知债务（T3 输入）
 
-- 178 个源文件、32,293 行；0 个文件 >600，最大 599（`MsaaService.cs`）；15 个类型 >400，最大 `UiaService` 类型跨度 1,869。
+- 190 个源文件、32,417 行；0 个文件 >600，最大 599（`MsaaService.cs`）；16 个类型 >400，最大 `UiaService` 类型跨度 1,881。
 - 0 个方法 >150，最大 120；但仍有约 48 个 >80 行、32 个 >12 判断点、39 个 >6 参数。
 - 无类型 `catch` 0；无日志静默 `catch` 0（`arch_metrics.py` 口径）。
-- 18 个 `I*Host`、187 个成员声明、108 个唯一名；25 个有行为组件只有约 5 个有直接单测。
+- 8 个 `I*Host`、143 个成员声明、93 个唯一名；25 个有行为组件只有约 5 个有直接单测。
 - SPLIT 命名空间 0；`ToolContext` 仍持有门面；`Program`（251 行）与 `ServerHost` 仍各构造一次 `SessionManager`；`partial` 声明 63 个 / 11 个类型。
 - `Program` 254 行、`Main` 97 行；`SessionManager` 52 个 public 成员。
 - T3 目标：类型 ≤400、文件 ≤450、方法 ≤80/12/6、partial 0、`I*Host` 0、`SessionManager` ≤350、`Program` ≤200，详见 `docs/第三轮全局重构方案.md`。
