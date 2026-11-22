@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-11-22T05:41:27Z",
+  "schema": 2,
+  "generated_at": "2026-11-22T06:06:41Z",
   "source": {
-    "files": 178,
-    "lines": 32293,
+    "files": 179,
+    "lines": 32352,
     "max_file": 599,
-    "files_gt_600": 0,
-    "files_gt_800": 0,
+    "files_gt_450": 9,
     "top_files": [
       {
         "lines": 599,
@@ -36,12 +36,12 @@
         "path": "src/VScreenPilot.Server/Infrastructure/LogRing.cs"
       },
       {
-        "lines": 453,
-        "path": "src/VScreenPilot.Platform/Display/VddDevice.cs"
+        "lines": 454,
+        "path": "src/VScreenPilot.Server/Tools/ToolExecutor.cs"
       },
       {
-        "lines": 447,
-        "path": "src/VScreenPilot.Server/Tools/ToolExecutor.cs"
+        "lines": 453,
+        "path": "src/VScreenPilot.Platform/Display/VddDevice.cs"
       },
       {
         "lines": 427,
@@ -57,84 +57,509 @@
       }
     ]
   },
-  "methods": {
-    "max": 120,
-    "gt_150": 0,
-    "ge_200": 0,
-    "ge_120": 1,
-    "ge_80": 52,
+  "types": {
+    "count": 217,
+    "max": 1881,
+    "gt_400": 16,
+    "partial_declarations": 63,
+    "partial_types": 11,
     "top": [
       {
-        "lines": 120,
-        "path": "src/VScreenPilot.Server/Session/SnapshotBuilder.cs",
+        "lines": 1881,
+        "name": "UiaService",
+        "files": 8
+      },
+      {
+        "lines": 1609,
+        "name": "SessionManager",
+        "files": 18
+      },
+      {
+        "lines": 1525,
+        "name": "InputRouter",
+        "files": 6
+      },
+      {
+        "lines": 1464,
+        "name": "McpTransport",
+        "files": 8
+      },
+      {
+        "lines": 1318,
+        "name": "AppLauncher",
+        "files": 8
+      },
+      {
+        "lines": 965,
+        "name": "ElementOperations",
+        "files": 3
+      },
+      {
+        "lines": 757,
+        "name": "VirtualDisplayController",
+        "files": 4
+      },
+      {
+        "lines": 650,
+        "name": "SnapshotBuilder",
+        "files": 3
+      },
+      {
+        "lines": 641,
+        "name": "VisualMatchService",
+        "files": 3
+      },
+      {
+        "lines": 545,
+        "name": "MsaaService",
+        "files": 1
+      },
+      {
+        "lines": 513,
+        "name": "TemplateMatcher",
+        "files": 1
+      },
+      {
+        "lines": 503,
+        "name": "ControlServer",
+        "files": 1
+      },
+      {
+        "lines": 454,
+        "name": "LogRing",
+        "files": 1
+      },
+      {
+        "lines": 429,
+        "name": "VddDevice",
+        "files": 1
+      },
+      {
+        "lines": 425,
+        "name": "ToolExecutor",
+        "files": 1
+      },
+      {
+        "lines": 402,
+        "name": "AppReleaser",
+        "files": 1
+      },
+      {
+        "lines": 399,
+        "name": "UiaHost",
+        "files": 1
+      },
+      {
+        "lines": 391,
+        "name": "WindowManager",
+        "files": 1
+      },
+      {
+        "lines": 376,
+        "name": "InputInjector",
+        "files": 1
+      },
+      {
+        "lines": 376,
+        "name": "EnvironmentReporter",
+        "files": 1
+      }
+    ]
+  },
+  "file_types": {
+    "mismatch": [
+      {
+        "file": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs",
+        "main": "UiaService",
+        "lines": 578
+      },
+      {
+        "file": "src/VScreenPilot.Server/Tools/ToolHandlers.cs",
+        "main": "McpTransport",
+        "lines": 339
+      },
+      {
+        "file": "src/VScreenPilot.Automation/Ui/UiaTreeWalker.cs",
+        "main": "UiaService",
+        "lines": 296
+      },
+      {
+        "file": "src/VScreenPilot.Automation/Ui/UiaPatterns.cs",
+        "main": "UiaService",
+        "lines": 250
+      },
+      {
+        "file": "src/VScreenPilot.Automation/Ui/UiaElementFactory.cs",
+        "main": "UiaService",
+        "lines": 228
+      },
+      {
+        "file": "src/VScreenPilot.Automation/Ui/UiaText.cs",
+        "main": "UiaService",
+        "lines": 199
+      },
+      {
+        "file": "src/VScreenPilot.Server/Tools/ToolHandlers.Input.cs",
+        "main": "McpTransport",
+        "lines": 191
+      },
+      {
+        "file": "src/VScreenPilot.Server/Tools/ToolHandlers.Artifacts.cs",
+        "main": "McpTransport",
+        "lines": 118
+      },
+      {
+        "file": "src/VScreenPilot.Server/Tools/ToolCatalog.cs",
+        "main": "McpTransport",
+        "lines": 106
+      },
+      {
+        "file": "src/VScreenPilot.Automation/Ui/UiaConditions.cs",
+        "main": "UiaService",
+        "lines": 79
+      },
+      {
+        "file": "src/VScreenPilot.Automation/Ui/UiaControlTypes.cs",
+        "main": "UiaService",
+        "lines": 50
+      },
+      {
+        "file": "src/VScreenPilot.Abstractions/Views/EnvironmentView.cs",
+        "main": "VirtualDisplayView",
+        "lines": 45
+      },
+      {
+        "file": "src/VScreenPilot.Server/Tools/ToolDescriptor.cs",
+        "main": "ToolRegistry",
+        "lines": 13
+      },
+      {
+        "file": "src/VScreenPilot.Abstractions/Views/ElementView.cs",
+        "main": "BoundsView",
+        "lines": 1
+      },
+      {
+        "file": "src/VScreenPilot.Abstractions/Views/InputViews.cs",
+        "main": "ObservedView",
+        "lines": 1
+      },
+      {
+        "file": "src/VScreenPilot.Abstractions/Views/LaunchOrPlaceView.cs",
+        "main": "OptionalBoundsView",
+        "lines": 1
+      },
+      {
+        "file": "src/VScreenPilot.Abstractions/Views/ScreenTextView.cs",
+        "main": "ScreenTextLineView",
+        "lines": 1
+      },
+      {
+        "file": "src/VScreenPilot.Abstractions/Views/SnapshotView.cs",
+        "main": "SnapshotWindowView",
+        "lines": 1
+      },
+      {
+        "file": "src/VScreenPilot.Abstractions/Views/TreeViews.cs",
+        "main": "FindElementItemView",
+        "lines": 1
+      },
+      {
+        "file": "src/VScreenPilot.Abstractions/Views/VerifyViews.cs",
+        "main": "SizeView",
+        "lines": 1
+      }
+    ],
+    "helpers_gt_80": [
+      {
+        "file": "src/VScreenPilot.Platform/Input/KeyMap.cs",
+        "type": "SystemKeyGuard",
+        "lines": 90
+      }
+    ]
+  },
+  "methods": {
+    "count": 1022,
+    "max": 120,
+    "gt_80": 50,
+    "max_decision": 34,
+    "gt_12_decision": 46,
+    "max_params": 12,
+    "gt_6_params": 54,
+    "top": [
+      {
+        "name": "SnapshotCore",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Session/SnapshotBuilder.cs",
+        "type": "SnapshotBuilder",
         "line": 92,
-        "name": "SnapshotCore"
+        "lines": 120,
+        "decision": 12,
+        "params": 8,
+        "public": false
       },
       {
-        "lines": 119,
-        "path": "src/VScreenPilot.Server/Session/ScreenTextService.cs",
+        "name": "ClickText",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Session/ScreenTextService.cs",
+        "type": "ScreenTextService",
         "line": 148,
-        "name": "ClickText"
+        "lines": 119,
+        "decision": 10,
+        "params": 10,
+        "public": true
       },
       {
-        "lines": 118,
-        "path": "src/VScreenPilot.Server/Session/InputRouter.Text.cs",
+        "name": "WriteTextVerified",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Session/InputRouter.Text.cs",
+        "type": "InputRouter",
         "line": 31,
-        "name": "WriteTextVerified"
+        "lines": 118,
+        "decision": 14,
+        "params": 7,
+        "public": true
       },
       {
-        "lines": 116,
-        "path": "src/VScreenPilot.Server/Session/VirtualDisplayController.Create.cs",
+        "name": "CreateNewDisplay",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Session/VirtualDisplayController.Create.cs",
+        "type": "VirtualDisplayController",
         "line": 16,
-        "name": "CreateNewDisplay"
+        "lines": 116,
+        "decision": 17,
+        "params": 2,
+        "public": false
       },
       {
-        "lines": 115,
-        "path": "src/VScreenPilot.Server/Ipc/ControlServer.cs",
+        "name": "HandleAsync",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Ipc/ControlServer.cs",
+        "type": "ControlServer",
         "line": 116,
-        "name": "HandleAsync"
-      },
-      {
         "lines": 115,
-        "path": "src/VScreenPilot.Abstractions/Errors/ErrorCatalog.cs",
-        "line": 19,
-        "name": "Dictionary"
+        "decision": 11,
+        "params": 2,
+        "public": false
       },
       {
-        "lines": 113,
-        "path": "src/VScreenPilot.Server/Session/ElementOperations.Invoke.cs",
-        "line": 25,
-        "name": "InvokeElement"
-      },
-      {
-        "lines": 113,
-        "path": "src/VScreenPilot.Server/Session/AppLauncher.Launch.cs",
+        "name": "StartNewInstance",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Session/AppLauncher.Launch.cs",
+        "type": "AppLauncher",
         "line": 173,
-        "name": "StartNewInstance"
+        "lines": 113,
+        "decision": 9,
+        "params": 1,
+        "public": false
       },
       {
-        "lines": 111,
-        "path": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs",
+        "name": "InvokeElement",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Session/ElementOperations.Invoke.cs",
+        "type": "ElementOperations",
+        "line": 25,
+        "lines": 113,
+        "decision": 11,
+        "params": 3,
+        "public": true
+      },
+      {
+        "name": "FindElementsDetailed",
+        "kind": "method",
+        "file": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs",
+        "type": "UiaService",
         "line": 235,
-        "name": "FindElementsDetailed"
+        "lines": 111,
+        "decision": 13,
+        "params": 6,
+        "public": true
       },
       {
-        "lines": 110,
-        "path": "src/VScreenPilot.Server/Session/InputRouter.Keyboard.cs",
-        "line": 252,
-        "name": "PressKeySequence"
-      },
-      {
-        "lines": 110,
-        "path": "src/VScreenPilot.Server/Session/AppLauncher.LaunchFlow.cs",
-        "line": 116,
-        "name": "EnsureDocumentReady"
-      },
-      {
-        "lines": 110,
-        "path": "src/VScreenPilot.Automation/Scripting/ScriptRunner.cs",
+        "name": "ExecuteScript",
+        "kind": "method",
+        "file": "src/VScreenPilot.Automation/Scripting/ScriptRunner.cs",
+        "type": "ScriptRunner",
         "line": 88,
-        "name": "private"
+        "lines": 110,
+        "decision": 12,
+        "params": 4,
+        "public": false
+      },
+      {
+        "name": "EnsureDocumentReady",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Session/AppLauncher.LaunchFlow.cs",
+        "type": "AppLauncher",
+        "line": 116,
+        "lines": 110,
+        "decision": 27,
+        "params": 1,
+        "public": false
+      },
+      {
+        "name": "PressKeySequence",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Session/InputRouter.Keyboard.cs",
+        "type": "InputRouter",
+        "line": 252,
+        "lines": 110,
+        "decision": 11,
+        "params": 5,
+        "public": true
+      },
+      {
+        "name": "FindTextElement",
+        "kind": "method",
+        "file": "src/VScreenPilot.Automation/Ui/UiaElementOperations.cs",
+        "type": "UiaService",
+        "line": 111,
+        "lines": 109,
+        "decision": 15,
+        "params": 3,
+        "public": true
+      },
+      {
+        "name": "ReadOnly",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Cli/CliEnvironment.cs",
+        "type": "CliEnvironment",
+        "line": 17,
+        "lines": 109,
+        "decision": 9,
+        "params": 1,
+        "public": true
+      },
+      {
+        "name": "ExecuteAsync",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Tools/ToolExecutor.cs",
+        "type": "ToolExecutor",
+        "line": 61,
+        "lines": 108,
+        "decision": 10,
+        "params": 2,
+        "public": true
+      },
+      {
+        "name": "GestureScroll",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Session/InputRouter.Gesture.cs",
+        "type": "InputRouter",
+        "line": 162,
+        "lines": 106,
+        "decision": 14,
+        "params": 6,
+        "public": false
+      },
+      {
+        "name": "Snapshot",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Ipc/ControlServer.cs",
+        "type": "ControlServer",
+        "line": 232,
+        "lines": 105,
+        "decision": 10,
+        "params": 1,
+        "public": false
+      },
+      {
+        "name": "SetElementValueByKeyboard",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Session/ElementOperations.Value.cs",
+        "type": "ElementOperations",
+        "line": 257,
+        "lines": 105,
+        "decision": 11,
+        "params": 7,
+        "public": false
+      },
+      {
+        "name": "BuildDialogs",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Session/SnapshotBuilder.cs",
+        "type": "SnapshotBuilder",
+        "line": 267,
+        "lines": 105,
+        "decision": 9,
+        "params": 4,
+        "public": false
+      },
+      {
+        "name": "GetLog",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Tools/ToolHandlers.Artifacts.cs",
+        "type": "McpTransport",
+        "line": 22,
+        "lines": 105,
+        "decision": 25,
+        "params": 1,
+        "public": false
+      },
+      {
+        "name": "TryOpen",
+        "kind": "method",
+        "file": "src/VScreenPilot.Platform/Display/VddDevice.cs",
+        "type": "VddDevice",
+        "line": 63,
+        "lines": 104,
+        "decision": 11,
+        "params": 1,
+        "public": true
+      },
+      {
+        "name": "Resolve",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Session/ElementResolver.cs",
+        "type": "ElementResolver",
+        "line": 73,
+        "lines": 103,
+        "decision": 11,
+        "params": 4,
+        "public": true
+      },
+      {
+        "name": "Sweep",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Session/ArtifactStore.cs",
+        "type": "ArtifactStore",
+        "line": 74,
+        "lines": 102,
+        "decision": 13,
+        "params": 1,
+        "public": true
+      },
+      {
+        "name": "CaptureScreenEx",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Session/ScreenCaptureService.cs",
+        "type": "ScreenCaptureService",
+        "line": 41,
+        "lines": 101,
+        "decision": 14,
+        "params": 8,
+        "public": false
+      },
+      {
+        "name": "BuildScreenshot",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Session/SnapshotBuilder.Screenshot.cs",
+        "type": "SnapshotBuilder",
+        "line": 21,
+        "lines": 101,
+        "decision": 11,
+        "params": 6,
+        "public": false
+      },
+      {
+        "name": "CaptureScreen",
+        "kind": "method",
+        "file": "src/VScreenPilot.Server/Tools/ToolHandlers.cs",
+        "type": "McpTransport",
+        "line": 142,
+        "lines": 101,
+        "decision": 17,
+        "params": 1,
+        "public": false
       }
     ]
   },
@@ -142,6 +567,7 @@
     "count": 18,
     "members": 187,
     "max_members": 26,
+    "unique_members": 108,
     "items": [
       {
         "name": "IEnvironmentHost",
@@ -219,164 +645,118 @@
   },
   "namespaces": {
     "split": [],
-    "map": {
-      "VScreenPilot": [
-        "VScreenPilot.Server"
-      ],
-      "VScreenPilot.Apps": [
-        "VScreenPilot.Server"
-      ],
-      "VScreenPilot.Cli": [
-        "VScreenPilot.Server"
-      ],
-      "VScreenPilot.Composition": [
-        "VScreenPilot.Server"
-      ],
-      "VScreenPilot.Diagnostics": [
-        "VScreenPilot.Server"
-      ],
-      "VScreenPilot.Errors": [
-        "VScreenPilot.Abstractions"
-      ],
-      "VScreenPilot.Infrastructure": [
-        "VScreenPilot.Abstractions"
-      ],
-      "VScreenPilot.Input": [
-        "VScreenPilot.Platform"
-      ],
-      "VScreenPilot.Interop": [
-        "VScreenPilot.Platform"
-      ],
-      "VScreenPilot.Ipc": [
-        "VScreenPilot.Server"
-      ],
-      "VScreenPilot.Json": [
-        "VScreenPilot.Abstractions"
-      ],
-      "VScreenPilot.Mcp": [
-        "VScreenPilot.Server"
-      ],
-      "VScreenPilot.Options": [
-        "VScreenPilot.Abstractions"
-      ],
-      "VScreenPilot.Perception": [
-        "VScreenPilot.Automation"
-      ],
-      "VScreenPilot.Platform.Displays": [
-        "VScreenPilot.Platform"
-      ],
-      "VScreenPilot.Platform.Interop": [
-        "VScreenPilot.Platform"
-      ],
-      "VScreenPilot.Platform.Ipc": [
-        "VScreenPilot.Platform"
-      ],
-      "VScreenPilot.Platform.Logging": [
-        "VScreenPilot.Platform"
-      ],
-      "VScreenPilot.Platform.Processes": [
-        "VScreenPilot.Platform"
-      ],
-      "VScreenPilot.Platform.Security": [
-        "VScreenPilot.Platform"
-      ],
-      "VScreenPilot.Platform.Windows": [
-        "VScreenPilot.Platform"
-      ],
-      "VScreenPilot.Scripting": [
-        "VScreenPilot.Automation"
-      ],
-      "VScreenPilot.Server.Infrastructure": [
-        "VScreenPilot.Server"
-      ],
-      "VScreenPilot.Session": [
-        "VScreenPilot.Server"
-      ],
-      "VScreenPilot.Ui": [
-        "VScreenPilot.Server"
-      ],
-      "VScreenPilot.Uia": [
-        "VScreenPilot.Automation"
-      ],
-      "VScreenPilot.Verification": [
-        "VScreenPilot.Server"
-      ],
-      "VScreenPilot.Views": [
-        "VScreenPilot.Abstractions"
-      ]
-    }
+    "edges": [
+      "Apps->Interop",
+      "Apps->Session",
+      "Cli->Composition",
+      "Cli->Diagnostics",
+      "Cli->Infrastructure",
+      "Cli->Interop",
+      "Cli->Ipc",
+      "Cli->Json",
+      "Cli->Platform",
+      "Cli->Session",
+      "Composition->Infrastructure",
+      "Composition->Ipc",
+      "Composition->Mcp",
+      "Composition->Options",
+      "Composition->Platform",
+      "Composition->Session",
+      "Diagnostics->Infrastructure",
+      "Diagnostics->Interop",
+      "Diagnostics->Ipc",
+      "Diagnostics->Platform",
+      "Diagnostics->Session",
+      "Infrastructure->Errors",
+      "Infrastructure->Interop",
+      "Infrastructure->Ipc",
+      "Infrastructure->Mcp",
+      "Infrastructure->Platform",
+      "Infrastructure->Session",
+      "Infrastructure->Views",
+      "Input->Errors",
+      "Input->Interop",
+      "Ipc->Apps",
+      "Ipc->Composition",
+      "Ipc->Errors",
+      "Ipc->Infrastructure",
+      "Ipc->Json",
+      "Ipc->Mcp",
+      "Ipc->Platform",
+      "Ipc->Session",
+      "Json->Errors",
+      "Mcp->Errors",
+      "Mcp->Infrastructure",
+      "Mcp->Json",
+      "Mcp->Perception",
+      "Mcp->Platform",
+      "Mcp->Session",
+      "Mcp->Views",
+      "Perception->Infrastructure",
+      "Perception->Platform",
+      "Platform->Interop",
+      "Program->Cli",
+      "Program->Composition",
+      "Program->Diagnostics",
+      "Program->Infrastructure",
+      "Program->Ipc",
+      "Program->Json",
+      "Program->Mcp",
+      "Program->Platform",
+      "Program->Session",
+      "Scripting->Errors",
+      "Scripting->Platform",
+      "Scripting->Views",
+      "Session->Apps",
+      "Session->Diagnostics",
+      "Session->Errors",
+      "Session->Infrastructure",
+      "Session->Input",
+      "Session->Interop",
+      "Session->Json",
+      "Session->Mcp",
+      "Session->Perception",
+      "Session->Platform",
+      "Session->Scripting",
+      "Session->Ui",
+      "Session->Uia",
+      "Session->Verification",
+      "Session->Views",
+      "Ui->Apps",
+      "Ui->Platform",
+      "Ui->Uia",
+      "Uia->Errors",
+      "Uia->Interop",
+      "Uia->Platform",
+      "Verification->Platform",
+      "Verification->Views"
+    ]
   },
-  "ivt": [
-    {
-      "from": "VScreenPilot",
-      "to": "VScreenPilot.Tests.Contract"
-    },
-    {
-      "from": "VScreenPilot",
-      "to": "VScreenPilot.Tests.Unit"
-    },
-    {
-      "from": "VScreenPilot.Abstractions",
-      "to": "VScreenPilot"
-    },
-    {
-      "from": "VScreenPilot.Abstractions",
-      "to": "VScreenPilot.Automation"
-    },
-    {
-      "from": "VScreenPilot.Abstractions",
-      "to": "VScreenPilot.Tests.Contract"
-    },
-    {
-      "from": "VScreenPilot.Abstractions",
-      "to": "VScreenPilot.Tests.Unit"
-    },
-    {
-      "from": "VScreenPilot.Automation",
-      "to": "VScreenPilot"
-    },
-    {
-      "from": "VScreenPilot.Automation",
-      "to": "VScreenPilot.Tests.Contract"
-    },
-    {
-      "from": "VScreenPilot.Automation",
-      "to": "VScreenPilot.Tests.Unit"
-    },
-    {
-      "from": "VScreenPilot.Platform",
-      "to": "VScreenPilot"
-    },
-    {
-      "from": "VScreenPilot.Platform",
-      "to": "VScreenPilot.Automation"
-    },
-    {
-      "from": "VScreenPilot.Platform",
-      "to": "VScreenPilot.Tests.Contract"
-    },
-    {
-      "from": "VScreenPilot.Platform",
-      "to": "VScreenPilot.Tests.Unit"
-    },
-    {
-      "from": "VScreenPilot.Platform",
-      "to": "VddProbe"
-    }
-  ],
+  "public_types": {
+    "VScreenPilot.Abstractions": 55,
+    "VScreenPilot.Automation": 0,
+    "VScreenPilot.Platform": 6,
+    "VScreenPilot.Server": 9
+  },
   "catches": {
-    "typed_wide": 173,
-    "typed_narrow": 87,
+    "typed": 238,
     "untyped": 0,
-    "untyped_silent": 0,
-    "debug_only": 0
+    "untyped_silent": 66,
+    "comment_only": 0
   },
   "tests": {
-    "fact": 166,
-    "theory": 10,
-    "methods": 176,
-    "inline_data": 51,
-    "files": 33,
-    "lines": 3329
-  }
+    "methods": 180,
+    "fact": 170,
+    "theory": 10
+  },
+  "session_manager": {
+    "lines": 1609,
+    "public": 41
+  },
+  "program": {
+    "lines": 254,
+    "main_lines": 97
+  },
+  "components": [],
+  "ivt": []
 }

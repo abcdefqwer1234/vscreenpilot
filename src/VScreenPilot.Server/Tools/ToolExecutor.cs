@@ -202,7 +202,7 @@ internal sealed class ToolExecutor
 
             return (lease, screenLease, callCts);
         }
-        catch
+        catch (Exception)
         {
             lease?.Dispose();
             screenLease?.Dispose();

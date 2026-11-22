@@ -52,7 +52,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 ## 3. 启动、组合根与会话
 
 - 入口：`Program.Main` 解析 `--version` / `--doctor` / `--cli` / `--daemon` / `--profile` 等，然后进入 `ServerHost`。
-- 组合根：`SessionManager`（18 个 partial 文件；类型跨度约 1,591 行，文件合计 1,805 行）。它持有会话锁、显示控制器、应用注册表、元素 ref、UIA 宿主、写调度器与日志。
+- 组合根：`SessionManager`（18 个 partial 文件；类型跨度约 1,609 行，文件合计 1,805 行）。它持有会话锁、显示控制器、应用注册表、元素 ref、UIA 宿主、写调度器与日志。
 - 已知双 wiring：`Program` 与 `ServerHost` 各构造一次 `SessionManager`；R3 未合并，T3-2 收敛为单一组合根。
 - 组件通过 `I*Host` 反向依赖门面：18 个接口、187 个成员（唯一名 108），最大 `IInputHost` 26。组件不做跨组件 `new`；T3-2～T3-6 替换为端口。
 - 会话组件（Server/Session）：
@@ -113,5 +113,29 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 - 无类型 `catch` 0；无日志静默 `catch` 0（`arch_metrics.py` 口径）。
 - 18 个 `I*Host`、187 个成员声明、108 个唯一名；25 个有行为组件只有约 5 个有直接单测。
 - SPLIT 命名空间 0；`ToolContext` 仍持有门面；`Program`（251 行）与 `ServerHost` 仍各构造一次 `SessionManager`；`partial` 声明 63 个 / 11 个类型。
-- `Program` 251 行、`Main` 97 行；`SessionManager` 52 个 public 成员。
+- `Program` 254 行、`Main` 97 行；`SessionManager` 52 个 public 成员。
 - T3 目标：类型 ≤400、文件 ≤450、方法 ≤80/12/6、partial 0、`I*Host` 0、`SessionManager` ≤350、`Program` ≤200，详见 `docs/第三轮全局重构方案.md`。
+
+## 9. 架构度量（自动生成）
+
+> 本节由 `python tools/audit/doc_metrics.py --write` 生成；CI 用 `--check` 校验，禁止手改。
+
+<!-- arch-metrics:begin -->
+| 指标 | 实测 | 硬上限 |
+|---|---:|---:|
+| 源文件 / 行数 | 179 / 32352 | - |
+| 最大文件 | 599 | ≤450 |
+| 类型 >400 | 16 | 0 |
+| 最大类型跨度 | 1881 | ≤400 |
+| partial 类型 | 11 | 0 |
+| 方法 >80 行 | 50（最大 120） | 0 / ≤80 |
+| 方法 >12 判断点 | 46（最大 34） | 0 / ≤12 |
+| 方法 >6 参数 | 54（最大 12） | 0 / ≤6 |
+| I*Host | 18 / 187 成员 | 0 |
+| SessionManager | 1609 行 / 41 public | ≤350 / ≤12 |
+| Program | 254 行 / Main 97 | ≤200 / ≤80 |
+| 测试方法 | 180 | ≥230 |
+| 无日志 catch | 66 | ≤66 |
+| SPLIT 命名空间 | 0 | 0 |
+| public 类型 | Abstractions=55, Automation=0, Platform=6, Server=9 | 不增加 |
+<!-- arch-metrics:end -->

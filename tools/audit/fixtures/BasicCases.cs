@@ -46,6 +46,15 @@ internal sealed class BasicCases
         int x = 1;
     }
 
+    public int Mu(int a, int b, int c, int d, int e, int f, int g)
+    {
+        if (a > 0 && b > 0 || c > 0)
+        {
+            return d + e + f + g;
+        }
+        return 0;
+    }
+
     public int Iota() => 1;
 
     private sealed class Nested

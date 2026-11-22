@@ -41,7 +41,7 @@ internal static class InvocationGate
 
             return (lease, screen);
         }
-        catch
+        catch (Exception)
         {
             // 释放顺序与获取相反：先写锁，后屏幕租约。
             lease?.Dispose();
