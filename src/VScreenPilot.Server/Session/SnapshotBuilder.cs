@@ -41,15 +41,25 @@ internal sealed record SnapshotCaptureContext(
     Func<Func<bool>> CancellationProbe);
 
 /// <summary>快照：环境确认、语义树、弹窗、前台、可选截图与脱敏。</summary>
-internal sealed partial class SnapshotBuilder : IDisposable
+internal sealed class SnapshotBuilder : IDisposable
 {
-    private readonly SnapshotStateContext _state;
-    private readonly SnapshotAppContext _apps;
-    private readonly SnapshotCaptureContext _capture;
-    private readonly SemaphoreSlim _snapshotGate = new(1, 1);
+    internal readonly SnapshotStateContext _state;
+    internal readonly SnapshotAppContext _apps;
+    internal readonly SnapshotCaptureContext _capture;
+    internal readonly SemaphoreSlim _snapshotGate = new(1, 1);
+
+    internal readonly SnapshotSectionOps Sections;
+    internal readonly SnapshotConvertOps ConvertOps;
+    internal readonly SnapshotScreenshotOps ScreenshotOps;
+
+    internal JsonObject ConvertTreeNode(UiaTreeNode node, IntPtr hwnd, ref string rootRef) =>
+        ConvertOps.ConvertTreeNode(node, hwnd, ref rootRef);
 
     public SnapshotBuilder(SnapshotStateContext state, SnapshotAppContext apps, SnapshotCaptureContext capture)
     {
+        Sections = new SnapshotSectionOps(this);
+        ConvertOps = new SnapshotConvertOps(this);
+        ScreenshotOps = new SnapshotScreenshotOps(this);
         _state = state;
         _apps = apps;
         _capture = capture;
@@ -123,10 +133,10 @@ internal sealed partial class SnapshotBuilder : IDisposable
         int nodes = Math.Clamp(maxNodes, 1, Math.Min(1024, _state.RefCapacity()));
         long started = Environment.TickCount64;
 
-        UiaTreeResult result = BuildTree(
+        UiaTreeResult result = Sections.BuildTree(
             hwnd, depth, nodes, interactiveOnly, out bool emptyRetried, out bool effectiveInteractiveOnly);
 
-        RequireRoot(result);
+        Sections.RequireRoot(result);
 
         string rootRef = string.Empty;
         JsonObject tree;
@@ -147,15 +157,15 @@ internal sealed partial class SnapshotBuilder : IDisposable
             started, effectiveInteractiveOnly, emptyRetried);
         JsonObject data = CreateSnapshotData(context, ref redactions);
 
-        BuildDialogs(app, hwnd, data, ref redactions);
-        BuildWindowsAndForeground(data);
+        Sections.BuildDialogs(app, hwnd, data, ref redactions);
+        Sections.BuildWindowsAndForeground(data);
 
         (byte[]? png, byte[]? previewPng, JsonObject? previewMeta) =
-            BuildScreenshot(data, tree, display, includeScreenshot, annotate, scale);
+            ScreenshotOps.BuildScreenshot(data, tree, display, includeScreenshot, annotate, scale);
 
         ApplyRedactions(data, ref redactions);
 
-        return new SnapshotResult(ToView(data), png, previewPng, previewMeta);
+        return new SnapshotResult(ConvertOps.ToView(data), png, previewPng, previewMeta);
     }
 
     private sealed record SnapshotBuildContext(
@@ -247,205 +257,4 @@ internal sealed partial class SnapshotBuilder : IDisposable
             data["privacy_redactions"] = redactions;
         }
     }
-
-    private void RequireRoot(UiaTreeResult result)
-    {
-        if (result.Root is null)
-        {
-            throw new ToolException(
-                "E_ELEMENT_NOT_FOUND",
-                result.Reason == "root_not_found" ? "树根控件已不存在" : "无法读取语义树",
-                new JsonObject { ["reason"] = result.Reason, ["snapshot_id"] = _state.SnapshotId() });
-        }
-    }
-
-
-    private UiaTreeResult BuildTree(
-        IntPtr hwnd, int depth, int nodes, bool interactiveOnly,
-        out bool emptyRetried, out bool effectiveInteractiveOnly)
-    {
-        UiaTreeResult result = _state.Uia.BuildTree(
-            hwnd,
-            rootRuntimeId: string.Empty,
-            maxDepth: depth,
-            interactiveOnly: interactiveOnly,
-            maxNodes: nodes,
-            timeBudgetMs: 3000,
-            isCancelled: _capture.CancellationProbe());
-
-        emptyRetried = false;
-        effectiveInteractiveOnly = interactiveOnly;
-
-        // 空树在 UIA 首帧未就绪时很常见。重试一次并放开 interactive_only；
-        // 比直接返回“1 个节点 + 无解释”对调用方有用得多（N4）。
-        if (result.Nodes <= 1)
-        {
-            Thread.Sleep(200);
-
-            UiaTreeResult retry = _state.Uia.BuildTree(
-                hwnd,
-                rootRuntimeId: string.Empty,
-                maxDepth: Math.Max(depth, 4),
-                interactiveOnly: false,
-                maxNodes: nodes,
-                timeBudgetMs: 3000,
-                isCancelled: _capture.CancellationProbe());
-
-            if (retry.Root is not null && retry.Nodes > result.Nodes)
-            {
-                result = retry;
-                emptyRetried = true;
-                effectiveInteractiveOnly = false;
-            }
-        }
-
-        return result;
-    }
-
-    private void BuildDialogs(TrackedApp app, IntPtr hwnd, JsonObject data, ref int redactions)
-    {
-        var dialogs = new JsonArray();
-        bool rootListed = false;
-
-        foreach (WindowInfo dialog in WindowManager.ListOwnedWindows(app.Pid, hwnd))
-        {
-            if (dialog.Hwnd == hwnd)
-            {
-                rootListed = true;
-            }
-
-            var dialogJson = new JsonObject
-            {
-                ["hwnd"] = dialog.Hwnd.ToInt64(),
-                ["title"] = PrivacyRedactor.RedactEmails(dialog.Title, ref redactions),
-                ["class"] = dialog.ClassName,
-                ["bounds"] = new JsonObject
-                {
-                    ["x"] = dialog.Rect.Left,
-                    ["y"] = dialog.Rect.Top,
-                    ["width"] = dialog.Width,
-                    ["height"] = dialog.Height,
-                },
-            };
-
-            // Office 旧对话框（bosa_sdm_msword）UIA 树为空，MSAA 是唯一语义来源。
-            // 把控件直接放进 snapshot.dialogs[].controls，模型不需要再调 find_element。
-            if (dialog.ClassName.Contains("bosa", StringComparison.OrdinalIgnoreCase))
-            {
-                MsaaFindResult msaa = _state.Uia.InvokeMsaa(() => MsaaService.FindElements(
-                    dialog.Hwnd, null, UiaNameMatch.Exact, null, 100));
-
-                if (msaa.Items.Count > 0)
-                {
-                    var controls = new JsonArray();
-
-                    lock (_state.Refs.SyncRoot)
-                    {
-                        foreach (UiaElementInfo info in msaa.Items)
-                        {
-                            var control = new JsonObject
-                            {
-                                ["ref"] = _state.RegisterElement(info, dialog.Hwnd),
-                                ["name"] = info.Name,
-                                ["control_type"] = info.ControlTypeName,
-                                ["bounds"] = new JsonObject
-                                {
-                                    ["x"] = info.Left,
-                                    ["y"] = info.Top,
-                                    ["width"] = info.Width,
-                                    ["height"] = info.Height,
-                                },
-                            };
-
-                            if (!string.IsNullOrEmpty(info.Value))
-                            {
-                                control["value"] = info.Value;
-                            }
-
-                            controls.Add(control);
-                        }
-                    }
-
-                    dialogJson["controls"] = controls;
-                    dialogJson["msaa_truncated"] = msaa.Truncated;
-                }
-            }
-
-            dialogs.Add(dialogJson);
-        }
-
-        // snapshot 的 root 可能已经是弹窗（GetActivePopup）。此时 dialogs[] 不含它，
-        // 调用方会看到“root 是对话框、dialogs 却是空”的矛盾（N6）。
-        if (hwnd != app.Hwnd)
-        {
-            data["root_hwnd"] = hwnd.ToInt64();
-            data["root_is_dialog"] = true;
-
-            if (!rootListed)
-            {
-                WindowInfo info = WindowManager.FromHandle(hwnd)
-                    ?? new WindowInfo(
-                        hwnd, app.Pid, string.Empty, string.Empty,
-                        default, Visible: false, Owned: false);
-
-                dialogs.Insert(0, (JsonNode)new JsonObject
-                {
-                    ["hwnd"] = hwnd.ToInt64(),
-                    ["title"] = PrivacyRedactor.RedactEmails(info.Title, ref redactions),
-                    ["class"] = info.ClassName,
-                    ["is_root"] = true,
-                    ["bounds"] = new JsonObject
-                    {
-                        ["x"] = info.Rect.Left,
-                        ["y"] = info.Rect.Top,
-                        ["width"] = info.Width,
-                        ["height"] = info.Height,
-                    },
-                });
-            }
-        }
-
-        data["dialogs"] = dialogs;
-    }
-
-    private void BuildWindowsAndForeground(JsonObject data)
-    {
-        var windows = new JsonArray();
-
-        foreach (TrackedApp tracked in _apps.OwnedApps())
-        {
-            windows.Add((JsonNode)new JsonObject
-            {
-                ["pid"] = tracked.Pid,
-                ["hwnd"] = tracked.Hwnd.ToInt64(),
-                ["title"] = _apps.IsLive(tracked)
-                    ? WindowManager.GetTitle(tracked.Hwnd)
-                    : tracked.Title,
-                ["alive"] = _apps.IsLive(tracked),
-                ["owned"] = tracked.Owned,
-            });
-        }
-
-        data["windows"] = windows;
-
-        IntPtr foreground = WindowManager.GetForegroundWindow();
-        WindowInfo? foregroundInfo = WindowManager.FromHandle(foreground);
-        bool foregroundTracked = false;
-
-        if (foregroundInfo is not null)
-        {
-            foregroundTracked = _apps.OwnedApps().Any(item => item.Pid == foregroundInfo.Pid);
-        }
-
-        data["foreground"] = foregroundInfo is null
-            ? null
-            : new JsonObject
-            {
-                ["hwnd"] = foregroundInfo.Hwnd.ToInt64(),
-                ["pid"] = foregroundInfo.Pid,
-                ["title"] = foregroundTracked ? foregroundInfo.Title : null,
-                ["tracked"] = foregroundTracked,
-            };
-    }
-
 }

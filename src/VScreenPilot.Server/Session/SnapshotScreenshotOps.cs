@@ -14,9 +14,13 @@ using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SnapshotBuilder : IDisposable
+/// <summary>ScreenshotOps：SnapshotBuilder 的拆分子集。</summary>
+internal sealed class SnapshotScreenshotOps
 {
-    private (byte[]? Png, byte[]? PreviewPng, JsonObject? PreviewMeta) BuildScreenshot(
+    private readonly SnapshotBuilder _core;
+
+    public SnapshotScreenshotOps(SnapshotBuilder core) => _core = core;
+    internal (byte[]? Png, byte[]? PreviewPng, JsonObject? PreviewMeta) BuildScreenshot(
         JsonObject data, JsonObject tree, DisplayInfo display,
         bool includeScreenshot, bool annotate, double scale)
     {
@@ -32,12 +36,12 @@ internal sealed partial class SnapshotBuilder : IDisposable
         if (annotate)
         {
             var annotations = new JsonArray();
-            CollectAnnotations(tree, display, annotations, maxCount: 80);
+            _core.ConvertOps.CollectAnnotations(tree, display, annotations, maxCount: 80);
             data["annotations"] = annotations;
 
             // 直接用源帧做叠加，再缩放编码；网格让模型估坐标时有参照。
             (byte[] bgra, int captureWidth, int captureHeight) =
-                _capture.CaptureRegion(display.X, display.Y, display.Width, display.Height);
+                _core._capture.CaptureRegion(display.X, display.Y, display.Width, display.Height);
 
             double effectiveScale = Math.Clamp(scale, 0.1, 1.0);
             int thickness = Math.Max(2, (int)Math.Ceiling(2 / effectiveScale));
@@ -103,7 +107,7 @@ internal sealed partial class SnapshotBuilder : IDisposable
         else
         {
             // 快照截图不写帧缓存；preview 与主图同帧，且不阻塞 _refGate（已在锁外）。
-            CaptureResult capture = _capture.CaptureForSnapshot(
+            CaptureResult capture = _core._capture.CaptureForSnapshot(
                 Math.Clamp(scale, 0.1, 1.0),
                 Math.Max(Limits.MinScale, scale * Limits.PreviewScale));
 
@@ -117,6 +121,4 @@ internal sealed partial class SnapshotBuilder : IDisposable
 
         return (png, previewPng, previewMeta);
     }
-
-
 }

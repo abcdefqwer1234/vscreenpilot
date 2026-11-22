@@ -14,10 +14,14 @@ using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SnapshotBuilder : IDisposable
+/// <summary>ConvertOps：SnapshotBuilder 的拆分子集。</summary>
+internal sealed class SnapshotConvertOps
 {
+    private readonly SnapshotBuilder _core;
+
+    public SnapshotConvertOps(SnapshotBuilder core) => _core = core;
     /// <summary>把组装完成的 JsonObject 收敛成强类型视图；子树保持原样。</summary>
-    private static SnapshotView ToView(JsonObject data)
+    internal SnapshotView ToView(JsonObject data)
     {
         JsonObject window = (JsonObject)data["window"]!;
         JsonNode? dialogs = data["dialogs"];
@@ -69,7 +73,7 @@ internal sealed partial class SnapshotBuilder : IDisposable
     internal JsonObject ConvertTreeNode(UiaTreeNode node, IntPtr hwnd, ref string rootRef)
     {
         UiaElementInfo info = node.Info;
-        string reference = _state.RegisterElement(info, hwnd);
+        string reference = _core._state.RegisterElement(info, hwnd);
 
         if (string.IsNullOrEmpty(rootRef))
         {
@@ -135,7 +139,7 @@ internal sealed partial class SnapshotBuilder : IDisposable
         return json;
     }
 
-    private static void CollectAnnotations(
+    internal void CollectAnnotations(
         JsonObject node, DisplayInfo display, JsonArray target, int maxCount)
     {
         if (target.Count < maxCount && node["bounds"] is JsonObject bounds)
@@ -186,5 +190,4 @@ internal sealed partial class SnapshotBuilder : IDisposable
             }
         }
     }
-
 }
