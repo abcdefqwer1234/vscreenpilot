@@ -1,3 +1,5 @@
+using VScreenPilot.Options;
+
 namespace VScreenPilot.Ipc;
 
 /// <summary>
@@ -116,17 +118,7 @@ internal sealed class MessageLimiter : Stream
         }
     }
 
-    private static long ResolveMaxBytes()
-    {
-        string? raw = Environment.GetEnvironmentVariable("VSP_MAX_MESSAGE_MB");
-
-        if (long.TryParse(raw, out long mb))
-        {
-            return Math.Clamp(mb, 1, 64) * 1024 * 1024;
-        }
-
-        return 16L * 1024 * 1024;
-    }
+    private static long ResolveMaxBytes() => VspOptions.FromEnvironment().MaxMessageBytes;
 
     protected override void Dispose(bool disposing)
     {

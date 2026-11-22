@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using VScreenPilot.Apps;
@@ -150,8 +151,25 @@ internal sealed class EnvironmentReleaser
             ? _apps.Apps.Snapshot()
             : _apps.Apps.Where(_apps.IsOwned);
 
-        foreach (TrackedApp app in releaseApps.Reverse().ToList())
+        List<TrackedApp> targets = releaseApps.Reverse().ToList();
+        var stopwatch = Stopwatch.StartNew();
+
+        for (int index = 0; index < targets.Count; index++)
         {
+            if (ReleaseBudgetExceeded(stopwatch.ElapsedMilliseconds, index, targets.Count))
+            {
+                for (int remaining = index; remaining < targets.Count; remaining++)
+                {
+                    state.Kept.Add(targets[remaining].Pid);
+                }
+
+                state.Warnings.Add(
+                    $"释放超过 {ReleaseBudgetMs / 1000}s，剩余 {targets.Count - index} 个应用保留");
+                break;
+            }
+
+            TrackedApp app = targets[index];
+
             try
             {
                 CloseOrRestoreApp(state, app, onDirty);
@@ -171,6 +189,12 @@ internal sealed class EnvironmentReleaser
         }
     }
 
+    /// <summary>release 内部总预算：避免外层 90s 工具超时先到、handler 仍持写锁。</summary>
+    internal const int ReleaseBudgetMs = 60_000;
+
+    internal static bool ReleaseBudgetExceeded(long elapsedMs, int processed, int total) =>
+        processed < total && elapsedMs >= ReleaseBudgetMs;
+
     private void CloseOrRestoreApp(ReleaseState state, TrackedApp app, string onDirty)
     {
         bool windowAlive = app.Hwnd != IntPtr.Zero && NativeMethods.IsWindow(app.Hwnd);
@@ -180,7 +204,7 @@ internal sealed class EnvironmentReleaser
             CloseOrRestoreWindow(state, app, onDirty);
         }
 
-        ReclaimResidualProcess(app, windowAlive);
+        ReclaimResidualProcess(state, app, windowAlive, onDirty);
     }
 
     private void CloseOrRestoreWindow(ReleaseState state, TrackedApp app, string onDirty)
@@ -197,10 +221,20 @@ internal sealed class EnvironmentReleaser
             state.Kept.Add(app.Pid);
         }
 
-        if (app.StartedProcess && app.TempProfile is not null)
+        // save 的关闭结果可能是 kept（保存框没处理成功）：此时不能再强杀临时 profile 进程。
+        // force/discard 明确允许丢数据，才在这里直接结束进程；save 的残留进程由
+        // ReclaimResidualProcess 在窗口真正关闭后回收。
+        if ((onDirty is "force" or "discard") && app.StartedProcess && app.TempProfile is not null)
         {
-            AppTermination.KillProcessTreeIfMatches(app.Pid, app.ExePath);
-            state.Forced.Add(app.Pid);
+            if (AppTermination.KillProcessTreeIfMatches(app.Pid, app.ExePath))
+            {
+                state.Forced.Add(app.Pid);
+            }
+            else if (AppTermination.IsProcessAlive(app.Pid))
+            {
+                state.Warnings.Add(
+                    $"未能结束临时 profile 进程 pid={app.Pid}（exe 路径校验失败），保留其 profile");
+            }
         }
     }
 
@@ -240,30 +274,73 @@ internal sealed class EnvironmentReleaser
         }
     }
 
-    private static void ReclaimResidualProcess(TrackedApp app, bool windowAlive)
+    private static void ReclaimResidualProcess(
+        ReleaseState state, TrackedApp app, bool windowAlive, string onDirty)
     {
         if (app.TempProfile is not null)
         {
-            // 窗口已关闭但进程可能仍在后台（Edge 常驻），按 exe 路径核对后再杀。
-            if (app.StartedProcess && !windowAlive)
-            {
-                AppTermination.KillProcessTreeIfMatches(app.Pid, app.ExePath);
-            }
-
-            AppTermination.TryDeleteDirectory(app.TempProfile);
+            ReclaimTempProfile(state, app, app.TempProfile, windowAlive, onDirty);
             return;
         }
 
         // 专用实例的窗口被用户先关掉时，回收可能残留的进程。
-        bool dedicatedResidual = app.CloseWindowOnRelease &&
-                                 app.DedicatedProcess &&
-                                 app.StartedProcess &&
-                                 !windowAlive;
-
-        if (dedicatedResidual)
+        if (IsDedicatedResidual(app, windowAlive))
         {
-            AppTermination.KillProcessTreeIfMatches(app.Pid, app.ExePath);
+            _ = AppTermination.KillProcessTreeIfMatches(app.Pid, app.ExePath);
         }
+    }
+
+    private static void ReclaimTempProfile(
+        ReleaseState state, TrackedApp app, string tempProfile, bool windowAlive, string onDirty)
+    {
+        bool processAlive = app.StartedProcess && AppTermination.IsProcessAlive(app.Pid);
+        bool reclaim = ShouldReclaimTempProfile(
+            app.StartedProcess, tempProfile, onDirty, processAlive);
+
+        // 窗口已关闭但进程可能仍在后台（Edge 常驻），按 exe 路径核对后再杀。
+        if (reclaim && app.StartedProcess && !windowAlive &&
+            AppTermination.KillProcessTreeIfMatches(app.Pid, app.ExePath))
+        {
+            AppTermination.WaitForProcessExit(app.Pid, 1000);
+        }
+
+        // 只有确认进程已退出才删 profile：KillProcessTreeIfMatches 在路径不匹配/PID 复用
+        // 时会静默跳过，此时删目录会毁掉运行中的 profile。
+        bool stillAlive = app.StartedProcess && AppTermination.IsProcessAlive(app.Pid);
+
+        if (CanDeleteTempProfile(reclaim, stillAlive))
+        {
+            AppTermination.TryDeleteDirectory(tempProfile);
+        }
+        else if (reclaim)
+        {
+            state.Warnings.Add($"临时 profile 进程仍在运行，保留目录 pid={app.Pid}");
+        }
+    }
+
+    private static bool IsDedicatedResidual(TrackedApp app, bool windowAlive) =>
+        app.CloseWindowOnRelease &&
+        app.DedicatedProcess &&
+        app.StartedProcess &&
+        !windowAlive;
+
+    /// <summary>进程仍存活时绝不删临时 profile。</summary>
+    internal static bool CanDeleteTempProfile(bool reclaim, bool processAlive) =>
+        reclaim && !processAlive;
+
+    /// <summary>
+    /// abort 语义是“保留未保存内容”：临时 profile 的进程还活着时，既不杀也不删目录。
+    /// 进程已退出（或非 abort 策略）才回收，避免删掉正在运行的 Edge profile。
+    /// </summary>
+    internal static bool ShouldReclaimTempProfile(
+        bool started, string? tempProfile, string onDirty, bool processAlive)
+    {
+        if (!started || tempProfile is null)
+        {
+            return false;
+        }
+
+        return !(onDirty == "abort" && processAlive);
     }
 
     /// <summary>释放 ref/帧/输入与显示；返回是否真正摘屏。原 finally 语义保持不变。</summary>

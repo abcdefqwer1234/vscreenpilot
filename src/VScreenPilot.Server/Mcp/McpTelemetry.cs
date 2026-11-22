@@ -145,27 +145,20 @@ internal sealed class McpTelemetry
             {
                 string text = block["text"]?.GetValue<string>() ?? string.Empty;
                 textBytes += System.Text.Encoding.UTF8.GetByteCount(text);
-
-                if (code is null)
-                {
-                    try
-                    {
-                        JsonNode? parsed = JsonNode.Parse(text);
-                        code = parsed?["code"]?.GetValue<string>();
-                        stage = parsed?["stage"]?.GetValue<string>();
-                    }
-                    catch (Exception exception)
-                    {
-                        // 非 JSON 文本。
-                        LogSink.Debug($"忽略异常: {exception.Message}");
-                    }
-                }
             }
             else if (type == "image")
             {
                 string data = block["data"]?.GetValue<string>() ?? string.Empty;
                 imageBytes += data.Length * 3 / 4;
             }
+        }
+
+        // structuredContent 已经是解析好的 payload：直接读 code/stage，
+        // 不再对整段 snapshot 文本做 JsonNode.Parse（大快照上这是明显的额外开销）。
+        if (response.StructuredContent is JsonObject structured)
+        {
+            code = ReadString(structured["code"]);
+            stage = ReadString(structured["stage"]);
         }
 
         _metrics.RecordTool(
@@ -175,4 +168,7 @@ internal sealed class McpTelemetry
             new TraceRequest(tool, requestId, arguments, milliseconds, _clientId),
             new TraceResult(code, response.IsError, textBytes, imageBytes, Channel: null, stage));
     }
+
+    private static string? ReadString(JsonNode? node) =>
+        node is JsonValue value && value.TryGetValue(out string? text) ? text : null;
 }

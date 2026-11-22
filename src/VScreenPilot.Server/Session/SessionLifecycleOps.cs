@@ -92,9 +92,19 @@ internal sealed class SessionLifecycleOps
 
     public ReleaseReport ReleaseEnvironment(
         bool keepDisplay, string onDirty = "abort", bool allowDataLoss = false,
-        bool forceRemoveDisplay = false, bool forceAllClients = false) =>
-        _host._releaserService.Release(
+        bool forceRemoveDisplay = false, bool forceAllClients = false)
+    {
+        ReleaseReport report = _host._releaserService.Release(
             keepDisplay, onDirty, allowDataLoss, forceRemoveDisplay, forceAllClients);
+
+        if (report.DisplayRemoved)
+        {
+            // 虚拟屏已摘掉：缓存的 screen/pixel DC 与 DIB 全部失效，立即释放。
+            _host.ScreenCapture.Dispose();
+        }
+
+        return report;
+    }
 
 
     internal string CloseTrackedApp(TrackedApp app, string policy, out string? warning) =>
@@ -169,6 +179,7 @@ internal sealed class SessionLifecycleOps
         {
             _host._uiaHost.Dispose();
             _host.Snapshots.Dispose();
+            _host.ScreenCapture.Dispose();
         }
         catch (Exception exception)
         {

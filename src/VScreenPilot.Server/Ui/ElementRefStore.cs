@@ -15,8 +15,12 @@ internal sealed class ElementRefStore
     public const int Capacity = 2048;
     private const long TtlMs = 5 * 60 * 1000;
 
+    /// <summary>TTL 全量扫描降频：Register 是快照构建的热点，没必要每次 O(n) 扫 2048 项。</summary>
+    private const long PruneIntervalMs = 30_000;
+
     private readonly Dictionary<string, ElementRefEntry> _elements = new();
     private readonly Dictionary<string, string> _keys = new();
+    private long _lastPruneTicks;
 
     // 这两个字典会在不持锁的路径被读取（SnapshotId），写入发生在锁内。
     private readonly ConcurrentDictionary<string, long> _generations = new(StringComparer.Ordinal);
@@ -262,6 +266,13 @@ internal sealed class ElementRefStore
     private void PruneExpiredLocked()
     {
         long now = Environment.TickCount64;
+
+        if (now - _lastPruneTicks < PruneIntervalMs)
+        {
+            return;
+        }
+
+        _lastPruneTicks = now;
         List<string>? expired = null;
 
         foreach ((string key, ElementRefEntry entry) in _elements)

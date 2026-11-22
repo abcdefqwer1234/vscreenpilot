@@ -19,6 +19,10 @@ internal sealed class FrameSnapshot
 internal sealed class FrameStore
 {
     private const int MaxFrames = 8;
+
+    /// <summary>单客户端配额：一个客户端刷帧不能把其他客户端的 baseline 顶掉。保留 6 帧给多区域基线。</summary>
+    private const int PerClientMaxFrames = 6;
+
     private const long MaxBytes = 32L * 1024 * 1024;
 
     private readonly List<FrameSnapshot> _frames = new();
@@ -42,6 +46,8 @@ internal sealed class FrameStore
                 Y = y,
             });
 
+            TrimClientLocked(clientId);
+
             // 16 张 1280×720 BGRA ≈ 59MB；改成 32MB/8 张，配合 PNG 池化把稳态内存压下来。
             while (_frames.Count > MaxFrames ||
                    _frames.Sum(frame => (long)frame.Bgra.Length) > MaxBytes)
@@ -56,6 +62,26 @@ internal sealed class FrameStore
         }
 
         return id;
+    }
+
+    private void TrimClientLocked(string clientId)
+    {
+        int owned = _frames.Count(frame =>
+            string.Equals(frame.ClientId, clientId, StringComparison.Ordinal));
+
+        while (owned > PerClientMaxFrames)
+        {
+            int oldest = _frames.FindIndex(frame =>
+                string.Equals(frame.ClientId, clientId, StringComparison.Ordinal));
+
+            if (oldest < 0)
+            {
+                return;
+            }
+
+            _frames.RemoveAt(oldest);
+            owned--;
+        }
     }
 
     public FrameSnapshot? FindById(string clientId, string frameId)

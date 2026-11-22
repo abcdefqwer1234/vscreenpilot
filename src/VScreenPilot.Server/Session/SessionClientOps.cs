@@ -11,15 +11,15 @@ internal sealed class SessionClientOps
 {
     internal readonly SessionManager _host;
 
-    public SessionClientOps(SessionManager host) => _host = host;
-    /// <summary>租约/状态由 McpTransport 提供，避免 SessionManager 反向依赖 MCP 层。</summary>
-    internal Func<string?>? LeaseHolderProvider { get; set; }
+    private const long OrphanGraceMs = 10 * 60 * 1000;
+    private readonly Dictionary<string, long> _orphanSince = new(StringComparer.Ordinal);
 
+    public SessionClientOps(SessionManager host) => _host = host;
 
     internal JsonArray ClientSummariesJson(bool includeCwd = false)
     {
         var array = new JsonArray();
-        string? holder = LeaseHolderProvider?.Invoke();
+        string? holder = _host.LeaseHolderProvider?.Invoke();
 
         foreach (ClientContext client in _host.Clients.All
                      .OrderBy(item => item.Id, StringComparer.Ordinal))
@@ -70,7 +70,8 @@ internal sealed class SessionClientOps
 
     /// <summary>
     /// 连接结束时的按客户端清理：refs/帧/artifact 立即清；apps 在拿到屏幕租约（无其他客户端操作）时
-    /// 按 force 关闭/归位（与 0.1.0 进程退出一致）。其他客户端正在操作时留给 daemon 退出时全量清理。
+    /// 按 abort 保留窗口（0.2.x 起不再丢未保存内容），留到 daemon 退出时全量 force 清理。
+    /// 其他客户端正在操作时同样留给 daemon 退出时处理。
     /// </summary>
     internal bool ReleaseClient(ClientContext? client, bool includeApps)
     {
@@ -105,8 +106,8 @@ internal sealed class SessionClientOps
             {
                 _host.LifecycleOps.ReleaseEnvironment(
                     keepDisplay: true,
-                    onDirty: "force",
-                    allowDataLoss: true);
+                    onDirty: "abort",
+                    allowDataLoss: false);
             }
             catch (Exception exception)
             {
@@ -120,8 +121,94 @@ internal sealed class SessionClientOps
         }
 
         _host.ArtifactOps.SweepArtifactsPeriodically();
+        RecordOrphan(clientId);
         return true;
     }
+
+    /// <summary>abort 保留的窗口在客户端断开后先记账；超过宽限且无人接管才由维护服务回收。</summary>
+    private void RecordOrphan(string clientId)
+    {
+        lock (_host._gate)
+        {
+            _orphanSince[clientId] = Environment.TickCount64;
+        }
+
+        _host._log.Warn(
+            $"客户端 {clientId} 已断开，按 abort 保留其窗口；" +
+            $"{OrphanGraceMs / 60_000} 分钟内未被接管将由维护服务回收");
+    }
+
+    /// <summary>维护服务周期调用：回收已断开客户端在 abort 下保留的窗口。</summary>
+    internal void ReapOrphans()
+    {
+        if (Volatile.Read(ref _host._disposed) != 0)
+        {
+            return;
+        }
+
+        List<string> due;
+        long now = Environment.TickCount64;
+
+        lock (_host._gate)
+        {
+            if (_orphanSince.Count == 0)
+            {
+                return;
+            }
+
+            var live = new HashSet<string>(
+                _host.Clients.All.Select(item => item.Id), StringComparer.Ordinal);
+
+            foreach (string id in _orphanSince.Keys.Where(live.Contains).ToList())
+            {
+                _orphanSince.Remove(id);
+            }
+
+            due = _orphanSince
+                .Where(pair => now - pair.Value >= OrphanGraceMs)
+                .Select(pair => pair.Key)
+                .ToList();
+        }
+
+        foreach (string clientId in due)
+        {
+            if (!_host.TryEnterExclusive(3000))
+            {
+                return;
+            }
+
+            try
+            {
+                using (_host.Clients.Use(new ClientContext { Id = clientId, Name = "orphan" }))
+                {
+                    _host.LifecycleOps.ReleaseEnvironment(
+                        keepDisplay: true,
+                        onDirty: "force",
+                        allowDataLoss: true);
+                }
+
+                _host._log.Warn($"已回收孤儿窗口 client={clientId}");
+            }
+            catch (Exception exception)
+            {
+                _host._log.Warn($"回收孤儿窗口失败 client={clientId}: {exception.Message}");
+                return;
+            }
+            finally
+            {
+                _host.ExitExclusive();
+            }
+
+            lock (_host._gate)
+            {
+                _orphanSince.Remove(clientId);
+            }
+        }
+    }
+
+    internal static bool ShouldReapOrphan(
+        bool clientLive, long orphanSinceTicks, long nowTicks, long graceMs) =>
+        !clientLive && nowTicks - orphanSinceTicks >= graceMs;
 
     internal bool HasOwnedApps(string clientId)
     {

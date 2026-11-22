@@ -58,8 +58,15 @@ internal static class SessionComposition
                 SessionManager.VirtualHeight,
                 SessionManager.VirtualRefresh));
         host._environment = new EnvironmentReporter(
-            new EnvironmentRuntimeContext(host.Metrics, host._gate, () => host._display.State.Initialized, host.ProfileName,
-                () => host.Epoch, host._job, host.ScreenLeaseProvider),
+            new EnvironmentRuntimeContext(
+                host.Metrics,
+                host._gate,
+                () => host._display.State.Initialized,
+                host.ProfileName,
+                () => host.Epoch,
+                host._job,
+                // 组合根在构造后才 Wire：这里必须延迟读取，按值捕获会永久拿到 null。
+                () => host.ScreenLeaseProvider?.Invoke()),
             new EnvironmentClientContext(host.Clients, () => host.ClientOps.ClientSummariesJson()),
             new EnvironmentAppContext(host._apps, host.ClientOps.IsOwned, TrackedAppTracker.IsLive, host.PruneDeadApps, host.Uia),
             new EnvironmentHealContext(() => host._display.State.SelfHealed,
@@ -105,7 +112,7 @@ internal static class SessionComposition
             () => host._frames.Latest(), () => host._frames.Snapshot()));
         host._waits = new WaitService(
             new WaitDisplayContext(host.EnsureEnvironmentFast, host.CaptureOps.CaptureRegion),
-            new WaitSessionContext(host.EnterRead, host.ExitRead,
+            new WaitSessionContext(host.TryEnterRead, host.ExitRead,
                 () => host.Cancellation.IsCancellationRequested, ToolProgress.Report),
             new WaitAppContext(host.FindLiveTrackedApp, host.LifecycleOps.OwnedAppsSnapshotCore,
                 host.VerifyOps.TrackedPids, host.Uia),
@@ -170,7 +177,7 @@ internal static class SessionComposition
 
     private static void BuildMaintenance(SessionManager host)
     {
-        host.MaintenanceService = new MaintenanceService(new MaintenanceContext(host.ArtifactRoot, () => Volatile.Read(ref host._disposed) != 0, () => host.LifecycleOps.ArtifactDirectorySnapshot(), host._log));
+        host.MaintenanceService = new MaintenanceService(new MaintenanceContext(host.ArtifactRoot, () => Volatile.Read(ref host._disposed) != 0, () => host.LifecycleOps.ArtifactDirectorySnapshot(), host._log, host.ClientOps.ReapOrphans));
         AppLauncher.CleanupStaleProfiles();
         host.ArtifactOps.SweepOldArtifacts();
         host.LifecycleOps.RecoverFromPreviousCrash();

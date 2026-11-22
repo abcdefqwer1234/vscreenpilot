@@ -2,7 +2,7 @@
   "protocol_version": "2025-06-18",
   "server_info": {
     "name": "vscreenpilot",
-    "version": "0.2.2"
+    "version": "0.3.0"
   },
   "capabilities": {
     "logging": {},

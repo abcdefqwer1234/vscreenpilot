@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Mcp;
+using VScreenPilot.Options;
 using VScreenPilot.Session;
 using VScreenPilot.Platform.Ipc;
 using VScreenPilot.Platform.Logging;
@@ -37,12 +38,7 @@ internal sealed class PipeHost : IDisposable
         _maxClients = ResolveClientLimit();
     }
 
-    private static int ResolveClientLimit()
-    {
-        string? raw = Environment.GetEnvironmentVariable("VSP_CLIENT_LIMIT");
-
-        return int.TryParse(raw, out int value) ? Math.Clamp(value, 1, 64) : 16;
-    }
+    private static int ResolveClientLimit() => VspOptions.FromEnvironment().ClientLimit;
 
     public string PipeName => _pipeName;
 
@@ -257,7 +253,12 @@ internal sealed class PipeHost : IDisposable
                 client.Cwd,
                 client.Roots,
                 client.Name,
-                client.IncludeAllApps),
+                client.IncludeAllApps)
+            {
+                // 握手阶段已经拿到 allow_script / allow_unsafe_script / app_allowlist /
+                // proxy_pid / version；不再压缩成 5 字段残缺副本。
+                Context = client,
+            },
             Trace = _trace,
         });
         await server.RunAsync(limiter, limiter, connectionCts.Token).ConfigureAwait(false);

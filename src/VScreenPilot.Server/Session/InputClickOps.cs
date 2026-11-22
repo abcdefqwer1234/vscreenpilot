@@ -186,7 +186,15 @@ internal sealed class InputClickOps
                     throw new ToolException("E_INVALID_ARG", "UIA 模式仅支持左键单击");
                 }
 
-                if (!_host.UiaGuardOps.TryUiaInvoke(request.X, request.Y, app.Pid))
+                UiaInvokeOutcome explicitUia =
+                    _host.UiaGuardOps.TryUiaInvoke(request.X, request.Y, app.Pid);
+
+                if (explicitUia == UiaInvokeOutcome.TimedOut)
+                {
+                    throw UiaTimedOut();
+                }
+
+                if (explicitUia != UiaInvokeOutcome.Ok)
                 {
                     throw new ToolException(
                         "E_INPUT_UNSUPPORTED",
@@ -225,9 +233,20 @@ internal sealed class InputClickOps
         detail = null;
         bool nonClient = _host.IsNonClientPoint(app.Hwnd, request.X, request.Y);
 
-        if (canUseUia && _host.UiaGuardOps.TryUiaInvoke(request.X, request.Y, app.Pid))
+        if (canUseUia)
         {
-            return "uia";
+            UiaInvokeOutcome uia = _host.UiaGuardOps.TryUiaInvoke(request.X, request.Y, app.Pid);
+
+            if (uia == UiaInvokeOutcome.Ok)
+            {
+                return "uia";
+            }
+
+            if (uia == UiaInvokeOutcome.TimedOut)
+            {
+                // 超时后 UIA 调用可能仍会落地；再补一次 message/input 会变成双重点击。
+                throw UiaTimedOut();
+            }
         }
 
         if (!nonClient &&
@@ -255,6 +274,14 @@ internal sealed class InputClickOps
         InjectInput(request);
         return "input-fallback";
     }
+
+    private static ToolException UiaTimedOut() =>
+        new(
+            "E_TIMEOUT",
+            "UIA 坐标触发超时，已熔断该进程；本次不会再执行 message/input 回退点击",
+            retryable: true,
+            hint: "稍后重试；若应用持续卡顿，显式使用 mode=\"message\" 或 mode=\"input\"",
+            stage: "uia");
 
     internal void InjectInput(SessionClickRequest request)
     {

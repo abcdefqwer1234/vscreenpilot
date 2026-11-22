@@ -83,6 +83,11 @@ internal static class DoctorReportBuilder
             ["log_file"] = log.FilePath,
         };
 
+        if (log.DroppedCount > 0)
+        {
+            result["log_dropped"] = log.DroppedCount;
+        }
+
         var registry = new InstanceRegistry(profile);
         result["registry"] = registry.Read()?.ToJson();
 

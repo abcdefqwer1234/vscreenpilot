@@ -19,7 +19,7 @@ internal sealed record WaitDisplayContext(
     Func<int, int, int, int, (byte[] Bgra, int Width, int Height)> CaptureRegion);
 
 internal sealed record WaitSessionContext(
-    Action EnterRead,
+    Func<int, bool> TryEnterRead,
     Action ExitRead,
     Func<bool> IsCancelled,
     Action<int, int, string> ReportProgress);
@@ -58,11 +58,13 @@ internal sealed class WaitService
         int? requestedInterval = intervalMs is null ? null : Math.Clamp(intervalMs.Value, 50, 2000);
 
         var stopwatch = Stopwatch.StartNew();
-        // wait_for 可能持续 120s，不能整段持读锁把 release 挡死；
-        // 每次轮询取一次短读锁，release 最多等一次轮询。
+        // 拿不到短读锁说明 release 正持写锁：本轮按未满足处理，继续走超时/取消。
         JsonObject Evaluate()
         {
-            _session.EnterRead();
+            if (!_session.TryEnterRead(250))
+            {
+                return new JsonObject { ["satisfied"] = false, ["reason"] = "session_busy" };
+            }
 
             try
             {

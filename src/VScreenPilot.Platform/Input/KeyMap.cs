@@ -83,6 +83,8 @@ internal static class KeyMap
             if (ch >= 'A' && ch <= 'Z')
             {
                 virtualKey = ch;
+                // VK 'A'..'Z' 不带 Shift 会打出小写；单大写字母必须补 Shift。
+                needsShift = true;
                 return true;
             }
 

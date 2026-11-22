@@ -40,14 +40,7 @@ internal sealed class SessionFacade : ISessionFacade, IControlService
     public MemoryView TrimIdleMemory(string reason) => _session.LifecycleOps.TrimIdleMemory(reason);
 
     public IDisposable UseClient(ClientInfo client) =>
-        _session.Clients.Use(new ClientContext
-        {
-            Id = client.Id,
-            Name = client.Name,
-            Cwd = client.Cwd ?? Environment.CurrentDirectory,
-            Roots = client.Roots,
-            IncludeAllApps = client.IncludeAllApps,
-        });
+        _session.Clients.Use(_session.Clients.Resolve(client));
 
     public int ActiveClientCount => _session.Clients.ActiveCount;
 

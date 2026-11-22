@@ -63,14 +63,22 @@ internal static class AppTermination
         try
         {
             return WindowManager.ListTopLevel().Any(
-                w => w.Pid == pid && w.Hwnd != exclude && !string.IsNullOrWhiteSpace(w.Title));
+                w => w.Pid == pid && w.Hwnd != exclude);
         }
         catch (Exception exception)
         {
+            // fail-closed：枚举失败时按“可能还有其他窗口”处理，绝不强杀共享进程。
             LogSink.Debug($"忽略异常: {exception.Message}");
-            return false;
+            return true;
         }
     }
+
+    /// <summary>
+    /// 是否允许强杀：专用进程可以直接杀；共享进程只有确认没有其他窗口时才允许。
+    /// 抽成纯函数便于覆盖真值表（尤其是 hasOtherWindows=true 时绝不强杀）。
+    /// </summary>
+    internal static bool CanForceClose(bool dedicated, bool started, bool hasOtherWindows) =>
+        dedicated || (started && !hasOtherWindows);
 
     internal static void KillProcessTree(int pid)
     {
@@ -89,23 +97,23 @@ internal static class AppTermination
         }
     }
 
-    /// <summary>仅在 PID 仍对应记录的 exe 时才杀进程树，避免 PID 复用误杀。</summary>
     private static readonly HashSet<string> ProtectedSystemProcesses = new(StringComparer.OrdinalIgnoreCase)
     {
         "applicationframehost", "explorer", "dwm", "sihost", "shellexperiencehost",
         "startmenuexperiencehost", "textinputhost", "searchhost", "taskhostw", "runtimebroker",
     };
 
-    internal static void KillProcessTreeIfMatches(int pid, string expectedPath)
+    /// <summary>仅在 PID 仍对应记录的 exe 时才杀进程树，避免 PID 复用误杀。返回是否真的发出了 Kill。</summary>
+    internal static bool KillProcessTreeIfMatches(int pid, string expectedPath)
     {
         if (string.IsNullOrEmpty(expectedPath))
         {
-            return;
+            return false;
         }
 
         if (ProtectedSystemProcesses.Contains(Path.GetFileNameWithoutExtension(expectedPath)))
         {
-            return;
+            return false;
         }
 
         try
@@ -113,7 +121,7 @@ internal static class AppTermination
             using var process = System.Diagnostics.Process.GetProcessById(pid);
             if (process.HasExited)
             {
-                return;
+                return false;
             }
 
             string? modulePath = process.MainModule?.FileName;
@@ -123,15 +131,17 @@ internal static class AppTermination
                     Path.GetFullPath(expectedPath),
                     StringComparison.OrdinalIgnoreCase))
             {
-                return;
+                return false;
             }
 
             process.Kill(entireProcessTree: true);
+            return true;
         }
         catch (Exception exception)
         {
             // 进程可能已退出或无法读取模块路径。
             LogSink.Debug($"忽略异常: {exception.Message}");
+            return false;
         }
     }
 

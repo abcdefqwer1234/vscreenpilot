@@ -1,3 +1,5 @@
+using VScreenPilot.Options;
+
 namespace VScreenPilot.Ipc;
 
 /// <summary>
@@ -52,19 +54,5 @@ internal sealed class MessageBudget
         }
     }
 
-    public static long ResolveMaxBytes()
-    {
-        string? raw = Environment.GetEnvironmentVariable("VSP_TOTAL_BUFFER_MB");
-
-        if (int.TryParse(raw, out int mb))
-        {
-            mb = Math.Clamp(mb, 8, 512);
-        }
-        else
-        {
-            mb = 64;
-        }
-
-        return (long)mb * 1024 * 1024;
-    }
+    public static long ResolveMaxBytes() => VspOptions.FromEnvironment().TotalBufferBytes;
 }

@@ -32,7 +32,7 @@ internal sealed record EnvironmentRuntimeContext(
     string ProfileName,
     Func<long> Epoch,
     JobObject Job,
-    Func<JsonObject>? ScreenLease);
+    Func<JsonObject?>? ScreenLease);
 
 internal sealed record EnvironmentClientContext(
     ClientSessionRegistry Clients,

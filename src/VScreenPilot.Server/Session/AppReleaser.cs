@@ -111,7 +111,10 @@ internal sealed class AppReleaser
 
         if (!dialogHandled)
         {
-            return new CloseOutcome(null, "未找到保存对话框，将按后续超时策略处理");
+            // save 的保存框没处理成功时必须保留窗口；discard/force 允许继续走强杀。
+            return SaveDialogUnhandledResult(policy) == "kept"
+                ? new CloseOutcome("kept", "保存对话框未处理，保留窗口以避免丢未保存内容")
+                : new CloseOutcome(null, "未找到保存对话框，将按后续超时策略处理");
         }
 
         AppTermination.WaitForWindowClosed(app.Hwnd, 3000);
@@ -130,8 +133,10 @@ internal sealed class AppReleaser
     {
         if (!AppTermination.WaitForWindowClosed(app.Hwnd, 2500) && NativeMethods.IsWindow(app.Hwnd))
         {
-            bool canForce = app.DedicatedProcess ||
-                            (app.StartedProcess && !AppTermination.HasOtherWindows(app.Pid, app.Hwnd));
+            bool canForce = AppTermination.CanForceClose(
+                app.DedicatedProcess,
+                app.StartedProcess,
+                AppTermination.HasOtherWindows(app.Pid, app.Hwnd));
 
             if (!canForce)
             {
@@ -145,20 +150,46 @@ internal sealed class AppReleaser
                 return "kept";
             }
 
-            AppTermination.KillProcessTreeIfMatches(closePid, closePath);
-            AppTermination.WaitForProcessExit(closePid, 2000);
-            return "forced";
+            bool killed = AppTermination.KillProcessTreeIfMatches(closePid, closePath);
+
+            if (killed)
+            {
+                AppTermination.WaitForProcessExit(closePid, 2000);
+            }
+
+            string outcome = ForcedCloseResult(killed, AppTermination.IsProcessAlive(closePid));
+
+            if (outcome == "kept")
+            {
+                warning = $"已关闭窗口，但进程 {closePid} 无法强杀（exe 路径校验失败），保留进程";
+            }
+
+            return outcome;
         }
 
         if (app.DedicatedProcess && AppTermination.IsProcessAlive(closePid))
         {
             // 窗口已关闭但进程常驻（Office/Edge 常见）；保持原有兜底。
-            AppTermination.KillProcessTreeIfMatches(closePid, closePath);
-            return "forced";
+            bool killed = AppTermination.KillProcessTreeIfMatches(closePid, closePath);
+
+            if (!killed)
+            {
+                warning = $"已关闭窗口，但常驻进程 {closePid} 仍在运行";
+            }
+
+            return killed ? "forced" : "closed";
         }
 
         return "closed";
     }
+
+    /// <summary>保存框未处理成功时的结果：save 必须保留窗口，其他策略继续按强杀处理。</summary>
+    internal static string? SaveDialogUnhandledResult(string policy) =>
+        policy == "save" ? "kept" : null;
+
+    /// <summary>只有真正发出 kill 才报 forced；进程已退出报 closed，仍存活报 kept。</summary>
+    internal static string ForcedCloseResult(bool killed, bool processAlive) =>
+        killed ? "forced" : processAlive ? "kept" : "closed";
 
     private bool TryHandleSaveDialog(int pid, IntPtr mainHwnd, bool save, int timeoutMs)
     {

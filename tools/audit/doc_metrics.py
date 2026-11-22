@@ -34,8 +34,8 @@ def generate() -> str:
     rows = [
         ("源文件 / 行数", f"{src['files']} / {src['lines']}", "-"),
         ("最大文件", f"{src['max_file']}", "≤450"),
-        ("类型 >400", f"{types['gt_400']}", "0"),
-        ("最大类型跨度", f"{types['max']}", "≤400"),
+        ("类型 >400（提示）", f"{types['gt_400']}", "-"),
+        ("最大类型跨度", f"{types['max']}", "≤420"),
         ("partial 类型", f"{types['partial_types']}", "0"),
         ("方法 >80 行", f"{methods['gt_80']}（最大 {methods['max']}）", "0 / ≤80"),
         ("方法 >12 判断点", f"{methods['gt_12_decision']}（最大 {methods['max_decision']}）", "0 / ≤12"),

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.3.0 — 2026-11-23（多客户端安全与生命周期收尾）
+
+### Fixed
+
+- **会话锁写优先**：`release_environment` 之前先判读锁，导致独占分支永远执行不到，release 可与 `snapshot`/`capture_screen` 并发。现在写锁优先；读工具最多等 10s，超时返回可重试的 `E_BUSY`，不再无限阻塞。
+- **`wait_for` 不再被 release 卡死**：每轮只尝试 250ms 短读锁；release 持写锁时本轮返回 `last.reason=session_busy` 继续轮询，超时/取消逻辑不变。
+- **`get_environment.session.screen_lease` 恒为 null**：组合根在构造后才注入 `ScreenLeaseProvider`，此前按值捕获导致字段永远缺失。改为延迟读取。
+- **`snapshot.text` 格式**：`{disabled}`/`{focused}` 等状态标记与节点 header 同行，不再单独占一行。
+- **`press_keys` 单大写字母**：`A` 现在带 Shift 输出大写，与文档一致。
+- **MSAA 键盘回退**：按 `msaaHwnd` 反查 pid 再调用 `TypeText`，并在点击前校验点位，避免落到错误进程。
+- **UIA 超时不再补点击**：UIA 坐标动作超时直接返回 `E_TIMEOUT`；退休代际中尚未执行的 UIA 动作会被丢弃，不会在重建后误点。
+- **`--doctor`**：`LogRing` 有丢弃时输出 `log_dropped`；`TraceLog` 每 16 条 flush，错误记录即时落盘；遥测改为从 `StructuredContent` 读取 `code/stage`。
+
+### Changed
+
+- **断连清理语义**：客户端断开仍按 `abort` 保留窗口（不丢未保存内容），但超过 10 分钟无同 id 客户端接管时，维护服务按 `force` 回收；daemon 退出仍全量 `force`。
+- **`on_dirty=save` 不强杀**：保存框未处理成功时返回 `kept` 并保留窗口；只有 `force`/`discard` 会结束临时 profile 进程。
+- **`release_environment` 内部预算**：清理超过 60s 后，剩余应用标记 `kept` 并写 `warnings`，避免外层 90s 工具超时先到、handler 仍持写锁和屏幕租约。
+- **强杀结果如实上报**：`forced_pids` 只记录真正发出的 kill；`AppReleaser` 按结果返回 `forced`/`kept`/`closed`；临时 profile 进程仍在运行时绝不删目录。`HasOtherWindows` 不再忽略无标题窗口，避免误杀带隐藏对话框的共享进程。
+- **`find_element`**：`contains`/`regex` 扫描增加 8s 预算，耗尽时返回已收集结果并标记 `truncated`。
+- **资源与限额**：`FrameStore` 单客户端保留 6 帧；`LogRing` 待写队列上限 4096 并暴露 `DroppedCount`；`ElementRefStore` TTL 扫描改为 30s 一次；`ScreenCapture` 实现 `IDisposable`，摘屏与退出时释放 DC 缓存；`VSP_*` 环境变量统一收敛到 `VspOptions`（默认值与优先级不变）。
+- **架构阈值**：`max_type_lines` 由 400 调整为 420，`gt_400` 保留为提示性指标。
+
+> 工具名、参数与 schema 未变，仍为 22 个工具。
+
 ## 0.2.2 — 2026-11-19（启动与输入通道修正）
 
 ### Fixed

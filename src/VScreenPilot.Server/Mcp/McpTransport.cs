@@ -39,7 +39,7 @@ internal sealed class McpTransport
         _client = options.Client;
         _trace = options.Trace ?? (options.TraceEnabled ? new TraceLog() : null);
         _ownsTrace = options.Trace is null && _trace is not null;
-        _resources = new ResourceHandler(_services.Artifacts);
+        _resources = new ResourceHandler(_services.Artifacts, () => _client?.Id ?? "c0");
         McpTelemetry telemetry = new(
             _runtime.Metrics, _trace, options.Client?.Id ?? "c0");
         _tools = ToolHandlerMap.Build(_services, _log, _client);

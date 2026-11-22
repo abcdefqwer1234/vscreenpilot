@@ -105,12 +105,7 @@ internal sealed class ElementValueOps
                     new JsonObject { ["ref"] = probe.Ref });
             }
 
-            _host._input.Click(new SessionClickRequest(
-                bounds.Value.Left + bounds.Value.Width / 2,
-                bounds.Value.Top + bounds.Value.Height / 2,
-                "left", 1, "message"));
-
-            TypeTextView typed = _host._input.TypeText(value, null, verify: true, chunkChars: 32, channel: "auto");
+            TypeTextView typed = TypeMsaaByKeyboard(target, bounds.Value, value);
             return new SetElementValueView(
                 probe.Ref,
                 "msaa+keyboard",
@@ -140,6 +135,34 @@ internal sealed class ElementValueOps
             DurationMs: null,
             ObservedLength: null,
             Warning: null);
+    }
+
+    /// <summary>
+    /// MSAA 键盘回退：必须锁定元素所属的受管应用。旧的 TypeText(pid:null) 会落到
+    /// “最后一个 TrackedApp”，可能把文本输进另一个应用的焦点控件。
+    /// </summary>
+    private TypeTextView TypeMsaaByKeyboard(
+        MsaaTarget target, (int Left, int Top, int Width, int Height) bounds, string value)
+    {
+        TrackedApp? app = _host._apps.OwnedAppForPid(WindowManager.GetProcessId(target.Hwnd));
+
+        if (app is null)
+        {
+            throw new ToolException(
+                "E_NO_TARGET",
+                $"MSAA 窗口 0x{target.Hwnd.ToInt64():X} 不属于当前客户端的受管应用，拒绝键盘回退",
+                new JsonObject { ["ref"] = target.Entry.Ref },
+                stage: "element");
+        }
+
+        DisplayInfo display = _host._apps.EnsureDisplay();
+        int centerX = bounds.Left + bounds.Width / 2;
+        int centerY = bounds.Top + bounds.Height / 2;
+        _host._apps.RequirePointInTrackedApp(display, centerX, centerY, "set_element_value");
+
+        _host._input.Click(new SessionClickRequest(centerX, centerY, "left", 1, "message"));
+
+        return _host._input.TypeText(value, app.Pid, verify: true, chunkChars: 32, channel: "auto");
     }
 
     private SetElementValueView SetUiaValue(DisplayInfo display, ElementValueRequest request)

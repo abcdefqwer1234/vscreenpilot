@@ -1,11 +1,11 @@
 {
-  "tag": "3ddb85b",
-  "note": "prebuilt 0.2.2 binary under artifacts/server",
-  "commit": "3ddb85b74622790d14becc62f9e4ab5592c07049",
+  "tag": "v0.3.0",
+  "note": "0.3.0 发布基线",
+  "commit": "db4659948cb03abc6b7f1fa076c4d94bccf45c06",
   "exe": "C:\\Users\\31746\\Desktop\\VScreenPilot\\artifacts\\server\\VScreenPilot.exe",
-  "exe_sha256": "8CE10F3BD66D2399E10B8AEE1CFAA62A0EF9D91330DD654055DDEC62B3CCAF56",
-  "exe_bytes": 64865616,
-  "captured_at": "2026-11-19T14:02:16+0800",
+  "exe_sha256": "4813C3726927F6ECC83FF5E4BA254612A04276BB49198A5A09889D7CC87AEEAC",
+  "exe_bytes": 65405424,
+  "captured_at": "2026-11-23T02:24:27+0800",
   "os": "Windows 11 10.0.26300",
   "python": "3.13.13",
   "profile": "baseline-probe",
@@ -13,6 +13,6 @@
   "protocol_version": "2025-06-18",
   "server_info": {
     "name": "vscreenpilot",
-    "version": "0.2.2"
+    "version": "0.3.0"
   }
 }

@@ -258,7 +258,18 @@ internal static class Bootstrap
         var stateStore = new StateStore(log);
         var job = new JobObject();
         var localSession = new SessionManager(log, stateStore, job, allowScript);
-        SessionWiring.Wire(localSession, log);
+
+        try
+        {
+            SessionWiring.Wire(localSession, log);
+        }
+        catch (Exception)
+        {
+            // Wire 失败时还没进入 LocalSessionInvoker 的 finally：先释放，避免留下挂载的虚拟屏。
+            localSession.Dispose();
+            throw;
+        }
+
         return LocalSessionInvoker.Run(cliCommand, args, new SessionFacade(localSession), log, job, mutex);
     }
 

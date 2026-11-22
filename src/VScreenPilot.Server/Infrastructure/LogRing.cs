@@ -16,6 +16,9 @@ public sealed class LogRing : IDisposable
     internal const int RetentionDays = 14;
     internal const int FileTailBytes = 512 * 1024;
 
+    /// <summary>待写队列上限：磁盘卡住时丢新日志，避免无限占内存。</summary>
+    internal const int PendingCapacity = 4096;
+
     internal readonly object _gate = new();
     internal readonly Queue<LogEntry> _entries = new();
     internal readonly int _capacity;
@@ -26,6 +29,10 @@ public sealed class LogRing : IDisposable
 
     internal string? _filePath;
     internal DateTime _fileDate;
+    private int _dropped;
+
+    /// <summary>磁盘写入跟不上时被丢弃的日志条数（仅用于诊断）。</summary>
+    internal int DroppedCount => Volatile.Read(ref _dropped);
 
     /// <summary>由 SessionManager 注入；用于把日志归到当前 MCP 客户端。</summary>
     /// <summary>由会话注入：把日志归到当前 MCP 客户端。实例级，避免静态服务定位器。</summary>
@@ -67,7 +74,8 @@ public sealed class LogRing : IDisposable
         }
 
         // 文件写入放到后台线程，避免每条日志都同步开关文件拖慢工具调用。
-        _pending = new BlockingCollection<string>(new ConcurrentQueue<string>());
+        _pending = new BlockingCollection<string>(
+            new ConcurrentQueue<string>(), PendingCapacity);
         _writerThread = new Thread(FileStore.WriteLoop)
         {
             IsBackground = true,
@@ -120,7 +128,12 @@ public sealed class LogRing : IDisposable
         try
         {
             string clientPart = string.IsNullOrWhiteSpace(clientId) ? string.Empty : $" [client={clientId}]";
-            _pending.TryAdd($"{entry.Time:O} [{level}]{clientPart} {message}");
+
+            // 不阻塞调用方：队列满就丢弃新日志（内存优先），丢多少另记计数。
+            if (!_pending.TryAdd($"{entry.Time:O} [{level}]{clientPart} {message}", 0))
+            {
+                Interlocked.Increment(ref _dropped);
+            }
         }
         catch (InvalidOperationException exception)
         {

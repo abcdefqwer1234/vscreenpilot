@@ -48,7 +48,7 @@
 | `E_DISPLAY` | 显示拓扑操作失败 | 检查是否有其他显示管理软件占用 |
 | `E_TIMEOUT` | 工具超时 | 可重试；若持续超时，先保存再 `release_environment{on_dirty:"force",allow_data_loss:true}` 重置会话 |
 | `E_DATA_LOSS_REQUIRED` | release 的 `force`/`discard` 会丢弃未保存内容 | 先保存；确认可丢弃后传 `allow_data_loss=true` |
-| `E_BUSY` | 另一个写操作正在执行，或 release 等不到只读观察结束 | 按 `details.retry_after_ms` 重试；release 请等 snapshot/capture 返回后再试 |
+| `E_BUSY` | 另一个写操作正在执行、release 等不到只读观察结束，或读工具等 release 结束超时 | 按 `details.retry_after_ms` 重试；release 请等 snapshot/capture 返回后再试 |
 | `E_RATE_LIMITED` | 请求速率超过令牌桶（默认 300 突发 / 100 每秒） | 按 `details.retry_after_ms` 退避；合并批量调用 |
 | `E_CANCELLED` | 请求被取消或会话被重置 | 不要自动重试；重新观察后再操作 |
 
@@ -270,7 +270,7 @@
 
 ### E_BUSY
 
-资源忙（stage: `gate`）
+资源忙（stage: `gate`；release 会话锁为 `session`）
 
 <a id="e_rate_limited"></a>
 

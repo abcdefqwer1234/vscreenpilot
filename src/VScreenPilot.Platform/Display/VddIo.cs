@@ -71,7 +71,10 @@ internal sealed class VddIo
             if (!success)
             {
                 _host.LastError = Marshal.GetLastWin32Error();
-                // 超时/错误时内核可能仍在写这块内存，必须取消并阻塞等待完成。
+                // 超时/错误时内核可能仍在写这块内存，必须取消后等它真正完成。
+                // 注意：这里不能改成“超时就直接返回/释放”——OVERLAPPED 与两个缓冲区
+                // 都在当前栈帧上，提前返回会让驱动写已释放/已复用的内存。
+                // 真要给等待设上限，必须把 OVERLAPPED 移到非托管堆并交给后台线程收尾。
                 Win32.CancelIoEx(handle, ref overlapped);
                 Win32.GetOverlappedResult(handle, ref overlapped, out _, true);
                 return false;

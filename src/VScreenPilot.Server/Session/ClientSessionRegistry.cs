@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using VScreenPilot.Services;
 
 namespace VScreenPilot.Session;
 
@@ -58,6 +59,26 @@ internal sealed class ClientSessionRegistry
         {
             Interlocked.Decrement(ref _active);
         }
+    }
+
+    public ClientContext Resolve(ClientInfo client)
+    {
+        // 已登记的实例优先：epoch / allow_script / app_allowlist 需要跨调用保持。
+        if (_clients.TryGetValue(client.Id, out ClientContext? registered))
+        {
+            return registered;
+        }
+
+        // 握手里带了完整上下文就直接用；否则按 ClientInfo 兜底（ctl / 单进程）。
+        // 这里不登记：登记只由 Enter 负责，避免 Release 的重试路径把已断开的客户端加回来。
+        return client.Context ?? new ClientContext
+        {
+            Id = client.Id,
+            Name = client.Name,
+            Cwd = client.Cwd ?? Environment.CurrentDirectory,
+            Roots = client.Roots,
+            IncludeAllApps = client.IncludeAllApps,
+        };
     }
 
     public string? FindCwd(string clientId) =>

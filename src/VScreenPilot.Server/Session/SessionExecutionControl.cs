@@ -26,14 +26,7 @@ internal sealed class SessionExecutionControl : IExecutionControl
     public IDisposable? UseClient(ClientInfo? client) =>
         client is null
             ? null
-            : _session.Clients.Use(new ClientContext
-            {
-                Id = client.Id,
-                Name = client.Name,
-                Cwd = client.Cwd ?? Environment.CurrentDirectory,
-                Roots = client.Roots,
-                IncludeAllApps = client.IncludeAllApps,
-            });
+            : _session.Clients.Use(_session.Clients.Resolve(client));
 
     public void SetCancellation(CancellationTokenSource? cts) => _session.SetCancellation(cts);
 

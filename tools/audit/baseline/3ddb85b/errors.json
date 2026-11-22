@@ -11,7 +11,7 @@
       "hint": "调用 tools/list 查看可用工具名；工具名区分大小写",
       "stage": "validate",
       "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_unknown_tool",
-      "request_id": "89afc89c9d85"
+      "request_id": "259b1ea9a0e3"
     },
     "structured_content": {
       "code": "E_UNKNOWN_TOOL",
@@ -23,7 +23,7 @@
       "hint": "调用 tools/list 查看可用工具名；工具名区分大小写",
       "stage": "validate",
       "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_unknown_tool",
-      "request_id": "89afc89c9d85"
+      "request_id": "259b1ea9a0e3"
     }
   },
   "invalid_control_type": {
@@ -81,7 +81,7 @@
       "hint": "使用 UIA 控件类型英文名，例如 Button、Edit、Document",
       "stage": "validate",
       "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_invalid_arg",
-      "request_id": "d7bf139b5f89"
+      "request_id": "27b213fdb07a"
     },
     "structured_content": {
       "code": "E_INVALID_ARG",
@@ -136,7 +136,7 @@
       "hint": "使用 UIA 控件类型英文名，例如 Button、Edit、Document",
       "stage": "validate",
       "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_invalid_arg",
-      "request_id": "d7bf139b5f89"
+      "request_id": "27b213fdb07a"
     }
   },
   "unknown_argument": {
@@ -157,7 +157,7 @@
       "hint": "检查字段名拼写；allowed 列出了该层接受的字段",
       "stage": "validate",
       "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_invalid_arg",
-      "request_id": "cb422bb68b88"
+      "request_id": "22e33ebf1e9b"
     },
     "structured_content": {
       "code": "E_INVALID_ARG",
@@ -175,7 +175,7 @@
       "hint": "检查字段名拼写；allowed 列出了该层接受的字段",
       "stage": "validate",
       "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_invalid_arg",
-      "request_id": "cb422bb68b88"
+      "request_id": "22e33ebf1e9b"
     }
   },
   "script_disabled": {
@@ -187,7 +187,7 @@
       "hint": "该能力默认关闭；需要显式 --allow-script 或对应 capability",
       "stage": "script",
       "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_disabled",
-      "request_id": "ea87b718362e"
+      "request_id": "b053511fb870"
     },
     "structured_content": {
       "code": "E_DISABLED",
@@ -196,7 +196,7 @@
       "hint": "该能力默认关闭；需要显式 --allow-script 或对应 capability",
       "stage": "script",
       "docs": "https://github.com/abcdefqwer1234/vscreenpilot/blob/main/docs/errors.md#e_disabled",
-      "request_id": "ea87b718362e"
+      "request_id": "b053511fb870"
     }
   }
 }

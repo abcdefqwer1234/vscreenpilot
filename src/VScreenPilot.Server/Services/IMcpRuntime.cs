@@ -31,7 +31,7 @@ internal sealed class McpRuntime : IMcpRuntime
 
     public MetricsRegistry Metrics => _session.Metrics;
 
-    public void Enter(ClientInfo client) => _session.Clients.Enter(ToContext(client));
+    public void Enter(ClientInfo client) => _session.Clients.Enter(_session.Clients.Resolve(client));
 
     public void Leave(string clientId) => _session.Clients.Leave(clientId);
 
@@ -40,24 +40,7 @@ internal sealed class McpRuntime : IMcpRuntime
 
     public void DropRefs(string clientId) => _session.ClientOps.DropClientRefs(clientId);
 
-    private ClientContext? Resolve(ClientInfo? client)
-    {
-        if (client is null)
-        {
-            return null;
-        }
-
-        ClientContext? existing = _session.Clients.All
-            .FirstOrDefault(item => string.Equals(item.Id, client.Id, StringComparison.Ordinal));
-        return existing ?? ToContext(client);
-    }
-
-    private static ClientContext ToContext(ClientInfo client) => new()
-    {
-        Id = client.Id,
-        Name = client.Name,
-        Cwd = client.Cwd ?? Environment.CurrentDirectory,
-        Roots = client.Roots,
-        IncludeAllApps = client.IncludeAllApps,
-    };
+    // 释放路径只做查找 / 兜底，不登记：客户端断开后的延后清理不能把 ActiveCount 加回来。
+    private ClientContext? Resolve(ClientInfo? client) =>
+        client is null ? null : _session.Clients.Resolve(client);
 }

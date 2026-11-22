@@ -17,8 +17,16 @@ internal sealed class ResourceHandler
     private const int PageSize = 50;
 
     private readonly IArtifactService _artifacts;
+    private readonly Func<string> _clientId;
 
-    public ResourceHandler(IArtifactService artifacts) => _artifacts = artifacts;
+    public ResourceHandler(IArtifactService artifacts, Func<string>? clientId = null)
+    {
+        _artifacts = artifacts;
+        _clientId = clientId ?? (() => "c0");
+    }
+
+    /// <summary>资源回调没有工具作用域，目录必须按连接客户端显式取。</summary>
+    internal string ArtifactDirectory() => _artifacts.DirectoryFor(_clientId());
 
     public ValueTask<ListResourcesResult> ListAsync(
         RequestContext<ListResourcesRequestParams> context, CancellationToken cancellationToken)
@@ -37,8 +45,8 @@ internal sealed class ResourceHandler
 
         try
         {
-            List<string> files = Directory
-                .EnumerateFiles(_artifacts.Directory, "*.png")
+            List<string> files = System.IO.Directory
+                .EnumerateFiles(ArtifactDirectory(), "*.png")
                 .Where(file => !file.EndsWith(".preview.png", StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(File.GetLastWriteTimeUtc)
                 .ToList();
@@ -133,7 +141,7 @@ internal sealed class ResourceHandler
 
     private string ResolvePath(ArtifactRequest request)
     {
-        string path = Path.Combine(_artifacts.Directory, request.Name);
+        string path = Path.Combine(ArtifactDirectory(), request.Name);
         bool wantsPreview = request.Preview ||
                             (!request.ForceFull &&
                              File.Exists(path) &&

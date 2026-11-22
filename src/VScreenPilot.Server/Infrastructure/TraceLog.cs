@@ -21,6 +21,7 @@ internal sealed class TraceLog : IDisposable
     private readonly object _lock = new();
     private readonly StreamWriter? _writer;
     private int _disposed;
+    private int _pending;
 
     public string FilePath { get; } = string.Empty;
 
@@ -42,7 +43,7 @@ internal sealed class TraceLog : IDisposable
                 new FileStream(FilePath, FileMode.CreateNew, FileAccess.Write, FileShare.Read),
                 new UTF8Encoding(false))
             {
-                AutoFlush = true,
+                AutoFlush = false,
             };
         }
         catch (Exception exception)
@@ -127,10 +128,35 @@ internal sealed class TraceLog : IDisposable
             try
             {
                 _writer?.WriteLine(line);
+
+                // 工具调用是低频事件：每 16 条刷一次，崩溃最多丢 15 条；
+                // 比每条都 flush 更省，也避免 daemon 共享文件上的锁竞争放大到磁盘 IO。
+                if (++_pending >= 16)
+                {
+                    _writer?.Flush();
+                    _pending = 0;
+                }
             }
             catch (Exception exception)
             {
                 // 忽略磁盘写入失败。
+                LogSink.Debug($"忽略异常: {exception.Message}");
+            }
+        }
+    }
+
+    /// <summary>把当前缓冲强制落盘；错误记录和退出路径使用。</summary>
+    public void Flush()
+    {
+        lock (_lock)
+        {
+            try
+            {
+                _writer?.Flush();
+                _pending = 0;
+            }
+            catch (Exception exception)
+            {
                 LogSink.Debug($"忽略异常: {exception.Message}");
             }
         }
@@ -152,6 +178,12 @@ internal sealed class TraceLog : IDisposable
             ["channel"] = result.Channel,
             ["stage"] = result.Stage,
         });
+
+        // 失败记录不参与批量缓冲：复盘时最需要的正是这些。
+        if (result.IsError)
+        {
+            Flush();
+        }
     }
 
     public void Dispose()

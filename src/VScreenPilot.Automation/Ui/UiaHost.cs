@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Interop.UIAutomationClient;
 using VScreenPilot.Errors;
@@ -9,8 +8,9 @@ namespace VScreenPilot.Uia;
 /// UIA 的单线程 MTA 宿主：所有 <see cref="UiaService"/> 调用在同一个专用线程上执行，
 /// 消除跨 apartment 的隐式封送；调用方仍是同步等待结果。
 ///
-/// 超时退休语义与旧实现一致：<see cref="Retire"/> 只把当前代际移出服务列表并让新调用走新代际，
-/// 旧线程继续把队列里的工作做完再释放 COM；卡死的代际不阻塞主流程，也不在调用线程上 Dispose。
+/// 超时退休语义：<see cref="Retire"/> 把当前代际移出服务列表并标记 Abandoned，
+/// 新调用走新代际；队列里尚未执行的 WorkItem 直接失败（不会迟到执行），
+/// 已经在 COM 调用中的无法取消。卡死的代际不阻塞主流程，也不在调用线程上 Dispose。
 /// </summary>
 internal sealed class UiaHost : IDisposable
 {
@@ -19,8 +19,8 @@ internal sealed class UiaHost : IDisposable
     private readonly Func<UiaService> _factory;
     private readonly TimeSpan _callTimeout;
     private readonly object _gate = new();
-    private readonly List<Generation> _retired = new();
-    private Generation? _current;
+    private readonly List<UiaGeneration> _retired = new();
+    private UiaGeneration? _current;
     private int _disposed;
 
     public UiaHost()
@@ -42,7 +42,7 @@ internal sealed class UiaHost : IDisposable
     /// <summary>放弃当前代际；后续调用自动创建新代际。旧代际由自己的工作线程收尾。</summary>
     public bool Retire()
     {
-        Generation? old;
+        UiaGeneration? old;
 
         lock (_gate)
         {
@@ -55,6 +55,7 @@ internal sealed class UiaHost : IDisposable
             }
         }
 
+        old?.Abandon();
         old?.Queue.CompleteAdding();
         return old is not null;
     }
@@ -155,7 +156,7 @@ internal sealed class UiaHost : IDisposable
     /// </summary>
     public T InvokeOn<T>(UiaService owner, Func<UiaService, T> action)
     {
-        Generation? generation;
+        UiaGeneration? generation;
 
         lock (_gate)
         {
@@ -189,7 +190,7 @@ internal sealed class UiaHost : IDisposable
     {
         while (true)
         {
-            Generation generation = Current();
+            UiaGeneration generation = Current();
 
             if (generation.Thread == Thread.CurrentThread)
             {
@@ -214,7 +215,7 @@ internal sealed class UiaHost : IDisposable
     }
 
     /// <summary>代际启动超时：退休当前代际，避免卡在 Ready 上。</summary>
-    private void WaitReadyOrRetire(Generation generation)
+    private void WaitReadyOrRetire(UiaGeneration generation)
     {
         try
         {
@@ -228,7 +229,7 @@ internal sealed class UiaHost : IDisposable
     }
 
     /// <summary>调用超时：退休当前代际并抛 E_TIMEOUT；旧线程把手上工作做完后自行释放。</summary>
-    private T WaitCompletionOrRetire<T>(Generation generation, TaskCompletionSource<T> completion)
+    private T WaitCompletionOrRetire<T>(UiaGeneration generation, TaskCompletionSource<T> completion)
     {
         try
         {
@@ -241,7 +242,7 @@ internal sealed class UiaHost : IDisposable
         }
     }
 
-    private void RetireIfCurrent(Generation generation)
+    private void RetireIfCurrent(UiaGeneration generation)
     {
         lock (_gate)
         {
@@ -254,10 +255,11 @@ internal sealed class UiaHost : IDisposable
             _retired.Add(generation);
         }
 
+        generation.Abandon();
         generation.Queue.CompleteAdding();
     }
 
-    private ToolException CallTimeout() =>
+    internal ToolException CallTimeout() =>
         new(
             "E_TIMEOUT",
             $"UI Automation 调用超过 {_callTimeout.TotalSeconds:0} 秒未返回，已退休当前 UIA 代际",
@@ -265,18 +267,29 @@ internal sealed class UiaHost : IDisposable
             hint: "重试；若持续超时，应用可能卡死，可先 release_environment",
             stage: "uia");
 
-    private Generation Current()
+    private UiaGeneration Current()
     {
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed != 0, this);
+
+            // 工厂抛异常（Ready faulted）后旧代际永远不会恢复；下次调用必须换新代际，
+            // 否则所有后续 UIA 调用都会同步抛同一个异常。
+            if (_current is { } failed && (failed.Ready.Task.IsFaulted || failed.Ready.Task.IsCanceled))
+            {
+                _current = null;
+                _retired.Add(failed);
+                failed.Abandon();
+                failed.Queue.CompleteAdding();
+            }
+
             return _current ??= Start();
         }
     }
 
-    private Generation Start()
+    private UiaGeneration Start()
     {
-        var generation = new Generation(_factory, this);
+        var generation = new UiaGeneration(_factory, this);
         generation.Thread.Start();
         return generation;
     }
@@ -292,7 +305,7 @@ internal sealed class UiaHost : IDisposable
 
         lock (_gate)
         {
-            foreach (Generation generation in _retired)
+            foreach (UiaGeneration generation in _retired)
             {
                 generation.Queue.CompleteAdding();
             }
@@ -301,14 +314,14 @@ internal sealed class UiaHost : IDisposable
         }
     }
 
-    private abstract class WorkItem
+    internal abstract class WorkItem
     {
         public abstract void Run(UiaService service);
 
         public abstract void Fail(Exception exception);
     }
 
-    private sealed class WorkItem<T> : WorkItem
+    internal sealed class WorkItem<T> : WorkItem
     {
         private readonly Func<UiaService, T> _action;
         private readonly TaskCompletionSource<T> _completion;
@@ -322,75 +335,5 @@ internal sealed class UiaHost : IDisposable
         public override void Run(UiaService service) => _completion.TrySetResult(_action(service));
 
         public override void Fail(Exception exception) => _completion.TrySetException(exception);
-    }
-
-    private sealed class Generation
-    {
-        private readonly Func<UiaService> _factory;
-        private readonly UiaHost _host;
-
-        public Generation(Func<UiaService> factory, UiaHost host)
-        {
-            _factory = factory;
-            _host = host;
-            Thread = new Thread(Run)
-            {
-                IsBackground = true,
-                Name = "vsp-uia-host",
-            };
-            Thread.SetApartmentState(ApartmentState.MTA);
-        }
-
-        public BlockingCollection<WorkItem> Queue { get; } = new();
-
-        public Thread Thread { get; }
-
-        public UiaService? Service { get; private set; }
-
-        public TaskCompletionSource Ready { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        private void Run()
-        {
-            UiaService? service = null;
-
-            try
-            {
-                service = _factory();
-                service.Host = _host;
-                Service = service;
-                Ready.TrySetResult();
-            }
-            catch (Exception exception)
-            {
-                Ready.TrySetException(exception);
-
-                foreach (WorkItem item in Queue.GetConsumingEnumerable())
-                {
-                    item.Fail(exception);
-                }
-
-                return;
-            }
-
-            try
-            {
-                foreach (WorkItem item in Queue.GetConsumingEnumerable())
-                {
-                    try
-                    {
-                        item.Run(service);
-                    }
-                    catch (Exception exception)
-                    {
-                        item.Fail(exception);
-                    }
-                }
-            }
-            finally
-            {
-                service?.Dispose();
-            }
-        }
     }
 }

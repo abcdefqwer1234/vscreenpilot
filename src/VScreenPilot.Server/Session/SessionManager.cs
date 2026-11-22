@@ -77,8 +77,6 @@ internal sealed class SessionManager : IDisposable
     internal int _disposed;
 
     internal readonly FrameStore _frames = new();
-    // 按区域保留更多基线，避免只截另一区域就把当前区域基线挤掉。
-    internal const int MaxFrames = 8;
 
     internal readonly UiaHost _uiaHost = new();
     internal VirtualDisplayController _display = null!;
@@ -185,9 +183,9 @@ internal sealed class SessionManager : IDisposable
         }
     }
 
-    internal void EnterRead() => _guard.EnterRead();
-
     internal void ExitRead() => _guard.ExitRead();
+
+    internal bool TryEnterRead(int milliseconds) => _guard.TryEnterRead(milliseconds);
 
     internal bool TryEnterExclusive(int milliseconds) =>
         _guard.TryEnterExclusive(milliseconds);

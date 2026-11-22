@@ -105,6 +105,6 @@ public sealed class MaintenanceServiceTests : IDisposable
         public LogRing Log { get; } = new(capacity: 10, fileEnabled: false);
 
         public MaintenanceContext ToContext() =>
-            new(ArtifactRoot, () => Disposed, () => Current, Log);
+            new(ArtifactRoot, () => Disposed, () => Current, Log, () => { });
     }
 }

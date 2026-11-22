@@ -21,6 +21,14 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
+/// <summary>UIA 坐标触发的三态结果：超时必须终止回退，不能再补一次 message/input 点击。</summary>
+internal enum UiaInvokeOutcome
+{
+    Ok,
+    Unsupported,
+    TimedOut,
+}
+
 /// <summary>UiaGuardOps：InputRouter 的输入子通道。</summary>
 internal sealed class InputUiaGuardOps
 {
@@ -43,14 +51,14 @@ internal sealed class InputUiaGuardOps
         }
     }
 
-    internal bool TryUiaInvoke(int x, int y, int pid)
+    internal UiaInvokeOutcome TryUiaInvoke(int x, int y, int pid)
     {
         lock (_host._blockGate)
         {
             if (_host._uiaBlockedPids.TryGetValue(_host._session.Clients.CurrentId, out HashSet<int>? blocked) &&
                 blocked.Contains(pid))
             {
-                return false;
+                return UiaInvokeOutcome.Unsupported;
             }
         }
 
@@ -70,7 +78,7 @@ internal sealed class InputUiaGuardOps
                 _host._uia.ResetUia();
                 BlockUiaPid(pid);
                 _host._log.Warn($"UIA 坐标触发超时，已熔断 pid={pid}");
-                return false;
+                return UiaInvokeOutcome.TimedOut;
             }
 
             bool result = invokeTask.Result;
@@ -82,13 +90,13 @@ internal sealed class InputUiaGuardOps
                 BlockUiaPid(pid);
             }
 
-            return result;
+            return result ? UiaInvokeOutcome.Ok : UiaInvokeOutcome.Unsupported;
         }
         catch (Exception exception)
         {
             LogSink.Debug($"忽略异常: {exception.Message}");
             BlockUiaPid(pid);
-            return false;
+            return UiaInvokeOutcome.Unsupported;
         }
     }
 }

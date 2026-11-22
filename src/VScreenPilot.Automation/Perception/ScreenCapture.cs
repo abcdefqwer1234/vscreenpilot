@@ -7,7 +7,7 @@ namespace VScreenPilot.Perception;
 /// 复用 screen DC / memory DC / DIB：旧实现每次调用都新建 3.7MB DIB，
 /// 120 次全屏会产生 ~1.4GB 分配，并显著加剧 IDD 上的性能悬崖。
 /// </summary>
-internal sealed class ScreenCapture
+internal sealed class ScreenCapture : IDisposable
 {
     private const uint SrcCopy = 0x00CC0020;
     private const uint CaptureBlt = 0x40000000;
@@ -168,6 +168,18 @@ internal sealed class ScreenCapture
                 (byte)(color & 0xFF),
                 (byte)255,
             };
+        }
+    }
+
+    /// <summary>
+    /// 释放缓存的 screen DC / pixel DC / DIB。摘屏后这些句柄全部失效，必须重建；
+    /// 下一次 Capture 仍会按需重建，所以重复调用是安全的。
+    /// </summary>
+    public void Dispose()
+    {
+        lock (_sync)
+        {
+            ResetCachedResources();
         }
     }
 

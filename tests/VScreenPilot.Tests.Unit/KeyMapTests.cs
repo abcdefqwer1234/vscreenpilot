@@ -30,6 +30,17 @@ public sealed class KeyMapTests
     }
 
     [Fact]
+    public void UppercaseLetterRequiresShift()
+    {
+        Assert.True(KeyMap.TryResolve("A", out ushort key, out bool shift, out _, out _));
+        Assert.Equal((ushort)0x41, key);
+        Assert.True(shift);
+
+        Assert.True(KeyMap.TryResolve("a", out _, out bool lowerShift, out _, out _));
+        Assert.False(lowerShift);
+    }
+
+    [Fact]
     public void UnknownTokenFails()
     {
         Assert.False(KeyMap.TryResolve("NotAKey", out _, out _, out _, out _));

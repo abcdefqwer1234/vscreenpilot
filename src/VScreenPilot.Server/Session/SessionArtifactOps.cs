@@ -11,23 +11,24 @@ internal sealed class SessionArtifactOps
     public SessionArtifactOps(SessionManager host) => _host = host;
 
     /// <summary>大截图/快照的落盘目录；按客户端隔离，通过 vsp://artifacts/ 资源 URI 暴露。</summary>
-    internal string Directory
+    internal string Directory => DirectoryFor(_host.Clients.CurrentId);
+
+    /// <summary>
+    /// 指定客户端的 artifact 目录。MCP resources 回调不在工具调用的 AsyncLocal 作用域里，
+    /// 不能依赖 CurrentId（否则共享 daemon 下永远落到 c0）。
+    /// </summary>
+    internal string DirectoryFor(string clientId)
     {
-        get
+        lock (_host._artifactGate)
         {
-            string clientId = _host.Clients.CurrentId;
-
-            lock (_host._artifactGate)
+            if (_host._artifactDirectories.TryGetValue(clientId, out string? cached))
             {
-                if (_host._artifactDirectories.TryGetValue(clientId, out string? cached))
-                {
-                    return cached;
-                }
-
-                string created = CreateDirectory(clientId);
-                _host._artifactDirectories[clientId] = created;
-                return created;
+                return cached;
             }
+
+            string created = CreateDirectory(clientId);
+            _host._artifactDirectories[clientId] = created;
+            return created;
         }
     }
 

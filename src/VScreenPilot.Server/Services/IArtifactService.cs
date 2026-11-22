@@ -6,6 +6,10 @@ namespace VScreenPilot.Services;
 internal interface IArtifactService
 {
     string Directory { get; }
+
+    /// <summary>取指定客户端的 artifact 目录；资源读取没有工具调用的 AsyncLocal 作用域，必须显式传 id。</summary>
+    string DirectoryFor(string clientId);
+
     ArtifactOutput Write(byte[] png, string prefix, byte[]? preview = null);
 }
 
@@ -18,6 +22,8 @@ internal sealed class ArtifactToolService : IArtifactService
     public ArtifactToolService(SessionManager session) => _session = session;
 
     public string Directory => _session.ArtifactDirectory;
+
+    public string DirectoryFor(string clientId) => _session.ArtifactOps.DirectoryFor(clientId);
 
     public ArtifactOutput Write(byte[] png, string prefix, byte[]? preview = null)
     {

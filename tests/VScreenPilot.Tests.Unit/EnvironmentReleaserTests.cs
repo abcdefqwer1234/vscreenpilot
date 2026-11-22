@@ -125,6 +125,21 @@ public sealed class EnvironmentReleaserTests
         Assert.Equal(0, host.StateClearCount);
     }
 
+    [Fact]
+    public void AbortKeepsLiveTempProfile()
+    {
+        Assert.False(EnvironmentReleaser.ShouldReclaimTempProfile(
+            started: true, tempProfile: @"C:\tmp\edge", onDirty: "abort", processAlive: true));
+        Assert.True(EnvironmentReleaser.ShouldReclaimTempProfile(
+            started: true, tempProfile: @"C:\tmp\edge", onDirty: "abort", processAlive: false));
+        Assert.True(EnvironmentReleaser.ShouldReclaimTempProfile(
+            started: true, tempProfile: @"C:\tmp\edge", onDirty: "force", processAlive: true));
+        Assert.False(EnvironmentReleaser.ShouldReclaimTempProfile(
+            started: false, tempProfile: @"C:\tmp\edge", onDirty: "force", processAlive: true));
+        Assert.False(EnvironmentReleaser.ShouldReclaimTempProfile(
+            started: true, tempProfile: null, onDirty: "force", processAlive: true));
+    }
+
     private sealed class FakeHost
     {
         public object Gate { get; } = new();

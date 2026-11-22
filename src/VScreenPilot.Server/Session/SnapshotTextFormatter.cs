@@ -26,6 +26,7 @@ internal static class SnapshotTextFormatter
 
         AppendHeader(node, depth, includeValues, builder);
         AppendFlags(node, builder);
+        builder.AppendLine();
 
         if (node["children"] is not JsonArray children)
         {
@@ -80,8 +81,6 @@ internal static class SnapshotTextFormatter
             builder.Append(reference);
             builder.Append(']');
         }
-
-        builder.AppendLine();
     }
 
     private static void AppendFlags(JsonObject node, StringBuilder builder)

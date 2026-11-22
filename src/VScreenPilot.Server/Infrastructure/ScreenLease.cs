@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using VScreenPilot.Errors;
+using VScreenPilot.Options;
 
 namespace VScreenPilot.Server.Infrastructure;
 
@@ -237,29 +238,9 @@ internal sealed class ScreenLease
         }
     }
 
-    private static long ResolveTtl()
-    {
-        string? raw = Environment.GetEnvironmentVariable("VSP_SCREEN_LEASE_IDLE_MS");
+    private static long ResolveTtl() => VspOptions.FromEnvironment().ScreenLeaseIdleMs;
 
-        if (long.TryParse(raw, out long value))
-        {
-            return Math.Clamp(value, 1000, 600_000);
-        }
-
-        return 60_000;
-    }
-
-    private static long ResolveWait()
-    {
-        string? raw = Environment.GetEnvironmentVariable("VSP_SCREEN_LEASE_WAIT_MS");
-
-        if (long.TryParse(raw, out long value))
-        {
-            return Math.Clamp(value, 0, 120_000);
-        }
-
-        return 0;
-    }
+    private static long ResolveWait() => VspOptions.FromEnvironment().ScreenLeaseWaitMs;
 
     private sealed class Lease : IDisposable
     {

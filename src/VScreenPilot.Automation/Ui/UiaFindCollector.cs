@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Interop.UIAutomationClient;
 
 namespace VScreenPilot.Uia;
@@ -5,28 +6,47 @@ namespace VScreenPilot.Uia;
 /// <summary>FindElementsDetailed 的候选收集：按上限截断并区分可见/隐藏候选。</summary>
 internal sealed class UiaFindCollector
 {
+    /// <summary>与工具 30s 超时留余量：contains/regex 全量子树扫描最多 8s。</summary>
+    internal const int DefaultBudgetMs = 8000;
+
     private readonly UiaService _core;
     private readonly string? _name;
     private readonly UiaNameMatch _nameMatch;
     private readonly int _maxResults;
+    private readonly int _budgetMs;
     private readonly List<UiaElementInfo> _usable = new();
     private readonly List<UiaElementInfo> _hidden = new();
 
-    public UiaFindCollector(UiaService core, string? name, UiaNameMatch nameMatch, int maxResults)
+    public UiaFindCollector(
+        UiaService core, string? name, UiaNameMatch nameMatch, int maxResults,
+        int budgetMs = DefaultBudgetMs)
     {
         _core = core;
         _name = name;
         _nameMatch = nameMatch;
         _maxResults = maxResults;
+        _budgetMs = Math.Max(1, budgetMs);
     }
 
     public UiaFindResult Collect(IUIAutomationElementArray all)
     {
         int count = Math.Min(all.Length, 5000);
         bool truncated = all.Length > count;
+        var stopwatch = Stopwatch.StartNew();
 
-        for (int index = 0; index < count && !CollectAt(all, index, count, ref truncated); index++)
+        for (int index = 0; index < count; index++)
         {
+            // 卡顿 provider 上逐元素 Describe 可能远超工具超时；到预算就返回已收集部分。
+            if (stopwatch.ElapsedMilliseconds >= _budgetMs)
+            {
+                truncated = true;
+                break;
+            }
+
+            if (CollectAt(all, index, count, ref truncated))
+            {
+                break;
+            }
         }
 
         var results = new List<UiaElementInfo>(_usable);

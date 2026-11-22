@@ -8,7 +8,8 @@ internal sealed record MaintenanceContext(
     string ArtifactRoot,
     Func<bool> Disposed,
     Func<string[]> ArtifactDirectories,
-    LogRing Log);
+    LogRing Log,
+    Action ReapOrphans);
 
 /// <summary>daemon 长期运行时的产物、trace 与日志清理。</summary>
 internal sealed class MaintenanceService : IDisposable
@@ -16,6 +17,7 @@ internal sealed class MaintenanceService : IDisposable
     private readonly MaintenanceContext _host;
     private long _lastSweepTicks;
     private Timer? _timer;
+    private Timer? _orphanTimer;
     private ArtifactStore? _artifacts;
 
     public MaintenanceService(MaintenanceContext host) => _host = host;
@@ -28,6 +30,30 @@ internal sealed class MaintenanceService : IDisposable
             state: null,
             dueTime: TimeSpan.FromHours(1),
             period: TimeSpan.FromHours(1));
+
+        // 孤儿窗口按分钟检查：断开后保留 10 分钟仍无人接管才回收。
+        _orphanTimer = new Timer(
+            _ => ReapOrphansSafely(),
+            state: null,
+            dueTime: TimeSpan.FromMinutes(1),
+            period: TimeSpan.FromMinutes(1));
+    }
+
+    private void ReapOrphansSafely()
+    {
+        if (_host.Disposed())
+        {
+            return;
+        }
+
+        try
+        {
+            _host.ReapOrphans();
+        }
+        catch (Exception exception)
+        {
+            _host.Log.Warn($"回收孤儿窗口失败: {exception.Message}");
+        }
     }
 
     private void Run()
@@ -91,5 +117,7 @@ internal sealed class MaintenanceService : IDisposable
     {
         _timer?.Dispose();
         _timer = null;
+        _orphanTimer?.Dispose();
+        _orphanTimer = null;
     }
 }

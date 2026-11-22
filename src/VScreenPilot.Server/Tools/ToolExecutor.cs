@@ -258,38 +258,18 @@ internal sealed class ToolExecutor
     {
         return Task.Run(() =>
         {
-            // release 与只读观察互斥：release 摘屏前先等 snapshot/capture 结束。
-            // wait_for 可能持续 120s，不能持读锁阻塞 release；get_log 不碰显示，也跳过。
-            // 注意：这里用“是否读会话”而不是 readOnlyHint 判断。snapshot/capture_screen
-            // 会换缓存、写盘，标注上不是只读，但仍然必须受 release 的读锁保护。
-            bool sessionRead = policy.SessionRead;
-            bool sessionWrite = policy.SessionWrite;
-            bool writeHeld = false;
+            // release 与只读观察互斥：写锁优先。release_environment 同时声明
+            // sessionRead/sessionWrite，先判读会让独占分支永远执行不到。
+            // 读锁带超时，避免 release 持写锁期间所有读工具在 EnterReadLock 上无限阻塞。
+            SessionLockScope.Acquisition sessionLock = SessionLockScope.Acquire(
+                context.Control.Gate, policy.SessionRead, policy.SessionWrite);
 
-            if (sessionRead)
+            if (sessionLock.Busy is not null)
             {
-                context.Control.Gate.EnterRead();
-            }
-            else if (sessionWrite)
-            {
-                writeHeld = context.Control.Gate.TryEnterExclusive(3000);
-
-                if (!writeHeld)
-                {
-                    return ToolResponse.Error(
-                        "E_BUSY",
-                        "release_environment 等待只读观察结束超时（3s）",
-                        new JsonObject
-                        {
-                            ["held_by"] = "snapshot/capture/find_element",
-                            ["retry_after_ms"] = 500,
-                        },
-                        retryable: true,
-                        hint: "稍后重试；也可以等当前 snapshot/capture 返回后再 release",
-                        stage: "session");
-                }
+                return sessionLock.Busy;
             }
 
+            using IDisposable? sessionScope = sessionLock.Scope;
             using var progress = ToolProgress.Begin(reporter);
 
             try
@@ -304,17 +284,6 @@ internal sealed class ToolExecutor
             {
                 _log.Error($"工具 {tool.Name} 异常", exception);
                 return ToolResponse.FromException(exception, $"tool:{tool.Name}");
-            }
-            finally
-            {
-                if (sessionRead)
-                {
-                    context.Control.Gate.ExitRead();
-                }
-                else if (writeHeld)
-                {
-                    context.Control.Gate.ExitExclusive();
-                }
             }
         }, CancellationToken.None);
     }

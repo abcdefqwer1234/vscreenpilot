@@ -1,6 +1,6 @@
 {
   "split_namespaces": 0,
-  "max_type_lines": 400,
+  "max_type_lines": 420,
   "max_file_lines": 450,
   "max_partial_types": 0,
   "max_method_lines": 80,

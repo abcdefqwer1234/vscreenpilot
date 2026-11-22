@@ -351,14 +351,18 @@ public sealed class VddDevice : IDisposable
     {
         StopKeepAlive();
 
-        lock (_gate)
+        // 与 IoControl 用同一把 _ioGate：否则可能在 IOCTL 进行中关闭设备句柄。
+        lock (_ioGate)
         {
-            if (_handle != IntPtr.Zero && _handle != Win32.InvalidHandleValue)
+            lock (_gate)
             {
-                Win32.CloseHandle(_handle);
-            }
+                if (_handle != IntPtr.Zero && _handle != Win32.InvalidHandleValue)
+                {
+                    Win32.CloseHandle(_handle);
+                }
 
-            _handle = IntPtr.Zero;
+                _handle = IntPtr.Zero;
+            }
         }
 
         Interlocked.Exchange(ref _consecutiveUpdateFailures, 0);

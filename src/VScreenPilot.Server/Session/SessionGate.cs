@@ -10,7 +10,7 @@ internal sealed class SessionGate : VScreenPilot.Services.ISessionGate
         _session = session;
     }
 
-    public void EnterRead() => _session.EnterRead();
+    public bool TryEnterRead(int timeoutMs) => _session.TryEnterRead(timeoutMs);
 
     public bool TryEnterExclusive(int timeoutMs) => _session.TryEnterExclusive(timeoutMs);
 
