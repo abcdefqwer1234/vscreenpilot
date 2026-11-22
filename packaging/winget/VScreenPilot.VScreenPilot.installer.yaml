@@ -7,7 +7,7 @@ Scope: user
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/abcdefqwer1234/vscreenpilot/releases/download/v0.3.0/VScreenPilot-Setup-0.3.0.exe
-    InstallerSha256: 0E2F1703857E3D0F6836AC3D495C1EF9BF2FF79B15BACE6D67CDCFDD66AF98F5
+    InstallerSha256: 2BAFC4DA90C9F8DC847E405EFF2F611D7A99E0CF2E8AB02915B704BD046F0CA7
     InstallerSwitches:
       Silent: /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-
       SilentWithProgress: /SILENT /SUPPRESSMSGBOXES /NORESTART /SP-
