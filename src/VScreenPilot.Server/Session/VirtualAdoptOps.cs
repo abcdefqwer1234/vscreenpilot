@@ -9,10 +9,14 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class VirtualDisplayController
+/// <summary>AdoptOps：VirtualDisplayController 的拆分子集。</summary>
+internal sealed class VirtualAdoptOps
 {
+    private readonly VirtualDisplayController _core;
+
+    public VirtualAdoptOps(VirtualDisplayController core) => _core = core;
     /// <summary>已存在的孤儿屏：优先按上次 state 接管；非 default profile 不抢别人的屏。</summary>
-    private DisplayInfo? AdoptOrphanIfNeeded(
+    internal DisplayInfo? AdoptOrphanIfNeeded(
         DisplayInfo? existing, ref bool configured, ref bool displayAdded, ref string? selfHealReason)
     {
         if (existing is not null)
@@ -28,10 +32,10 @@ internal sealed partial class VirtualDisplayController
             return existing;
         }
 
-        bool matchesRecovered = !string.IsNullOrWhiteSpace(State.RecoveredDevice) &&
+        bool matchesRecovered = !string.IsNullOrWhiteSpace(_core.State.RecoveredDevice) &&
                                 string.Equals(
                                     attached.DeviceName,
-                                    State.RecoveredDevice,
+                                    _core.State.RecoveredDevice,
                                     StringComparison.OrdinalIgnoreCase);
 
         // 不认领“来源不明”的屏；只有自己的崩溃 state 匹配才允许。
@@ -47,7 +51,7 @@ internal sealed partial class VirtualDisplayController
             return null;
         }
 
-        if (!string.Equals(_profile, "default", StringComparison.Ordinal))
+        if (!string.Equals(_core._profile, "default", StringComparison.Ordinal))
         {
             throw new ToolException(
                 "E_ORPHAN_DISPLAY",
@@ -55,7 +59,7 @@ internal sealed partial class VirtualDisplayController
                 new JsonObject
                 {
                     ["display"] = attached.ToString(),
-                    ["profile"] = _profile,
+                    ["profile"] = _core._profile,
                 },
                 retryable: true,
                 hint: "确认该屏无人使用后手动摘除，或使用默认 profile/独立 VM",
@@ -66,31 +70,31 @@ internal sealed partial class VirtualDisplayController
     }
 
     /// <summary>已有屏的索引/几何修复；索引失效时重新创建。</summary>
-    private DisplayInfo? ReconcileExisting(
+    internal DisplayInfo? ReconcileExisting(
         ref DisplayInfo? existing, ref bool configured, ref bool displayAdded, ref string? selfHealReason)
     {
-        if (existing is not null && State.Index < 0)
+        if (existing is not null && _core.State.Index < 0)
         {
-            if (State.RecoveredIndex >= 0)
+            if (_core.State.RecoveredIndex >= 0)
             {
-                _log.Warn(
+                _core._log.Warn(
                     $"检测到孤儿虚拟屏，按上次记录接管 " +
-                    $"(index={State.RecoveredIndex}, device={State.RecoveredDevice}, " +
-                    $"pid={State.RecoveredPid})");
-                State.Index = State.RecoveredIndex;
-                configured = TryActivateDisplay(existing.DeviceName, out string? adoptFailure);
+                    $"(index={_core.State.RecoveredIndex}, device={_core.State.RecoveredDevice}, " +
+                    $"pid={_core.State.RecoveredPid})");
+                _core.State.Index = _core.State.RecoveredIndex;
+                configured = _core.CreateOps.TryActivateDisplay(existing.DeviceName, out string? adoptFailure);
 
                 if (configured)
                 {
-                    State.DeviceName = existing.DeviceName;
-                    State.AdoptedOrphan = true;
+                    _core.State.DeviceName = existing.DeviceName;
+                    _core.State.AdoptedOrphan = true;
                     selfHealReason = "orphan_adopted";
-                    _log.Info($"孤儿虚拟屏已接管: {existing}");
+                    _core._log.Info($"孤儿虚拟屏已接管: {existing}");
                 }
                 else
                 {
-                    _log.Warn($"孤儿虚拟屏接管失败 ({adoptFailure})，尝试重建");
-                    RemoveDisplayAfterEnsureFailure(displayAdded);
+                    _core._log.Warn($"孤儿虚拟屏接管失败 ({adoptFailure})，尝试重建");
+                    _core.LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
                     selfHealReason = "orphan_reclaimed";
                 }
             }
@@ -105,29 +109,29 @@ internal sealed partial class VirtualDisplayController
                         new JsonObject { ["display"] = existing.ToString() });
                 }
 
-                _log.Info("孤儿虚拟屏已被驱动自动回收");
+                _core._log.Info("孤儿虚拟屏已被驱动自动回收");
                 existing = DisplayTopology.FindParsecDisplay();
             }
 
             // 一次会话只按上次记录接管一次，避免旧索引在后续重建时被误用。
-            State.RecoveredIndex = -1;
-            State.RecoveredDevice = string.Empty;
+            _core.State.RecoveredIndex = -1;
+            _core.State.RecoveredDevice = string.Empty;
         }
 
         // 显示索引仍归本会话，但拓扑丢失或几何被改（睡眠、驱动回收、用户改设置）。
-        if (existing is not null && State.Index >= 0)
+        if (existing is not null && _core.State.Index >= 0)
         {
-            _log.Warn($"虚拟屏状态异常 ({existing})，尝试恢复");
+            _core._log.Warn($"虚拟屏状态异常 ({existing})，尝试恢复");
 
             if (!configured)
             {
-                configured = TryActivateDisplay(existing.DeviceName, out string? failure);
+                configured = _core.CreateOps.TryActivateDisplay(existing.DeviceName, out string? failure);
 
                 if (!configured)
                 {
-                    _log.Warn($"恢复失败 ({failure})，重建虚拟屏");
-                    RemoveDisplayAfterEnsureFailure(displayAdded);
-                    State.RecreateCount++;
+                    _core._log.Warn($"恢复失败 ({failure})，重建虚拟屏");
+                    _core.LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
+                    _core.State.RecreateCount++;
                     selfHealReason = "display_recreated";
                 }
                 else if (selfHealReason is null)
@@ -136,12 +140,12 @@ internal sealed partial class VirtualDisplayController
                 }
             }
         }
-        else if (existing is null && State.Index >= 0)
+        else if (existing is null && _core.State.Index >= 0)
         {
             // 驱动已回收设备：索引失效，直接丢弃后重新创建，避免对旧索引反复重试。
-            _log.Warn("虚拟屏已被驱动回收，重新创建");
-            Forget();
-            State.RecreateCount++;
+            _core._log.Warn("虚拟屏已被驱动回收，重新创建");
+            _core.Forget();
+            _core.State.RecreateCount++;
             selfHealReason = "display_reclaimed";
         }
 
@@ -150,22 +154,22 @@ internal sealed partial class VirtualDisplayController
 
     public DisplayInfo? OwnDisplay()
     {
-        DisplayInfo? byDevice = DisplayTopology.FindParsecDisplayByDevice(State.DeviceName);
+        DisplayInfo? byDevice = DisplayTopology.FindParsecDisplayByDevice(_core.State.DeviceName);
 
         if (byDevice is not null)
         {
             return byDevice;
         }
 
-        return State.VirtualDisplay is { Attached: true }
-            ? DisplayTopology.FindParsecDisplayByDevice(State.VirtualDisplay.DeviceName)
+        return _core.State.VirtualDisplay is { Attached: true }
+            ? DisplayTopology.FindParsecDisplayByDevice(_core.State.VirtualDisplay.DeviceName)
             : null;
     }
 
-    private static bool HasOtherLiveProfile() =>
+    internal bool HasOtherLiveProfile() =>
         InstanceRegistry.ListAll().Any(entry => entry.Pid != Environment.ProcessId);
 
-    private static bool IsDisplayOwnedByOther(string? deviceName)
+    internal bool IsDisplayOwnedByOther(string? deviceName)
     {
         if (string.IsNullOrWhiteSpace(deviceName))
         {
@@ -178,5 +182,4 @@ internal sealed partial class VirtualDisplayController
                 entry.Pid != Environment.ProcessId &&
                 string.Equals(entry.DisplayDevice, deviceName, StringComparison.OrdinalIgnoreCase));
     }
-
 }

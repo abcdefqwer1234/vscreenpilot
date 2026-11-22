@@ -17,8 +17,12 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class AppLauncher
+/// <summary>ProcessOps：AppLauncher 的拆分子集。</summary>
+internal sealed class AppProcessOps
 {
+    private readonly AppLauncher _core;
+
+    public AppProcessOps(AppLauncher core) => _core = core;
     /// <summary>
     /// Win11 记事本会恢复上次会话的标签：无参数启动时若标题带文件名，提示调用方先确认。
     /// 只在本次确实启动了新进程时判断，接管旧窗口的场景由 launchWarning 覆盖。
@@ -45,7 +49,7 @@ internal sealed partial class AppLauncher
                title.Contains("Notepad", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string BuildNewInstanceArguments(
+    internal string BuildNewInstanceArguments(
         string exeName, string? arguments, out string? tempProfile)
     {
         tempProfile = null;
@@ -77,7 +81,7 @@ internal sealed partial class AppLauncher
         return arguments ?? string.Empty;
     }
 
-    private Process? FindRunningProcess(string path)
+    internal Process? FindRunningProcess(string path)
     {
         string name = Path.GetFileNameWithoutExtension(path);
         if (string.IsNullOrWhiteSpace(name))
@@ -88,7 +92,7 @@ internal sealed partial class AppLauncher
         string fullPath;
         try
         {
-            fullPath = _apps.ResolvePath(path);
+            fullPath = _core._apps.ResolvePath(path);
         }
         catch (Exception exception)
         {
@@ -209,5 +213,4 @@ internal sealed partial class AppLauncher
             LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
-
 }

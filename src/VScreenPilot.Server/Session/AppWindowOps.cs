@@ -17,18 +17,22 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class AppLauncher
+/// <summary>WindowOps：AppLauncher 的拆分子集。</summary>
+internal sealed class AppWindowOps
 {
+    private readonly AppLauncher _core;
+
+    public AppWindowOps(AppLauncher core) => _core = core;
     /// <summary>该窗口是否已由当前客户端接管；用于区分“用户原有窗口”和“本会话早前启动的窗口”。</summary>
-    private bool IsOwnedWindowOnCurrentClient(IntPtr hwnd)
+    internal bool IsOwnedWindowOnCurrentClient(IntPtr hwnd)
     {
-        lock (_gate)
+        lock (_core._gate)
         {
-            return _apps.Apps.Any(app => _apps.IsOwned(app) && app.Hwnd == hwnd && _apps.IsLive(app));
+            return _core._apps.Apps.Any(app => _core._apps.IsOwned(app) && app.Hwnd == hwnd && _core._apps.IsLive(app));
         }
     }
 
-    private void AssignWindowProcessToJob(int pid)
+    internal void AssignWindowProcessToJob(int pid)
     {
         // 启动壳进程会转交给真实进程；重试几次再判定失败，避免把正常的交接记成兜底不可用。
         for (int attempt = 0; attempt < 3; attempt++)
@@ -43,9 +47,9 @@ internal sealed partial class AppLauncher
                     continue;
                 }
 
-                if (_session.Job.Assign(process))
+                if (_core._session.Job.Assign(process))
                 {
-                    _log.Info($"已将进程 {pid} 加入作业对象");
+                    _core._log.Info($"已将进程 {pid} 加入作业对象");
                     return;
                 }
 
@@ -59,16 +63,16 @@ internal sealed partial class AppLauncher
             }
         }
 
-        if (!_jobUnavailableLogged)
+        if (!_core._jobUnavailableLogged)
         {
-            _jobUnavailableLogged = true;
-            _log.Warn(
-                $"进程 {pid} 未能加入作业对象（{_session.Job.Status}）；崩溃兜底不可用，" +
+            _core._jobUnavailableLogged = true;
+            _core._log.Warn(
+                $"进程 {pid} 未能加入作业对象（{_core._session.Job.Status}）；崩溃兜底不可用，" +
                 "将依赖进程树清理与启动时孤儿清扫");
         }
     }
 
-    private WindowInfo? WaitForNewWindow(
+    internal WindowInfo? WaitForNewWindow(
         Process process, string exeName, HashSet<IntPtr> before, int waitMs,
         out int contentPid, out string contentPath)
     {
@@ -98,7 +102,7 @@ internal sealed partial class AppLauncher
 
             WindowInfo? byName = candidates
                 .Where(item => string.Equals(
-                    GetProcessName(item.Pid), exeName, StringComparison.OrdinalIgnoreCase))
+                    _core.UwpOps.GetProcessName(item.Pid), exeName, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(item => item.Area)
                 .FirstOrDefault();
 
@@ -119,7 +123,7 @@ internal sealed partial class AppLauncher
 
             if (byUwp is not null)
             {
-                (contentPid, contentPath) = ResolveUwpContentProcess(byUwp.Hwnd);
+                (contentPid, contentPath) = _core.ResolveUwpContentProcess(byUwp.Hwnd);
                 Thread.Sleep(300);
                 return WindowManager.FromHandle(byUwp.Hwnd) ?? byUwp;
             }
@@ -129,7 +133,7 @@ internal sealed partial class AppLauncher
 
         // 超时前再做一次 UIA 探测：UWP 内容进程没有独立 HWND，
         // 只能从 frame 的语义树里找 ProcessId。
-        UwpWindow? uwp = FindUwpWindowByUia(exeName);
+        UwpWindow? uwp = _core.UwpOps.FindUwpWindowByUia(exeName);
 
         if (uwp is not null)
         {
@@ -141,9 +145,9 @@ internal sealed partial class AppLauncher
         return null;
     }
 
-    private sealed record UwpWindow(WindowInfo Window, int ContentPid, string ContentPath);
+    internal sealed record UwpWindow(WindowInfo Window, int ContentPid, string ContentPath);
 
-    private WindowInfo? WaitForMainWindow(Process process, int waitMs)
+    internal WindowInfo? WaitForMainWindow(Process process, int waitMs)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(1000, waitMs));
         WindowInfo? found = null;
@@ -175,7 +179,7 @@ internal sealed partial class AppLauncher
         return WindowManager.FindMainWindow(process.Id) ?? found;
     }
 
-    private WindowInfo? WaitForStableWindow(WindowInfo window, int waitMs, int displayArea)
+    internal WindowInfo? WaitForStableWindow(WindowInfo window, int waitMs, int displayArea)
     {
         // 启动 splash/引导页通常远小于主窗口。小于虚拟屏 10% 的窗口先不当作主窗口，
         // 继续轮询同进程的最大窗口，直到出现更大的窗口或超时。
@@ -187,7 +191,7 @@ internal sealed partial class AppLauncher
                 ? Math.Max(3000, Math.Min(waitMs, 20000))
                 : Math.Max(500, Math.Min(waitMs, 3000)));
 
-        _log.Info(
+        _core._log.Info(
             $"等待窗口稳定: hwnd=0x{window.Hwnd.ToInt64():X} area={window.Area} " +
             $"displayArea={displayArea} small={smallWindow} waitMs={waitMs}");
 
@@ -217,7 +221,7 @@ internal sealed partial class AppLauncher
                     break;
                 }
 
-                _log.Info($"等待窗口稳定: 暂无可选窗口，继续等待 pid={window.Pid}");
+                _core._log.Info($"等待窗口稳定: 暂无可选窗口，继续等待 pid={window.Pid}");
                 continue;
             }
 
@@ -228,7 +232,7 @@ internal sealed partial class AppLauncher
                 stable = 0;
                 smallWindow = displayArea > 0 && window.Area < displayArea * 0.50;
                 // 不记录标题：可能含文档名/客户名。
-                _log.Info(
+                _core._log.Info(
                     $"窗口更新: hwnd=0x{window.Hwnd.ToInt64():X} area={window.Area} small={smallWindow}");
                 continue;
             }
@@ -236,7 +240,7 @@ internal sealed partial class AppLauncher
             stable++;
             if (!smallWindow && stable >= 2)
             {
-                _log.Info($"窗口已稳定: hwnd=0x{window.Hwnd.ToInt64():X} area={window.Area}");
+                _core._log.Info($"窗口已稳定: hwnd=0x{window.Hwnd.ToInt64():X} area={window.Area}");
                 return window;
             }
         }
@@ -246,9 +250,8 @@ internal sealed partial class AppLauncher
             .OrderByDescending(item => item.Area)
             .FirstOrDefault() ?? window;
 
-        _log.Info($"等待窗口稳定结束: hwnd=0x{final.Hwnd.ToInt64():X} area={final.Area}");
+        _core._log.Info($"等待窗口稳定结束: hwnd=0x{final.Hwnd.ToInt64():X} area={final.Area}");
 
         return final;
     }
-
 }

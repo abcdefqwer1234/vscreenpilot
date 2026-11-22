@@ -17,9 +17,13 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class AppLauncher
+/// <summary>DocumentOps：AppLauncher 的拆分子集。</summary>
+internal sealed class AppDocumentOps
 {
-    private bool WaitForWordDocument(IntPtr hwnd, int timeoutMs)
+    private readonly AppLauncher _core;
+
+    public AppDocumentOps(AppLauncher core) => _core = core;
+    internal bool WaitForWordDocument(IntPtr hwnd, int timeoutMs)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(1000, timeoutMs));
 
@@ -32,7 +36,7 @@ internal sealed partial class AppLauncher
 
             try
             {
-                if (_apps.Uia.FindElement(hwnd, null, "Document", null, null) is not null)
+                if (_core._apps.Uia.FindElement(hwnd, null, "Document", null, null) is not null)
                 {
                     return true;
                 }
@@ -62,7 +66,7 @@ internal sealed partial class AppLauncher
                trimmed.Length > product.Length + 3;
     }
 
-    private static bool WaitForDocumentTitle(IntPtr hwnd, string product, int timeoutMs)
+    internal bool WaitForDocumentTitle(IntPtr hwnd, string product, int timeoutMs)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(1000, timeoutMs));
 
@@ -84,11 +88,11 @@ internal sealed partial class AppLauncher
         return false;
     }
 
-    private UiaElementInfo? FindBlankPresentationTile(IntPtr hwnd)
+    internal UiaElementInfo? FindBlankPresentationTile(IntPtr hwnd)
     {
         try
         {
-            foreach (UiaElementInfo info in _apps.Uia.FindElements(
+            foreach (UiaElementInfo info in _core._apps.Uia.FindElements(
                          hwnd, null, UiaNameMatch.Exact, "Button", null, 200))
             {
                 if (info.Name.Contains("空白", StringComparison.OrdinalIgnoreCase) ||
@@ -106,5 +110,4 @@ internal sealed partial class AppLauncher
 
         return null;
     }
-
 }

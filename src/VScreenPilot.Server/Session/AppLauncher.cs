@@ -39,14 +39,32 @@ internal sealed record LaunchFocusContext(
     Action ResumeFocusGuard,
     Func<TrackedApp, bool> EnsureForeground);
 
-internal sealed partial class AppLauncher
+internal sealed class AppLauncher
 {
-    private readonly LaunchSessionContext _session;
-    private readonly LaunchAppContext _apps;
-    private readonly LaunchFocusContext _focus;
-    private readonly LogRing _log;
-    private readonly object _gate;
-    private bool _jobUnavailableLogged;
+    internal readonly LaunchSessionContext _session;
+    internal readonly LaunchAppContext _apps;
+    internal readonly LaunchFocusContext _focus;
+    internal readonly LogRing _log;
+    internal readonly object _gate;
+    internal readonly AppLaunchOps LaunchOps;
+    internal readonly AppLaunchFlowOps LaunchFlowOps;
+    internal readonly AppProcessOps ProcessOps;
+    internal readonly AppUwpOps UwpOps;
+    internal readonly AppWindowOps WindowOps;
+    internal readonly AppDocumentOps DocumentOps;
+
+    internal static bool LooksLikeRestoredNotepadTitle(
+        string exeName, bool started, string? arguments, string? title) =>
+        AppProcessOps.LooksLikeRestoredNotepadTitle(exeName, started, arguments, title);
+
+    internal static bool IsSameExecutable(System.Diagnostics.Process process, string fullPath) =>
+        AppProcessOps.IsSameExecutable(process, fullPath);
+
+    internal static void CleanupStaleProfiles() => AppProcessOps.CleanupStaleProfiles();
+
+    internal static bool LooksLikeDocumentWindow(string title, string product) =>
+        AppDocumentOps.LooksLikeDocumentWindow(title, product);
+    internal bool _jobUnavailableLogged;
 
     public AppLauncher(LaunchSessionContext session, LaunchAppContext apps, LaunchFocusContext focus)
     {
@@ -55,6 +73,13 @@ internal sealed partial class AppLauncher
         _focus = focus;
         _log = session.Log;
         _gate = session.Gate;
+
+        LaunchOps = new AppLaunchOps(this);
+        LaunchFlowOps = new AppLaunchFlowOps(this);
+        ProcessOps = new AppProcessOps(this);
+        UwpOps = new AppUwpOps(this);
+        WindowOps = new AppWindowOps(this);
+        DocumentOps = new AppDocumentOps(this);
     }
 
     /// <summary>
@@ -73,9 +98,9 @@ internal sealed partial class AppLauncher
     }
 
     /// <summary>从 frame 的 UIA 树里找非 frame-host 的内容进程。</summary>
-    private (int Pid, string Path) ResolveUwpContentProcess(IntPtr frameHwnd)
+    internal (int Pid, string Path) ResolveUwpContentProcess(IntPtr frameHwnd)
     {
-        if (frameHwnd == IntPtr.Zero || !IsApplicationFrame(frameHwnd))
+        if (frameHwnd == IntPtr.Zero || !UwpOps.IsApplicationFrame(frameHwnd))
         {
             return (0, string.Empty);
         }
@@ -95,7 +120,7 @@ internal sealed partial class AppLauncher
         }
 
         var processIds = new HashSet<int>();
-        CollectProcessIds(tree.Root, processIds);
+        UwpOps.CollectProcessIds(tree.Root, processIds);
         int framePid = WindowManager.GetProcessId(frameHwnd);
 
         foreach (int pid in processIds)

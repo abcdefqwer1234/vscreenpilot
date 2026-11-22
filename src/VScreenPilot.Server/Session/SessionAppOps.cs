@@ -16,5 +16,5 @@ internal sealed class SessionAppOps
         bool newInstance,
         bool ensureDocument = true,
         int? pid = null) =>
-        _host._launcher.Launch(path, windowTitle, arguments, waitMs, newInstance, ensureDocument, pid);
+        _host._launcher.LaunchOps.Launch(path, windowTitle, arguments, waitMs, newInstance, ensureDocument, pid);
 }

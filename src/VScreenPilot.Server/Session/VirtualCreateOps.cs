@@ -9,12 +9,16 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class VirtualDisplayController
+/// <summary>CreateOps：VirtualDisplayController 的拆分子集。</summary>
+internal sealed class VirtualCreateOps
 {
+    private readonly VirtualDisplayController _core;
+
+    public VirtualCreateOps(VirtualDisplayController core) => _core = core;
     /// <summary>ADD 与“解析新 device”必须整体串行，避免两个 profile 把同一块新屏都认成自己的。</summary>
-    private void CreateNewDisplay(ref string? targetDevice, ref bool displayAdded)
+    internal void CreateNewDisplay(ref string? targetDevice, ref bool displayAdded)
     {
-        Mutex? allocation = TryAcquireDisplayAllocation(out bool allocationHeld);
+        Mutex? allocation = _core.TryAcquireDisplayAllocation(out bool allocationHeld);
 
         try
         {
@@ -37,35 +41,35 @@ internal sealed partial class VirtualDisplayController
                     Thread.Sleep(delay);
                 }
 
-                State.Index = Vdd.AddDisplay();
+                _core.State.Index = _core.Vdd.AddDisplay();
 
-                if (State.Index >= 0)
+                if (_core.State.Index >= 0)
                 {
                     displayAdded = true;
                     break;
                 }
 
                 if (DisplayTopology.PickNewLiveParsec(
-                        DisplayTopology.List(), beforeLive, IsDisplayOwnedByOther) is not null)
+                        DisplayTopology.List(), beforeLive, _core.AdoptOps.IsDisplayOwnedByOther) is not null)
                 {
-                    _log.Warn("驱动拒绝 ADD，但检测到本次新变可用的 Parsec 屏，按已创建处理");
+                    _core._log.Warn("驱动拒绝 ADD，但检测到本次新变可用的 Parsec 屏，按已创建处理");
                     break;
                 }
 
-                _log.Warn("驱动拒绝创建虚拟显示器，准备重试");
+                _core._log.Warn("驱动拒绝创建虚拟显示器，准备重试");
             }
 
-            if (State.Index < 0 &&
+            if (_core.State.Index < 0 &&
                 DisplayTopology.PickNewLiveParsec(
-                    DisplayTopology.List(), beforeLive, IsDisplayOwnedByOther) is null)
+                    DisplayTopology.List(), beforeLive, _core.AdoptOps.IsDisplayOwnedByOther) is null)
             {
                 throw new ToolException(
                     "E_DISPLAY_ADD",
                     "驱动拒绝创建虚拟显示器",
                     new JsonObject
                     {
-                        ["before_live"] = DescribeDevices(beforeLive),
-                        ["after_live"] = DescribeDevices(DisplayTopology.LiveParsecDevices()),
+                        ["before_live"] = _core.LifecycleOps.DescribeDevices(beforeLive),
+                        ["after_live"] = _core.LifecycleOps.DescribeDevices(DisplayTopology.LiveParsecDevices()),
                     },
                     retryable: true,
                     hint: "驱动 REMOVE 后需要 3-5 秒冷却；稍后重试或重启驱动",
@@ -81,19 +85,19 @@ internal sealed partial class VirtualDisplayController
                 beforeLive,
                 TimeSpan.FromSeconds(3),
                 out DisplayInfo? added,
-                IsDisplayOwnedByOther);
+                _core.AdoptOps.IsDisplayOwnedByOther);
 
             if ((!liveArrived || added is null) &&
                 DisplayTopology.List()
                     .FirstOrDefault(item =>
                         item.IsParsec &&
                         !beforeAll.Contains(item.DeviceName) &&
-                        !IsDisplayOwnedByOther(item.DeviceName)) is { } detachedNew)
+                        !_core.AdoptOps.IsDisplayOwnedByOther(item.DeviceName)) is { } detachedNew)
             {
                 // 驱动创建的 monitor 未被 Windows 自动挂载：直接对新建的
                 // detached 设备设模式，TryActivateDisplay 会完成挂载。
                 targetDevice = detachedNew.DeviceName;
-                _log.Info($"新建虚拟屏处于 detached，直接激活: {detachedNew.DeviceName}");
+                _core._log.Info($"新建虚拟屏处于 detached，直接激活: {detachedNew.DeviceName}");
             }
 
             if (string.IsNullOrWhiteSpace(targetDevice) &&
@@ -101,13 +105,13 @@ internal sealed partial class VirtualDisplayController
             {
                 JsonObject details = new()
                 {
-                    ["display_index"] = State.Index,
-                    ["before_live"] = DescribeDevices(beforeLive),
-                    ["after_live"] = DescribeDevices(DisplayTopology.LiveParsecDevices()),
+                    ["display_index"] = _core.State.Index,
+                    ["before_live"] = _core.LifecycleOps.DescribeDevices(beforeLive),
+                    ["after_live"] = _core.LifecycleOps.DescribeDevices(DisplayTopology.LiveParsecDevices()),
                 };
 
-                _log.Warn($"新建虚拟屏未转可用: {details.ToJsonString()}");
-                RemoveDisplayAfterEnsureFailure(displayAdded);
+                _core._log.Warn($"新建虚拟屏未转可用: {details.ToJsonString()}");
+                _core.LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
                 throw new ToolException(
                     "E_DISPLAY_ADD",
                     "新建的虚拟显示器未出现在拓扑中",
@@ -120,54 +124,54 @@ internal sealed partial class VirtualDisplayController
             if (liveArrived && added is not null)
             {
                 targetDevice = added.DeviceName;
-                _log.Info($"新建虚拟屏已可用: {added}");
+                _core._log.Info($"新建虚拟屏已可用: {added}");
             }
         }
         finally
         {
-            ReleaseDisplayAllocation(allocation, allocationHeld);
+            _core.ReleaseDisplayAllocation(allocation, allocationHeld);
         }
     }
 
 
-    private bool GeometryStillValid(DisplayInfo current)
+    internal bool GeometryStillValid(DisplayInfo current)
     {
         long now = Environment.TickCount64;
-        if (now - Interlocked.Read(ref State.LastGeometryCheckTicks) < 1000)
+        if (now - Interlocked.Read(ref _core.State.LastGeometryCheckTicks) < 1000)
         {
             return true;
         }
 
-        DisplayInfo? actual = OwnDisplay();
+        DisplayInfo? actual = _core.AdoptOps.OwnDisplay();
         if (actual is null)
         {
-            _log.Warn("虚拟屏已从拓扑中消失，准备重建");
+            _core._log.Warn("虚拟屏已从拓扑中消失，准备重建");
             return false;
         }
 
-        (int x, int y) = ExpectedPosition();
+        (int x, int y) = _core.ExpectedPosition();
         // Windows/VDD 可能拒绝移动位置，此时已置 PositionFallback；再拿“期望位置”
         // 比较会让每次快速调用都走完整自愈。回退状态下只校验尺寸与设备存在。
-        bool positionOk = State.PositionFallback || (actual.X == x && actual.Y == y);
-        bool matches = actual.Width == _width &&
-                       actual.Height == _height &&
+        bool positionOk = _core.State.PositionFallback || (actual.X == x && actual.Y == y);
+        bool matches = actual.Width == _core._width &&
+                       actual.Height == _core._height &&
                        positionOk;
 
         if (matches)
         {
             // 只缓存成功结果；失败时下一次调用立即重试，避免把“已摘屏”缓存成 1 秒有效。
-            Interlocked.Exchange(ref State.LastGeometryCheckTicks, now);
-            State.VirtualDisplay = actual;
+            Interlocked.Exchange(ref _core.State.LastGeometryCheckTicks, now);
+            _core.State.VirtualDisplay = actual;
         }
         else
         {
-            _log.Warn($"虚拟屏几何被改变: {actual}，期望 {_width}x{_height} at ({x},{y})");
+            _core._log.Warn($"虚拟屏几何被改变: {actual}，期望 {_core._width}x{_core._height} at ({x},{y})");
         }
 
         return matches;
     }
 
-    private int DisplayOffset()
+    internal int DisplayOffset()
     {
         string? raw = Environment.GetEnvironmentVariable("VSP_DISPLAY_OFFSET");
 
@@ -178,7 +182,7 @@ internal sealed partial class VirtualDisplayController
 
         // 选择“第一个真正空闲的槽位”，避免第 8 个 profile 与前面的重叠。
         // 计算时排除本会话自己的 Parsec 屏，否则每次启动都会把上次的位置当成占用而漂移。
-        DisplayInfo? own = OwnDisplay();
+        DisplayInfo? own = _core.AdoptOps.OwnDisplay();
         var occupied = new HashSet<int>();
 
         foreach (DisplayInfo display in DisplayTopology.List())
@@ -196,11 +200,11 @@ internal sealed partial class VirtualDisplayController
         int originX = primary is null ? 0 : primary.X + primary.Width;
         int preferredSlot = 0;
 
-        if (!string.Equals(_profile, "default", StringComparison.Ordinal))
+        if (!string.Equals(_core._profile, "default", StringComparison.Ordinal))
         {
             int hash = 17;
 
-            foreach (char ch in _profile)
+            foreach (char ch in _core._profile)
             {
                 hash = unchecked(hash * 31 + ch) & 0x7FFFFFFF;
             }
@@ -212,32 +216,32 @@ internal sealed partial class VirtualDisplayController
         {
             int slot = (preferredSlot + step) % 8;
 
-            if (!occupied.Contains(originX + slot * _width))
+            if (!occupied.Contains(originX + slot * _core._width))
             {
-                return slot * _width;
+                return slot * _core._width;
             }
         }
 
-        return preferredSlot * _width;
+        return preferredSlot * _core._width;
     }
 
-    private bool TryActivateDisplay(string deviceName, out string? failure)
+    internal bool TryActivateDisplay(string deviceName, out string? failure)
     {
         failure = null;
-        State.PositionFallback = false;
-        (int x, int y) = ExpectedPosition();
+        _core.State.PositionFallback = false;
+        (int x, int y) = _core.ExpectedPosition();
 
         int setResult = DisplayTopology.SetModeAndPosition(
-            deviceName, _width, _height, _refresh, x, y, out int applyResult);
+            deviceName, _core._width, _core._height, _core._refresh, x, y, out int applyResult);
 
         if (!DisplayTopology.WaitUntil(
                 () => DisplayTopology.FindParsecDisplayByDevice(deviceName) is { Attached: true },
                 TimeSpan.FromSeconds(2)))
         {
             int extendResult = DisplayTopology.ExtendDesktop();
-            _log.Warn($"SetDisplayConfig(EXTEND)={extendResult}，重试设置虚拟屏模式");
+            _core._log.Warn($"SetDisplayConfig(EXTEND)={extendResult}，重试设置虚拟屏模式");
             setResult = DisplayTopology.SetModeAndPosition(
-                deviceName, _width, _height, _refresh, x, y, out applyResult);
+                deviceName, _core._width, _core._height, _core._refresh, x, y, out applyResult);
         }
 
         bool settled = DisplayTopology.WaitUntil(
@@ -245,8 +249,8 @@ internal sealed partial class VirtualDisplayController
             {
                 DisplayInfo? display = DisplayTopology.FindParsecDisplayByDevice(deviceName);
                 return display is not null &&
-                       display.Width == _width &&
-                       display.Height == _height &&
+                       display.Width == _core._width &&
+                       display.Height == _core._height &&
                        display.X == x &&
                        display.Y == y;
             },
@@ -259,13 +263,13 @@ internal sealed partial class VirtualDisplayController
             // Windows/VDD 可能忽略 dmPosition，把新屏固定在主屏右侧。
             // 只要分辨率正确且已挂载，就接受实际坐标（否则整个 profile 直接不可用）。
             if (current is { Attached: true } &&
-                current.Width == _width &&
-                current.Height == _height)
+                current.Width == _core._width &&
+                current.Height == _core._height)
             {
-                State.PositionFallback = true;
+                _core.State.PositionFallback = true;
                 failure =
                     $"position_not_applied expected=({x},{y}) actual=({current.X},{current.Y})";
-                _log.Warn($"虚拟屏位置未生效，接受实际坐标 ({current.X},{current.Y})");
+                _core._log.Warn($"虚拟屏位置未生效，接受实际坐标 ({current.X},{current.Y})");
                 return true;
             }
 
@@ -274,5 +278,4 @@ internal sealed partial class VirtualDisplayController
 
         return settled;
     }
-
 }

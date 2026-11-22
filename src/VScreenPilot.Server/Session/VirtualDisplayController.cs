@@ -33,18 +33,26 @@ internal sealed class DisplayStateStore
 /// 虚拟屏控制：VDD 打开/心跳、ADD/REMOVE、孤儿屏接管、几何自愈、位置回退。
 /// 所有 public 入口都假定调用方已持有会话锁（与旧实现一致）。
 /// </summary>
-internal sealed partial class VirtualDisplayController
+internal sealed class VirtualDisplayController
 {
-    private readonly object _gate;
-    private readonly LogRing _log;
-    private readonly string _profile;
-    private readonly Func<bool> _isDisposed;
-    private readonly Action<DisplayInfo> _onReady;
-    private readonly Action _onRemoved;
-    private readonly Action _saveState;
-    private readonly int _width;
-    private readonly int _height;
-    private readonly int _refresh;
+    internal readonly object _gate;
+    internal readonly LogRing _log;
+    internal readonly string _profile;
+    internal readonly Func<bool> _isDisposed;
+    internal readonly Action<DisplayInfo> _onReady;
+    internal readonly Action _onRemoved;
+    internal readonly Action _saveState;
+    internal readonly int _width;
+    internal readonly int _height;
+    internal readonly int _refresh;
+
+    internal readonly VirtualCreateOps CreateOps;
+    internal readonly VirtualAdoptOps AdoptOps;
+    internal readonly VirtualLifecycleOps LifecycleOps;
+
+    public DisplayInfo? OwnDisplay() => AdoptOps.OwnDisplay();
+
+    public bool TryRemove() => LifecycleOps.TryRemove();
 
     public VirtualDisplayController(
         object gate,
@@ -58,6 +66,9 @@ internal sealed partial class VirtualDisplayController
         int height,
         int refresh)
     {
+        CreateOps = new VirtualCreateOps(this);
+        AdoptOps = new VirtualAdoptOps(this);
+        LifecycleOps = new VirtualLifecycleOps(this);
         _gate = gate;
         _log = log;
         _profile = profile;
@@ -80,7 +91,7 @@ internal sealed partial class VirtualDisplayController
 
         // 快速路径也必须验证拓扑：外接摘屏后 Attached 可能仍是旧值，
         // 直接返回会让 capture_screen 在已消失的坐标上截到黑图。
-        return display is { Attached: true } && Vdd.IsOpen && GeometryStillValid(display)
+        return display is { Attached: true } && Vdd.IsOpen && CreateOps.GeometryStillValid(display)
             ? display
             : Ensure();
     }
@@ -97,7 +108,7 @@ internal sealed partial class VirtualDisplayController
 
             if (State.VirtualDisplay is { Attached: true } current &&
                 Vdd.IsOpen &&
-                GeometryStillValid(current))
+                CreateOps.GeometryStillValid(current))
             {
                 return current;
             }
@@ -130,29 +141,29 @@ internal sealed partial class VirtualDisplayController
             bool displayAdded = false;
             DisplayInfo? existing = OwnDisplay();
 
-            existing = AdoptOrphanIfNeeded(existing, ref configured, ref displayAdded, ref selfHealReason);
-            existing = ReconcileExisting(ref existing, ref configured, ref displayAdded, ref selfHealReason);
+            existing = AdoptOps.AdoptOrphanIfNeeded(existing, ref configured, ref displayAdded, ref selfHealReason);
+            existing = AdoptOps.ReconcileExisting(ref existing, ref configured, ref displayAdded, ref selfHealReason);
 
             string? targetDevice = existing?.DeviceName;
 
             if (!configured && State.Index < 0)
             {
-                CreateNewDisplay(ref targetDevice, ref displayAdded);
+                CreateOps.CreateNewDisplay(ref targetDevice, ref displayAdded);
             }
 
             if (!configured)
             {
                 if (string.IsNullOrWhiteSpace(targetDevice))
                 {
-                    RemoveDisplayAfterEnsureFailure(displayAdded);
+                    LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
                     throw new ToolException("E_DISPLAY_ADD", "无法确定本次虚拟屏的 device");
                 }
 
-                configured = TryActivateDisplay(targetDevice, out string? failure);
+                configured = CreateOps.TryActivateDisplay(targetDevice, out string? failure);
 
                 if (!configured)
                 {
-                    RemoveDisplayAfterEnsureFailure(displayAdded);
+                    LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
                     throw new ToolException(
                         "E_DISPLAY_MODE",
                         "虚拟显示器模式/坐标未稳定",
@@ -163,7 +174,7 @@ internal sealed partial class VirtualDisplayController
             DisplayInfo? activated = DisplayTopology.FindParsecDisplayByDevice(targetDevice);
             if (activated is null)
             {
-                RemoveDisplayAfterEnsureFailure(displayAdded);
+                LifecycleOps.RemoveDisplayAfterEnsureFailure(displayAdded);
                 throw new ToolException("E_DISPLAY_ADD", "虚拟显示器激活后消失");
             }
 
@@ -187,7 +198,7 @@ internal sealed partial class VirtualDisplayController
     /// 不同 profile 同时启动时串行化“ADD + 解析 device”，避免抢同一个 slot 或同一块新屏。
     /// 拿不到锁时返回 null（降级为不串行）；设备身份校验仍会防止认领错屏。
     /// </summary>
-    private static Mutex? TryAcquireDisplayAllocation(out bool held)
+    internal Mutex? TryAcquireDisplayAllocation(out bool held)
     {
         held = false;
 
@@ -213,7 +224,7 @@ internal sealed partial class VirtualDisplayController
         }
     }
 
-    private static void ReleaseDisplayAllocation(Mutex? allocation, bool held)
+    internal void ReleaseDisplayAllocation(Mutex? allocation, bool held)
     {
         if (allocation is null)
         {
@@ -238,7 +249,7 @@ internal sealed partial class VirtualDisplayController
         }
     }
 
-    private void NoteSelfHeal(string reason)
+    internal void NoteSelfHeal(string reason)
     {
         State.SelfHealed = true;
         State.SelfHealCount++;
@@ -246,7 +257,7 @@ internal sealed partial class VirtualDisplayController
         _log.Info($"自愈 [{reason}] 累计={State.SelfHealCount}");
     }
 
-    private (int X, int Y) ExpectedPosition()
+    internal (int X, int Y) ExpectedPosition()
     {
         DisplayInfo? primary = DisplayTopology.FindPrimary();
 
@@ -257,7 +268,7 @@ internal sealed partial class VirtualDisplayController
 
         // 多 profile 不能都放在主屏右侧同一点：默认 profile 偏移 0，
         // 其他 profile 用稳定哈希取 1..7 个屏宽，避免互相覆盖。
-        int offset = DisplayOffset();
+        int offset = CreateOps.DisplayOffset();
 
         return (primary.X + primary.Width + offset, primary.Y);
     }

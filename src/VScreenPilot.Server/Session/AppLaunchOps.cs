@@ -16,8 +16,12 @@ using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class AppLauncher
+/// <summary>LaunchOps：AppLauncher 的拆分子集。</summary>
+internal sealed class AppLaunchOps
 {
+    private readonly AppLauncher _core;
+
+    public AppLaunchOps(AppLauncher core) => _core = core;
 
     public LaunchOrPlaceView Launch(
         string? path,
@@ -37,18 +41,18 @@ internal sealed partial class AppLauncher
             NewInstance = newInstance,
             EnsureDocument = ensureDocument,
             Pid = pid,
-            Display = _apps.EnsureDisplay(),
+            Display = _core._apps.EnsureDisplay(),
             UserForeground = WindowManager.GetForegroundWindow(),
         };
 
         ResolveTarget(s);
-        TrackWindow(s);
+        _core.LaunchFlowOps.TrackWindow(s);
         PresentWindow(s);
-        EnsureDocumentReady(s);
+        _core.LaunchFlowOps.EnsureDocumentReady(s);
         return BuildView(s);
     }
 
-    private void ResolveTarget(LaunchState s)
+    internal void ResolveTarget(LaunchState s)
     {
         if (!string.IsNullOrWhiteSpace(s.WindowTitle))
         {
@@ -71,7 +75,7 @@ internal sealed partial class AppLauncher
         throw new ToolException("E_INVALID_ARG", "path 和 window 至少提供一个");
     }
 
-    private void ResolveByTitle(LaunchState s)
+    internal void ResolveByTitle(LaunchState s)
     {
         IReadOnlyList<WindowInfo> candidates = WindowManager.FindByTitleCandidates(s.WindowTitle!);
 
@@ -124,19 +128,19 @@ internal sealed partial class AppLauncher
         s.NewInstance = false;
     }
 
-    private void ResolveByPid(LaunchState s)
+    internal void ResolveByPid(LaunchState s)
     {
         // 按 pid 接管是最精确的方式：UWP/单实例/多标签都绕开了标题歧义。
         // 普通应用有主窗口；UWP 的内容进程没有顶层窗口，只能反查 frame host。
         s.Window = WindowManager.FindMainWindow(s.Pid!.Value)
-            ?? FindUwpFrameForProcess(s.Pid!.Value)
+            ?? _core.UwpOps.FindUwpFrameForProcess(s.Pid!.Value)
             ?? throw new ToolException(
                 "E_WINDOW_NOT_FOUND",
                 $"pid={s.Pid} 没有可见主窗口",
                 new JsonObject { ["pid"] = s.Pid });
 
         s.NewInstance = false;
-        s.ExeName = GetProcessName(s.Pid!.Value);
+        s.ExeName = _core.UwpOps.GetProcessName(s.Pid!.Value);
 
         if (s.Window!.Pid != s.Pid!.Value)
         {
@@ -145,13 +149,13 @@ internal sealed partial class AppLauncher
         }
     }
 
-    private void ResolveByPath(LaunchState s)
+    internal void ResolveByPath(LaunchState s)
     {
         bool hasDirectory = Path.IsPathRooted(s.Path!) ||
                             s.Path!.Contains('\\') ||
                             s.Path!.Contains('/');
-        s.LaunchPath = hasDirectory ? _apps.ResolvePath(s.Path) : s.Path;
-        _apps.EnsureAppAllowed(s.LaunchPath);
+        s.LaunchPath = hasDirectory ? _core._apps.ResolvePath(s.Path) : s.Path;
+        _core._apps.EnsureAppAllowed(s.LaunchPath);
 
         if (File.Exists(s.LaunchPath) == false && hasDirectory)
         {
@@ -169,9 +173,9 @@ internal sealed partial class AppLauncher
         }
     }
 
-    private void StartNewInstance(LaunchState s)
+    internal void StartNewInstance(LaunchState s)
     {
-        using (Process? probe = FindRunningProcess(s.LaunchPath))
+        using (Process? probe = _core.ProcessOps.FindRunningProcess(s.LaunchPath))
         {
             s.HadRunningInstance = probe is not null;
         }
@@ -185,12 +189,12 @@ internal sealed partial class AppLauncher
             FileName = s.LaunchPath,
             UseShellExecute = false,
             WorkingDirectory = string.IsNullOrEmpty(workingDirectory)
-                ? _session.Clients.CurrentCwd
+                ? _core._session.Clients.CurrentCwd
                 : workingDirectory,
         };
 
         string? launchTempProfile;
-        startInfo.Arguments = BuildNewInstanceArguments(s.ExeName, s.Arguments, out launchTempProfile);
+        startInfo.Arguments = _core.ProcessOps.BuildNewInstanceArguments(s.ExeName, s.Arguments, out launchTempProfile);
         s.TempProfile = launchTempProfile;
 
         Process process = Process.Start(startInfo)
@@ -201,14 +205,14 @@ internal sealed partial class AppLauncher
 
         using (process)
         {
-            if (!_session.Job.Assign(process))
+            if (!_core._session.Job.Assign(process))
             {
-                _log.Warn($"应用 {processId} 未能加入作业对象，崩溃兜底不可用");
+                _core._log.Warn($"应用 {processId} 未能加入作业对象，崩溃兜底不可用");
             }
 
             int launchedContentPid;
             string launchedContentPath;
-            s.Window = WaitForNewWindow(
+            s.Window = _core.WindowOps.WaitForNewWindow(
                 process, s.ExeName, before, s.WaitMs, out launchedContentPid, out launchedContentPath);
             s.ContentPid = launchedContentPid;
             s.ContentPath = launchedContentPath;
@@ -227,19 +231,19 @@ internal sealed partial class AppLauncher
                 // 单实例应用（如 Win11 记事本）无法创建新窗口：自动降级为接管现有窗口。
                 WindowInfo? reuse = null;
 
-                using (Process? running = FindRunningProcess(s.Path!))
+                using (Process? running = _core.ProcessOps.FindRunningProcess(s.Path!))
                 {
                     if (running is not null)
                     {
-                        reuse = WaitForMainWindow(running, 3000);
+                        reuse = _core.WindowOps.WaitForMainWindow(running, 3000);
                     }
                 }
 
                 if (reuse is not null)
                 {
                     // 不记录窗口标题：可能包含文档名/客户名。
-                    _log.Warn($"无法创建独立实例，已接管现有窗口 pid={reuse.Pid}");
-                    bool alreadyOwned = IsOwnedWindowOnCurrentClient(reuse.Hwnd);
+                    _core._log.Warn($"无法创建独立实例，已接管现有窗口 pid={reuse.Pid}");
+                    bool alreadyOwned = _core.WindowOps.IsOwnedWindowOnCurrentClient(reuse.Hwnd);
                     s.Window = reuse;
                     s.NewInstance = false;
                     s.Started = false;
@@ -277,22 +281,22 @@ internal sealed partial class AppLauncher
 
         // 单实例回退到“接管现有窗口”时，上面已把 closeOnRelease 置 false；
         // 这里不能无条件覆盖，否则 release 会把用户原有窗口当成本会话启动的应用关闭/强杀。
-        (s.CloseOnRelease, s.Dedicated) = ResolveNewInstanceOwnership(
+        (s.CloseOnRelease, s.Dedicated) = AppLauncher.ResolveNewInstanceOwnership(
             s.AdoptedExisting,
             s.HadRunningInstance,
             s.ExeName.Equals("msedge", StringComparison.OrdinalIgnoreCase));
     }
 
-    private void LaunchOrReuse(LaunchState s)
+    internal void LaunchOrReuse(LaunchState s)
     {
-        Process? running = FindRunningProcess(s.LaunchPath);
+        Process? running = _core.ProcessOps.FindRunningProcess(s.LaunchPath);
         s.HadRunningInstance = running is not null;
 
         if (running is not null)
         {
             using (running)
             {
-                s.Window = WaitForMainWindow(running, s.WaitMs);
+                s.Window = _core.WindowOps.WaitForMainWindow(running, s.WaitMs);
             }
 
             s.Dedicated = false;
@@ -308,7 +312,7 @@ internal sealed partial class AppLauncher
                 FileName = s.LaunchPath,
                 UseShellExecute = false,
                 WorkingDirectory = string.IsNullOrEmpty(workingDirectory)
-                    ? _session.Clients.CurrentCwd
+                    ? _core._session.Clients.CurrentCwd
                     : workingDirectory,
             };
 
@@ -325,14 +329,14 @@ internal sealed partial class AppLauncher
 
             using (process)
             {
-                if (!_session.Job.Assign(process))
+                if (!_core._session.Job.Assign(process))
                 {
-                    _log.Warn($"应用 {processId} 未能加入作业对象，崩溃兜底不可用");
+                    _core._log.Warn($"应用 {processId} 未能加入作业对象，崩溃兜底不可用");
                 }
 
                 int launchedContentPid;
                 string launchedContentPath;
-                s.Window = WaitForNewWindow(
+                s.Window = _core.WindowOps.WaitForNewWindow(
                     process, s.ExeName, before, s.WaitMs, out launchedContentPid, out launchedContentPath);
                 s.ContentPid = launchedContentPid;
                 s.ContentPath = launchedContentPath;
@@ -350,25 +354,25 @@ internal sealed partial class AppLauncher
     }
 
 
-    private void PresentWindow(LaunchState s)
+    internal void PresentWindow(LaunchState s)
     {
         s.PreviousForeground = s.UserForeground;
         WindowManager.MoveAndMaximize(s.Window!.Hwnd, s.Display.X, s.Display.Y, s.Display.Width, s.Display.Height);
         // 应用启动/会话恢复可能在稍后多次激活自己；同步归还一次，再持续观察一小段时间。
         Thread.Sleep(500);
-        _focus.RestoreForeground(s.PreviousForeground);
-        _focus.StartFocusGuard(s.PreviousForeground);
+        _core._focus.RestoreForeground(s.PreviousForeground);
+        _core._focus.StartFocusGuard(s.PreviousForeground);
         s.Maximized = WindowManager.WaitForZoomed(s.Window!.Hwnd, TimeSpan.FromSeconds(2));
         Thread.Sleep(300);
         s.After = WindowManager.FromHandle(s.Window!.Hwnd);
-        _session.SaveState();
+        _core._session.SaveState();
 
 
         if (s.LaunchWarning is not null)
         {
             s.Warnings.Add(s.LaunchWarning);
         }
-        else if (LooksLikeRestoredNotepadTitle(
+        else if (AppProcessOps.LooksLikeRestoredNotepadTitle(
                      s.ExeName, s.Started, s.Arguments, s.After?.Title ?? s.Window!.Title))
         {
             s.Warnings.Add(
@@ -377,7 +381,7 @@ internal sealed partial class AppLauncher
     }
 
 
-    private LaunchOrPlaceView BuildView(LaunchState s)
+    internal LaunchOrPlaceView BuildView(LaunchState s)
     {
         var dialogs = new List<LaunchDialogView>();
 
@@ -410,5 +414,4 @@ internal sealed partial class AppLauncher
                 : null,
             dialogs);
     }
-
 }
