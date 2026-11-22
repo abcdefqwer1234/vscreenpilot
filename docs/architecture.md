@@ -134,7 +134,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 | I*Host | 0 / 0 成员 | 0 |
 | SessionManager | 256 行 / 0 public | ≤350 / ≤12 |
 | Program | 9 行 / Main 1 | ≤200 / ≤80 |
-| 测试方法 | 232 | ≥230 |
+| 测试方法 | 235 | ≥230 |
 | 无日志 catch | 66 | ≤66 |
 | SPLIT 命名空间 | 0 | 0 |
 | public 类型 | Abstractions=55, Automation=0, Platform=6, Server=9 | 不增加 |

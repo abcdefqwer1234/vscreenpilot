@@ -32,7 +32,7 @@ jobs:
       - name: Architecture metrics
         run: |
           python tools/audit/arch_metrics.py --selftest
-          python tools/audit/arch_metrics.py --check
+          python tools/audit/arch_metrics.py --enforce
           python tools/audit/doc_metrics.py --check
 
       - name: Version consistency

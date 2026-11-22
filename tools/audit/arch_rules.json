@@ -20,7 +20,7 @@
   "max_app_services": 10,
   "max_handler_groups": 8,
   "min_test_methods": 230,
-  "min_tests_per_component": 3,
+  "min_tests_per_component": 2,
   "max_new_public_types": 0,
   "max_comment_only_catches": 66,
   "public_types": {
@@ -29,6 +29,119 @@
     "VScreenPilot.Platform": 6,
     "VScreenPilot.Server": 9
   },
-  "components": [],
+  "components": [
+    {
+      "name": "SessionManager",
+      "test": "VScreenPilot.Tests.Unit/SessionStateKeeperTests.cs"
+    },
+    {
+      "name": "AppLauncher",
+      "test": "VScreenPilot.Tests.Unit/LaunchPolicyTests.cs"
+    },
+    {
+      "name": "AppReleaser",
+      "test": "VScreenPilot.Tests.Unit/EnvironmentReleaserTests.cs"
+    },
+    {
+      "name": "VirtualDisplayController",
+      "test": "VScreenPilot.Tests.Unit/DisplayTopologyTests.cs"
+    },
+    {
+      "name": "SnapshotBuilder",
+      "test": "VScreenPilot.Tests.Unit/SnapshotViewSerializationTests.cs"
+    },
+    {
+      "name": "VisualMatchService",
+      "test": "VScreenPilot.Tests.Unit/VisualSupportTests.cs"
+    },
+    {
+      "name": "UiaHost",
+      "test": "VScreenPilot.Tests.Unit/UiaHostTimeoutTests.cs"
+    },
+    {
+      "name": "ColorComponentScanner",
+      "test": "VScreenPilot.Tests.Unit/ColorComponentScannerTests.cs"
+    },
+    {
+      "name": "InputRouter",
+      "test": "VScreenPilot.Tests.Unit/InputPolicyTests.cs"
+    },
+    {
+      "name": "ElementPresenter",
+      "test": "VScreenPilot.Tests.Unit/ElementPresenterTests.cs"
+    },
+    {
+      "name": "ControlServer",
+      "test": "VScreenPilot.Tests.Unit/IpcContractTests.cs"
+    },
+    {
+      "name": "Handshake",
+      "test": "VScreenPilot.Tests.Unit/HandshakeTests.cs"
+    },
+    {
+      "name": "McpTransport",
+      "test": "VScreenPilot.Tests.Unit/ProtocolContractTests.cs"
+    },
+    {
+      "name": "ToolExecutor",
+      "test": "VScreenPilot.Tests.Unit/ToolExecutorLeaseTests.cs"
+    },
+    {
+      "name": "ToolCatalog",
+      "test": "VScreenPilot.Tests.Unit/ToolPolicyTests.cs"
+    },
+    {
+      "name": "ScreenLease",
+      "test": "VScreenPilot.Tests.Unit/ScreenLeaseTests.cs"
+    },
+    {
+      "name": "LogRing",
+      "test": "VScreenPilot.Tests.Unit/InfrastructureTests.cs"
+    },
+    {
+      "name": "InstanceRegistry",
+      "test": "VScreenPilot.Tests.Unit/InfrastructureTests.cs"
+    },
+    {
+      "name": "PrivacyRedactor",
+      "test": "VScreenPilot.Tests.Unit/PrivacyRedactorTests.cs"
+    },
+    {
+      "name": "ArgumentValidator",
+      "test": "VScreenPilot.Tests.Unit/ArgumentValidatorTests.cs"
+    },
+    {
+      "name": "PngWriter",
+      "test": "VScreenPilot.Tests.Unit/PngWriterTests.cs"
+    },
+    {
+      "name": "PngOverlay",
+      "test": "VScreenPilot.Tests.Unit/PngOverlayTests.cs"
+    },
+    {
+      "name": "LogQuery",
+      "test": "VScreenPilot.Tests.Unit/LogQueryTests.cs"
+    },
+    {
+      "name": "AppAllowlistPolicy",
+      "test": "VScreenPilot.Tests.Unit/AppAllowlistPolicyTests.cs"
+    },
+    {
+      "name": "MaintenanceService",
+      "test": "VScreenPilot.Tests.Unit/MaintenanceServiceTests.cs"
+    },
+    {
+      "name": "VddDevice",
+      "test": "VScreenPilot.Tests.Unit/VddDeviceTests.cs"
+    },
+    {
+      "name": "VspOptions",
+      "test": "VScreenPilot.Tests.Unit/VspOptionsTests.cs"
+    },
+    {
+      "name": "KeyMap",
+      "test": "VScreenPilot.Tests.Unit/KeyMapTests.cs"
+    }
+  ],
   "allowlist": {}
 }

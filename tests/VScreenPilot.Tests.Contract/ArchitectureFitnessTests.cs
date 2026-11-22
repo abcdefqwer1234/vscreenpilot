@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Xunit;
 
@@ -151,5 +152,41 @@ public sealed class ArchitectureFitnessTests
 
         return directory?.FullName
             ?? throw new InvalidOperationException("找不到仓库根目录（VScreenPilot.slnx）");
+    }
+
+    [Fact]
+    public void ComponentsDeclareExistingTests()
+    {
+        using JsonDocument document = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(Root, "tools", "audit", "arch_rules.json")));
+        JsonElement components = document.RootElement.GetProperty("components");
+
+        Assert.NotEqual(0, components.GetArrayLength());
+
+        foreach (JsonElement component in components.EnumerateArray())
+        {
+            string name = component.GetProperty("name").GetString() ?? string.Empty;
+            string test = component.GetProperty("test").GetString() ?? string.Empty;
+            string path = Path.Combine(Root, "tests", test);
+
+            Assert.True(File.Exists(path), $"组件 {name} 的测试文件不存在: {test}");
+
+            int count = Regex.Count(File.ReadAllText(path), @"\[(?:Fact|Theory)\]");
+            Assert.True(count >= 2, $"组件 {name} 测试方法 {count} < 2 ({test})");
+        }
+    }
+
+    [Fact]
+    public void ArchitectureAllowlistIsEmpty()
+    {
+        using JsonDocument document = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(Root, "tools", "audit", "arch_rules.json")));
+
+        JsonElement allowlist = document.RootElement.GetProperty("allowlist");
+        int count = allowlist.ValueKind == JsonValueKind.Array
+            ? allowlist.GetArrayLength()
+            : allowlist.EnumerateObject().Count();
+
+        Assert.Equal(0, count);
     }
 }
