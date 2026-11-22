@@ -19,7 +19,7 @@ namespace VScreenPilot.Session;
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
-internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IElementFinderHost, IWaitHost, IElementResolverHost, IElementOperationsHost
+internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IWaitHost, IElementResolverHost, IElementOperationsHost
 {
     private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
@@ -234,7 +234,7 @@ internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaser
         _launcher = new AppLauncher(this);
         _input = new InputRouter(this);
         _visual = new VisualMatchService(this);
-        _finder = new ElementFinder(this);
+        _finder = new ElementFinder(new ElementFinderContext(FindLiveTrackedApp, EnsureEnvironment, RequireWindowOnDisplay, Uia, EnsureSnapshot, RegisterElement));
         _regionVerifier = new RegionVerifier(new RegionVerifierContext(EnsureEnvironmentFast, CaptureRegion, FindFrame, FindLatestFrame, () => _frames.Latest(), () => _frames.Snapshot()));
         _waits = new WaitService(this);
         _resolver = new ElementResolver(this);

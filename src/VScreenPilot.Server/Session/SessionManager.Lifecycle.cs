@@ -16,7 +16,7 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IElementFinderHost, IWaitHost, IElementResolverHost, IElementOperationsHost
+internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IWaitHost, IElementResolverHost, IElementOperationsHost
 {
     /// <summary>
     /// 在释放/预热等低负载节点裁剪工作集。不是定时看门狗，只按事件触发。
@@ -176,20 +176,6 @@ internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaser
         _display.Vdd.Dispose();
         _stateStore.Clear();
     }
-
-    TrackedApp? IElementFinderHost.FindApp(int? pid) => FindLiveTrackedApp(pid);
-
-    DisplayInfo IElementFinderHost.EnsureDisplay() => EnsureEnvironment();
-
-    void IElementFinderHost.RequireOnDisplay(DisplayInfo display, IntPtr hwnd, string label) =>
-        RequireWindowOnDisplay(display, hwnd, label);
-
-    UiaHost IElementFinderHost.Uia => Uia;
-
-    string IElementFinderHost.EnsureSnapshot() => EnsureSnapshot();
-
-    string IElementFinderHost.RegisterElement(UiaElementInfo info, IntPtr hwnd) =>
-        RegisterElement(info, hwnd);
 
     DisplayInfo IWaitHost.EnsureDisplay() => EnsureEnvironmentFast();
 

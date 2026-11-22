@@ -13,22 +13,20 @@ using VScreenPilot.Errors;
 namespace VScreenPilot.Session;
 
 /// <summary>find_element 所需的最小宿主接口。</summary>
-internal interface IElementFinderHost
-{
-    TrackedApp? FindApp(int? pid);
-    DisplayInfo EnsureDisplay();
-    void RequireOnDisplay(DisplayInfo display, IntPtr hwnd, string label);
-    UiaHost Uia { get; }
-    string EnsureSnapshot();
-    string RegisterElement(UiaElementInfo info, IntPtr hwnd);
-}
+internal sealed record ElementFinderContext(
+    Func<int?, TrackedApp?> FindApp,
+    Func<DisplayInfo> EnsureDisplay,
+    Action<DisplayInfo, IntPtr, string> RequireOnDisplay,
+    UiaHost Uia,
+    Func<string> EnsureSnapshot,
+    Func<UiaElementInfo, IntPtr, string> RegisterElement);
 
 /// <summary>find_element：跨主窗口/弹窗查找、MSAA 回退、排序与 ref 登记。</summary>
 internal sealed class ElementFinder
 {
-    private readonly IElementFinderHost _host;
+    private readonly ElementFinderContext _host;
 
-    public ElementFinder(IElementFinderHost host) => _host = host;
+    public ElementFinder(ElementFinderContext host) => _host = host;
 
     public object Find(
         string? name,
