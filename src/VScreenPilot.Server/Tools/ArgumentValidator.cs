@@ -2,7 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using VScreenPilot.Errors;
 
-namespace VScreenPilot.Mcp;
+namespace VScreenPilot.Tools;
 
 /// <summary>
 /// 输入参数校验：覆盖工具 schema 实际用到的 JSON Schema 子集

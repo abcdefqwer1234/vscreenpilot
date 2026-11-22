@@ -4,6 +4,8 @@ using VScreenPilot.Mcp;
 using Xunit;
 using VScreenPilot.Errors;
 
+using VScreenPilot.Tools;
+
 namespace VScreenPilot.Tests;
 
 public sealed class ArgumentValidatorTests
