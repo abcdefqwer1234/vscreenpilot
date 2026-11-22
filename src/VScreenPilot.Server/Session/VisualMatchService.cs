@@ -19,13 +19,21 @@ internal sealed record VisualContext(
     Func<bool> IsCancelled);
 
 /// <summary>match_visual：像素 / 颜色连通域 / 模板多尺度匹配。</summary>
-internal sealed partial class VisualMatchService
+internal sealed class VisualMatchService
 {
-    private readonly VisualContext _host;
+    internal readonly VisualContext _host;
 
-    public VisualMatchService(VisualContext host) => _host = host;
+    public VisualMatchService(VisualContext host)
+    {
+        _host = host;
+        ColorOps = new VisualColorOps(this);
+        ComponentsOps = new VisualComponentsOps(this);
+    }
 
-    private const int MaxTemplateBytes = 4 * 1024 * 1024;
+    internal readonly VisualColorOps ColorOps;
+    internal readonly VisualComponentsOps ComponentsOps;
+
+    internal const int MaxTemplateBytes = 4 * 1024 * 1024;
 
     /* ------------------------------------------------------------------ */
     /* 工具：match_visual                                                  */
@@ -58,7 +66,7 @@ internal sealed partial class VisualMatchService
         MatchVisualView result = mode switch
         {
             "pixel" => MatchPixel(arguments, x, y, width, height),
-            "color" => MatchColor(arguments, x, y, width, height),
+            "color" => ColorOps.MatchColor(arguments, x, y, width, height),
             "template" => MatchTemplate(arguments, x, y, width, height),
             _ => throw new ToolException(
                 "E_INVALID_ARG", $"未知 match_visual mode: {mode}（可选 template/color/pixel）"),
@@ -177,7 +185,7 @@ internal sealed partial class VisualMatchService
 
         if (!string.IsNullOrWhiteSpace(target))
         {
-            return DecodeBase64Png(target);
+            return ComponentsOps.DecodeBase64Png(target);
         }
 
         string? targetPath = GetString(arguments, "target_path");

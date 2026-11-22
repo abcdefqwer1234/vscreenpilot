@@ -11,9 +11,13 @@ using VScreenPilot.Json;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class VisualMatchService
+/// <summary>ComponentsOps：VisualMatchService 的匹配子集。</summary>
+internal sealed class VisualComponentsOps
 {
-    private static byte[] DecodeBase64Png(string value)
+    private readonly VisualMatchService _core;
+
+    public VisualComponentsOps(VisualMatchService core) => _core = core;
+    internal byte[] DecodeBase64Png(string value)
     {
         string payload = value.Trim();
 
@@ -44,22 +48,22 @@ internal sealed partial class VisualMatchService
             throw new ToolException("E_INVALID_ARG", "target 不是合法的 Base64 数据");
         }
 
-        if (data.Length > MaxTemplateBytes)
+        if (data.Length > VisualMatchService.MaxTemplateBytes)
         {
             throw new ToolException(
                 "E_UNSUPPORTED_IMAGE",
-                $"模板解码后过大: {data.Length} 字节（上限 {MaxTemplateBytes}）",
+                $"模板解码后过大: {data.Length} 字节（上限 {VisualMatchService.MaxTemplateBytes}）",
                 new JsonObject { ["bytes"] = data.Length });
         }
 
         return data;
     }
 
-    private readonly record struct ColorComponent(
+    internal readonly record struct ColorComponent(
         int Left, int Top, int Right, int Bottom, int Pixels);
 
     /// <summary>4 连通域标记：返回连通区域的边界与像素数。</summary>
-    private static List<ColorComponent> ConnectedComponents(
+    internal List<ColorComponent> ConnectedComponents(
         byte[] mask, int width, int height, int minPixels, Func<bool> isCancelled)
     {
         var components = new List<ColorComponent>();
@@ -158,5 +162,4 @@ internal sealed partial class VisualMatchService
 
         return components;
     }
-
 }

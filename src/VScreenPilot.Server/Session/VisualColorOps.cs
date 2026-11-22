@@ -11,9 +11,13 @@ using VScreenPilot.Json;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class VisualMatchService
+/// <summary>ColorOps：VisualMatchService 的匹配子集。</summary>
+internal sealed class VisualColorOps
 {
-    private MatchVisualView MatchColor(
+    private readonly VisualMatchService _core;
+
+    public VisualColorOps(VisualMatchService core) => _core = core;
+    internal MatchVisualView MatchColor(
         JsonElement arguments, int regionX, int regionY, int width, int height)
     {
         string target = GetString(arguments, "target")
@@ -32,7 +36,7 @@ internal sealed partial class VisualMatchService
         bool excludeBorder = GetBool(arguments, "exclude_border", false);
 
         (byte[] bgra, int capturedWidth, int capturedHeight) =
-            _host.CaptureRegion(regionX, regionY, width, height);
+            _core._host.CaptureRegion(regionX, regionY, width, height);
 
         int total = capturedWidth * capturedHeight;
         var mask = ArrayPool<byte>.Shared.Rent(total);
@@ -67,10 +71,10 @@ internal sealed partial class VisualMatchService
                     });
             }
 
-            List<ColorComponent> components = ConnectedComponents(
-                mask, capturedWidth, capturedHeight, minPixels, () => _host.IsCancelled());
+            List<VisualComponentsOps.ColorComponent> components = _core.ComponentsOps.ConnectedComponents(
+                mask, capturedWidth, capturedHeight, minPixels, () => _core._host.IsCancelled());
 
-            List<ColorComponent> selected = SelectComponents(
+            List<VisualComponentsOps.ColorComponent> selected = SelectComponents(
                 components, minPixels, maxAreaRatio, excludeBorder,
                 capturedWidth, capturedHeight, maxResults);
 
@@ -111,8 +115,8 @@ internal sealed partial class VisualMatchService
     }
 
 
-    private static List<ColorComponent> SelectComponents(
-        List<ColorComponent> components, int minPixels, double maxAreaRatio,
+    internal static List<VisualComponentsOps.ColorComponent> SelectComponents(
+        List<VisualComponentsOps.ColorComponent> components, int minPixels, double maxAreaRatio,
         bool excludeBorder, int capturedWidth, int capturedHeight, int maxResults)
     {
         var selected = components
@@ -144,12 +148,12 @@ internal sealed partial class VisualMatchService
         return selected;
     }
 
-    private static List<VisualMatchView> BuildColorViews(
-        List<ColorComponent> selected, int regionX, int regionY)
+    internal static List<VisualMatchView> BuildColorViews(
+        List<VisualComponentsOps.ColorComponent> selected, int regionX, int regionY)
     {
         var matches = new List<VisualMatchView>();
 
-        foreach (ColorComponent component in selected)
+        foreach (VisualComponentsOps.ColorComponent component in selected)
         {
             int w = component.Right - component.Left + 1;
             int h = component.Bottom - component.Top + 1;
