@@ -16,7 +16,7 @@ internal sealed class ScreenTextToolService : IScreenTextService
     public ScreenTextToolService(SessionManager session) => _session = session;
 
     public ScreenTextView Read(ScreenTextRequest request) =>
-        _session.ReadScreenText(
+        _session.OcrOps.ReadScreenText(
             request.X,
             request.Y,
             request.Width,

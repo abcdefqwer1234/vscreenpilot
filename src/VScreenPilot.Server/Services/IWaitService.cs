@@ -17,5 +17,5 @@ internal sealed class WaitToolService : IWaitService
     public WaitToolService(SessionManager session) => _session = session;
 
     public WaitForView WaitFor(JsonElement condition, int timeoutMs, int? intervalMs) =>
-        _session.WaitFor(condition, timeoutMs, intervalMs);
+        _session.VerifyOps.WaitFor(condition, timeoutMs, intervalMs);
 }

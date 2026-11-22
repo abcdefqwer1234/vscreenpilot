@@ -21,7 +21,7 @@ internal sealed class SessionExecutionControl : IExecutionControl
 
     public ISessionGate Gate => _gate;
 
-    public bool HasLiveOwnedApps() => _session.HasLiveOwnedApps();
+    public bool HasLiveOwnedApps() => _session.ClientOps.HasLiveOwnedApps();
 
     public IDisposable? UseClient(ClientInfo? client) =>
         client is null
@@ -37,7 +37,7 @@ internal sealed class SessionExecutionControl : IExecutionControl
 
     public void SetCancellation(CancellationTokenSource? cts) => _session.SetCancellation(cts);
 
-    public void PauseFocusGuard(int leaseMs = 0) => _session.PauseFocusGuard(leaseMs);
+    public void PauseFocusGuard(int leaseMs = 0) => _session.FocusOps.PauseFocusGuard(leaseMs);
 
     public void ExtendLease(string clientId, int durationMs) =>
         _session.Lease.Extend(clientId, durationMs);

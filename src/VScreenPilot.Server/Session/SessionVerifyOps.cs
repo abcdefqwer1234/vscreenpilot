@@ -14,8 +14,12 @@ using static VScreenPilot.Json.JsonArgReader;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager
+/// <summary>VerifyOps：从 SessionManager 拆出的操作组，只持有宿主引用。</summary>
+internal sealed class SessionVerifyOps
 {
+    internal readonly SessionManager _host;
+
+    public SessionVerifyOps(SessionManager host) => _host = host;
     public object FindElement(
         string? name,
         string? controlType,
@@ -28,25 +32,24 @@ internal sealed partial class SessionManager
         int? pid,
         string? role = null,
         string prefer = "auto") =>
-        _finder.Find(
+        _host._finder.Find(
             name, controlType, automationId, nameMatch, index, all, maxResults,
             includeOffscreen, pid, role, prefer);
 
     public WaitForView WaitFor(JsonElement condition, int timeoutMs, int? intervalMs = null) =>
-        _waits.Wait(condition, timeoutMs, intervalMs);
+        _host._waits.Wait(condition, timeoutMs, intervalMs);
 
     public AssertRegionView AssertRegion(JsonElement region, JsonElement expectation) =>
-        _regionVerifier.Assert(region, expectation);
+        _host._regionVerifier.Assert(region, expectation);
 
 
-    private TrackedApp? LastTrackedApp() => LastLiveTrackedApp();
+    internal TrackedApp? LastTrackedApp() => _host.LastLiveTrackedApp();
 
-    private HashSet<int> TrackedPids()
+    internal HashSet<int> TrackedPids()
     {
-        lock (_gate)
+        lock (_host._gate)
         {
-            return _apps.Where(IsOwned).Select(app => app.Pid).ToHashSet();
+            return _host._apps.Where(_host.ClientOps.IsOwned).Select(app => app.Pid).ToHashSet();
         }
     }
-
 }

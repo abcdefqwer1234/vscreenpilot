@@ -21,7 +21,7 @@ internal sealed class ElementToolService : IElementService
     public ElementToolService(SessionManager session) => _session = session;
 
     public object Find(ElementQuery query) =>
-        _session.FindElement(
+        _session.VerifyOps.FindElement(
             query.Name,
             query.ControlType,
             query.AutomationId,
@@ -35,7 +35,7 @@ internal sealed class ElementToolService : IElementService
             query.Prefer);
 
     public UiTreeView GetUiTree(UiTreeQuery query) =>
-        _session.GetUiTree(
+        _session.ElementOps.GetUiTree(
             query.MaxDepth,
             query.InteractiveOnly,
             query.MaxNodes,
@@ -45,12 +45,12 @@ internal sealed class ElementToolService : IElementService
             query.NewSnapshot);
 
     public InvokeElementView Invoke(string reference, bool allowClick, string? pattern) =>
-        _session.InvokeElement(reference, allowClick, pattern);
+        _session.ElementOps.InvokeElement(reference, allowClick, pattern);
 
     public SetElementValueView SetValue(
         string reference, string value, bool allowKeyboard, string? mode, bool allowDestructive) =>
-        _session.SetElementValue(reference, value, allowKeyboard, mode, allowDestructive);
+        _session.ElementOps.SetElementValue(reference, value, allowKeyboard, mode, allowDestructive);
 
     public ElementTextView GetText(string reference, int maxChars) =>
-        _session.GetElementText(reference, maxChars);
+        _session.ElementOps.GetElementText(reference, maxChars);
 }

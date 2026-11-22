@@ -36,9 +36,9 @@ internal sealed class McpRuntime : IMcpRuntime
     public void Leave(string clientId) => _session.Clients.Leave(clientId);
 
     public bool Release(ClientInfo? client, bool includeApps) =>
-        _session.ReleaseClient(Resolve(client), includeApps);
+        _session.ClientOps.ReleaseClient(Resolve(client), includeApps);
 
-    public void DropRefs(string clientId) => _session.DropClientRefs(clientId);
+    public void DropRefs(string clientId) => _session.ClientOps.DropClientRefs(clientId);
 
     private ClientContext? Resolve(ClientInfo? client)
     {

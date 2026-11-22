@@ -16,8 +16,12 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager : IDisposable
+/// <summary>LifecycleOps：从 SessionManager 拆出的操作组，只持有宿主引用。</summary>
+internal sealed class SessionLifecycleOps
 {
+    internal readonly SessionManager _host;
+
+    public SessionLifecycleOps(SessionManager host) => _host = host;
     /// <summary>
     /// 在释放/预热等低负载节点裁剪工作集。不是定时看门狗，只按事件触发。
     /// </summary>
@@ -63,14 +67,14 @@ internal sealed partial class SessionManager : IDisposable
             }
 
             after = process.WorkingSet64;
-            _log.Info(
+            _host._log.Info(
                 $"内存裁剪 ({reason}): {before / 1048576.0:F1}MB -> " +
                 $"gc={afterGc / 1048576.0:F1}MB -> {after / 1048576.0:F1}MB" +
                 (emptied ? " (emptied)" : string.Empty));
         }
         catch (Exception exception)
         {
-            _log.Warn($"内存裁剪失败 ({reason}): {exception.Message}");
+            _host._log.Warn($"内存裁剪失败 ({reason}): {exception.Message}");
             after = before;
             afterGc = before;
         }
@@ -84,42 +88,42 @@ internal sealed partial class SessionManager : IDisposable
     }
 
     public EnvironmentView GetEnvironment(bool ensure = false) =>
-        _environment.GetEnvironment(ensure);
+        _host._environment.GetEnvironment(ensure);
 
     public ReleaseReport ReleaseEnvironment(
         bool keepDisplay, string onDirty = "abort", bool allowDataLoss = false,
         bool forceRemoveDisplay = false, bool forceAllClients = false) =>
-        _releaserService.Release(
+        _host._releaserService.Release(
             keepDisplay, onDirty, allowDataLoss, forceRemoveDisplay, forceAllClients);
 
 
-    private string CloseTrackedApp(TrackedApp app, string policy, out string? warning) =>
-        _releaser.Close(app, policy, out warning);
+    internal string CloseTrackedApp(TrackedApp app, string policy, out string? warning) =>
+        _host._releaser.Close(app, policy, out warning);
 
-    private void ForgetDisplay() => _display.Forget();
+    internal void ForgetDisplay() => _host._display.Forget();
 
-    private DisplayInfo? OwnDisplay() => _display.OwnDisplay();
+    internal DisplayInfo? OwnDisplay() => _host._display.OwnDisplay();
 
-    private bool TryRemoveDisplay() => _display.TryRemove();
+    internal bool TryRemoveDisplay() => _host._display.TryRemove();
 
-    public void SaveState() => _stateKeeper.Save();
+    public void SaveState() => _host._stateKeeper.Save();
 
-    private void RecoverFromPreviousCrash() => _stateKeeper.Recover();
+    internal void RecoverFromPreviousCrash() => _host._stateKeeper.Recover();
 
-    private void EnsureAppAllowed(string? path) => _allowlist.Ensure(path);
+    internal void EnsureAppAllowed(string? path) => _host._allowlist.Ensure(path);
 
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        if (Interlocked.Exchange(ref _host._disposed, 1) != 0)
         {
             return;
         }
 
-        _maintenance.Dispose();
-        StopFocusGuard();
+        _host.MaintenanceService.Dispose();
+        _host.FocusOps.StopFocusGuard();
 
-        // 清理不能无限等：如果某个 handler 卡在 UIA COM 里并持有 _gate，
+        // 清理不能无限等：如果某个 handler 卡在 UIA COM 里并持有 _host._gate，
         // 直接 Dispose 会让宿主退出永久挂起。给 3s 预算，超时就做最小清理。
         Task cleanup = Task.Run(() =>
         {
@@ -136,35 +140,35 @@ internal sealed partial class SessionManager : IDisposable
             }
             catch (Exception exception)
             {
-                _log.Error("释放环境失败", exception);
+                _host._log.Error("释放环境失败", exception);
             }
         });
 
         if (!cleanup.Wait(TimeSpan.FromSeconds(3)))
         {
-            _log.Warn("清理超过 3s 未完成，执行最小清理并退出");
+            _host._log.Warn("清理超过 3s 未完成，执行最小清理并退出");
 
             try
             {
                 // 超时兜底也只能摘“自己的 device”，不能按可能被复用的 index 盲摘。
-                if (_display.State.Index >= 0 &&
-                    !string.IsNullOrWhiteSpace(_display.State.DeviceName) &&
-                    DisplayTopology.FindParsecDisplayByDevice(_display.State.DeviceName) is not null)
+                if (_host._display.State.Index >= 0 &&
+                    !string.IsNullOrWhiteSpace(_host._display.State.DeviceName) &&
+                    DisplayTopology.FindParsecDisplayByDevice(_host._display.State.DeviceName) is not null)
                 {
-                    _display.Vdd.RemoveDisplay(_display.State.Index);
+                    _host._display.Vdd.RemoveDisplay(_host._display.State.Index);
                 }
             }
             catch (Exception exception)
             {
-                _log.Warn($"强制摘屏失败: {exception.Message}");
+                _host._log.Warn($"强制摘屏失败: {exception.Message}");
             }
         }
 
         // 会话结束时统一释放 UIA COM 引用（当前 + 退休实例）。
         try
         {
-            _uiaHost.Dispose();
-            _snapshots.Dispose();
+            _host._uiaHost.Dispose();
+            _host.Snapshots.Dispose();
         }
         catch (Exception exception)
         {
@@ -172,93 +176,92 @@ internal sealed partial class SessionManager : IDisposable
             LogSink.Debug($"忽略异常: {exception.Message}");
         }
 
-        _job.Dispose();
-        _display.Vdd.Dispose();
-        _stateStore.Clear();
+        _host._job.Dispose();
+        _host._display.Vdd.Dispose();
+        _host._stateStore.Clear();
     }
 
-    private TrackedApp? FindTrackedAppAtWindowCore(uint targetPid, uint rootPid)
+    internal TrackedApp? FindTrackedAppAtWindowCore(uint targetPid, uint rootPid)
     {
-        lock (_gate)
+        lock (_host._gate)
         {
-            return _apps.FirstOrDefault(app => IsOwned(app) &&
+            return _host._apps.FirstOrDefault(app => _host.ClientOps.IsOwned(app) &&
                 (app.Pid == (int)targetPid || app.Pid == (int)rootPid) && TrackedAppTracker.IsLive(app));
         }
     }
 
-    private List<TrackedApp> OwnedAppsSnapshotCore()
+    internal List<TrackedApp> OwnedAppsSnapshotCore()
     {
-        lock (_gate)
+        lock (_host._gate)
         {
-            return _apps.Where(app => IsOwned(app) && TrackedAppTracker.IsLive(app)).ToList();
+            return _host._apps.Where(app => _host.ClientOps.IsOwned(app) && TrackedAppTracker.IsLive(app)).ToList();
         }
     }
 
-    private bool IsTrackedPidCore(int pid)
+    internal bool IsTrackedPidCore(int pid)
     {
-        lock (_gate)
+        lock (_host._gate)
         {
-            return _apps.Any(app => IsOwned(app) && app.Pid == pid && TrackedAppTracker.IsLive(app));
+            return _host._apps.Any(app => _host.ClientOps.IsOwned(app) && app.Pid == pid && TrackedAppTracker.IsLive(app));
         }
     }
 
-    private TrackedApp? OwnedAppForPidCore(int pid)
+    internal TrackedApp? OwnedAppForPidCore(int pid)
     {
-        lock (_gate)
+        lock (_host._gate)
         {
-            return _apps.FirstOrDefault(
-                item => IsOwned(item) && item.Pid == pid && TrackedAppTracker.IsLive(item));
+            return _host._apps.FirstOrDefault(
+                item => _host.ClientOps.IsOwned(item) && item.Pid == pid && TrackedAppTracker.IsLive(item));
         }
     }
 
-    private void ClearElementRefsCore(bool allClients)
-    {
-        if (allClients)
-        {
-            _refs.ClearUnsafe();
-        }
-        else
-        {
-            _refs.DropClientUnsafe(Clients.CurrentId);
-        }
-    }
-
-    private void ClearFramesCore(bool allClients)
+    internal void ClearElementRefsCore(bool allClients)
     {
         if (allClients)
         {
-            _frames.Clear();
+            _host.Refs.ClearUnsafe();
         }
         else
         {
-            _frames.RemoveClient(Clients.CurrentId);
+            _host.Refs.DropClientUnsafe(_host.Clients.CurrentId);
         }
     }
 
-    private void ClearInputBlockCore(bool allClients)
+    internal void ClearFramesCore(bool allClients)
     {
         if (allClients)
         {
-            _input.ClearBlocked();
+            _host._frames.Clear();
         }
         else
         {
-            _input.UnblockClient(Clients.CurrentId);
+            _host._frames.RemoveClient(_host.Clients.CurrentId);
         }
     }
 
-    private void StopAndDisposeVddCore()
+    internal void ClearInputBlockCore(bool allClients)
     {
-        _display.Vdd.StopKeepAlive();
-        _display.Vdd.Dispose();
-    }
-
-    private string[] ArtifactDirectorySnapshot()
-    {
-        lock (_artifactGate)
+        if (allClients)
         {
-            return _artifactDirectories.Values.ToArray();
+            _host._input.ClearBlocked();
+        }
+        else
+        {
+            _host._input.UnblockClient(_host.Clients.CurrentId);
         }
     }
 
+    internal void StopAndDisposeVddCore()
+    {
+        _host._display.Vdd.StopKeepAlive();
+        _host._display.Vdd.Dispose();
+    }
+
+    internal string[] ArtifactDirectorySnapshot()
+    {
+        lock (_host._artifactGate)
+        {
+            return _host._artifactDirectories.Values.ToArray();
+        }
+    }
 }

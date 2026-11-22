@@ -9,7 +9,7 @@ namespace VScreenPilot.Session;
 /// 目录布局：<c>&lt;profile&gt;/&lt;clientId&gt;/&lt;yyyyMMdd-HHmmss&gt;-&lt;pid&gt;</c>，
 /// 同时兼容旧的 <c>&lt;profile&gt;/&lt;yyyyMMdd-HHmmss&gt;-&lt;pid&gt;</c>。
 /// </summary>
-internal sealed partial class ArtifactStore
+internal sealed class ArtifactStore
 {
     internal const string RetentionEnv = "VSP_ARTIFACT_RETENTION_DAYS";
 

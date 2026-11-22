@@ -6,19 +6,22 @@ using VScreenPilot.Server.Infrastructure;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager
+/// <summary>ClientOps：从 SessionManager 拆出的操作组，只持有宿主引用。</summary>
+internal sealed class SessionClientOps
 {
+    internal readonly SessionManager _host;
+
+    public SessionClientOps(SessionManager host) => _host = host;
     /// <summary>租约/状态由 McpTransport 提供，避免 SessionManager 反向依赖 MCP 层。</summary>
     internal Func<string?>? LeaseHolderProvider { get; set; }
 
-    internal Func<JsonObject>? ScreenLeaseProvider { get; set; }
 
     internal JsonArray ClientSummariesJson(bool includeCwd = false)
     {
         var array = new JsonArray();
         string? holder = LeaseHolderProvider?.Invoke();
 
-        foreach (ClientContext client in Clients.All
+        foreach (ClientContext client in _host.Clients.All
                      .OrderBy(item => item.Id, StringComparer.Ordinal))
         {
             var json = new JsonObject
@@ -51,16 +54,16 @@ internal sealed partial class SessionManager
     /// <summary>只清指定客户端的 refs/快照/帧/artifact 映射；ctl 管理员视图也用它保持只读。</summary>
     internal void DropClientRefs(string clientId)
     {
-        lock (_gate)
+        lock (_host._gate)
         {
-            _refs.DropClient(clientId);
-            _input.UnblockClient(clientId);
+            _host.Refs.DropClient(clientId);
+            _host._input.UnblockClient(clientId);
 
-            _frames.RemoveClient(clientId);
+            _host._frames.RemoveClient(clientId);
 
-            lock (_artifactGate)
+            lock (_host._artifactGate)
             {
-                _artifactDirectories.Remove(clientId);
+                _host._artifactDirectories.Remove(clientId);
             }
         }
     }
@@ -71,7 +74,7 @@ internal sealed partial class SessionManager
     /// </summary>
     internal bool ReleaseClient(ClientContext? client, bool includeApps)
     {
-        if (Volatile.Read(ref _disposed) != 0)
+        if (Volatile.Read(ref _host._disposed) != 0)
         {
             return true;
         }
@@ -81,50 +84,50 @@ internal sealed partial class SessionManager
 
         if (!includeApps || !HasOwnedApps(clientId))
         {
-            SweepArtifactsPeriodically();
+            _host.ArtifactOps.SweepArtifactsPeriodically();
             return true;
         }
 
-        using (Clients.Use(client ?? new ClientContext
+        using (_host.Clients.Use(client ?? new ClientContext
         {
             Id = clientId,
             Cwd = Environment.CurrentDirectory,
         }))
         {
-            if (!TryEnterExclusive(3000))
+            if (!_host.TryEnterExclusive(3000))
             {
-                _log.Warn($"客户端 {clientId} 已断开，但会话仍被占用；窗口留待下次重试/daemon 退出");
-                SweepArtifactsPeriodically();
+                _host._log.Warn($"客户端 {clientId} 已断开，但会话仍被占用；窗口留待下次重试/daemon 退出");
+                _host.ArtifactOps.SweepArtifactsPeriodically();
                 return false;
             }
 
             try
             {
-                ReleaseEnvironment(
+                _host.LifecycleOps.ReleaseEnvironment(
                     keepDisplay: true,
                     onDirty: "force",
                     allowDataLoss: true);
             }
             catch (Exception exception)
             {
-                _log.Warn($"清理客户端 {clientId} 的窗口失败: {exception.Message}");
+                _host._log.Warn($"清理客户端 {clientId} 的窗口失败: {exception.Message}");
                 return false;
             }
             finally
             {
-                ExitExclusive();
+                _host.ExitExclusive();
             }
         }
 
-        SweepArtifactsPeriodically();
+        _host.ArtifactOps.SweepArtifactsPeriodically();
         return true;
     }
 
-    private bool HasOwnedApps(string clientId)
+    internal bool HasOwnedApps(string clientId)
     {
-        lock (_gate)
+        lock (_host._gate)
         {
-            return _apps.Any(app =>
+            return _host._apps.Any(app =>
                 string.Equals(app.OwnerClientId, clientId, StringComparison.Ordinal) &&
                 TrackedAppTracker.IsLive(app));
         }
@@ -133,13 +136,13 @@ internal sealed partial class SessionManager
     /// <summary>当前客户端是否还有需要关闭/归位的窗口；release 需要据此决定是否拿屏幕租约。</summary>
     internal bool HasLiveOwnedApps()
     {
-        lock (_gate)
+        lock (_host._gate)
         {
-            return _apps.Any(app => IsOwned(app) && TrackedAppTracker.IsLive(app));
+            return _host._apps.Any(app => IsOwned(app) && TrackedAppTracker.IsLive(app));
         }
     }
 
-    private bool IsOwned(TrackedApp app) =>
-        Clients.Current?.IncludeAllApps == true ||
-        string.Equals(app.OwnerClientId, Clients.CurrentId, StringComparison.Ordinal);
+    internal bool IsOwned(TrackedApp app) =>
+        _host.Clients.Current?.IncludeAllApps == true ||
+        string.Equals(app.OwnerClientId, _host.Clients.CurrentId, StringComparison.Ordinal);
 }

@@ -23,20 +23,20 @@ internal sealed class SessionFacade : ISessionFacade, IControlService
     public string ArtifactDirectory => _session.ArtifactDirectory;
 
     public SnapshotResult Snapshot(SnapshotRequest request) =>
-        _session.Snapshot(request.Pid, request.MaxDepth, request.InteractiveOnly,
+        _session.SnapshotOps.Snapshot(request.Pid, request.MaxDepth, request.InteractiveOnly,
             request.MaxNodes, request.IncludeValues, request.IncludeScreenshot,
             request.Scale, request.Annotate);
 
     public CaptureResult CaptureScreen(CaptureRequest request) =>
-        _session.CaptureScreenEx(request.X, request.Y, request.Width, request.Height,
+        _session.CaptureOps.CaptureScreenEx(request.X, request.Y, request.Width, request.Height,
             request.Scale, request.SavePath, request.StoreFrame, request.PreviewScale);
 
     public EnvironmentView GetEnvironment(bool ensure = false) =>
-        _session.GetEnvironment(ensure);
+        _session.LifecycleOps.GetEnvironment(ensure);
 
     public IReadOnlyList<TrackedApp> GetApps() => _session.GetAppsSnapshot();
 
-    public MemoryView TrimIdleMemory(string reason) => _session.TrimIdleMemory(reason);
+    public MemoryView TrimIdleMemory(string reason) => _session.LifecycleOps.TrimIdleMemory(reason);
 
     public IDisposable UseClient(ClientInfo client) =>
         _session.Clients.Use(new ClientContext
@@ -53,13 +53,13 @@ internal sealed class SessionFacade : ISessionFacade, IControlService
     public int OwnedAppCount => _session.Apps.Count;
 
     public JsonArray ClientSummaries(bool includeCwd = false) =>
-        _session.ClientSummariesJson(includeCwd);
+        _session.ClientOps.ClientSummariesJson(includeCwd);
 
     public JsonObject LeaseDescribe() => _session.Lease.Describe();
 
-    public void DropClientRefs(string clientId) => _session.DropClientRefs(clientId);
+    public void DropClientRefs(string clientId) => _session.ClientOps.DropClientRefs(clientId);
 
-    public EnvironmentView EnsureEnvironment() => _session.GetEnvironment(ensure: true);
+    public EnvironmentView EnsureEnvironment() => _session.LifecycleOps.GetEnvironment(ensure: true);
 
     public DisplayInfo? VirtualDisplay => _session.VirtualDisplay;
 

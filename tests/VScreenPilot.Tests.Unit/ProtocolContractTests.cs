@@ -154,6 +154,6 @@ public sealed class ProtocolContractTests
     [InlineData("报告标题", "报告", true)]
     public void OcrMatchingToleratesPunctuation(string haystack, string needle, bool expected)
     {
-        Assert.Equal(expected, SessionManager.OcrTextMatches(haystack, needle));
+        Assert.Equal(expected, SessionOcrOps.OcrTextMatches(haystack, needle));
     }
 }

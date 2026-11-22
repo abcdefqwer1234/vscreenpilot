@@ -16,7 +16,7 @@ internal sealed class AppToolService : IAppService
     public AppToolService(SessionManager session) => _session = session;
 
     public LaunchOrPlaceView LaunchOrPlace(AppLaunchRequest request) =>
-        _session.LaunchOrPlaceApp(
+        _session.AppOps.LaunchOrPlaceApp(
             request.Path,
             request.Window,
             request.Args,

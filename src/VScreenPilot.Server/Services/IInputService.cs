@@ -25,7 +25,7 @@ internal sealed class InputToolService : IInputService
     public InputToolService(SessionManager session) => _session = session;
 
     public ClickView Click(ClickRequest request) =>
-        _session.Click(
+        _session.InputOps.Click(
             request.X,
             request.Y,
             request.Button,
@@ -37,12 +37,12 @@ internal sealed class InputToolService : IInputService
 
     public ClickRefView ClickRef(
         string reference, string? channel, bool keepForeground, bool fallbackInput) =>
-        _session.ClickElementRef(reference, channel, keepForeground, fallbackInput);
+        _session.InputOps.ClickElementRef(reference, channel, keepForeground, fallbackInput);
 
-    public GestureView Gesture(JsonElement arguments) => _session.Gesture(arguments);
+    public GestureView Gesture(JsonElement arguments) => _session.InputOps.Gesture(arguments);
 
     public ClickTextView ClickText(ClickTextRequest request) =>
-        _session.ClickText(
+        _session.OcrOps.ClickText(
             request.Text,
             request.KeepForeground,
             request.Observe,
@@ -56,13 +56,13 @@ internal sealed class InputToolService : IInputService
 
     public TypeTextView TypeText(
         string text, int? pid, bool verify, int chunkChars, string? channel) =>
-        _session.TypeText(text, pid, verify, chunkChars, channel);
+        _session.InputOps.TypeText(text, pid, verify, chunkChars, channel);
 
     public PressKeysView PressKeys(
         string keys, bool keepForeground, int? pid, bool allowSystemKeys, bool observe) =>
-        _session.PressKeys(keys, keepForeground, pid, allowSystemKeys, observe);
+        _session.InputOps.PressKeys(keys, keepForeground, pid, allowSystemKeys, observe);
 
     public PressKeysView PressKeySequence(
         IReadOnlyList<string> keys, bool keepForeground, int? pid, bool allowSystemKeys, bool observe) =>
-        _session.PressKeySequence(keys, keepForeground, pid, allowSystemKeys, observe);
+        _session.InputOps.PressKeySequence(keys, keepForeground, pid, allowSystemKeys, observe);
 }

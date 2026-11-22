@@ -20,10 +20,10 @@ internal sealed class EnvironmentToolService : IEnvironmentService
 
     public EnvironmentToolService(SessionManager session) => _session = session;
 
-    public EnvironmentView Get(bool ensure) => _session.GetEnvironment(ensure);
+    public EnvironmentView Get(bool ensure) => _session.LifecycleOps.GetEnvironment(ensure);
 
     public ReleaseReport Release(ReleaseRequest request) =>
-        _session.ReleaseEnvironment(request.KeepDisplay, request.OnDirty, request.AllowDataLoss);
+        _session.LifecycleOps.ReleaseEnvironment(request.KeepDisplay, request.OnDirty, request.AllowDataLoss);
 
     public JsonObject DescribeLease() => _session.Lease.Describe();
 

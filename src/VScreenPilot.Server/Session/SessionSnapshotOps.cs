@@ -7,9 +7,12 @@ using VScreenPilot.Apps;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager
+/// <summary>SnapshotOps：从 SessionManager 拆出的操作组，只持有宿主引用。</summary>
+internal sealed class SessionSnapshotOps
 {
-    private readonly SnapshotBuilder _snapshots;
+    internal readonly SessionManager _host;
+
+    public SessionSnapshotOps(SessionManager host) => _host = host;
 
     public SnapshotResult Snapshot(
         int? pid,
@@ -20,6 +23,6 @@ internal sealed partial class SessionManager
         bool includeScreenshot,
         double scale,
         bool annotate = false) =>
-        _snapshots.Snapshot(
+        _host.Snapshots.Snapshot(
             pid, maxDepth, interactiveOnly, maxNodes, includeValues, includeScreenshot, scale, annotate);
 }

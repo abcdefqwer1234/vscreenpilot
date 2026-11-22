@@ -18,8 +18,8 @@ internal sealed class VisualToolService : IVisualService
     public VisualToolService(SessionManager session) => _session = session;
 
     public AssertRegionView AssertRegion(JsonElement region, JsonElement expectation) =>
-        _session.AssertRegion(region, expectation);
+        _session.VerifyOps.AssertRegion(region, expectation);
 
     public MatchVisualView MatchVisual(JsonElement arguments) =>
-        _session.MatchVisual(arguments);
+        _session.VisualOps.MatchVisual(arguments);
 }

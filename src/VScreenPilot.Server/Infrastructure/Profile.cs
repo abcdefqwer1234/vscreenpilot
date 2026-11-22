@@ -8,7 +8,7 @@ namespace VScreenPilot.Server.Infrastructure;
 /// 多会话 profile：不同 profile 使用独立互斥体、状态目录与日志目录，
 /// 因而可以各挂一块虚拟屏并行工作；输入所有权仍由同一台桌面的前台决定。
 /// </summary>
-internal static partial class Profile
+internal static class Profile
 {
     public const string EnvironmentVariable = "VSP_PROFILE";
 

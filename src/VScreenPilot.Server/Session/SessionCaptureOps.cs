@@ -9,24 +9,27 @@ using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager
+/// <summary>CaptureOps：从 SessionManager 拆出的操作组，只持有宿主引用。</summary>
+internal sealed class SessionCaptureOps
 {
+    internal readonly SessionManager _host;
+
+    public SessionCaptureOps(SessionManager host) => _host = host;
     public (byte[] Png, CaptureView Meta) CaptureScreen(
         int? x, int? y, int? width, int? height, double scale, string? savePath) =>
-        _capture.CaptureScreen(x, y, width, height, scale, savePath);
+        _host._capture.CaptureScreen(x, y, width, height, scale, savePath);
 
     internal CaptureResult CaptureScreenEx(
         int? x, int? y, int? width, int? height, double scale, string? savePath,
         bool storeFrame, double? previewScale) =>
-        _capture.CaptureScreenEx(x, y, width, height, scale, savePath, storeFrame, previewScale);
+        _host._capture.CaptureScreenEx(x, y, width, height, scale, savePath, storeFrame, previewScale);
 
-    private readonly ScreenCapture _screenCapture = new();
 
     public (byte[] Bgra, int Width, int Height) CaptureRegion(int x, int y, int width, int height)
     {
         try
         {
-            return _screenCapture.Capture(x, y, width, height);
+            return _host.ScreenCapture.Capture(x, y, width, height);
         }
         catch (InvalidOperationException exception)
         {
@@ -49,11 +52,11 @@ internal sealed partial class SessionManager
 
     /// <summary>保存最近几帧，供 assert_region/pixel_diff 按区域或 frame_id 引用。</summary>
     internal string StoreFrame(byte[] bgra, int width, int height, int x, int y) =>
-        _frames.Store(bgra, width, height, x, y, Clients.CurrentId);
+        _host._frames.Store(bgra, width, height, x, y, _host.Clients.CurrentId);
 
     internal FrameSnapshot? FindFrame(string frameId) =>
-        _frames.FindById(Clients.CurrentId, frameId);
+        _host._frames.FindById(_host.Clients.CurrentId, frameId);
 
     internal FrameSnapshot? FindLatestFrame(int x, int y, int width, int height) =>
-        _frames.FindLatest(Clients.CurrentId, x, y, width, height);
+        _host._frames.FindLatest(_host.Clients.CurrentId, x, y, width, height);
 }

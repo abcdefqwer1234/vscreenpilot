@@ -11,25 +11,29 @@ using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager
+/// <summary>InputOps：从 SessionManager 拆出的操作组，只持有宿主引用。</summary>
+internal sealed class SessionInputOps
 {
+    internal readonly SessionManager _host;
+
+    public SessionInputOps(SessionManager host) => _host = host;
     public ClickRefView ClickElementRef(
         string reference, string? channel, bool keepForeground, bool fallbackInput = false) =>
-        _input.ClickElementRef(reference, channel, keepForeground, fallbackInput);
+        _host._input.ClickElementRef(reference, channel, keepForeground, fallbackInput);
 
     public ClickView Click(
         int x, int y, string button, int clicks, string mode,
         bool keepForeground = false, bool observe = true, bool fallbackInput = false) =>
-        _input.Click(x, y, button, clicks, mode, keepForeground, observe, fallbackInput);
+        _host._input.Click(x, y, button, clicks, mode, keepForeground, observe, fallbackInput);
 
     public TypeTextView TypeText(
         string text, int? pid = null, bool verify = true, int chunkChars = 32, string? channel = null) =>
-        _input.TypeText(text, pid, verify, chunkChars, channel);
+        _host._input.TypeText(text, pid, verify, chunkChars, channel);
 
     public PressKeysView PressKeys(
         string keys, bool keepForeground = false, int? pid = null,
         bool allowSystemKeys = false, bool observe = true) =>
-        _input.PressKeys(keys, keepForeground, pid, allowSystemKeys, observe);
+        _host._input.PressKeys(keys, keepForeground, pid, allowSystemKeys, observe);
 
     public PressKeysView PressKeySequence(
         IReadOnlyList<string> keys,
@@ -37,11 +41,11 @@ internal sealed partial class SessionManager
         int? pid = null,
         bool allowSystemKeys = false,
         bool observe = true) =>
-        _input.PressKeySequence(keys, keepForeground, pid, allowSystemKeys, observe);
+        _host._input.PressKeySequence(keys, keepForeground, pid, allowSystemKeys, observe);
 
-    public GestureView Gesture(JsonElement arguments) => _input.Gesture(arguments);
+    public GestureView Gesture(JsonElement arguments) => _host._input.Gesture(arguments);
 
-    private bool EnsureForeground(TrackedApp app)
+    internal bool EnsureForeground(TrackedApp app)
     {
         if (IsAppForeground(app))
         {
@@ -70,7 +74,7 @@ internal sealed partial class SessionManager
         return IsAppForeground(app);
     }
 
-    private static bool IsAppForeground(TrackedApp app) =>
+    internal bool IsAppForeground(TrackedApp app) =>
         app.Pid > 0 &&
         WindowManager.GetProcessId(WindowManager.GetForegroundWindow()) == app.Pid;
 
@@ -79,7 +83,7 @@ internal sealed partial class SessionManager
     /// 窗口消息通道只能投递 client 区消息，打不到非客户区；必须显式拒绝而不是报“成功”。
     /// </summary>
 
-    private void RestoreForeground(IntPtr previous, bool logFailure = true)
+    internal void RestoreForeground(IntPtr previous, bool logFailure = true)
     {
         if (previous == IntPtr.Zero || !NativeMethods.IsWindow(previous))
         {
@@ -94,7 +98,7 @@ internal sealed partial class SessionManager
 
         // 用户在工具执行期间主动切到了别的窗口：不要为了“归还前台”再把用户抢走。
         // 只有当前前台仍是本会话应用（说明是应用自己抢了前台）时才恢复。
-        if (!IsTrackedWindow(currentForeground))
+        if (!_host.FocusOps.IsTrackedWindow(currentForeground))
         {
             return;
         }
@@ -138,12 +142,12 @@ internal sealed partial class SessionManager
             {
                 if (logFailure)
                 {
-                    _log.Warn($"恢复前台窗口失败 hwnd=0x{previous.ToInt64():X}");
+                    _host._log.Warn($"恢复前台窗口失败 hwnd=0x{previous.ToInt64():X}");
                 }
             }
             else if (logFailure && NativeMethods.GetForegroundWindow() != previous)
             {
-                _log.Warn(
+                _host._log.Warn(
                     $"恢复前台未生效 expected=0x{previous.ToInt64():X} " +
                     $"actual=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
             }
@@ -157,7 +161,7 @@ internal sealed partial class SessionManager
         }
     }
 
-    private TrackedApp RequirePointInTrackedApp(DisplayInfo display, int x, int y, string label)
+    internal TrackedApp RequirePointInTrackedApp(DisplayInfo display, int x, int y, string label)
     {
         RequirePointInDisplay(display, x, y, label);
 
@@ -177,12 +181,12 @@ internal sealed partial class SessionManager
         _ = NativeMethods.GetWindowThreadProcessId(root, out uint rootPid);
 
         TrackedApp? tracked;
-        lock (_gate)
+        lock (_host._gate)
         {
             // 命中窗口或其顶层根窗口属于本会话应用即可（兼容 UWP/宿主窗口）。
             // 同时校验窗口仍属于登记时的进程，避免 PID 复用后误判为可操作目标。
-            tracked = _apps.FirstOrDefault(
-                app => IsOwned(app) &&
+            tracked = _host._apps.FirstOrDefault(
+                app => _host.ClientOps.IsOwned(app) &&
                        (app.Pid == (int)targetPid || app.Pid == (int)rootPid) &&
                        TrackedAppTracker.IsLive(app));
         }
@@ -204,7 +208,7 @@ internal sealed partial class SessionManager
             });
     }
 
-    private static void RequireWindowOnDisplay(DisplayInfo display, IntPtr hwnd, string label)
+    internal void RequireWindowOnDisplay(DisplayInfo display, IntPtr hwnd, string label)
     {
         WindowInfo? info = WindowManager.FromHandle(hwnd);
         if (info is null)
@@ -242,7 +246,7 @@ internal sealed partial class SessionManager
         }
     }
 
-    private static void RequirePointInDisplay(DisplayInfo display, int x, int y, string label)
+    internal void RequirePointInDisplay(DisplayInfo display, int x, int y, string label)
     {
         if (x < display.X || x >= display.X + display.Width ||
             y < display.Y || y >= display.Y + display.Height)

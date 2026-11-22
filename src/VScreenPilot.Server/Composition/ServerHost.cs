@@ -176,7 +176,7 @@ internal sealed class ServerHost : IDisposable
             try
             {
                 _session.EnsureEnvironment();
-                _session.TrimIdleMemory("startup_warm");
+                _session.LifecycleOps.TrimIdleMemory("startup_warm");
                 entry.DisplayDevice = _session.VirtualDisplay?.DeviceName ?? string.Empty;
                 _registry.Write(entry);
                 _log.Info("虚拟屏预热完成");
@@ -336,7 +336,7 @@ internal sealed class ServerHost : IDisposable
             try
             {
                 _session.EnsureEnvironment();
-                _session.TrimIdleMemory(reason);
+                _session.LifecycleOps.TrimIdleMemory(reason);
                 entry.DisplayDevice = _session.VirtualDisplay?.DeviceName ?? string.Empty;
                 _registry.Write(entry);
                 _log.Info($"{prefix}虚拟屏预热完成");

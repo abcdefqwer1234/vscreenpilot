@@ -27,7 +27,7 @@ internal sealed class SnapshotToolService : ISnapshotService
 
     public SnapshotOutput Snapshot(SnapshotRequest request)
     {
-        SnapshotResult result = _session.Snapshot(
+        SnapshotResult result = _session.SnapshotOps.Snapshot(
             request.Pid,
             request.MaxDepth,
             request.InteractiveOnly,
@@ -41,7 +41,7 @@ internal sealed class SnapshotToolService : ISnapshotService
 
     public CaptureOutput Capture(CaptureRequest request)
     {
-        CaptureResult result = _session.CaptureScreenEx(
+        CaptureResult result = _session.CaptureOps.CaptureScreenEx(
             request.X,
             request.Y,
             request.Width,

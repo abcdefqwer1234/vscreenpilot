@@ -15,5 +15,5 @@ internal sealed class ScriptToolService : IScriptService
 
     public ScriptToolService(SessionManager session) => _session = session;
 
-    public ScriptView Run(string code, int timeoutMs) => _session.RunScript(code, timeoutMs);
+    public ScriptView Run(string code, int timeoutMs) => _session.ScriptOps.RunScript(code, timeoutMs);
 }
