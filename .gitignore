@@ -23,3 +23,5 @@ tools/TestTool/.tmp/
 .DS_Store
 Thumbs.db
 tools/audit/results/
+
+tools/audit/vdd-backup/

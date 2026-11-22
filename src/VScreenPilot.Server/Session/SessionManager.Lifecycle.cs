@@ -16,7 +16,7 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager : IDisposable, ISessionStateHost, IAppAllowlistHost, IEnvironmentReleaserHost, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, IFocusHost, ITrackedAppHost
+internal sealed partial class SessionManager : IDisposable, ISessionStateHost, IEnvironmentReleaserHost, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, IFocusHost, ITrackedAppHost
 {
     /// <summary>
     /// 在释放/预热等低负载节点裁剪工作集。不是定时看门狗，只按事件触发。
@@ -366,10 +366,6 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
     TrackedAppRegistry ISessionStateHost.Apps => _apps;
 
     LogRing ISessionStateHost.Log => _log;
-
-    string[] IAppAllowlistHost.ClientRoots => Clients.Current?.AppAllowlist ?? Array.Empty<string>();
-
-    string IAppAllowlistHost.ResolvePath(string path) => _paths.Resolve(path);
 
     object IEnvironmentReleaserHost.Gate => _gate;
 

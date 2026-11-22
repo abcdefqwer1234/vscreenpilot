@@ -4,19 +4,17 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-/// <summary>应用启动白名单校验所需的最小宿主接口。</summary>
-internal interface IAppAllowlistHost
-{
-    string[] ClientRoots { get; }
-    string ResolvePath(string path);
-}
+/// <summary>应用启动白名单校验所需的最小上下文；委托读取实时值。</summary>
+internal sealed record AppAllowlistContext(
+    Func<string[]> ClientRoots,
+    Func<string, string> ResolvePath);
 
 /// <summary>daemon 全局白名单与客户端白名单取交集。</summary>
 internal sealed class AppAllowlistPolicy
 {
-    private readonly IAppAllowlistHost _host;
+    private readonly AppAllowlistContext _host;
 
-    public AppAllowlistPolicy(IAppAllowlistHost host, string[]? globalRoots = null)
+    public AppAllowlistPolicy(AppAllowlistContext host, string[]? globalRoots = null)
     {
         _host = host;
         GlobalRoots = globalRoots ?? ReadAppAllowlist();
@@ -54,7 +52,7 @@ internal sealed class AppAllowlistPolicy
 
     public void Ensure(string? path)
     {
-        string[] clientAllowlist = _host.ClientRoots ?? Array.Empty<string>();
+        string[] clientAllowlist = _host.ClientRoots() ?? Array.Empty<string>();
         bool hasClientRule = clientAllowlist.Length > 0;
         bool hasGlobalRule = GlobalRoots.Length > 0;
 

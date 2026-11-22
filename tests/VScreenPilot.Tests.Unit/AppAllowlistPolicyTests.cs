@@ -14,7 +14,7 @@ public sealed class AppAllowlistPolicyTests
     [Fact]
     public void NoRulesAllowsAnyPath()
     {
-        var policy = new AppAllowlistPolicy(new FakeHost(), globalRoots: Array.Empty<string>());
+        var policy = new AppAllowlistPolicy(new FakeHost().ToContext(), globalRoots: Array.Empty<string>());
 
         policy.Ensure(@"C:\anything\tool.exe");
     }
@@ -23,7 +23,7 @@ public sealed class AppAllowlistPolicyTests
     public void GlobalRuleAllowsPathUnderRoot()
     {
         var policy = new AppAllowlistPolicy(
-            new FakeHost(), globalRoots: GlobalApps);
+            new FakeHost().ToContext(), globalRoots: GlobalApps);
 
         policy.Ensure(@"C:\apps\sub\tool.exe");
         policy.Ensure(@"C:\APPS\SUB\TOOL.EXE");
@@ -33,7 +33,7 @@ public sealed class AppAllowlistPolicyTests
     public void GlobalRuleRejectsPathOutsideRoot()
     {
         var policy = new AppAllowlistPolicy(
-            new FakeHost(), globalRoots: GlobalApps);
+            new FakeHost().ToContext(), globalRoots: GlobalApps);
 
         ToolException exception = Assert.Throws<ToolException>(
             () => policy.Ensure(@"C:\other\tool.exe"));
@@ -48,7 +48,7 @@ public sealed class AppAllowlistPolicyTests
     public void ClientRuleCanOnlyTightenGlobalRule()
     {
         var host = new FakeHost { ClientRoots = ClientApps };
-        var policy = new AppAllowlistPolicy(host, globalRoots: GlobalApps);
+        var policy = new AppAllowlistPolicy(host.ToContext(), globalRoots: GlobalApps);
 
         policy.Ensure(@"C:\apps\client\tool.exe");
 
@@ -63,7 +63,7 @@ public sealed class AppAllowlistPolicyTests
     public void EmptyPathSkipsCheckEvenWithRules()
     {
         var policy = new AppAllowlistPolicy(
-            new FakeHost(), globalRoots: GlobalApps);
+            new FakeHost().ToContext(), globalRoots: GlobalApps);
 
         policy.Ensure(null);
         policy.Ensure("   ");
@@ -76,7 +76,7 @@ public sealed class AppAllowlistPolicyTests
         {
             Resolver = _ => throw new ArgumentException("bad path"),
         };
-        var policy = new AppAllowlistPolicy(host, globalRoots: GlobalApps);
+        var policy = new AppAllowlistPolicy(host.ToContext(), globalRoots: GlobalApps);
 
         ToolException exception = Assert.Throws<ToolException>(
             () => policy.Ensure(@"C:\apps\tool.exe"));
@@ -84,12 +84,12 @@ public sealed class AppAllowlistPolicyTests
         Assert.Equal("E_INVALID_ARG", exception.Code);
     }
 
-    private sealed class FakeHost : IAppAllowlistHost
+    private sealed class FakeHost
     {
         public string[] ClientRoots { get; init; } = Array.Empty<string>();
 
         public Func<string, string> Resolver { get; init; } = path => path;
 
-        public string ResolvePath(string path) => Resolver(path);
+        public AppAllowlistContext ToContext() => new(() => ClientRoots, Resolver);
     }
 }

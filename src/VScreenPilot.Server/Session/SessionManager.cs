@@ -19,7 +19,7 @@ namespace VScreenPilot.Session;
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
-internal sealed partial class SessionManager : IDisposable, ISessionStateHost, IAppAllowlistHost, IEnvironmentReleaserHost, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, IFocusHost, ITrackedAppHost
+internal sealed partial class SessionManager : IDisposable, ISessionStateHost, IEnvironmentReleaserHost, IElementFinderHost, IRegionVerifierHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost, IFocusHost, ITrackedAppHost
 {
     private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
@@ -244,7 +244,7 @@ internal sealed partial class SessionManager : IDisposable, ISessionStateHost, I
         _focus = new FocusGuard(this);
         _tracker = new TrackedAppTracker(this);
         _stateKeeper = new SessionStateKeeper(this);
-        _allowlist = new AppAllowlistPolicy(this);
+        _allowlist = new AppAllowlistPolicy(new AppAllowlistContext(() => Clients.Current?.AppAllowlist ?? Array.Empty<string>(), _paths.Resolve));
         _releaserService = new EnvironmentReleaser(this);
         _maintenance = new MaintenanceService(new MaintenanceContext(ArtifactRoot, () => Volatile.Read(ref _disposed) != 0, () => ArtifactDirectorySnapshot(), _log));
         _log.ClientIdProvider = () => Clients.CurrentId;
