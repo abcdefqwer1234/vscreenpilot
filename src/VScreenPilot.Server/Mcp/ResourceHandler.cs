@@ -1,28 +1,31 @@
-using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using VScreenPilot.Infrastructure;
-using VScreenPilot.Server.Infrastructure;
-using VScreenPilot.Json;
 using VScreenPilot.Perception;
-using VScreenPilot.Session;
-using VScreenPilot.Views;
-using static VScreenPilot.Json.JsonArgReader;
-using VScreenPilot.Errors;
 using VScreenPilot.Platform.Logging;
-
-using VScreenPilot.Tools;
+using VScreenPilot.Server.Infrastructure;
+using VScreenPilot.Session;
 
 namespace VScreenPilot.Mcp;
 
-internal sealed partial class McpTransport
+/// <summary>vsp://artifacts 资源列表与读取；大图按需生成 0.25× preview。</summary>
+internal sealed class ResourceHandler
 {
-    private ValueTask<ListResourcesResult> HandleListResourcesAsync(
+    public const string ArtifactPrefix = "vsp://artifacts/";
+    private const int PageSize = 50;
+
+    private readonly SessionManager _session;
+    private readonly ClientContext? _client;
+
+    public ResourceHandler(SessionManager session, ClientContext? client)
+    {
+        _session = session;
+        _client = client;
+    }
+
+    public ValueTask<ListResourcesResult> ListAsync(
         RequestContext<ListResourcesRequestParams> context, CancellationToken cancellationToken)
     {
         using IDisposable? clientScope = _client is null
@@ -44,12 +47,11 @@ internal sealed partial class McpTransport
         {
             List<string> files = Directory
                 .EnumerateFiles(_session.ArtifactDirectory, "*.png")
-                // preview 是资源的附属文件，不单独列出。
                 .Where(file => !file.EndsWith(".preview.png", StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(File.GetLastWriteTimeUtc)
                 .ToList();
 
-            foreach (string file in files.Skip(offset).Take(ResourcePageSize))
+            foreach (string file in files.Skip(offset).Take(PageSize))
             {
                 string name = Path.GetFileName(file);
                 long size = new FileInfo(file).Length;
@@ -81,7 +83,7 @@ internal sealed partial class McpTransport
         });
     }
 
-    private ValueTask<ReadResourceResult> HandleReadResourceAsync(
+    public ValueTask<ReadResourceResult> ReadAsync(
         RequestContext<ReadResourceRequestParams> context, CancellationToken cancellationToken)
     {
         using IDisposable? clientScope = _client is null
@@ -115,7 +117,6 @@ internal sealed partial class McpTransport
 
         string path = Path.Combine(_session.ArtifactDirectory, name);
 
-        // 大图默认返回 preview：避免资源读取又把 300KB+ 原图塞回客户端。
         if (!preview && !forceFull && File.Exists(path))
         {
             preview = new FileInfo(path).Length > Limits.ResourcePreviewBytes;
@@ -155,7 +156,6 @@ internal sealed partial class McpTransport
         });
     }
 
-    /// <summary>旧 artifact 没有 preview 时按需生成 0.25× 小图，避免 resources/read 回传大 Blob。</summary>
     private static void TryCreatePreview(string sourcePath, string previewPath)
     {
         try
@@ -182,5 +182,4 @@ internal sealed partial class McpTransport
             LogSink.Debug($"忽略异常: {exception.Message}");
         }
     }
-
 }
