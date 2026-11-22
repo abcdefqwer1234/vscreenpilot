@@ -1,8 +1,8 @@
 # 架构说明
 
-> 状态：第二轮 R2、第三轮 T3 已完成；`arch_metrics --enforce` 零违规。进度见 `docs/第三轮重构执行报告.md`，规则见 `docs/架构规则.md`。
+> 状态：第二轮 R2、第三轮 T3 已完成；`arch_metrics --enforce` 零违规。进度、历史与偏差见 [`技术文档.md`](../技术文档.md) §17，硬规则见 `docs/架构规则.md`。
 > 数字口径：`python tools/audit/arch_metrics.py`；行数用 `ReadAllLines`/`splitlines()`，不含 `obj/`、`bin/`。
-> 冻结清单：`docs/refactor-invariants.md`。第一轮验收：`docs/全局重构执行报告.md`。第二轮方案：`docs/第二轮全局重构方案.md`。
+> 冻结清单与重构不变量见 [`技术文档.md`](../技术文档.md) §15.4。
 
 ## 1. 程序集与依赖
 

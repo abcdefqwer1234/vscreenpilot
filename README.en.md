@@ -12,8 +12,8 @@ type, locate elements and verify results — without stealing your cursor or cov
 
 > 0.2.2 is a technical preview. Tool names and parameters are frozen, but 0.x may still contain
 > breaking changes; read [CHANGELOG.md](CHANGELOG.md) before upgrading. For 0.2.2 as-built details see
-> [docs/多客户端共享实例方案.md](docs/多客户端共享实例方案.md) and [docs/architecture.md](docs/architecture.md);
-> [技术文档.md](技术文档.md) is a historical 0.1.0 snapshot.
+> [技术文档.md](技术文档.md) and [docs/architecture.md](docs/architecture.md); 0.1.0 implementation
+> details live in git history.
 
 ## Requirements
 

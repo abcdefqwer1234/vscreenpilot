@@ -14,7 +14,7 @@ dotnet test tests/VScreenPilot.Tests.Contract/VScreenPilot.Tests.Contract.csproj
 
 ## 2. 改代码前的红线
 
-外特性冻结清单在 `docs/refactor-invariants.md`，任何时候都必须零 diff。提交前至少跑：
+外特性冻结清单在 [`技术文档.md`](技术文档.md) §15.4，任何时候都必须零 diff。提交前至少跑：
 
 ```powershell
 # 发布被测二进制
@@ -25,7 +25,7 @@ pwsh tools/audit/run_all.ps1 -Exe artifacts/server/VScreenPilot.exe -Out tools/a
 python tools/audit/compare_baseline.py tools/audit/baseline/3ddb85b tools/audit/results/current
 ```
 
-对比规则见 `docs/全局重构方案.md` 附录 D：根目录文件逐字段比较，子目录只比较“用例通过集”，且仅把“通过 → 失败”判定为回归。
+对比规则见 [`技术文档.md`](技术文档.md) §15.5：根目录文件逐字段比较，子目录只比较“用例通过集”，且仅把“通过 → 失败”判定为回归。
 
 需要 VDD/Office 的场景（GUI、并发、PPT/Word）优先在自托管 runner 上跑完整套件：
 
@@ -37,20 +37,20 @@ pwsh tools/audit/run_all.ps1 -Exe artifacts/server/VScreenPilot.exe -Out tools/a
 
 ## 3. 新增一个工具
 
-工具定义已集中到 `src/VScreenPilot.Server/Tools/ToolCatalog.cs` 的 `BuildTools`：
+工具定义已文件化到 `src/VScreenPilot.Server/Tools/Definitions/*.json`：
 
-1. 在 `BuildTools` 里加 `Add(...)`：名称、标题、描述、`inputSchema`/`outputSchema`、`ToolPolicy`、超时、handler。
-2. 用 `ToolPolicy` 声明调度行为：`Mutates`、`Lease`（`ScreenLeaseMode`）、`SessionRead`/`SessionWrite`、`BypassWriteLock`、`WriteTimeoutMs`；不要再维护 `MutatingTools`/`RequiresScreenLease` 清单。
-3. handler 放 `src/VScreenPilot.Server/Tools/ToolHandlers.cs`，或委托给会话/领域组件。
+1. 新增 `<name>.json`：`name/title/description/inputSchema/outputSchema/readOnly/destructive/timeoutMs/policy`。
+2. 在 `src/VScreenPilot.Server/Tools/ToolCatalog.cs` 的 `BuildTools` 注册一行 handler；加载时会校验“定义数 == handler 数”。
+3. handler 放 `src/VScreenPilot.Server/Mcp/*Tools.cs` 或相应工具组，业务逻辑委托给会话操作组/服务。
 4. 在 `tests/VScreenPilot.Tests.Unit/ReleaseReadinessTests.cs` 的 `Expected` 数组补名称；必要时补 `ToolPolicyTests` 断言。
 5. 错误码如为新增，补 `docs/errors.md` 与 `ErrorCatalog`。
 6. 运行第 2 节的审计命令，并用 `python tools/audit/capture_baseline.py` 重抓基线后提交。
 
-> 目标形态（尚未实现，见执行报告）：`Tools/Definitions/<name>.json` + 单工具类 + `ToolRegistry` 注册一行。
+> 工具数量属于冻结契约：新增工具需要方案评审，不能只加 JSON。
 
 ## 4. 修改 schema 或输出字段
 
-1. 先读 `docs/refactor-invariants.md` 第 1 节，确认该字段是否属于冻结清单。
+1. 先读 [`技术文档.md`](技术文档.md) §15.4，确认该字段是否属于冻结清单。
 2. 属于冻结清单的字段：必须同时更新 `tools/audit/baseline/<commit>/` 基线，并在 PR 说明里写“为什么这是有意的契约变更”。
 3. 更新 `tests/VScreenPilot.Tests.Contract/ToolSchemaSnapshotTests.cs` 期望（基线文件本身）。
 4. 输出视图（`Abstractions/Views/*`）字段顺序要与现有 JSON 拼装顺序一致，golden 才稳定。
@@ -73,5 +73,5 @@ pwsh tools/audit/run_all.ps1 -Exe artifacts/server/VScreenPilot.exe -Out tools/a
 改动架构或新增工具后同步更新：
 
 - `docs/architecture.md`：分层、并发模型、已知未完成项。
-- `docs/refactor-invariants.md`：不变量清单。
+- [`技术文档.md`](技术文档.md)：机制、工具、共享实例、重构史与不变量清单。
 - `docs/errors.md`：错误码与 `docs` 锚点。
