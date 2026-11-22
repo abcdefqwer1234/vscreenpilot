@@ -1,6 +1,6 @@
 # 架构说明
 
-> 状态：第二轮 R2 + 文件/方法级 R3 已完成；第三轮 T3 进行中。进度见 `docs/第二轮重构执行报告.md` 与 `docs/第三轮全局重构方案.md`。
+> 状态：第二轮 R2、第三轮 T3 已完成；`arch_metrics --enforce` 零违规。进度见 `docs/第三轮重构执行报告.md`，规则见 `docs/架构规则.md`。
 > 数字口径：`python tools/audit/arch_metrics.py`；行数用 `ReadAllLines`/`splitlines()`，不含 `obj/`、`bin/`。
 > 冻结清单：`docs/refactor-invariants.md`。第一轮验收：`docs/全局重构执行报告.md`。第二轮方案：`docs/第二轮全局重构方案.md`。
 
@@ -47,14 +47,14 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 | `VScreenPilot.Ui` | Server（`ElementRefStore`/文本格式化） |
 | `VScreenPilot.Apps` | Server（`TrackedApp`/注册表） |
 
-当前 SPLIT 命名空间 **0 个**；其余命名空间单归属：`VScreenPilot.Uia`、`Perception`、`Scripting`、`Platform.*`、`Views`、`Cli`、`Ipc`、`Input`、`Composition`、`Diagnostics`。`Tools/` 目录当前仍声明为 `VScreenPilot.Mcp`，T3-3 拆出 `VScreenPilot.Tools`。
+当前 SPLIT 命名空间 **0 个**；其余命名空间单归属：`VScreenPilot.Uia`、`Perception`、`Scripting`、`Platform.*`、`Views`、`Cli`、`Ipc`、`Input`、`Composition`、`Diagnostics`、`Tools`、`Session`、`Services`。
 
 ## 3. 启动、组合根与会话
 
 - 入口：`Program.Main` 只委托 `Composition.Bootstrap.Run`；`Bootstrap` 解析 `--version` / `--doctor` / `--cli` / `--daemon` / `--profile` 等，然后进入 `ServerHost`。
-- 组合根：`SessionManager`（18 个 partial 文件；类型跨度约 1504 行）。它持有会话锁、显示控制器、应用注册表、元素 ref、UIA 宿主、写调度器与日志；`SessionFacade`/`SessionExecutionControl` 把它收窄为 IPC/CLI 与工具层边界。
-- 已知双 wiring：`Program` 与 `ServerHost` 各构造一次 `SessionManager`；R3 未合并，T3-2 收敛为单一组合根。
-- 组件通过 `I*Host` 反向依赖门面：0 个接口（T3-2 已清零），最大 `IInputHost` 26。组件不做跨组件 `new`；T3-2～T3-6 替换为端口。
+- 组合根：`SessionManager`（256 行、0 public 成员）只持有组件字段并暴露 `*Ops`；`SessionComposition.Build` 负责装配顺序（显示 → 快照 → 环境 → 启动 → 输入 → 元素 → 释放 → 维护）。
+- 单一 wiring：`Program.Main` 只调用 `Composition.Bootstrap.Run`，`ServerHost` 是唯一构造 `SessionManager` 的位置。
+- 组件不使用 `I*Host` 接口：全部通过上下文 record（`*Context`）传入只读回调，`I*Host` 计数为 0。
 - 会话组件（Server/Session）：
   - 显示：`VirtualDisplayController`
   - 应用：`AppLauncher`、`AppReleaser`、`TrackedAppTracker`、`AppAllowlistPolicy`、`SessionStateKeeper`
@@ -97,24 +97,21 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 
 | 闸门 | 内容 | 位置 |
 |---|---|---|
-| 单元 | 205 用例（176 测试方法）；视图序列化、策略、路径、拓扑、租约、组件 fake | `tests/VScreenPilot.Tests.Unit` |
-| 契约 | 16 用例；schema 快照、架构方向、命名空间/IVT/棘轮 | `tests/VScreenPilot.Tests.Contract` |
-| 架构度量 | `arch_metrics.py --selftest/--check`（fixtures 20 正向 + 3 反向；文件/方法/宿主/SPLIT/catch/测试数） | `.github/workflows/ci.yml` |
+| 单元 | 258 用例（235 测试方法）；视图序列化、策略、路径、拓扑、租约、组件 fake、纯逻辑拆分类 | `tests/VScreenPilot.Tests.Unit` |
+| 契约 | 18 用例；schema 快照、架构方向、命名空间/IVT/棘轮、组件测试映射 | `tests/VScreenPilot.Tests.Contract` |
+| 架构度量 | `arch_metrics.py --selftest/--enforce`（23 正向 + 2 meta + 1 反向；文件/方法/判断点/参数/宿主/SPLIT/catch/测试数/组件映射） | `.github/workflows/ci.yml` |
 | 基线 diff | `capture_baseline.py` + `compare_baseline.py --only server.json --only errors.json` | CI `smoke` |
-| GUI / protocol | 14/14、30/30；需要 VDD | 自托管 nightly |
-| stability / UIA | 14/14、3/3；`bench_stability.py`、`bench_uia_stress.py` | 自托管 nightly |
+| GUI / protocol | 14/14（含 GUI-02、GUI-15 pid 场景）、30/30；需要 VDD | 自托管 nightly |
+| stability / UIA / concurrency / hotplug | 14/14、3/3、5/5；`bench_*.py` | 自托管 nightly |
 
-`GUI-15` 当前只覆盖“零应用/单应用”场景：先 `release_environment` 再启动单个 UiTarget，验证“杀目标 → 报错 → 重启恢复”。尚未覆盖“指定 pid 被杀、其他应用仍存活”，该断言在 T3-8 补齐。
+`GUI-15` 已覆盖“指定 pid 被杀、其他应用仍存活”的 `E_NO_TARGET`/`E_APP_GONE` 断言，并验证重启恢复；由 `tools/audit/bench_gui.py` 固化。
 
-## 8. 已知债务（T3 输入）
+## 8. 当前状态与残余风险
 
-- 187 个源文件、32217 行；0 个文件 >600，最大 599（`MsaaService.cs`）；16 个类型 >400，最大 `UiaService` 类型跨度 1,881。
-- 0 个方法 >150，最大 119；但仍有约 48 个 >80 行、32 个 >12 判断点、39 个 >6 参数。
-- 无类型 `catch` 0；无日志静默 `catch` 0（`arch_metrics.py` 口径）。
-- 0 个 `I*Host`；25 个有行为组件只有约 5 个有直接单测。
-- SPLIT 命名空间 0；`ToolContext` 仍持有门面；`Program`（251 行）与 `ServerHost` 仍各构造一次 `SessionManager`；`partial` 声明 63 个 / 11 个类型。
-- `Program` 254 行、`Main` 97 行；`SessionManager` 52 个 public 成员。
-- T3 目标：类型 ≤400、文件 ≤450、方法 ≤80/12/6、partial 0、`I*Host` 0、`SessionManager` ≤350、`Program` ≤200，详见 `docs/第三轮全局重构方案.md`。
+- 类型 ≤400、文件 ≤450、partial 0、方法 ≤80/12/6、`I*Host` 0、`SessionManager` 256 行 / 0 public、`Program` ≤200，全部由 `arch_metrics --enforce` 守住。
+- 组件测试映射写入 `tools/audit/arch_rules.json` 的 `components`（28 个组件，每个 ≥2 个测试），由契约测试与 `--enforce` 双重校验。
+- 架构 allowlist 为空；新增 public 类型、放宽阈值、引入 `partial` 都会让 CI 失败。
+- 残余风险：`bench_*` 全量审计依赖自托管 VDD runner；本地无 VDD 时只能跑单元/契约/静态闸门。
 
 ## 9. 架构度量（自动生成）
 
