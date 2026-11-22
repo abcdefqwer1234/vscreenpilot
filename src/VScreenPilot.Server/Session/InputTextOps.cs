@@ -21,8 +21,12 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class InputRouter
+/// <summary>TextOps：InputRouter 的输入子通道。</summary>
+internal sealed class InputTextOps
 {
+    internal readonly InputRouter _host;
+
+    public InputTextOps(InputRouter host) => _host = host;
     /// <summary>
     /// 把文本分块写入当前前台目标，并在每块后回读确认。
     /// 关键点：只有确认完成后调用方才允许归还前台，避免剩余按键落到用户窗口。
@@ -36,7 +40,7 @@ internal sealed partial class InputRouter
         int chunkChars = 32,
         int verifyEveryChunks = 1)
     {
-        string? before = target is null ? null : _uia.Uia.GetText(target.Element, 65536);
+        string? before = target is null ? null : _host._uia.Uia.GetText(target.Element, 65536);
         bool textSupported = before is not null;
         var stopwatch = Stopwatch.StartNew();
         double injectMs = 0;
@@ -46,7 +50,7 @@ internal sealed partial class InputRouter
 
         foreach (string chunk in SplitTextChunks(text, chunkChars))
         {
-            if (_session.Cancellation().IsCancellationRequested)
+            if (_host._session.Cancellation().IsCancellationRequested)
             {
                 throw new ToolException(
                     "E_CANCELLED",
@@ -57,7 +61,7 @@ internal sealed partial class InputRouter
                     stage: "input");
             }
 
-            if (!_focus.IsAppForeground(app))
+            if (!_host._focus.IsAppForeground(app))
             {
                 throw new ToolException(
                     "E_FOCUS_LOST",
@@ -119,7 +123,7 @@ internal sealed partial class InputRouter
 
             while (DateTime.UtcNow < deadline)
             {
-                if (!_focus.IsAppForeground(app))
+                if (!_host._focus.IsAppForeground(app))
                 {
                     throw new ToolException(
                         "E_FOCUS_LOST",
@@ -146,7 +150,7 @@ internal sealed partial class InputRouter
             stopwatch.Elapsed.TotalMilliseconds);
     }
 
-    private bool WaitForText(
+    internal bool WaitForText(
         UiaElementHandle target,
         string before,
         string sent,
@@ -170,7 +174,7 @@ internal sealed partial class InputRouter
         return false;
     }
 
-    private static bool TextMatches(string before, string after, string sent, bool replace)
+    internal bool TextMatches(string before, string after, string sent, bool replace)
     {
         string expected = NormalizeForCompare(sent);
         string actual = NormalizeForCompare(after);
@@ -194,7 +198,7 @@ internal sealed partial class InputRouter
                actual.Length >= baseline.Length + expected.Length - 2;
     }
 
-    private static string NormalizeForCompare(string value) =>
+    internal string NormalizeForCompare(string value) =>
         value.Replace("\r\n", "\n").Replace('\r', '\n');
 
     /// <summary>快速路径：一次 SendInput 写完，不做逐块回读；调用方需自行复核。</summary>
@@ -202,7 +206,7 @@ internal sealed partial class InputRouter
     /// 剪贴板粘贴：一次性写入，避免 O(n) 的 SendInput 与 IME 组合问题。
     /// 会保存/还原原有文本剪贴板；非文本内容无法还原，因此只在长文本或显式要求时使用。
     /// </summary>
-    private TextWriteResult WriteTextViaClipboard(UiaElementHandle? target, string text)
+    internal TextWriteResult WriteTextViaClipboard(UiaElementHandle? target, string text)
     {
         var stopwatch = Stopwatch.StartNew();
         string? before = target?.GetText(65536);
@@ -252,15 +256,15 @@ internal sealed partial class InputRouter
             DurationMs: stopwatch.Elapsed.TotalMilliseconds);
     }
 
-    private TextWriteResult WriteTextUnverified(
+    internal TextWriteResult WriteTextUnverified(
         TrackedApp app,
         UiaElementHandle? target,
         string text)
     {
-        string? before = target is null ? null : _uia.Uia.GetText(target.Element, 65536);
+        string? before = target is null ? null : _host._uia.Uia.GetText(target.Element, 65536);
         var stopwatch = Stopwatch.StartNew();
 
-        if (!_focus.IsAppForeground(app))
+        if (!_host._focus.IsAppForeground(app))
         {
             throw new ToolException(
                 "E_FOCUS_LOST",
@@ -285,7 +289,7 @@ internal sealed partial class InputRouter
             DurationMs: stopwatch.Elapsed.TotalMilliseconds);
     }
 
-    private static IEnumerable<string> SplitTextChunks(string text, int chunkChars)
+    internal IEnumerable<string> SplitTextChunks(string text, int chunkChars)
     {
         int index = 0;
 
@@ -305,5 +309,4 @@ internal sealed partial class InputRouter
             index += take;
         }
     }
-
 }

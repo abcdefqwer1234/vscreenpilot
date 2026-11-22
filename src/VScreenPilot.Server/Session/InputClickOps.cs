@@ -20,14 +20,18 @@ using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class InputRouter
+/// <summary>ClickOps：InputRouter 的输入子通道。</summary>
+internal sealed class InputClickOps
 {
+    internal readonly InputRouter _host;
+
+    public InputClickOps(InputRouter host) => _host = host;
     /// <summary>按 element_ref 点击：优先 UIA pattern，其次消息/输入通道。</summary>
     public ClickRefView ClickElementRef(
         string reference, string? channel, bool keepForeground, bool fallbackInput = false)
     {
-        DisplayInfo display = _display.EnsureDisplay();
-        ElementRefEntry probe = _element.RequireElement(reference);
+        DisplayInfo display = _host._display.EnsureDisplay();
+        ElementRefEntry probe = _host._element.RequireElement(reference);
         string mode = (channel ?? "auto").Trim().ToLowerInvariant();
 
         if (mode is not ("auto" or "uia" or "message" or "input"))
@@ -41,7 +45,7 @@ internal sealed partial class InputRouter
             return ClickMsaaRef(probe, msaaHwnd, msaaOrdinal, mode, keepForeground, fallbackInput);
         }
 
-        using UiaElementHandle handle = _element.ResolveHandle(
+        using UiaElementHandle handle = _host._element.ResolveHandle(
             reference, display, out ElementRefEntry entry, out bool refreshed);
 
         UiaElementInfo info = handle.Info;
@@ -112,13 +116,13 @@ internal sealed partial class InputRouter
     /// 动作后的轻量观察：UIA 返回成功不代表应用真的响应了。
     /// 这里只报告控件是否还在/是否可用/是否获得焦点，失败不影响动作结果。
     /// </summary>
-    private ElementObservedView ObserveAfterAction(ElementRefEntry entry)
+    internal ElementObservedView ObserveAfterAction(ElementRefEntry entry)
     {
         try
         {
             using UiaElementHandle? handle = string.IsNullOrEmpty(entry.RuntimeId)
                 ? null
-                : _uia.Uia.FindByRuntimeId(entry.Hwnd, entry.RuntimeId);
+                : _host._uia.Uia.FindByRuntimeId(entry.Hwnd, entry.RuntimeId);
 
             if (handle is null)
             {
@@ -142,7 +146,7 @@ internal sealed partial class InputRouter
         int x, int y, string button, int clicks, string mode,
         bool keepForeground = false, bool observe = true, bool fallbackInput = false)
     {
-        DisplayInfo display = _display.EnsureDisplay();
+        DisplayInfo display = _host._display.EnsureDisplay();
 
         if (clicks is < 1 or > 10)
         {
@@ -159,16 +163,16 @@ internal sealed partial class InputRouter
 
         using var inputLease = InputLease.TryAcquire(3000, "click");
 
-        if (mode == "input" && !_display.IsInputDesktopAvailable())
+        if (mode == "input" && !_host._display.IsInputDesktopAvailable())
         {
             throw NoInteractiveDesktop();
         }
 
-        TrackedApp app = _element.RequirePointInTrackedApp(display, x, y, "click");
+        TrackedApp app = _host._element.RequirePointInTrackedApp(display, x, y, "click");
 
         var observeWatch = Stopwatch.StartNew();
         ObserveSignature? observeBefore = observe
-            ? _display.CaptureSignature(display, x - 60, y - 60, 120, 120)
+            ? _host._display.CaptureSignature(display, x - 60, y - 60, 120, 120)
             : null;
 
         var stopwatch = Stopwatch.StartNew();
@@ -178,7 +182,7 @@ internal sealed partial class InputRouter
         {
             // 菜单/弹出层需要连续操作时，暂时冻结焦点护栏；租约到期后自动恢复，
             // 避免异常路径上 agent 不再调用工具时永久关闭护栏。
-            _focus.PauseFocusGuard(30000);
+            _host._focus.PauseFocusGuard(30000);
         }
 
         bool canUseUia = button.Equals("left", StringComparison.OrdinalIgnoreCase) && clicks == 1;
@@ -193,13 +197,13 @@ internal sealed partial class InputRouter
         if (!keepForeground && WindowManager.GetForegroundWindow() != previousForeground)
         {
             Thread.Sleep(50);
-            RestoreFocusAfterClick(previousForeground);
+            _host.RestoreFocusAfterClick(previousForeground);
         }
 
         ObserveSignature? observeAfter = observeBefore is null
             ? null
-            : _display.CaptureSignature(display, x - 60, y - 60, 120, 120);
-        ObservedView? observed = _uia.BuildObserved(
+            : _host._display.CaptureSignature(display, x - 60, y - 60, 120, 120);
+        ObservedView? observed = _host._uia.BuildObserved(
             observeBefore, observeAfter, observeWatch.Elapsed.TotalMilliseconds);
 
         return new ClickView(
@@ -220,7 +224,7 @@ internal sealed partial class InputRouter
                 : null);
     }
 
-    private static ToolException NoInteractiveDesktop() =>
+    internal static ToolException NoInteractiveDesktop() =>
         new(
             "E_NO_INTERACTIVE_DESKTOP",
             "当前没有可交互桌面（锁屏/安全桌面/Session 0），SendInput 无法注入",
@@ -228,7 +232,7 @@ internal sealed partial class InputRouter
             hint: "解锁桌面或改用 UIA 语义操作",
             stage: "input");
 
-    private string InjectClick(
+    internal string InjectClick(
         TrackedApp app, int x, int y, string button, int clicks, string mode,
         bool keepForeground, bool allowInputFallback, bool canUseUia, out string? detail)
     {
@@ -246,7 +250,7 @@ internal sealed partial class InputRouter
                     throw new ToolException("E_INVALID_ARG", "UIA 模式仅支持左键单击");
                 }
 
-                if (!TryUiaInvoke(x, y, app.Pid))
+                if (!_host.UiaGuardOps.TryUiaInvoke(x, y, app.Pid))
                 {
                     throw new ToolException(
                         "E_INPUT_UNSUPPORTED",
@@ -256,7 +260,7 @@ internal sealed partial class InputRouter
                 return "uia";
 
             case "message":
-                RejectNonClientArea(app, x, y, "message");
+                _host.RejectNonClientArea(app, x, y, "message");
 
                 if (!MessageInput.Click(x, y, button, clicks, out detail))
                 {
@@ -275,18 +279,18 @@ internal sealed partial class InputRouter
         }
     }
 
-    private string InjectAuto(
+    internal string InjectAuto(
         TrackedApp app, int x, int y, string button, int clicks,
         bool keepForeground, bool allowInputFallback, bool canUseUia, out string? detail)
     {
         detail = null;
 
-        if (canUseUia && TryUiaInvoke(x, y, app.Pid))
+        if (canUseUia && _host.UiaGuardOps.TryUiaInvoke(x, y, app.Pid))
         {
             return "uia";
         }
 
-        if (!IsNonClientPoint(app.Hwnd, x, y) &&
+        if (!_host.IsNonClientPoint(app.Hwnd, x, y) &&
             MessageInput.Click(x, y, button, clicks, out detail))
         {
             return "message";
@@ -302,7 +306,7 @@ internal sealed partial class InputRouter
 
         // fallback 也要检查交互桌面：锁屏/安全桌面上 SendInput 只会得到
         // 模糊的 E_INPUT，提前给出 E_NO_INTERACTIVE_DESKTOP 更有用。
-        if (!_display.IsInputDesktopAvailable())
+        if (!_host._display.IsInputDesktopAvailable())
         {
             throw NoInteractiveDesktop();
         }
@@ -311,10 +315,10 @@ internal sealed partial class InputRouter
         return "input-fallback";
     }
 
-    private void InjectInput(int x, int y, string button, int clicks, bool keepForeground)
+    internal void InjectInput(int x, int y, string button, int clicks, bool keepForeground)
     {
-        _focus.PauseCursor();
-        _focus.PauseFocusGuard(0);
+        _host._focus.PauseCursor();
+        _host._focus.PauseFocusGuard(0);
 
         try
         {
@@ -322,24 +326,24 @@ internal sealed partial class InputRouter
         }
         finally
         {
-            _focus.ResumeCursor();
+            _host._focus.ResumeCursor();
 
             if (!keepForeground)
             {
-                _focus.ResumeFocusGuard();
+                _host._focus.ResumeFocusGuard();
             }
         }
     }
 
 
 
-    private ClickRefView ClickMsaaRef(
+    internal ClickRefView ClickMsaaRef(
         ElementRefEntry probe, IntPtr msaaHwnd, int msaaOrdinal, string mode,
         bool keepForeground, bool fallbackInput)
     {
         bool acted = mode is "auto" or "uia" &&
-                     _uia.Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaOrdinal));
-        var bounds = _uia.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaOrdinal));
+                     _host._uia.Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaOrdinal));
+        var bounds = _host._uia.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaOrdinal));
         string resultChannel = acted ? "msaa" : string.Empty;
 
         if (!acted && mode != "uia" && bounds is not null)

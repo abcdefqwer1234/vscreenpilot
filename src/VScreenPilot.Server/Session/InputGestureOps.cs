@@ -20,11 +20,15 @@ using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class InputRouter
+/// <summary>GestureOps：InputRouter 的输入子通道。</summary>
+internal sealed class InputGestureOps
 {
+    internal readonly InputRouter _host;
+
+    public InputGestureOps(InputRouter host) => _host = host;
     public GestureView Gesture(JsonElement arguments)
     {
-        DisplayInfo display = _display.Ensure();
+        DisplayInfo display = _host._display.Ensure();
 
         string type = GetString(arguments, "type") ?? "drag";
         string button = GetString(arguments, "button") ?? "left";
@@ -48,7 +52,7 @@ internal sealed partial class InputRouter
 
         bool useInput = mode == "input";
 
-        if (useInput && !_display.IsInputDesktopAvailable())
+        if (useInput && !_host._display.IsInputDesktopAvailable())
         {
             throw new ToolException(
                 "E_NO_INTERACTIVE_DESKTOP",
@@ -67,41 +71,41 @@ internal sealed partial class InputRouter
         };
     }
 
-    private GestureView GestureDrag(
+    internal GestureView GestureDrag(
         JsonElement arguments, DisplayInfo display, string button, int duration, bool observe,
         bool useInput, Stopwatch stopwatch, IntPtr previousForeground)
     {
-        (int fromX, int fromY) = GetPoint(arguments, "from")
+        (int fromX, int fromY) = _host.GetPoint(arguments, "from")
             ?? throw new ToolException("E_INVALID_ARG", "drag 需要 from");
-        (int toX, int toY) = GetPoint(arguments, "to")
+        (int toX, int toY) = _host.GetPoint(arguments, "to")
             ?? throw new ToolException("E_INVALID_ARG", "drag 需要 to");
 
         int clampedDuration = Math.Clamp(duration, 20, 5000);
-        _element.RequirePointInTrackedApp(display, fromX, fromY, "drag.from");
-        _element.RequirePointInTrackedApp(display, toX, toY, "drag.to");
+        _host._element.RequirePointInTrackedApp(display, fromX, fromY, "drag.from");
+        _host._element.RequirePointInTrackedApp(display, toX, toY, "drag.to");
 
         int dragLeft = Math.Min(fromX, toX) - 80;
         int dragTop = Math.Min(fromY, toY) - 80;
         int dragWidth = Math.Abs(toX - fromX) + 160;
         int dragHeight = Math.Abs(toY - fromY) + 160;
         ObserveSignature? dragBefore = observe
-            ? _display.CaptureSignature(display, dragLeft, dragTop, dragWidth, dragHeight)
+            ? _host._display.CaptureSignature(display, dragLeft, dragTop, dragWidth, dragHeight)
             : null;
 
         string? detail = null;
 
         if (useInput)
         {
-            _focus.PauseCursor();
-            _focus.PauseFocusGuard(0);
+            _host._focus.PauseCursor();
+            _host._focus.PauseFocusGuard(0);
             try
             {
                 InputInjector.Drag(fromX, fromY, toX, toY, button, clampedDuration);
             }
             finally
             {
-                _focus.ResumeCursor();
-                _focus.ResumeFocusGuard();
+                _host._focus.ResumeCursor();
+                _host._focus.ResumeFocusGuard();
             }
         }
         else if (!MessageInput.Drag(
@@ -117,7 +121,7 @@ internal sealed partial class InputRouter
         Thread.Sleep(50);
         if (WindowManager.GetForegroundWindow() != previousForeground)
         {
-            RestoreFocusAfterClick(previousForeground);
+            _host.RestoreFocusAfterClick(previousForeground);
         }
 
         var dragResult = new GestureView(
@@ -145,8 +149,8 @@ internal sealed partial class InputRouter
 
         ObserveSignature? dragAfter = dragBefore is null
             ? null
-            : _display.CaptureSignature(display, dragLeft, dragTop, dragWidth, dragHeight);
-        ObservedView? dragObserved = _uia.BuildObserved(
+            : _host._display.CaptureSignature(display, dragLeft, dragTop, dragWidth, dragHeight);
+        ObservedView? dragObserved = _host._uia.BuildObserved(
             dragBefore, dragAfter, stopwatch.Elapsed.TotalMilliseconds);
 
         if (dragObserved is not null)
@@ -158,11 +162,11 @@ internal sealed partial class InputRouter
         return dragResult;
     }
 
-    private GestureView GestureScroll(
+    internal GestureView GestureScroll(
         JsonElement arguments, DisplayInfo display, bool observe,
         bool useInput, Stopwatch stopwatch, IntPtr previousForeground)
     {
-        (int? x, int? y) = GetPoint(arguments, "from") is { } point
+        (int? x, int? y) = _host.GetPoint(arguments, "from") is { } point
             ? (point.X, point.Y)
             : ((int?)null, (int?)null);
 
@@ -178,7 +182,7 @@ internal sealed partial class InputRouter
 
         if (x is null || y is null)
         {
-            TrackedApp app = RequireTrackedApp();
+            TrackedApp app = _host.RequireTrackedApp();
             WindowInfo? info = WindowManager.FromHandle(app.Hwnd);
             if (info is null)
             {
@@ -189,24 +193,24 @@ internal sealed partial class InputRouter
             y = info.Rect.Top + info.Height / 2;
         }
 
-        _element.RequirePointInTrackedApp(display, x.Value, y.Value, "scroll");
+        _host._element.RequirePointInTrackedApp(display, x.Value, y.Value, "scroll");
 
         ObserveSignature? scrollBefore = observe
-            ? _display.CaptureSignature(display, x.Value - 120, y.Value - 120, 240, 240)
+            ? _host._display.CaptureSignature(display, x.Value - 120, y.Value - 120, 240, 240)
             : null;
 
         if (useInput)
         {
-            _focus.PauseCursor();
-            _focus.PauseFocusGuard(0);
+            _host._focus.PauseCursor();
+            _host._focus.PauseFocusGuard(0);
             try
             {
                 InputInjector.Scroll(x, y, dx, dy);
             }
             finally
             {
-                _focus.ResumeCursor();
-                _focus.ResumeFocusGuard();
+                _host._focus.ResumeCursor();
+                _host._focus.ResumeFocusGuard();
             }
         }
         else
@@ -224,7 +228,7 @@ internal sealed partial class InputRouter
         Thread.Sleep(50);
         if (WindowManager.GetForegroundWindow() != previousForeground)
         {
-            RestoreFocusAfterClick(previousForeground);
+            _host.RestoreFocusAfterClick(previousForeground);
         }
 
         var scrollResult = new GestureView(
@@ -252,8 +256,8 @@ internal sealed partial class InputRouter
 
         ObserveSignature? scrollAfter = scrollBefore is null
             ? null
-            : _display.CaptureSignature(display, x.Value - 120, y.Value - 120, 240, 240);
-        ObservedView? scrollObserved = _uia.BuildObserved(
+            : _host._display.CaptureSignature(display, x.Value - 120, y.Value - 120, 240, 240);
+        ObservedView? scrollObserved = _host._uia.BuildObserved(
             scrollBefore, scrollAfter, stopwatch.Elapsed.TotalMilliseconds);
 
         if (scrollObserved is not null)
@@ -265,28 +269,28 @@ internal sealed partial class InputRouter
         return scrollResult;
     }
 
-    private GestureView GestureMove(
+    internal GestureView GestureMove(
         JsonElement arguments, DisplayInfo display, bool useInput,
         Stopwatch stopwatch, IntPtr previousForeground)
     {
-        (int toX, int toY) = GetPoint(arguments, "to")
+        (int toX, int toY) = _host.GetPoint(arguments, "to")
             ?? throw new ToolException("E_INVALID_ARG", "move 需要 to");
 
-        _element.RequirePointInTrackedApp(display, toX, toY, "move.to");
+        _host._element.RequirePointInTrackedApp(display, toX, toY, "move.to");
         string? detail = null;
 
         if (useInput)
         {
-            _focus.PauseCursor();
-            _focus.PauseFocusGuard(0);
+            _host._focus.PauseCursor();
+            _host._focus.PauseFocusGuard(0);
             try
             {
                 InputInjector.Move(toX, toY);
             }
             finally
             {
-                _focus.ResumeCursor();
-                _focus.ResumeFocusGuard();
+                _host._focus.ResumeCursor();
+                _host._focus.ResumeFocusGuard();
             }
         }
         else if (!MessageInput.Move(toX, toY, out detail))
@@ -301,7 +305,7 @@ internal sealed partial class InputRouter
         Thread.Sleep(50);
         if (WindowManager.GetForegroundWindow() != previousForeground)
         {
-            RestoreFocusAfterClick(previousForeground);
+            _host.RestoreFocusAfterClick(previousForeground);
         }
 
         return new GestureView(
@@ -319,5 +323,4 @@ internal sealed partial class InputRouter
             null,
             null);
     }
-
 }

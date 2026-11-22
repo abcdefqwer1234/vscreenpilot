@@ -21,29 +21,33 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class InputRouter
+/// <summary>UiaGuardOps：InputRouter 的输入子通道。</summary>
+internal sealed class InputUiaGuardOps
 {
-    private void BlockUiaPid(int pid)
-    {
-        lock (_blockGate)
-        {
-            string clientId = _session.Clients.CurrentId;
+    internal readonly InputRouter _host;
 
-            if (!_uiaBlockedPids.TryGetValue(clientId, out HashSet<int>? blocked))
+    public InputUiaGuardOps(InputRouter host) => _host = host;
+    internal void BlockUiaPid(int pid)
+    {
+        lock (_host._blockGate)
+        {
+            string clientId = _host._session.Clients.CurrentId;
+
+            if (!_host._uiaBlockedPids.TryGetValue(clientId, out HashSet<int>? blocked))
             {
                 blocked = new HashSet<int>();
-                _uiaBlockedPids[clientId] = blocked;
+                _host._uiaBlockedPids[clientId] = blocked;
             }
 
             blocked.Add(pid);
         }
     }
 
-    private bool TryUiaInvoke(int x, int y, int pid)
+    internal bool TryUiaInvoke(int x, int y, int pid)
     {
-        lock (_blockGate)
+        lock (_host._blockGate)
         {
-            if (_uiaBlockedPids.TryGetValue(_session.Clients.CurrentId, out HashSet<int>? blocked) &&
+            if (_host._uiaBlockedPids.TryGetValue(_host._session.Clients.CurrentId, out HashSet<int>? blocked) &&
                 blocked.Contains(pid))
             {
                 return false;
@@ -57,15 +61,15 @@ internal sealed partial class InputRouter
             // ElementFromPoint/Invoke 可能被 provider 卡住；最多等 3s，超时换新 UIA 实例。
             Task<bool> invokeTask = Task.Run(() =>
             {
-                bool ok = _uia.Uia.TryInvokeAtPoint(x, y, pid, out _);
+                bool ok = _host._uia.Uia.TryInvokeAtPoint(x, y, pid, out _);
                 return ok;
             });
 
             if (!invokeTask.Wait(3000))
             {
-                _uia.ResetUia();
+                _host._uia.ResetUia();
                 BlockUiaPid(pid);
-                _log.Warn($"UIA 坐标触发超时，已熔断 pid={pid}");
+                _host._log.Warn($"UIA 坐标触发超时，已熔断 pid={pid}");
                 return false;
             }
 
@@ -87,5 +91,4 @@ internal sealed partial class InputRouter
             return false;
         }
     }
-
 }

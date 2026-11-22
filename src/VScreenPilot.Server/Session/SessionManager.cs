@@ -293,7 +293,7 @@ internal sealed class SessionManager : IDisposable
                 () => Cancellation.IsCancellationRequested, CancellationProbe),
             new ElementAppContext(EnsureEnvironment, FindLiveTrackedApp, LifecycleOps.OwnedAppForPidCore,
                 InputOps.RequireWindowOnDisplay, (display, x, y, label) => { _ = InputOps.RequirePointInTrackedApp(display, x, y, label); }),
-            new ElementInputContext(InputOps.Click, InputOps.TypeText, (app, handle, value, replace, timeout) => _input.WriteTextVerified(app, handle, value, replace, timeout), ResetUia),
+            new ElementInputContext(InputOps.Click, InputOps.TypeText, (app, handle, value, replace, timeout) => _input.TextOps.WriteTextVerified(app, handle, value, replace, timeout), ResetUia),
             new ElementFocusContext(InputOps.EnsureForeground, () => FocusOps.PauseFocusGuard(),
                 FocusOps.ResumeFocusGuard, previous => InputOps.RestoreForeground(previous)));
         _screenText = new ScreenTextService(new ScreenTextContext(EnsureEnvironmentFast, CaptureOps.CaptureRegion, () => Cancellation, Metrics.RecordOcr, InputOps.Click));

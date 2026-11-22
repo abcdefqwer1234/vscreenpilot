@@ -71,16 +71,22 @@ internal sealed record InputUiaContext(
 /// 输入路由：坐标/ref 点击、键盘、长文本、手势；消息/输入/UIA 通道选择与前台恢复。
 /// 写锁与屏幕租约由工具执行器负责，本类只做路由与动作语义。
 /// </summary>
-internal sealed partial class InputRouter
+internal sealed class InputRouter
 {
-    private readonly InputSessionContext _session;
-    private readonly InputFocusContext _focus;
-    private readonly InputDisplayContext _display;
-    private readonly InputElementContext _element;
-    private readonly InputUiaContext _uia;
-    private readonly LogRing _log;
-    private readonly object _blockGate = new();
-    private readonly Dictionary<string, HashSet<int>> _uiaBlockedPids = new(StringComparer.Ordinal);
+    internal readonly InputSessionContext _session;
+    internal readonly InputFocusContext _focus;
+    internal readonly InputDisplayContext _display;
+    internal readonly InputElementContext _element;
+    internal readonly InputUiaContext _uia;
+    internal readonly LogRing _log;
+    internal readonly object _blockGate = new();
+    internal readonly Dictionary<string, HashSet<int>> _uiaBlockedPids = new(StringComparer.Ordinal);
+
+    internal readonly InputClickOps ClickOps;
+    internal readonly InputGestureOps GestureOps;
+    internal readonly InputKeyboardOps KeyboardOps;
+    internal readonly InputTextOps TextOps;
+    internal readonly InputUiaGuardOps UiaGuardOps;
 
     public InputRouter(
         InputSessionContext session,
@@ -89,6 +95,11 @@ internal sealed partial class InputRouter
         InputElementContext element,
         InputUiaContext uia)
     {
+        ClickOps = new InputClickOps(this);
+        GestureOps = new InputGestureOps(this);
+        KeyboardOps = new InputKeyboardOps(this);
+        TextOps = new InputTextOps(this);
+        UiaGuardOps = new InputUiaGuardOps(this);
         _session = session;
         _focus = focus;
         _display = display;
@@ -113,7 +124,7 @@ internal sealed partial class InputRouter
         }
     }
 
-    private static bool IsNonClientPoint(IntPtr topHwnd, int x, int y)
+    internal bool IsNonClientPoint(IntPtr topHwnd, int x, int y)
     {
         var point = new NativeMethods.POINT { X = x, Y = y };
         IntPtr target = NativeMethods.WindowFromPoint(point);
@@ -148,7 +159,7 @@ internal sealed partial class InputRouter
         return result.ToInt64() != 1;
     }
 
-    private static void RejectNonClientArea(TrackedApp app, int x, int y, string channel)
+    internal void RejectNonClientArea(TrackedApp app, int x, int y, string channel)
     {
         if (!IsNonClientPoint(app.Hwnd, x, y))
         {
@@ -165,7 +176,7 @@ internal sealed partial class InputRouter
     }
 
     /// <summary>焦点元素必须与前台窗口的客户区相交，防止同 pid 多窗口时写错文档。</summary>
-    private static bool ElementBelongsToWindow(UiaElementInfo info, IntPtr hwnd)
+    internal bool ElementBelongsToWindow(UiaElementInfo info, IntPtr hwnd)
     {
         if (hwnd == IntPtr.Zero)
         {
@@ -191,7 +202,7 @@ internal sealed partial class InputRouter
                info.Bottom > window.Rect.Top - slack;
     }
 
-    private void RestoreFocusAfterClick(IntPtr previous)
+    internal void RestoreFocusAfterClick(IntPtr previous)
     {
         if (previous == IntPtr.Zero)
         {
@@ -216,7 +227,7 @@ internal sealed partial class InputRouter
         _focus.RestoreForeground(previous);
     }
 
-    private TrackedApp RequireTrackedApp(int? pid = null)
+    internal TrackedApp RequireTrackedApp(int? pid = null)
     {
         TrackedApp? app = _element.FindLiveTrackedApp(pid);
 
@@ -233,7 +244,7 @@ internal sealed partial class InputRouter
         return app;
     }
 
-    private static (int X, int Y)? GetPoint(JsonElement element, string property)
+    internal (int X, int Y)? GetPoint(JsonElement element, string property)
     {
         if (!element.TryGetProperty(property, out JsonElement point) ||
             point.ValueKind != JsonValueKind.Object)
@@ -246,6 +257,4 @@ internal sealed partial class InputRouter
 
         return x == int.MinValue || y == int.MinValue ? null : (x, y);
     }
-
-
 }

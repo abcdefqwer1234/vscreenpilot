@@ -20,19 +20,23 @@ using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class InputRouter
+/// <summary>KeyboardOps：InputRouter 的输入子通道。</summary>
+internal sealed class InputKeyboardOps
 {
+    internal readonly InputRouter _host;
+
+    public InputKeyboardOps(InputRouter host) => _host = host;
     public TypeTextView TypeText(
         string text, int? pid = null, bool verify = true, int chunkChars = 32, string? channel = null)
     {
         ValidateTextRequest(text);
 
-        DisplayInfo display = _display.Ensure();
-        TrackedApp app = RequireTrackedApp(pid);
-        _display.RequireWindowOnDisplay(display, app.Hwnd, "type_text");
+        DisplayInfo display = _host._display.Ensure();
+        TrackedApp app = _host.RequireTrackedApp(pid);
+        _host._display.RequireWindowOnDisplay(display, app.Hwnd, "type_text");
         using var inputLease = InputLease.TryAcquire(3000, "type_text");
         IntPtr previous = WindowManager.GetForegroundWindow();
-        _focus.PauseFocusGuard(0);
+        _host._focus.PauseFocusGuard(0);
         int effectiveChunk = Math.Clamp(chunkChars, 1, 256);
         int verifyEvery = text.Length > 20000 ? 16 : text.Length > 2048 ? 4 : 1;
 
@@ -51,7 +55,7 @@ internal sealed partial class InputRouter
                 // 避免“内容其实写对了，但 verified 永远是 false”。
                 if (!write.Verified && verify && focused is null && !patternUsed && !useClipboard)
                 {
-                    using UiaElementHandle? late = _uia.Uia.GetFocusedElementHandle(app.Pid);
+                    using UiaElementHandle? late = _host._uia.Uia.GetFocusedElementHandle(app.Pid);
                     string? observed = late?.GetText(65536);
 
                     if (observed is not null)
@@ -59,7 +63,7 @@ internal sealed partial class InputRouter
                         write = write with
                         {
                             TextSupported = true,
-                            Verified = TextMatches(string.Empty, observed, text, replace: false),
+                            Verified = _host.TextOps.TextMatches(string.Empty, observed, text, replace: false),
                             ObservedLength = observed.Length,
                         };
                     }
@@ -88,16 +92,16 @@ internal sealed partial class InputRouter
             }
             finally
             {
-                _focus.RestoreForeground(previous);
+                _host._focus.RestoreForeground(previous);
             }
         }
         finally
         {
-            _focus.ResumeFocusGuard();
+            _host._focus.ResumeFocusGuard();
         }
     }
 
-    private void ValidateTextRequest(string text)
+    internal void ValidateTextRequest(string text)
     {
         if (text.Length > 100_000)
         {
@@ -108,7 +112,7 @@ internal sealed partial class InputRouter
                 stage: "input");
         }
 
-        if (!_display.IsInputDesktopAvailable())
+        if (!_host._display.IsInputDesktopAvailable())
         {
             throw new ToolException(
                 "E_NO_INTERACTIVE_DESKTOP",
@@ -119,9 +123,9 @@ internal sealed partial class InputRouter
         }
     }
 
-    private void EnsureForegroundForTyping(TrackedApp app)
+    internal void EnsureForegroundForTyping(TrackedApp app)
     {
-        if (!_focus.EnsureForeground(app))
+        if (!_host._focus.EnsureForeground(app))
         {
             throw new ToolException(
                 "E_FOCUS",
@@ -133,12 +137,12 @@ internal sealed partial class InputRouter
     }
 
     /// <summary>前台切换后再取焦点元素；同进程多窗口时，焦点必须落在当前前台窗口内。</summary>
-    private UiaElementHandle? FocusedElementInForeground(TrackedApp app)
+    internal UiaElementHandle? FocusedElementInForeground(TrackedApp app)
     {
-        UiaElementHandle? focused = _uia.Uia.GetFocusedElementHandle(app.Pid);
+        UiaElementHandle? focused = _host._uia.Uia.GetFocusedElementHandle(app.Pid);
 
         if (focused is not null &&
-            !ElementBelongsToWindow(focused.Info, WindowManager.GetForegroundWindow()))
+            !_host.ElementBelongsToWindow(focused.Info, WindowManager.GetForegroundWindow()))
         {
             UiaElementInfo info = focused.Info;
             focused.Dispose();
@@ -158,7 +162,7 @@ internal sealed partial class InputRouter
         return focused;
     }
 
-    private (TextWriteResult Write, bool PatternUsed, bool UseClipboard) WriteByChannel(
+    internal (TextWriteResult Write, bool PatternUsed, bool UseClipboard) WriteByChannel(
         TrackedApp app, UiaElementHandle? focused, string text, string? channel,
         bool verify, int effectiveChunk, int verifyEvery)
     {
@@ -223,15 +227,15 @@ internal sealed partial class InputRouter
 
             if (useClipboard)
             {
-                write = WriteTextViaClipboard(focused, text);
+                write = _host.TextOps.WriteTextViaClipboard(focused, text);
             }
             else
             {
                 write = verify
-                    ? WriteTextVerified(
+                    ? _host.TextOps.WriteTextVerified(
                         app, focused, text, replace: false, timeoutMs: 10000,
                         chunkChars: effectiveChunk, verifyEveryChunks: verifyEvery)
-                    : WriteTextUnverified(app, focused, text);
+                    : _host.TextOps.WriteTextUnverified(app, focused, text);
             }
         }
 
@@ -267,7 +271,7 @@ internal sealed partial class InputRouter
 
         using var inputLease = InputLease.TryAcquire(3000, "press_keys");
 
-        if (!_display.IsInputDesktopAvailable())
+        if (!_host._display.IsInputDesktopAvailable())
         {
             throw new ToolException(
                 "E_NO_INTERACTIVE_DESKTOP",
@@ -277,15 +281,15 @@ internal sealed partial class InputRouter
                 stage: "input");
         }
 
-        DisplayInfo display = _display.Ensure();
-        TrackedApp app = RequireTrackedApp(pid);
-        _display.RequireWindowOnDisplay(display, app.Hwnd, "press_keys");
+        DisplayInfo display = _host._display.Ensure();
+        TrackedApp app = _host.RequireTrackedApp(pid);
+        _host._display.RequireWindowOnDisplay(display, app.Hwnd, "press_keys");
         IntPtr previous = WindowManager.GetForegroundWindow();
-        _focus.PauseFocusGuard(keepForeground ? 30000 : 0);
+        _host._focus.PauseFocusGuard(keepForeground ? 30000 : 0);
 
         try
         {
-            if (!_focus.EnsureForeground(app))
+            if (!_host._focus.EnsureForeground(app))
             {
                 throw new ToolException(
                     "E_FOCUS",
@@ -301,14 +305,14 @@ internal sealed partial class InputRouter
                 double injectMs = 0;
 
                 ObserveSignature? observeBefore = observe
-                    ? _display.CaptureSignature(display, display.X, display.Y, display.Width, display.Height)
+                    ? _host._display.CaptureSignature(display, display.X, display.Y, display.Width, display.Height)
                     : null;
 
                 int sent = 0;
 
                 foreach (string key in keys)
                 {
-                    if (_session.Cancellation().IsCancellationRequested)
+                    if (_host._session.Cancellation().IsCancellationRequested)
                     {
                         throw new ToolException(
                             "E_CANCELLED",
@@ -328,8 +332,8 @@ internal sealed partial class InputRouter
 
                 ObserveSignature? observeAfter = observeBefore is null
                     ? null
-                    : _display.CaptureSignature(display, display.X, display.Y, display.Width, display.Height);
-                ObservedView? observed = _uia.BuildObserved(
+                    : _host._display.CaptureSignature(display, display.X, display.Y, display.Width, display.Height);
+                ObservedView? observed = _host._uia.BuildObserved(
                     observeBefore, observeAfter, stopwatch.Elapsed.TotalMilliseconds);
 
                 return new PressKeysView(
@@ -346,7 +350,7 @@ internal sealed partial class InputRouter
             {
                 if (!keepForeground)
                 {
-                    _focus.RestoreForeground(previous);
+                    _host._focus.RestoreForeground(previous);
                 }
             }
         }
@@ -354,9 +358,8 @@ internal sealed partial class InputRouter
         {
             if (!keepForeground)
             {
-                _focus.ResumeFocusGuard();
+                _host._focus.ResumeFocusGuard();
             }
         }
     }
-
 }

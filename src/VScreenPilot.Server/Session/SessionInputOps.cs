@@ -19,21 +19,21 @@ internal sealed class SessionInputOps
     public SessionInputOps(SessionManager host) => _host = host;
     public ClickRefView ClickElementRef(
         string reference, string? channel, bool keepForeground, bool fallbackInput = false) =>
-        _host._input.ClickElementRef(reference, channel, keepForeground, fallbackInput);
+        _host._input.ClickOps.ClickElementRef(reference, channel, keepForeground, fallbackInput);
 
     public ClickView Click(
         int x, int y, string button, int clicks, string mode,
         bool keepForeground = false, bool observe = true, bool fallbackInput = false) =>
-        _host._input.Click(x, y, button, clicks, mode, keepForeground, observe, fallbackInput);
+        _host._input.ClickOps.Click(x, y, button, clicks, mode, keepForeground, observe, fallbackInput);
 
     public TypeTextView TypeText(
         string text, int? pid = null, bool verify = true, int chunkChars = 32, string? channel = null) =>
-        _host._input.TypeText(text, pid, verify, chunkChars, channel);
+        _host._input.KeyboardOps.TypeText(text, pid, verify, chunkChars, channel);
 
     public PressKeysView PressKeys(
         string keys, bool keepForeground = false, int? pid = null,
         bool allowSystemKeys = false, bool observe = true) =>
-        _host._input.PressKeys(keys, keepForeground, pid, allowSystemKeys, observe);
+        _host._input.KeyboardOps.PressKeys(keys, keepForeground, pid, allowSystemKeys, observe);
 
     public PressKeysView PressKeySequence(
         IReadOnlyList<string> keys,
@@ -41,9 +41,9 @@ internal sealed class SessionInputOps
         int? pid = null,
         bool allowSystemKeys = false,
         bool observe = true) =>
-        _host._input.PressKeySequence(keys, keepForeground, pid, allowSystemKeys, observe);
+        _host._input.KeyboardOps.PressKeySequence(keys, keepForeground, pid, allowSystemKeys, observe);
 
-    public GestureView Gesture(JsonElement arguments) => _host._input.Gesture(arguments);
+    public GestureView Gesture(JsonElement arguments) => _host._input.GestureOps.Gesture(arguments);
 
     internal bool EnsureForeground(TrackedApp app)
     {
