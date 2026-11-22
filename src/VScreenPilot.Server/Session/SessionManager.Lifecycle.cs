@@ -16,7 +16,7 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IWaitHost, IElementOperationsHost
+internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IElementOperationsHost
 {
     /// <summary>
     /// 在释放/预热等低负载节点裁剪工作集。不是定时看门狗，只按事件触发。
@@ -177,40 +177,13 @@ internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaser
         _stateStore.Clear();
     }
 
-    DisplayInfo IWaitHost.EnsureDisplay() => EnsureEnvironmentFast();
-
-    void IWaitHost.EnterRead() => EnterRead();
-
-    void IWaitHost.ExitRead() => ExitRead();
-
-    bool IWaitHost.IsCancelled() => Cancellation.IsCancellationRequested;
-
-    TrackedApp? IWaitHost.FindApp(int? pid) => FindLiveTrackedApp(pid);
-
-    UiaHost IWaitHost.Uia => Uia;
-
-    List<TrackedApp> IWaitHost.OwnedAppsSnapshot()
+    private List<TrackedApp> OwnedAppsSnapshotCore()
     {
         lock (_gate)
         {
             return _apps.Where(app => IsOwned(app) && TrackedAppTracker.IsLive(app)).ToList();
         }
     }
-
-    HashSet<int> IWaitHost.TrackedPids() => TrackedPids();
-
-    (byte[] Bgra, int Width, int Height) IWaitHost.CaptureRegion(
-        int x, int y, int width, int height) => CaptureRegion(x, y, width, height);
-
-    FrameSnapshot? IWaitHost.ResolveBaselineFrame(JsonElement source, int x, int y, int width, int height) =>
-        _regionVerifier.ResolveBaselineFrame(source, x, y, width, height);
-
-    JsonArray IWaitHost.Frames() => _regionVerifier.FramesJson();
-
-    MatchVisualView IWaitHost.MatchVisual(JsonElement arguments) => MatchVisual(arguments);
-
-    void IWaitHost.ReportProgress(int done, int total, string message) =>
-        ToolProgress.Report(done, total, message);
 
     private bool IsTrackedPidCore(int pid)
     {

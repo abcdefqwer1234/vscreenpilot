@@ -14,33 +14,46 @@ using VScreenPilot.Errors;
 namespace VScreenPilot.Session;
 
 /// <summary>wait_for 所需的最小宿主接口。</summary>
-internal interface IWaitHost
-{
-    DisplayInfo EnsureDisplay();
-    void EnterRead();
-    void ExitRead();
-    bool IsCancelled();
-    TrackedApp? FindApp(int? pid);
-    UiaHost Uia { get; }
-    List<TrackedApp> OwnedAppsSnapshot();
-    HashSet<int> TrackedPids();
-    (byte[] Bgra, int Width, int Height) CaptureRegion(int x, int y, int width, int height);
-    FrameSnapshot? ResolveBaselineFrame(JsonElement source, int x, int y, int width, int height);
-    JsonArray Frames();
-    MatchVisualView MatchVisual(JsonElement arguments);
-    void ReportProgress(int done, int total, string message);
-}
+internal sealed record WaitDisplayContext(
+    Func<DisplayInfo> EnsureDisplay,
+    Func<int, int, int, int, (byte[] Bgra, int Width, int Height)> CaptureRegion);
+
+internal sealed record WaitSessionContext(
+    Action EnterRead,
+    Action ExitRead,
+    Func<bool> IsCancelled,
+    Action<int, int, string> ReportProgress);
+
+internal sealed record WaitAppContext(
+    Func<int?, TrackedApp?> FindApp,
+    Func<List<TrackedApp>> OwnedAppsSnapshot,
+    Func<HashSet<int>> TrackedPids,
+    UiaHost Uia);
+
+internal sealed record WaitFrameContext(
+    Func<JsonElement, int, int, int, int, FrameSnapshot?> ResolveBaselineFrame,
+    Func<JsonArray> Frames,
+    Func<JsonElement, MatchVisualView> MatchVisual);
 
 /// <summary>wait_for：轮询 element/text/color/window/pixel_diff/visual 条件。</summary>
 internal sealed class WaitService
 {
-    private readonly IWaitHost _host;
+    private readonly WaitDisplayContext _display;
+    private readonly WaitSessionContext _session;
+    private readonly WaitAppContext _apps;
+    private readonly WaitFrameContext _frames;
 
-    public WaitService(IWaitHost host) => _host = host;
+    public WaitService(WaitDisplayContext display, WaitSessionContext session, WaitAppContext apps, WaitFrameContext frames)
+    {
+        _display = display;
+        _session = session;
+        _apps = apps;
+        _frames = frames;
+    }
 
     public WaitForView Wait(JsonElement condition, int timeoutMs, int? intervalMs = null)
     {
-        DisplayInfo display = _host.EnsureDisplay();
+        DisplayInfo display = _display.EnsureDisplay();
         timeoutMs = Math.Clamp(timeoutMs, 0, 120_000);
         int? requestedInterval = intervalMs is null ? null : Math.Clamp(intervalMs.Value, 50, 2000);
 
@@ -49,7 +62,7 @@ internal sealed class WaitService
         // 每次轮询取一次短读锁，release 最多等一次轮询。
         JsonObject Evaluate()
         {
-            _host.EnterRead();
+            _session.EnterRead();
 
             try
             {
@@ -57,7 +70,7 @@ internal sealed class WaitService
             }
             finally
             {
-                _host.ExitRead();
+                _session.ExitRead();
             }
         }
 
@@ -90,14 +103,14 @@ internal sealed class WaitService
             int sleep = (int)Math.Min(interval, timeoutMs - stopwatch.ElapsedMilliseconds);
             if (sleep > 0)
             {
-                _host.ReportProgress(
+                _session.ReportProgress(
                     (int)Math.Min(stopwatch.ElapsedMilliseconds, int.MaxValue),
                     Math.Max(1, timeoutMs),
                     "wait_for 轮询中");
                 Thread.Sleep(sleep);
             }
 
-            if (_host.IsCancelled())
+            if (_session.IsCancelled())
             {
                 throw new ToolException("E_CANCELLED", "请求已取消");
             }
@@ -144,7 +157,7 @@ internal sealed class WaitService
                 "element 条件至少需要 name、control_type 或 automation_id 之一");
         }
 
-        IntPtr hwnd = _host.FindApp(pid)?.Hwnd ?? IntPtr.Zero;
+        IntPtr hwnd = _apps.FindApp(pid)?.Hwnd ?? IntPtr.Zero;
 
         if (hwnd == IntPtr.Zero)
         {
@@ -153,7 +166,7 @@ internal sealed class WaitService
 
         try
         {
-            UiaElementInfo? info = _host.Uia.FindElement(hwnd, name, controlType, automationId, null);
+            UiaElementInfo? info = _apps.Uia.FindElement(hwnd, name, controlType, automationId, null);
             bool satisfied = info is not null && !info.Offscreen;
 
             return new JsonObject
@@ -189,7 +202,7 @@ internal sealed class WaitService
 
         List<TrackedApp> candidates;
 
-        candidates = _host.OwnedAppsSnapshot();
+        candidates = _apps.OwnedAppsSnapshot();
 
         int? requestedPid = GetInt(condition, "pid", -1) is var pidValue && pidValue >= 0
             ? pidValue
@@ -202,7 +215,7 @@ internal sealed class WaitService
                 continue;
             }
 
-            UiaElementInfo? info = _host.Uia.FindTextElement(app.Hwnd, needle);
+            UiaElementInfo? info = _apps.Uia.FindTextElement(app.Hwnd, needle);
 
             if (info is null || info.Offscreen)
             {
@@ -251,7 +264,7 @@ internal sealed class WaitService
 
         VisualSupport.RequireRegionInDisplay(display, x, y, 1, 1, "color");
 
-        byte[] pixel = _host.CaptureRegion(x, y, 1, 1).Bgra;
+        byte[] pixel = _display.CaptureRegion(x, y, 1, 1).Bgra;
         int tolerance = GetInt(condition, "tolerance", 10);
         bool satisfied = VisualSupport.ColorMatches(pixel, 0, r, g, b, tolerance);
 
@@ -275,7 +288,7 @@ internal sealed class WaitService
             throw new ToolException("E_INVALID_ARG", $"未知 window scope: {scope}");
         }
 
-        HashSet<int> pids = scope == "tracked" ? _host.TrackedPids() : new HashSet<int>();
+        HashSet<int> pids = scope == "tracked" ? _apps.TrackedPids() : new HashSet<int>();
 
         if (scope == "tracked" && pids.Count == 0)
         {
@@ -339,9 +352,9 @@ internal sealed class WaitService
 
         (int x, int y, int width, int height) = VisualSupport.ParseRegion(regionElement);
         VisualSupport.RequireRegionInDisplay(display, x, y, width, height, "pixel_diff");
-        (byte[] bgra, int capturedWidth, int capturedHeight) = _host.CaptureRegion(x, y, width, height);
+        (byte[] bgra, int capturedWidth, int capturedHeight) = _display.CaptureRegion(x, y, width, height);
 
-        FrameSnapshot? baseline = _host.ResolveBaselineFrame(
+        FrameSnapshot? baseline = _frames.ResolveBaselineFrame(
             condition, x, y, capturedWidth, capturedHeight);
 
         if (baseline is null)
@@ -351,7 +364,7 @@ internal sealed class WaitService
                 ["satisfied"] = false,
                 ["reason"] = "no_matching_baseline",
                 ["baseline"] = null,
-                ["available_frames"] = _host.Frames(),
+                ["available_frames"] = _frames.Frames(),
             };
         }
 
@@ -372,7 +385,7 @@ internal sealed class WaitService
         // 直接复用 match_visual：condition 与 match_visual 参数同构（type 字段会被忽略）。
         try
         {
-            MatchVisualView match = _host.MatchVisual(condition);
+            MatchVisualView match = _frames.MatchVisual(condition);
 
             return new JsonObject
             {

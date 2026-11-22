@@ -19,7 +19,7 @@ namespace VScreenPilot.Session;
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
-internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IWaitHost, IElementOperationsHost
+internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IElementOperationsHost
 {
     private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
@@ -236,7 +236,7 @@ internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaser
         _visual = new VisualMatchService(new VisualContext(EnsureEnvironment, CaptureRegion, _paths.ValidatePngPath, () => Cancellation.IsCancellationRequested));
         _finder = new ElementFinder(new ElementFinderContext(FindLiveTrackedApp, EnsureEnvironment, RequireWindowOnDisplay, Uia, EnsureSnapshot, RegisterElement));
         _regionVerifier = new RegionVerifier(new RegionVerifierContext(EnsureEnvironmentFast, CaptureRegion, FindFrame, FindLatestFrame, () => _frames.Latest(), () => _frames.Snapshot()));
-        _waits = new WaitService(this);
+        _waits = new WaitService(new WaitDisplayContext(EnsureEnvironmentFast, CaptureRegion), new WaitSessionContext(EnterRead, ExitRead, () => Cancellation.IsCancellationRequested, ToolProgress.Report), new WaitAppContext(FindLiveTrackedApp, OwnedAppsSnapshotCore, TrackedPids, Uia), new WaitFrameContext((source, x, y, w, h) => _regionVerifier.ResolveBaselineFrame(source, x, y, w, h), _regionVerifier.FramesJson, MatchVisual));
         _resolver = new ElementResolver(new ElementResolverContext(_refs, () => Clients.CurrentId, () => SnapshotId, _uiaHost, IsTrackedPidCore, RequireWindowOnDisplay, _log));
         _elements = new ElementOperations(this);
         _screenText = new ScreenTextService(new ScreenTextContext(EnsureEnvironmentFast, CaptureRegion, () => Cancellation, Metrics.RecordOcr, Click));
