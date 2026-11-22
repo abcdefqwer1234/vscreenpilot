@@ -256,12 +256,21 @@ internal sealed partial class SessionManager : IDisposable
                 EnsureAppAllowed, IsOwned, TrackedAppTracker.IsLive),
             new LaunchFocusContext(previous => RestoreForeground(previous, logFailure: true),
                 StartFocusGuard, () => PauseFocusGuard(), ResumeFocusGuard, EnsureForeground));
-        _input = new InputRouter(this);
         _visual = new VisualMatchService(new VisualContext(EnsureEnvironment, CaptureRegion, _paths.ValidatePngPath, () => Cancellation.IsCancellationRequested));
         _finder = new ElementFinder(new ElementFinderContext(FindLiveTrackedApp, EnsureEnvironment, RequireWindowOnDisplay, Uia, EnsureSnapshot, RegisterElement));
         _regionVerifier = new RegionVerifier(new RegionVerifierContext(EnsureEnvironmentFast, CaptureRegion, FindFrame, FindLatestFrame, () => _frames.Latest(), () => _frames.Snapshot()));
         _waits = new WaitService(new WaitDisplayContext(EnsureEnvironmentFast, CaptureRegion), new WaitSessionContext(EnterRead, ExitRead, () => Cancellation.IsCancellationRequested, ToolProgress.Report), new WaitAppContext(FindLiveTrackedApp, OwnedAppsSnapshotCore, TrackedPids, Uia), new WaitFrameContext((source, x, y, w, h) => _regionVerifier.ResolveBaselineFrame(source, x, y, w, h), _regionVerifier.FramesJson, MatchVisual));
         _resolver = new ElementResolver(new ElementResolverContext(_refs, () => Clients.CurrentId, () => SnapshotId, _uiaHost, IsTrackedPidCore, RequireWindowOnDisplay, _log));
+        _input = new InputRouter(
+            new InputSessionContext(_log, Clients, () => Cancellation),
+            new InputFocusContext(EnsureForeground, IsAppForeground, previous => RestoreForeground(previous),
+                PauseFocusGuard, ResumeFocusGuard, () => _cursorGuard!.Pause(), () => _cursorGuard!.Resume()),
+            new InputDisplayContext(EnsureEnvironmentFast, EnsureEnvironment,
+                RequireWindowOnDisplay, RequirePointInDisplay, CaptureSignature,
+                () => EnvironmentProbe.IsInputDesktopAvailable()),
+            new InputElementContext(_resolver.Require, _resolver.Resolve, FindTrackedAppAtWindowCore,
+                RequirePointInTrackedApp, LastLiveTrackedApp, FindLiveTrackedApp),
+            new InputUiaContext(Uia, ResetUia, BuildObserved));
         _elements = new ElementOperations(
             new ElementStateContext(_uiaHost, _resolver, _refs, RegisterElement,
                 ElementRefCapacity, _log, _snapshots.ConvertTreeNode),

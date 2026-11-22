@@ -36,7 +36,7 @@ internal sealed partial class InputRouter
         int chunkChars = 32,
         int verifyEveryChunks = 1)
     {
-        string? before = target is null ? null : _host.Uia.GetText(target.Element, 65536);
+        string? before = target is null ? null : _uia.Uia.GetText(target.Element, 65536);
         bool textSupported = before is not null;
         var stopwatch = Stopwatch.StartNew();
         double injectMs = 0;
@@ -46,7 +46,7 @@ internal sealed partial class InputRouter
 
         foreach (string chunk in SplitTextChunks(text, chunkChars))
         {
-            if (_host.Cancellation.IsCancellationRequested)
+            if (_session.Cancellation().IsCancellationRequested)
             {
                 throw new ToolException(
                     "E_CANCELLED",
@@ -57,7 +57,7 @@ internal sealed partial class InputRouter
                     stage: "input");
             }
 
-            if (!_host.IsAppForeground(app))
+            if (!_focus.IsAppForeground(app))
             {
                 throw new ToolException(
                     "E_FOCUS_LOST",
@@ -119,7 +119,7 @@ internal sealed partial class InputRouter
 
             while (DateTime.UtcNow < deadline)
             {
-                if (!_host.IsAppForeground(app))
+                if (!_focus.IsAppForeground(app))
                 {
                     throw new ToolException(
                         "E_FOCUS_LOST",
@@ -257,10 +257,10 @@ internal sealed partial class InputRouter
         UiaElementHandle? target,
         string text)
     {
-        string? before = target is null ? null : _host.Uia.GetText(target.Element, 65536);
+        string? before = target is null ? null : _uia.Uia.GetText(target.Element, 65536);
         var stopwatch = Stopwatch.StartNew();
 
-        if (!_host.IsAppForeground(app))
+        if (!_focus.IsAppForeground(app))
         {
             throw new ToolException(
                 "E_FOCUS_LOST",

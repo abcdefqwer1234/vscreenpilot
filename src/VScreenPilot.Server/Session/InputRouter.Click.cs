@@ -26,8 +26,8 @@ internal sealed partial class InputRouter
     public ClickRefView ClickElementRef(
         string reference, string? channel, bool keepForeground, bool fallbackInput = false)
     {
-        DisplayInfo display = _host.EnsureDisplay();
-        ElementRefEntry probe = _host.RequireElement(reference);
+        DisplayInfo display = _display.EnsureDisplay();
+        ElementRefEntry probe = _element.RequireElement(reference);
         string mode = (channel ?? "auto").Trim().ToLowerInvariant();
 
         if (mode is not ("auto" or "uia" or "message" or "input"))
@@ -41,7 +41,7 @@ internal sealed partial class InputRouter
             return ClickMsaaRef(probe, msaaHwnd, msaaOrdinal, mode, keepForeground, fallbackInput);
         }
 
-        using UiaElementHandle handle = _host.ResolveHandle(
+        using UiaElementHandle handle = _element.ResolveHandle(
             reference, display, out ElementRefEntry entry, out bool refreshed);
 
         UiaElementInfo info = handle.Info;
@@ -118,7 +118,7 @@ internal sealed partial class InputRouter
         {
             using UiaElementHandle? handle = string.IsNullOrEmpty(entry.RuntimeId)
                 ? null
-                : _host.Uia.FindByRuntimeId(entry.Hwnd, entry.RuntimeId);
+                : _uia.Uia.FindByRuntimeId(entry.Hwnd, entry.RuntimeId);
 
             if (handle is null)
             {
@@ -142,7 +142,7 @@ internal sealed partial class InputRouter
         int x, int y, string button, int clicks, string mode,
         bool keepForeground = false, bool observe = true, bool fallbackInput = false)
     {
-        DisplayInfo display = _host.EnsureDisplay();
+        DisplayInfo display = _display.EnsureDisplay();
 
         if (clicks is < 1 or > 10)
         {
@@ -159,16 +159,16 @@ internal sealed partial class InputRouter
 
         using var inputLease = InputLease.TryAcquire(3000, "click");
 
-        if (mode == "input" && !_host.IsInputDesktopAvailable())
+        if (mode == "input" && !_display.IsInputDesktopAvailable())
         {
             throw NoInteractiveDesktop();
         }
 
-        TrackedApp app = _host.RequirePointInTrackedApp(display, x, y, "click");
+        TrackedApp app = _element.RequirePointInTrackedApp(display, x, y, "click");
 
         var observeWatch = Stopwatch.StartNew();
         ObserveSignature? observeBefore = observe
-            ? _host.CaptureSignature(display, x - 60, y - 60, 120, 120)
+            ? _display.CaptureSignature(display, x - 60, y - 60, 120, 120)
             : null;
 
         var stopwatch = Stopwatch.StartNew();
@@ -178,7 +178,7 @@ internal sealed partial class InputRouter
         {
             // 菜单/弹出层需要连续操作时，暂时冻结焦点护栏；租约到期后自动恢复，
             // 避免异常路径上 agent 不再调用工具时永久关闭护栏。
-            _host.PauseFocusGuard(30000);
+            _focus.PauseFocusGuard(30000);
         }
 
         bool canUseUia = button.Equals("left", StringComparison.OrdinalIgnoreCase) && clicks == 1;
@@ -198,8 +198,8 @@ internal sealed partial class InputRouter
 
         ObserveSignature? observeAfter = observeBefore is null
             ? null
-            : _host.CaptureSignature(display, x - 60, y - 60, 120, 120);
-        ObservedView? observed = _host.BuildObserved(
+            : _display.CaptureSignature(display, x - 60, y - 60, 120, 120);
+        ObservedView? observed = _uia.BuildObserved(
             observeBefore, observeAfter, observeWatch.Elapsed.TotalMilliseconds);
 
         return new ClickView(
@@ -302,7 +302,7 @@ internal sealed partial class InputRouter
 
         // fallback 也要检查交互桌面：锁屏/安全桌面上 SendInput 只会得到
         // 模糊的 E_INPUT，提前给出 E_NO_INTERACTIVE_DESKTOP 更有用。
-        if (!_host.IsInputDesktopAvailable())
+        if (!_display.IsInputDesktopAvailable())
         {
             throw NoInteractiveDesktop();
         }
@@ -313,8 +313,8 @@ internal sealed partial class InputRouter
 
     private void InjectInput(int x, int y, string button, int clicks, bool keepForeground)
     {
-        _host.PauseCursor();
-        _host.PauseFocusGuard();
+        _focus.PauseCursor();
+        _focus.PauseFocusGuard(0);
 
         try
         {
@@ -322,11 +322,11 @@ internal sealed partial class InputRouter
         }
         finally
         {
-            _host.ResumeCursor();
+            _focus.ResumeCursor();
 
             if (!keepForeground)
             {
-                _host.ResumeFocusGuard();
+                _focus.ResumeFocusGuard();
             }
         }
     }
@@ -338,8 +338,8 @@ internal sealed partial class InputRouter
         bool keepForeground, bool fallbackInput)
     {
         bool acted = mode is "auto" or "uia" &&
-                     _host.Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaOrdinal));
-        var bounds = _host.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaOrdinal));
+                     _uia.Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaOrdinal));
+        var bounds = _uia.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaOrdinal));
         string resultChannel = acted ? "msaa" : string.Empty;
 
         if (!acted && mode != "uia" && bounds is not null)

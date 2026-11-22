@@ -30,53 +30,71 @@ internal sealed record TextWriteResult(
     double DurationMs);
 
 /// <summary>输入路由所需的最小宿主接口。</summary>
-internal interface IInputHost
-{
-    LogRing Log { get; }
-    ClientSessionRegistry Clients { get; }
-    UiaHost Uia { get; }
-    DisplayInfo EnsureDisplay();
-    DisplayInfo Ensure();
-    CancellationToken Cancellation { get; }
-    ElementRefEntry RequireElement(string reference);
-    UiaElementHandle ResolveHandle(
-        string reference, DisplayInfo display, out ElementRefEntry entry, out bool refreshed);
-    TrackedApp? FindTrackedAppAtWindow(uint targetPid, uint rootPid);
-    TrackedApp RequirePointInTrackedApp(DisplayInfo display, int x, int y, string label);
-    void RequireWindowOnDisplay(DisplayInfo display, IntPtr hwnd, string label);
-    void RequirePointInDisplay(DisplayInfo display, int x, int y, string label);
-    bool EnsureForeground(TrackedApp app);
-    bool IsAppForeground(TrackedApp app);
-    TrackedApp? LastTrackedApp();
-    TrackedApp? FindLiveTrackedApp(int? pid);
-    void RestoreForeground(IntPtr previous, bool logFailure = true);
-    bool IsInputDesktopAvailable();
-    ObserveSignature CaptureSignature(DisplayInfo display, int x, int y, int width, int height);
-    ObservedView? BuildObserved(ObserveSignature? before, ObserveSignature? after, double milliseconds);
-    void PauseFocusGuard(int leaseMs = 0);
-    void ResumeFocusGuard();
-    TextWriteResult WriteTextVerified(
-        TrackedApp app, UiaElementHandle? target, string text, bool replace, int timeoutMs);
-    void PauseCursor();
-    void ResumeCursor();
-    void ResetUia();
-}
+internal delegate UiaElementHandle ResolveHandleHandler(
+    string reference, DisplayInfo display, out ElementRefEntry entry, out bool refreshed);
 
+internal sealed record InputSessionContext(
+    LogRing Log,
+    ClientSessionRegistry Clients,
+    Func<CancellationToken> Cancellation);
+
+internal sealed record InputFocusContext(
+    Func<TrackedApp, bool> EnsureForeground,
+    Func<TrackedApp, bool> IsAppForeground,
+    Action<IntPtr> RestoreForeground,
+    Action<int> PauseFocusGuard,
+    Action ResumeFocusGuard,
+    Action PauseCursor,
+    Action ResumeCursor);
+
+internal sealed record InputDisplayContext(
+    Func<DisplayInfo> EnsureDisplay,
+    Func<DisplayInfo> Ensure,
+    Action<DisplayInfo, IntPtr, string> RequireWindowOnDisplay,
+    Action<DisplayInfo, int, int, string> RequirePointInDisplay,
+    Func<DisplayInfo, int, int, int, int, ObserveSignature> CaptureSignature,
+    Func<bool> IsInputDesktopAvailable);
+
+internal sealed record InputElementContext(
+    Func<string, ElementRefEntry> RequireElement,
+    ResolveHandleHandler ResolveHandle,
+    Func<uint, uint, TrackedApp?> FindTrackedAppAtWindow,
+    Func<DisplayInfo, int, int, string, TrackedApp> RequirePointInTrackedApp,
+    Func<TrackedApp?> LastTrackedApp,
+    Func<int?, TrackedApp?> FindLiveTrackedApp);
+
+internal sealed record InputUiaContext(
+    UiaHost Uia,
+    Action ResetUia,
+    Func<ObserveSignature?, ObserveSignature?, double, ObservedView?> BuildObserved);
 /// <summary>
 /// 输入路由：坐标/ref 点击、键盘、长文本、手势；消息/输入/UIA 通道选择与前台恢复。
 /// 写锁与屏幕租约由工具执行器负责，本类只做路由与动作语义。
 /// </summary>
 internal sealed partial class InputRouter
 {
-    private readonly IInputHost _host;
+    private readonly InputSessionContext _session;
+    private readonly InputFocusContext _focus;
+    private readonly InputDisplayContext _display;
+    private readonly InputElementContext _element;
+    private readonly InputUiaContext _uia;
     private readonly LogRing _log;
     private readonly object _blockGate = new();
     private readonly Dictionary<string, HashSet<int>> _uiaBlockedPids = new(StringComparer.Ordinal);
 
-    public InputRouter(IInputHost host)
+    public InputRouter(
+        InputSessionContext session,
+        InputFocusContext focus,
+        InputDisplayContext display,
+        InputElementContext element,
+        InputUiaContext uia)
     {
-        _host = host;
-        _log = host.Log;
+        _session = session;
+        _focus = focus;
+        _display = display;
+        _element = element;
+        _uia = uia;
+        _log = session.Log;
     }
 
     public void ClearBlocked()
@@ -186,7 +204,7 @@ internal sealed partial class InputRouter
             return;
         }
 
-        TrackedApp? app = _host.LastTrackedApp();
+        TrackedApp? app = _element.LastTrackedApp();
         WindowInfo? info = WindowManager.FromHandle(current);
 
         // 点击可能打开了应用内的菜单/弹窗；保留其焦点，避免把刚打开的 UI 关掉。
@@ -195,12 +213,12 @@ internal sealed partial class InputRouter
             return;
         }
 
-        _host.RestoreForeground(previous);
+        _focus.RestoreForeground(previous);
     }
 
     private TrackedApp RequireTrackedApp(int? pid = null)
     {
-        TrackedApp? app = _host.FindLiveTrackedApp(pid);
+        TrackedApp? app = _element.FindLiveTrackedApp(pid);
 
         if (app is null || !NativeMethods.IsWindow(app.Hwnd))
         {

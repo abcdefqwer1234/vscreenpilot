@@ -177,6 +177,15 @@ internal sealed partial class SessionManager : IDisposable
         _stateStore.Clear();
     }
 
+    private TrackedApp? FindTrackedAppAtWindowCore(uint targetPid, uint rootPid)
+    {
+        lock (_gate)
+        {
+            return _apps.FirstOrDefault(app => IsOwned(app) &&
+                (app.Pid == (int)targetPid || app.Pid == (int)rootPid) && TrackedAppTracker.IsLive(app));
+        }
+    }
+
     private List<TrackedApp> OwnedAppsSnapshotCore()
     {
         lock (_gate)

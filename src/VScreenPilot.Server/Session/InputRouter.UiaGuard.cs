@@ -27,7 +27,7 @@ internal sealed partial class InputRouter
     {
         lock (_blockGate)
         {
-            string clientId = _host.Clients.CurrentId;
+            string clientId = _session.Clients.CurrentId;
 
             if (!_uiaBlockedPids.TryGetValue(clientId, out HashSet<int>? blocked))
             {
@@ -43,7 +43,7 @@ internal sealed partial class InputRouter
     {
         lock (_blockGate)
         {
-            if (_uiaBlockedPids.TryGetValue(_host.Clients.CurrentId, out HashSet<int>? blocked) &&
+            if (_uiaBlockedPids.TryGetValue(_session.Clients.CurrentId, out HashSet<int>? blocked) &&
                 blocked.Contains(pid))
             {
                 return false;
@@ -57,13 +57,13 @@ internal sealed partial class InputRouter
             // ElementFromPoint/Invoke 可能被 provider 卡住；最多等 3s，超时换新 UIA 实例。
             Task<bool> invokeTask = Task.Run(() =>
             {
-                bool ok = _host.Uia.TryInvokeAtPoint(x, y, pid, out _);
+                bool ok = _uia.Uia.TryInvokeAtPoint(x, y, pid, out _);
                 return ok;
             });
 
             if (!invokeTask.Wait(3000))
             {
-                _host.ResetUia();
+                _uia.ResetUia();
                 BlockUiaPid(pid);
                 _log.Warn($"UIA 坐标触发超时，已熔断 pid={pid}");
                 return false;
