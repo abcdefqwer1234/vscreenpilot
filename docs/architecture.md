@@ -108,7 +108,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 
 ## 8. 已知债务（T3 输入）
 
-- 190 个源文件、32,417 行；0 个文件 >600，最大 599（`MsaaService.cs`）；16 个类型 >400，最大 `UiaService` 类型跨度 1,881。
+- 190 个源文件、32384 行；0 个文件 >600，最大 599（`MsaaService.cs`）；16 个类型 >400，最大 `UiaService` 类型跨度 1,881。
 - 0 个方法 >150，最大 120；但仍有约 48 个 >80 行、32 个 >12 判断点、39 个 >6 参数。
 - 无类型 `catch` 0；无日志静默 `catch` 0（`arch_metrics.py` 口径）。
 - 8 个 `I*Host`、143 个成员声明、93 个唯一名；25 个有行为组件只有约 5 个有直接单测。
