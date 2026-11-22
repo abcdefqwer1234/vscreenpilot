@@ -1,0 +1,52 @@
+using System.Text.Json;
+using VScreenPilot.Errors;
+using VScreenPilot.Json;
+using VScreenPilot.Session;
+using VScreenPilot.Tools;
+using static VScreenPilot.Json.JsonArgReader;
+
+namespace VScreenPilot.Mcp;
+
+/// <summary>Visual 组：wait_for / assert_region / match_visual。</summary>
+internal sealed class VisualTools
+{
+    private readonly SessionManager _session;
+
+    public VisualTools(SessionManager session)
+    {
+        _session = session;
+    }
+
+    public ToolResponse WaitFor(JsonElement arguments)
+    {
+        if (!arguments.TryGetProperty("condition", out JsonElement condition) ||
+            condition.ValueKind != JsonValueKind.Object)
+        {
+            throw new ToolException("E_INVALID_ARG", "wait_for 需要 condition 对象");
+        }
+
+        int timeoutMs = OptionalInt(arguments, "timeout_ms", 5000);
+        int? intervalMs = OptionalNullableInt(arguments, "interval_ms");
+        return ToolResponseWriter.FromView(_session.WaitFor(condition, timeoutMs, intervalMs));
+    }
+
+    public ToolResponse AssertRegion(JsonElement arguments)
+    {
+        if (!arguments.TryGetProperty("region", out JsonElement region) ||
+            region.ValueKind != JsonValueKind.Object)
+        {
+            throw new ToolException("E_INVALID_ARG", "assert_region 需要 region");
+        }
+
+        if (!arguments.TryGetProperty("expectation", out JsonElement expectation) ||
+            expectation.ValueKind != JsonValueKind.Object)
+        {
+            throw new ToolException("E_INVALID_ARG", "assert_region 需要 expectation");
+        }
+
+        return ToolResponseWriter.FromView(_session.AssertRegion(region, expectation));
+    }
+
+    public ToolResponse MatchVisual(JsonElement arguments) =>
+        ToolResponseWriter.FromView(_session.MatchVisual(arguments));
+}

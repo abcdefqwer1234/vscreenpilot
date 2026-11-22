@@ -136,39 +136,6 @@ internal sealed partial class McpTransport
             _session.PressKeys(keysText, keepForeground, pid, allowSystemKeys, observe));
     }
 
-    private ToolResponse WaitFor(JsonElement arguments)
-    {
-        if (!arguments.TryGetProperty("condition", out JsonElement condition) ||
-            condition.ValueKind != JsonValueKind.Object)
-        {
-            throw new ToolException("E_INVALID_ARG", "wait_for 需要 condition 对象");
-        }
-
-        int timeoutMs = OptionalInt(arguments, "timeout_ms", 5000);
-        int? intervalMs = OptionalNullableInt(arguments, "interval_ms");
-        return ToolResponseWriter.FromView(_session.WaitFor(condition, timeoutMs, intervalMs));
-    }
-
-    private ToolResponse AssertRegion(JsonElement arguments)
-    {
-        if (!arguments.TryGetProperty("region", out JsonElement region) ||
-            region.ValueKind != JsonValueKind.Object)
-        {
-            throw new ToolException("E_INVALID_ARG", "assert_region 需要 region");
-        }
-
-        if (!arguments.TryGetProperty("expectation", out JsonElement expectation) ||
-            expectation.ValueKind != JsonValueKind.Object)
-        {
-            throw new ToolException("E_INVALID_ARG", "assert_region 需要 expectation");
-        }
-
-        return ToolResponseWriter.FromView(_session.AssertRegion(region, expectation));
-    }
-
-    private ToolResponse MatchVisual(JsonElement arguments) =>
-        ToolResponseWriter.FromView(_session.MatchVisual(arguments));
-
     private ToolResponse ReleaseEnvironment(JsonElement arguments)
     {
         bool keepDisplay = OptionalBool(arguments, "keep_display", true);
