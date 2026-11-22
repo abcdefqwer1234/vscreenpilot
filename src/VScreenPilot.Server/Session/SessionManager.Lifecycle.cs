@@ -16,7 +16,7 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IElementFinderHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost, IScreenCaptureHost
+internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IElementFinderHost, IWaitHost, IElementResolverHost, IElementOperationsHost, IScreenTextHost
 {
     /// <summary>
     /// 在释放/预热等低负载节点裁剪工作集。不是定时看门狗，只按事件触发。
@@ -319,16 +319,6 @@ internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaser
         int x, int y, string button, int clicks, string mode,
         bool keepForeground, bool observe, bool fallbackInput) =>
         Click(x, y, button, clicks, mode, keepForeground, observe, fallbackInput);
-
-    DisplayInfo IScreenCaptureHost.EnsureDisplay() => EnsureEnvironmentFast();
-
-    (byte[] Bgra, int Width, int Height) IScreenCaptureHost.CaptureRegion(
-        int x, int y, int width, int height) => CaptureRegion(x, y, width, height);
-
-    string IScreenCaptureHost.StoreFrame(byte[] bgra, int width, int height, int x, int y) =>
-        StoreFrame(bgra, width, height, x, y);
-
-    string IScreenCaptureHost.ValidateSavePath(string path) => _paths.ValidateSavePath(path);
 
     MetricsRegistry IEnvironmentHost.Metrics => Metrics;
 

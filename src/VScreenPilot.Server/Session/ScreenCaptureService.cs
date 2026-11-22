@@ -10,20 +10,18 @@ using VScreenPilot.Errors;
 namespace VScreenPilot.Session;
 
 /// <summary>截图工具所需的最小宿主接口。</summary>
-internal interface IScreenCaptureHost
-{
-    DisplayInfo EnsureDisplay();
-    (byte[] Bgra, int Width, int Height) CaptureRegion(int x, int y, int width, int height);
-    string StoreFrame(byte[] bgra, int width, int height, int x, int y);
-    string ValidateSavePath(string path);
-}
+internal sealed record ScreenCaptureContext(
+    Func<DisplayInfo> EnsureDisplay,
+    Func<int, int, int, int, (byte[] Bgra, int Width, int Height)> CaptureRegion,
+    Func<byte[], int, int, int, int, string> StoreFrame,
+    Func<string, string> ValidateSavePath);
 
 /// <summary>capture_screen：一次采集、主图 + preview 两次编码。</summary>
 internal sealed class ScreenCaptureService
 {
-    private readonly IScreenCaptureHost _host;
+    private readonly ScreenCaptureContext _host;
 
-    public ScreenCaptureService(IScreenCaptureHost host) => _host = host;
+    public ScreenCaptureService(ScreenCaptureContext host) => _host = host;
 
     public (byte[] Png, CaptureView Meta) CaptureScreen(
         int? x, int? y, int? width, int? height, double scale, string? savePath)
