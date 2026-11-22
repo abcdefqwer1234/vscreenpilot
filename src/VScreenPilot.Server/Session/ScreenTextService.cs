@@ -24,6 +24,8 @@ internal sealed class ScreenTextService
     private readonly ScreenTextContext _host;
     private readonly OcrService _ocr = new();
 
+    private sealed record ClickRegion(int Left, int Top, int Width, int Height);
+
     public ScreenTextService(ScreenTextContext host) => _host = host;
 
     /// <summary>
@@ -153,6 +155,43 @@ internal sealed class ScreenTextService
             throw new ToolException("E_INVALID_ARG", "click_text 需要非空 text");
         }
 
+        ClickRegion region = ResolveClickRegion(regionX, regionY, regionWidth, regionHeight);
+        int left = region.Left;
+        int top = region.Top;
+        int width = region.Width;
+        int height = region.Height;
+
+        List<ScreenTextLine> lines = RunOcr(region, text);
+
+        List<ScreenTextLine> matches = lines
+            .Where(line => OcrTextMatches(line.Text, text))
+            .ToList();
+        ScreenTextLine match = SelectClickMatch(matches, text, requireUnique, region, lines.Count);
+
+        int clickX = left + match.Left + match.Width / 2;
+        int clickY = top + match.Top + match.Height / 2;
+        ClickView click = _host.Click(
+            clickX, clickY, "left", 1, channel, keepForeground, observe, fallbackInput);
+
+        int clickRedactions = 0;
+        string clickedText = PrivacyRedactor.RedactEmails(match.Text, ref clickRedactions);
+
+        return new ClickTextView(
+            true,
+            clickedText,
+            clickX,
+            clickY,
+            new BoundsView(left + match.Left, top + match.Top, match.Width, match.Height),
+            matches.Count > 1,
+            DescribeMatches(matches, region.Left, region.Top),
+            click.Method,
+            click.Observed,
+            clickRedactions);
+    }
+
+    private ClickRegion ResolveClickRegion(
+        int? regionX, int? regionY, int? regionWidth, int? regionHeight)
+    {
         DisplayInfo display = _host.EnsureDisplay();
         int left = display.X;
         int top = display.Y;
@@ -171,16 +210,20 @@ internal sealed class ScreenTextService
             height = regionHeight.Value;
         }
 
-        (byte[] bgra, int captureWidth, int captureHeight) =
-            _host.CaptureRegion(left, top, width, height);
+        return new ClickRegion(left, top, width, height);
+    }
 
-        List<ScreenTextLine> lines;
+    private List<ScreenTextLine> RunOcr(ClickRegion region, string text)
+    {
+        (byte[] bgra, int captureWidth, int captureHeight) =
+            _host.CaptureRegion(region.Left, region.Top, region.Width, region.Height);
 
         try
         {
-            lines = _ocr.Read(
+            List<ScreenTextLine> lines = _ocr.Read(
                 bgra, captureWidth, captureHeight, out _, out _, text, _host.Cancellation());
             _host.RecordOcr();
+            return lines;
         }
         catch (NotSupportedException exception)
         {
@@ -200,10 +243,11 @@ internal sealed class ScreenTextService
                 hint: "重新调用 click_text",
                 stage: "ocr");
         }
+    }
 
-        List<ScreenTextLine> matches = lines
-            .Where(line => OcrTextMatches(line.Text, text))
-            .ToList();
+    private static ScreenTextLine SelectClickMatch(
+        List<ScreenTextLine> matches, string text, bool requireUnique, ClickRegion region, int totalLines)
+    {
 
         if (matches.Count == 0)
         {
@@ -213,8 +257,8 @@ internal sealed class ScreenTextService
                 new JsonObject
                 {
                     ["text"] = text,
-                    ["lines"] = lines.Count,
-                    ["region"] = VisualSupport.RegionJson(left, top, width, height),
+                    ["lines"] = totalLines,
+                    ["region"] = VisualSupport.RegionJson(region.Left, region.Top, region.Width, region.Height),
                 },
                 retryable: true,
                 hint: "先用 read_screen_text 看 OCR 结果；或缩小 region/查询词",
@@ -229,36 +273,16 @@ internal sealed class ScreenTextService
                 new JsonObject
                 {
                     ["text"] = text,
-                    ["matches"] = VspJson.ToNode(DescribeMatches(matches, left, top)),
+                    ["matches"] = VspJson.ToNode(DescribeMatches(matches, region.Left, region.Top)),
                 },
                 retryable: true,
                 hint: "缩小 region、使用更长的查询词，或显式 require_unique=false",
                 stage: "ocr");
         }
 
-        ScreenTextLine match = matches
+        return matches
             .OrderByDescending(line => line.Width * line.Height)
             .First();
-
-        int clickX = left + match.Left + match.Width / 2;
-        int clickY = top + match.Top + match.Height / 2;
-        ClickView click = _host.Click(
-            clickX, clickY, "left", 1, channel, keepForeground, observe, fallbackInput);
-
-        int clickRedactions = 0;
-        string clickedText = PrivacyRedactor.RedactEmails(match.Text, ref clickRedactions);
-
-        return new ClickTextView(
-            true,
-            clickedText,
-            clickX,
-            clickY,
-            new BoundsView(left + match.Left, top + match.Top, match.Width, match.Height),
-            matches.Count > 1,
-            DescribeMatches(matches, left, top),
-            click.Method,
-            click.Observed,
-            clickRedactions);
     }
 
     private static List<ScreenTextLineView> DescribeMatches(
