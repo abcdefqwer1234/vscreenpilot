@@ -35,7 +35,7 @@ def main() -> int:
     args = parser.parse_args()
 
     global RESULTS
-    RESULTS = args.out or run_dir("gui")
+    RESULTS = os.path.abspath(args.out or run_dir("gui"))
     gui_dir = os.path.join(RESULTS, "gui")
     os.makedirs(gui_dir, exist_ok=True)
     cases: list[dict] = []

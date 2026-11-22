@@ -151,6 +151,7 @@ internal sealed class ElementValueOps
         EnsureWritable(entry, info);
 
         string effectiveMode = _host.KeyboardValueOps.ResolveWriteMode(request.Mode, info);
+        EnsureReplaceAllowed(entry, info, effectiveMode, request.AllowDestructive);
         ValidateKeyboardMode(entry, info, effectiveMode, request.AllowKeyboard);
 
         if (effectiveMode is "append" or "replace")
@@ -202,6 +203,26 @@ internal sealed class ElementValueOps
             "E_ELEMENT_DISABLED",
             "控件已禁用，拒绝写入",
             new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
+    }
+
+    private static void EnsureReplaceAllowed(
+        ElementRefEntry entry, UiaElementInfo info, string effectiveMode, bool allowDestructive)
+    {
+        if (effectiveMode != "replace" || allowDestructive)
+        {
+            return;
+        }
+
+        throw new ToolException(
+            "E_DESTRUCTIVE_REQUIRED",
+            "replace 会先全选目标内容再覆盖；请显式传 allow_destructive=true，或改用 mode=append/insert",
+            new JsonObject
+            {
+                ["ref"] = entry.Ref,
+                ["mode"] = effectiveMode,
+                ["control_type"] = info.ControlTypeName,
+                ["automation_id"] = info.AutomationId,
+            });
     }
 
     private static void ValidateKeyboardMode(

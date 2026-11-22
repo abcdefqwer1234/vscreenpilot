@@ -91,6 +91,31 @@ internal static class SessionComposition
 
     private static void BuildInput(SessionManager host)
     {
+        // 依赖顺序：VisualMatch → finder/verifier/waits → resolver → input。
+        // InputRouter 的回调直接绑定 _resolver 的实例方法，必须最后创建。
+        host.VisualMatch = new VisualMatchService(new VisualContext(
+            host.EnsureEnvironment, host.CaptureOps.CaptureRegion,
+            host._paths.ValidatePngPath, () => host.Cancellation.IsCancellationRequested));
+        host._finder = new ElementFinder(new ElementFinderContext(
+            host.FindLiveTrackedApp, host.EnsureEnvironment, host.InputOps.RequireWindowOnDisplay,
+            host.Uia, host.ElementOps.EnsureSnapshot, host.ElementOps.RegisterElement));
+        host._regionVerifier = new RegionVerifier(new RegionVerifierContext(
+            host.EnsureEnvironmentFast, host.CaptureOps.CaptureRegion,
+            host.CaptureOps.FindFrame, host.CaptureOps.FindLatestFrame,
+            () => host._frames.Latest(), () => host._frames.Snapshot()));
+        host._waits = new WaitService(
+            new WaitDisplayContext(host.EnsureEnvironmentFast, host.CaptureOps.CaptureRegion),
+            new WaitSessionContext(host.EnterRead, host.ExitRead,
+                () => host.Cancellation.IsCancellationRequested, ToolProgress.Report),
+            new WaitAppContext(host.FindLiveTrackedApp, host.LifecycleOps.OwnedAppsSnapshotCore,
+                host.VerifyOps.TrackedPids, host.Uia),
+            new WaitFrameContext(
+                (source, x, y, w, h) => host._regionVerifier.ResolveBaselineFrame(source, x, y, w, h),
+                host._regionVerifier.FramesJson, host.VisualOps.MatchVisual));
+        host._resolver = new ElementResolver(new ElementResolverContext(
+            host.Refs, () => host.Clients.CurrentId, () => host.ElementOps.SnapshotId,
+            host._uiaHost, host.LifecycleOps.IsTrackedPidCore,
+            host.InputOps.RequireWindowOnDisplay, host._log));
         host._input = new InputRouter(
             new InputSessionContext(host._log, host.Clients, () => host.Cancellation),
             new InputFocusContext(host.InputOps.EnsureForeground, host.InputOps.IsAppForeground, previous => host.InputOps.RestoreForeground(previous),
@@ -101,11 +126,6 @@ internal static class SessionComposition
             new InputElementContext(host._resolver.Require, host._resolver.Resolve, host.LifecycleOps.FindTrackedAppAtWindowCore,
                 host.InputOps.RequirePointInTrackedApp, host.LastLiveTrackedApp, host.FindLiveTrackedApp),
             new InputUiaContext(host.Uia, host.ResetUia, host.ObserveOps.BuildObserved));
-        host._finder = new ElementFinder(new ElementFinderContext(host.FindLiveTrackedApp, host.EnsureEnvironment, host.InputOps.RequireWindowOnDisplay, host.Uia, host.ElementOps.EnsureSnapshot, host.ElementOps.RegisterElement));
-        host._regionVerifier = new RegionVerifier(new RegionVerifierContext(host.EnsureEnvironmentFast, host.CaptureOps.CaptureRegion, host.CaptureOps.FindFrame, host.CaptureOps.FindLatestFrame, () => host._frames.Latest(), () => host._frames.Snapshot()));
-        host._waits = new WaitService(new WaitDisplayContext(host.EnsureEnvironmentFast, host.CaptureOps.CaptureRegion), new WaitSessionContext(host.EnterRead, host.ExitRead, () => host.Cancellation.IsCancellationRequested, ToolProgress.Report), new WaitAppContext(host.FindLiveTrackedApp, host.LifecycleOps.OwnedAppsSnapshotCore, host.VerifyOps.TrackedPids, host.Uia), new WaitFrameContext((source, x, y, w, h) => host._regionVerifier.ResolveBaselineFrame(source, x, y, w, h), host._regionVerifier.FramesJson, host.VisualOps.MatchVisual));
-        host._resolver = new ElementResolver(new ElementResolverContext(host.Refs, () => host.Clients.CurrentId, () => host.ElementOps.SnapshotId, host._uiaHost, host.LifecycleOps.IsTrackedPidCore, host.InputOps.RequireWindowOnDisplay, host._log));
-        host.VisualMatch = new VisualMatchService(new VisualContext(host.EnsureEnvironment, host.CaptureOps.CaptureRegion, host._paths.ValidatePngPath, () => host.Cancellation.IsCancellationRequested));
     }
 
     private static void BuildElements(SessionManager host)
