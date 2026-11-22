@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 using VScreenPilot.Json;
 
-namespace VScreenPilot.Mcp;
+namespace VScreenPilot.Tools;
 
 /// <summary>统一的工具响应出口：视图/节点 → text + structuredContent。</summary>
 internal static class ToolResponseWriter

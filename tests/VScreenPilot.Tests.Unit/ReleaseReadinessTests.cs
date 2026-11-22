@@ -3,6 +3,8 @@ using VScreenPilot.Mcp;
 using Xunit;
 using VScreenPilot.Session;
 
+using VScreenPilot.Tools;
+
 namespace VScreenPilot.Tests;
 
 public sealed class ToolCatalogTests

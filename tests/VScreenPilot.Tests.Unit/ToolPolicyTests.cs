@@ -1,6 +1,8 @@
 using VScreenPilot.Mcp;
 using Xunit;
 
+using VScreenPilot.Tools;
+
 namespace VScreenPilot.Tests;
 
 /// <summary>

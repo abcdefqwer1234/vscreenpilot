@@ -15,6 +15,8 @@ using VScreenPilot.Views;
 using static VScreenPilot.Json.JsonArgReader;
 using VScreenPilot.Errors;
 
+using VScreenPilot.Tools;
+
 namespace VScreenPilot.Mcp;
 
 internal sealed partial class McpTransport

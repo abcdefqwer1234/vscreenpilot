@@ -10,6 +10,8 @@ using VScreenPilot.Errors;
 
 using VScreenPilot.Server.Infrastructure;
 
+using VScreenPilot.Tools;
+
 namespace VScreenPilot.Tests;
 
 public sealed class ProtocolContractTests

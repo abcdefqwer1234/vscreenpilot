@@ -5,7 +5,7 @@ using VScreenPilot.Infrastructure;
 using VScreenPilot.Server.Infrastructure;
 using VScreenPilot.Errors;
 
-namespace VScreenPilot.Mcp;
+namespace VScreenPilot.Tools;
 
 public sealed class ToolResponse
 {

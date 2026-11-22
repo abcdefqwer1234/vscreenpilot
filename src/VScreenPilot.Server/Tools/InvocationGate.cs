@@ -1,6 +1,6 @@
 using VScreenPilot.Server.Infrastructure;
 
-namespace VScreenPilot.Mcp;
+namespace VScreenPilot.Tools;
 
 /// <summary>
 /// 工具调用的资源门：先拿屏幕租约，再排队写锁；任一步失败都必须回滚已拿到的资源。

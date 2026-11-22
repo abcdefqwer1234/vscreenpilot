@@ -2,6 +2,8 @@ using System.Text.Json.Nodes;
 using VScreenPilot.Mcp;
 using Xunit;
 
+using VScreenPilot.Tools;
+
 namespace VScreenPilot.Tests.Contract;
 
 /// <summary>

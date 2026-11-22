@@ -66,7 +66,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 
 ## 4. 工具层与 MCP
 
-- 22 个工具定义在 `src/VScreenPilot.Server/Tools/Definitions/*.json`，由 `ToolCatalog` 加载（113 行）；顺序按 `Ordinal`。
+- 22 个工具定义在 `src/VScreenPilot.Server/Tools/Definitions/*.json`，由 `ToolCatalog` 加载（89 行）；顺序按 `Ordinal`。
 - `ToolDescriptor`/`ToolPolicy`/`ToolRegistry` 负责 schema、权限、超时与并发策略；`ToolHandlers` 负责参数解析与调用。
 - `ToolExecutor` 统一处理写锁、屏幕租约、超时、取消与 epoch；`ToolContext` 已改为 `IExecutionControl` + `ClientInfo`，不再持有 `SessionManager`。失败路径的屏幕租约在 `InvocationGate` 中回滚。
 - 错误统一走 `ToolException` + `ErrorCatalog`；错误包字段、错误码、`docs` 锚点是冻结契约。
@@ -123,7 +123,7 @@ Server (VScreenPilot) ──> Automation ──> Platform ──> Abstractions
 <!-- arch-metrics:begin -->
 | 指标 | 实测 | 硬上限 |
 |---|---:|---:|
-| 源文件 / 行数 | 187 / 32222 | - |
+| 源文件 / 行数 | 187 / 32236 | - |
 | 最大文件 | 599 | ≤450 |
 | 类型 >400 | 16 | 0 |
 | 最大类型跨度 | 1881 | ≤400 |

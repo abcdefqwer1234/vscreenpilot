@@ -3,6 +3,8 @@ using VScreenPilot.Mcp;
 using VScreenPilot.Server.Infrastructure;
 using Xunit;
 
+using VScreenPilot.Tools;
+
 namespace VScreenPilot.Tests;
 
 /// <summary>

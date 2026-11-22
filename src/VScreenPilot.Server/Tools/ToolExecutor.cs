@@ -9,7 +9,7 @@ using VScreenPilot.Errors;
 using VScreenPilot.Json;
 using VScreenPilot.Platform.Logging;
 
-namespace VScreenPilot.Mcp;
+namespace VScreenPilot.Tools;
 
 /// <summary>
 /// 一次工具调用的上下文：会话、客户端与请求级参数。处理器仍绑定在

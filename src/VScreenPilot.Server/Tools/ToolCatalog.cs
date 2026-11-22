@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using VScreenPilot.Server.Infrastructure;
 
-namespace VScreenPilot.Mcp;
+namespace VScreenPilot.Tools;
 
 /// <summary>从 Tools/Definitions/*.json 加载 22 个工具定义，并校验 handler 覆盖。</summary>
 internal static class ToolCatalog

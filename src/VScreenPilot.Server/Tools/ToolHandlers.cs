@@ -15,6 +15,8 @@ using VScreenPilot.Views;
 using static VScreenPilot.Json.JsonArgReader;
 using VScreenPilot.Errors;
 
+using VScreenPilot.Tools;
+
 namespace VScreenPilot.Mcp;
 
 /// <summary>工具处理器：只解析参数并调用会话/领域组件，不承担调度与协议。</summary>

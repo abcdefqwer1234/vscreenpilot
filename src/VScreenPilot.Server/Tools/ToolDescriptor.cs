@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 
 using VScreenPilot.Server.Infrastructure;
 
-namespace VScreenPilot.Mcp;
+namespace VScreenPilot.Tools;
 
 /// <summary>
 /// 一个 MCP 工具的完整描述：对外元数据、输出 schema、调度策略与处理器。
