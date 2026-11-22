@@ -13,36 +13,48 @@ using VScreenPilot.Errors;
 namespace VScreenPilot.Session;
 
 /// <summary>release_environment 所需的最小宿主接口。</summary>
-internal interface IEnvironmentReleaserHost
-{
-    object Gate { get; }
-    void IncrementEpoch();
-    int ActiveClientCount { get; }
-    string CurrentClientId { get; }
-    TrackedAppRegistry Apps { get; }
-    bool IsOwned(TrackedApp app);
-    string CloseTrackedApp(TrackedApp app, string policy, out string? warning);
-    void ResumeFocusGuard();
-    void ClearElementRefs(bool allClients);
-    void ClearFrames(bool allClients);
-    void ClearInputBlock(bool allClients);
-    void MarkDisplaySelfHealedFalse();
-    void MarkDisplayInitialized(bool initialized);
-    bool DisplayAttached { get; }
-    bool TryRemoveDisplay();
-    void StopAndDisposeVdd();
-    void ClearStateStore();
-    void SaveState();
-    MemoryView TrimIdleMemory(string reason);
-    LogRing Log { get; }
-}
+internal sealed record ReleaseSessionContext(
+    object Gate,
+    Action IncrementEpoch,
+    Func<int> ActiveClientCount,
+    LogRing Log);
+
+internal sealed record ReleaseAppsContext(
+    TrackedAppRegistry Apps,
+    Func<TrackedApp, bool> IsOwned,
+    Func<TrackedApp, string, (string Outcome, string? Warning)> CloseTrackedApp,
+    Action ResumeFocusGuard);
+
+internal sealed record ReleaseDisplayContext(
+    Action<bool> ClearElementRefs,
+    Action<bool> ClearFrames,
+    Action<bool> ClearInputBlock,
+    Action MarkDisplaySelfHealedFalse,
+    Action<bool> MarkDisplayInitialized,
+    Func<bool> DisplayAttached,
+    Func<bool> TryRemoveDisplay,
+    Action StopAndDisposeVdd);
+
+internal sealed record ReleaseStateContext(
+    Func<string, MemoryView> TrimIdleMemory,
+    Action SaveState,
+    Action ClearStateStore);
 
 /// <summary>release_environment：按策略关闭/归位应用，释放 ref、帧、输入与虚拟屏。</summary>
 internal sealed class EnvironmentReleaser
 {
-    private readonly IEnvironmentReleaserHost _host;
+    private readonly ReleaseSessionContext _session;
+    private readonly ReleaseAppsContext _apps;
+    private readonly ReleaseDisplayContext _display;
+    private readonly ReleaseStateContext _state;
 
-    public EnvironmentReleaser(IEnvironmentReleaserHost host) => _host = host;
+    public EnvironmentReleaser(ReleaseSessionContext session, ReleaseAppsContext apps, ReleaseDisplayContext display, ReleaseStateContext state)
+    {
+        _session = session;
+        _apps = apps;
+        _display = display;
+        _state = state;
+    }
 
     private sealed class ReleaseState
     {
@@ -59,13 +71,13 @@ internal sealed class EnvironmentReleaser
         bool keepDisplay, string onDirty = "abort", bool allowDataLoss = false,
         bool forceRemoveDisplay = false, bool forceAllClients = false)
     {
-        lock (_host.Gate)
+        lock (_session.Gate)
         {
             var state = new ReleaseState();
             onDirty = ValidateOnDirty(onDirty, allowDataLoss);
 
             // 校验通过后再推进代际：一次被拒绝的 release 不应让在途结果作废。
-            _host.IncrementEpoch();
+            _session.IncrementEpoch();
 
             bool keepDisplayEffective = ResolveKeepDisplay(
                 keepDisplay, onDirty, forceRemoveDisplay, state.Warnings);
@@ -81,7 +93,7 @@ internal sealed class EnvironmentReleaser
                 removed = FinishRelease(state, onDirty, forceAllClients, keepDisplayEffective);
             }
 
-            MemoryView memory = _host.TrimIdleMemory("release");
+            MemoryView memory = _state.TrimIdleMemory("release");
             return BuildReport(state, removed, keepDisplayEffective, onDirty, memory);
         }
     }
@@ -123,7 +135,7 @@ internal sealed class EnvironmentReleaser
             warnings.Add("on_dirty=abort 需要保留虚拟屏，已忽略 keep_display=false");
         }
 
-        if (!keepDisplayEffective && _host.ActiveClientCount > 1 && !forceRemoveDisplay)
+        if (!keepDisplayEffective && _session.ActiveClientCount() > 1 && !forceRemoveDisplay)
         {
             keepDisplayEffective = true;
             warnings.Add("其他客户端仍在使用虚拟屏，已忽略 keep_display=false");
@@ -135,8 +147,8 @@ internal sealed class EnvironmentReleaser
     private void ReleaseApps(ReleaseState state, string onDirty, bool forceAllClients)
     {
         IEnumerable<TrackedApp> releaseApps = forceAllClients
-            ? _host.Apps.Snapshot()
-            : _host.Apps.Where(_host.IsOwned);
+            ? _apps.Apps.Snapshot()
+            : _apps.Apps.Where(_apps.IsOwned);
 
         foreach (TrackedApp app in releaseApps.Reverse().ToList())
         {
@@ -153,7 +165,7 @@ internal sealed class EnvironmentReleaser
             }
             catch (Exception exception)
             {
-                _host.Log.Warn($"清理应用 {app.Pid} 失败: {exception.Message}");
+                _session.Log.Warn($"清理应用 {app.Pid} 失败: {exception.Message}");
                 state.Warnings.Add($"清理 {app.Pid} 失败: {exception.Message}");
             }
         }
@@ -165,7 +177,7 @@ internal sealed class EnvironmentReleaser
         {
             if (app.Owned && app.CloseWindowOnRelease)
             {
-                string outcome = _host.CloseTrackedApp(app, onDirty, out string? warning);
+                (string outcome, string? warning) = _apps.CloseTrackedApp(app, onDirty);
 
                 switch (outcome)
                 {
@@ -236,39 +248,39 @@ internal sealed class EnvironmentReleaser
         bool removed = false;
 
         // keep_foreground 可能暂停了焦点护栏；释放时恢复，避免用户前台一直留在虚拟屏。
-        _host.ResumeFocusGuard();
+        _apps.ResumeFocusGuard();
 
         // abort 的语义是“保留未保存窗口”，因此必须保留跟踪信息。
         if (onDirty != "abort")
         {
-            _host.Apps.RemoveAll(app => forceAllClients || _host.IsOwned(app));
+            _apps.Apps.RemoveAll(app => forceAllClients || _apps.IsOwned(app));
         }
 
         // 注意：这里已持 _gate；不要再进 _refGate（Ref 路径的锁顺序是 _refGate -> _gate）。
-        _host.ClearElementRefs(forceAllClients);
-        _host.ClearFrames(forceAllClients);
-        _host.ClearInputBlock(forceAllClients);
+        _display.ClearElementRefs(forceAllClients);
+        _display.ClearFrames(forceAllClients);
+        _display.ClearInputBlock(forceAllClients);
 
         if (forceAllClients)
         {
-            _host.MarkDisplaySelfHealedFalse();
+            _display.MarkDisplaySelfHealedFalse();
         }
 
         if (keepDisplayEffective)
         {
-            _host.MarkDisplayInitialized(_host.DisplayAttached);
-            _host.SaveState();
+            _display.MarkDisplayInitialized(_display.DisplayAttached());
+            _state.SaveState();
         }
         else
         {
-            removed = _host.TryRemoveDisplay();
-            _host.StopAndDisposeVdd();
+            removed = _display.TryRemoveDisplay();
+            _display.StopAndDisposeVdd();
 
-            _host.MarkDisplayInitialized(false);
-            _host.ClearStateStore();
+            _display.MarkDisplayInitialized(false);
+            _state.ClearStateStore();
         }
 
-        _host.Log.Info(
+        _session.Log.Info(
             $"环境已释放 (displayRemoved={removed}, kept={keepDisplayEffective})");
         return removed;
     }

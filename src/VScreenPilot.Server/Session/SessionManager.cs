@@ -19,7 +19,7 @@ namespace VScreenPilot.Session;
 /// <summary>
 /// 会话生命周期：互斥体、按需挂载虚拟屏、窗口归位、统一清理。
 /// </summary>
-internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IElementOperationsHost
+internal sealed partial class SessionManager : IDisposable, IElementOperationsHost
 {
     private static readonly Options.VspOptions HostOptions = Options.VspOptions.FromEnvironment();
 
@@ -245,7 +245,23 @@ internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaser
         _tracker = new TrackedAppTracker(new TrackedAppContext(_apps, _gate, IsOwned, _log));
         _stateKeeper = new SessionStateKeeper(new SessionStateContext(_gate, _stateStore, _display.State, _apps, _log));
         _allowlist = new AppAllowlistPolicy(new AppAllowlistContext(() => Clients.Current?.AppAllowlist ?? Array.Empty<string>(), _paths.Resolve));
-        _releaserService = new EnvironmentReleaser(this);
+        _releaserService = new EnvironmentReleaser(
+            new ReleaseSessionContext(_gate, IncrementEpoch, () => Clients.ActiveCount, _log),
+            new ReleaseAppsContext(_apps, IsOwned,
+                (app, policy) =>
+                {
+                    string outcome = CloseTrackedApp(app, policy, out string? warning);
+                    return (outcome, warning);
+                },
+                ResumeFocusGuard),
+            new ReleaseDisplayContext(
+                ClearElementRefsCore, ClearFramesCore, ClearInputBlockCore,
+                () => _display.State.SelfHealed = false,
+                initialized => _display.State.Initialized = initialized,
+                () => _display.State.VirtualDisplay is { Attached: true },
+                TryRemoveDisplay,
+                StopAndDisposeVddCore),
+            new ReleaseStateContext(TrimIdleMemory, SaveState, () => _stateStore.Clear()));
         _maintenance = new MaintenanceService(new MaintenanceContext(ArtifactRoot, () => Volatile.Read(ref _disposed) != 0, () => ArtifactDirectorySnapshot(), _log));
         _log.ClientIdProvider = () => Clients.CurrentId;
         AppLauncher.CleanupStaleProfiles();

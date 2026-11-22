@@ -16,7 +16,7 @@ using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
 
-internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaserHost, IElementOperationsHost
+internal sealed partial class SessionManager : IDisposable, IElementOperationsHost
 {
     /// <summary>
     /// 在释放/预热等低负载节点裁剪工作集。不是定时看门狗，只按事件触发。
@@ -256,25 +256,7 @@ internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaser
 
     MetricsRegistry IEnvironmentHost.Metrics => Metrics;
 
-    object IEnvironmentReleaserHost.Gate => _gate;
-
-    void IEnvironmentReleaserHost.IncrementEpoch() => IncrementEpoch();
-
-    int IEnvironmentReleaserHost.ActiveClientCount => Clients.ActiveCount;
-
-    string IEnvironmentReleaserHost.CurrentClientId => Clients.CurrentId;
-
-    TrackedAppRegistry IEnvironmentReleaserHost.Apps => _apps;
-
-    bool IEnvironmentReleaserHost.IsOwned(TrackedApp app) => IsOwned(app);
-
-    string IEnvironmentReleaserHost.CloseTrackedApp(
-        TrackedApp app, string policy, out string? warning) =>
-        CloseTrackedApp(app, policy, out warning);
-
-    void IEnvironmentReleaserHost.ResumeFocusGuard() => ResumeFocusGuard();
-
-    void IEnvironmentReleaserHost.ClearElementRefs(bool allClients)
+    private void ClearElementRefsCore(bool allClients)
     {
         if (allClients)
         {
@@ -286,7 +268,7 @@ internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaser
         }
     }
 
-    void IEnvironmentReleaserHost.ClearFrames(bool allClients)
+    private void ClearFramesCore(bool allClients)
     {
         if (allClients)
         {
@@ -298,7 +280,7 @@ internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaser
         }
     }
 
-    void IEnvironmentReleaserHost.ClearInputBlock(bool allClients)
+    private void ClearInputBlockCore(bool allClients)
     {
         if (allClients)
         {
@@ -310,28 +292,11 @@ internal sealed partial class SessionManager : IDisposable, IEnvironmentReleaser
         }
     }
 
-    void IEnvironmentReleaserHost.MarkDisplaySelfHealedFalse() => _display.State.SelfHealed = false;
-
-    void IEnvironmentReleaserHost.MarkDisplayInitialized(bool initialized) =>
-        _display.State.Initialized = initialized;
-
-    bool IEnvironmentReleaserHost.DisplayAttached => _display.State.VirtualDisplay is { Attached: true };
-
-    bool IEnvironmentReleaserHost.TryRemoveDisplay() => TryRemoveDisplay();
-
-    void IEnvironmentReleaserHost.StopAndDisposeVdd()
+    private void StopAndDisposeVddCore()
     {
         _display.Vdd.StopKeepAlive();
         _display.Vdd.Dispose();
     }
-
-    void IEnvironmentReleaserHost.ClearStateStore() => _stateStore.Clear();
-
-    void IEnvironmentReleaserHost.SaveState() => SaveState();
-
-    MemoryView IEnvironmentReleaserHost.TrimIdleMemory(string reason) => TrimIdleMemory(reason);
-
-    LogRing IEnvironmentReleaserHost.Log => _log;
 
     private string[] ArtifactDirectorySnapshot()
     {

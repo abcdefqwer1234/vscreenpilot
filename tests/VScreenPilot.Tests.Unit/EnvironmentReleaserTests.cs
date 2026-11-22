@@ -16,7 +16,7 @@ public sealed class EnvironmentReleaserTests
     public void InvalidOnDirtyIsRejectedBeforeEpochAdvances()
     {
         var host = new FakeHost();
-        var releaser = new EnvironmentReleaser(host);
+        var releaser = new EnvironmentReleaser(host.ToSession(), host.ToApps(), host.ToDisplay(), host.ToState());
 
         ToolException exception = Assert.Throws<ToolException>(
             () => releaser.Release(keepDisplay: true, onDirty: "nonsense"));
@@ -29,7 +29,7 @@ public sealed class EnvironmentReleaserTests
     public void ForceAndDiscardRequireDataLossConfirmation()
     {
         var host = new FakeHost();
-        var releaser = new EnvironmentReleaser(host);
+        var releaser = new EnvironmentReleaser(host.ToSession(), host.ToApps(), host.ToDisplay(), host.ToState());
 
         foreach (string policy in new[] { "force", "discard" })
         {
@@ -45,7 +45,7 @@ public sealed class EnvironmentReleaserTests
     public void AbortForcesDisplayToStayAndSavesState()
     {
         var host = new FakeHost();
-        var releaser = new EnvironmentReleaser(host);
+        var releaser = new EnvironmentReleaser(host.ToSession(), host.ToApps(), host.ToDisplay(), host.ToState());
 
         ReleaseReport report = releaser.Release(keepDisplay: false, onDirty: "abort");
 
@@ -61,7 +61,7 @@ public sealed class EnvironmentReleaserTests
     public void OtherClientsKeepDisplayEvenWhenCallerAskedToRemove()
     {
         var host = new FakeHost { ActiveClientCount = 2 };
-        var releaser = new EnvironmentReleaser(host);
+        var releaser = new EnvironmentReleaser(host.ToSession(), host.ToApps(), host.ToDisplay(), host.ToState());
 
         ReleaseReport report = releaser.Release(keepDisplay: false, onDirty: "save");
 
@@ -75,7 +75,7 @@ public sealed class EnvironmentReleaserTests
     public void SingleClientReleaseRemovesDisplayAndClearsPerClientState()
     {
         var host = new FakeHost();
-        var releaser = new EnvironmentReleaser(host);
+        var releaser = new EnvironmentReleaser(host.ToSession(), host.ToApps(), host.ToDisplay(), host.ToState());
 
         ReleaseReport report = releaser.Release(keepDisplay: false, onDirty: "save");
 
@@ -98,7 +98,7 @@ public sealed class EnvironmentReleaserTests
     public void ForceAllClientsClearsSharedStateAndResetsSelfHealFlag()
     {
         var host = new FakeHost();
-        var releaser = new EnvironmentReleaser(host);
+        var releaser = new EnvironmentReleaser(host.ToSession(), host.ToApps(), host.ToDisplay(), host.ToState());
 
         ReleaseReport report = releaser.Release(
             keepDisplay: false, onDirty: "save", forceAllClients: true);
@@ -114,7 +114,7 @@ public sealed class EnvironmentReleaserTests
     public void KeepingDisplaySavesStateAndMarksInitialized()
     {
         var host = new FakeHost();
-        var releaser = new EnvironmentReleaser(host);
+        var releaser = new EnvironmentReleaser(host.ToSession(), host.ToApps(), host.ToDisplay(), host.ToState());
 
         ReleaseReport report = releaser.Release(keepDisplay: true, onDirty: "save");
 
@@ -125,7 +125,7 @@ public sealed class EnvironmentReleaserTests
         Assert.Equal(0, host.StateClearCount);
     }
 
-    private sealed class FakeHost : IEnvironmentReleaserHost
+    private sealed class FakeHost
     {
         public object Gate { get; } = new();
 
@@ -202,5 +202,22 @@ public sealed class EnvironmentReleaserTests
             TrimReasons.Add(reason);
             return new MemoryView(10, 10, 10, Trimmed: false, Emptied: false);
         }
+
+        public ReleaseSessionContext ToSession() =>
+            new(Gate, IncrementEpoch, () => ActiveClientCount, Log);
+
+        public ReleaseAppsContext ToApps() =>
+            new(Apps, IsOwned, (app, policy) =>
+            {
+                string outcome = CloseTrackedApp(app, policy, out string? warning);
+                return (outcome, warning);
+            }, ResumeFocusGuard);
+
+        public ReleaseDisplayContext ToDisplay() =>
+            new(ClearElementRefs, ClearFrames, ClearInputBlock, MarkDisplaySelfHealedFalse,
+                MarkDisplayInitialized, () => DisplayAttached, TryRemoveDisplay, StopAndDisposeVdd);
+
+        public ReleaseStateContext ToState() =>
+            new(TrimIdleMemory, SaveState, ClearStateStore);
     }
 }
