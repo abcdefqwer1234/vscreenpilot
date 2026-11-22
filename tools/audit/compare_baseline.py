@@ -21,6 +21,10 @@ import re
 import sys
 from typing import Any
 
+# CI（windows-latest）的 stdout 是 cp1252，直接打印中文会 UnicodeEncodeError。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 # 这些 key 的值天然每次不同：按 key 掩码，不参与比较。
 MASK_KEYS = {
     "request_id",
