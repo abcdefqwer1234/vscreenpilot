@@ -80,6 +80,15 @@ internal static class IntegrityCheck
         return true;
     }
 
+    /// <summary>比较目标进程与服务端自身的中完整性级别；任一查询失败返回 false（调用方不据此拦截）。</summary>
+    internal static bool TryCompareIntegrity(uint processId, out int target, out int self)
+    {
+        target = -1;
+        self = -1;
+        return TryGetIntegrity(processId, out target) &&
+               TryGetIntegrity((uint)Environment.ProcessId, out self);
+    }
+
     private static bool TryGetIntegrity(uint processId, out int integrity)
     {
         integrity = -1;

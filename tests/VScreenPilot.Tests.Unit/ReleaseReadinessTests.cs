@@ -12,10 +12,12 @@ public sealed class ToolCatalogTests
     private static readonly string[] Expected =
     [
         "assert_region", "capture_screen", "click", "click_ref", "click_text",
-        "find_element", "gesture", "get_element_text", "get_environment", "get_log",
-        "get_ui_tree", "invoke_element", "launch_or_place_app", "match_visual",
-        "press_keys", "read_screen_text", "release_environment", "run_script",
-        "set_element_value", "snapshot", "type_text", "wait_for",
+        "close_tab", "find_element", "gesture", "get_element_text", "get_environment", "get_log",
+        "get_processes", "get_ui_tree", "invoke_element", "launch_or_place_app", "lease_input",
+        "list_windows", "match_visual", "press_keys", "read_screen_text", "read_table",
+        "release_environment",
+        "run_script", "run_actions", "select_tab", "set_display", "set_element_value", "snapshot",
+        "type_text", "wait_for",
     ];
 
     private static Dictionary<string, ToolDescriptor> Catalog()

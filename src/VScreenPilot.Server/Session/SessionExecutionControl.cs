@@ -30,6 +30,8 @@ internal sealed class SessionExecutionControl : IExecutionControl
 
     public void SetCancellation(CancellationTokenSource? cts) => _session.SetCancellation(cts);
 
+    public CancellationTokenSource? CurrentCancellationSource => _session._cancellation.Value;
+
     public void PauseFocusGuard(int leaseMs = 0) => _session.FocusOps.PauseFocusGuard(leaseMs);
 
     public void ExtendLease(string clientId, int durationMs) =>

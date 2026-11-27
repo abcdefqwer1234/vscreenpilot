@@ -60,6 +60,10 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
+    [DllImport("dwmapi.dll")]
+    internal static extern int DwmGetWindowAttribute(
+        IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
+
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
@@ -84,6 +88,10 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsWindowEnabled(IntPtr hWnd);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -150,6 +158,7 @@ internal static class NativeMethods
     internal const uint WmLButtonDown = 0x0201;
     internal const uint WmLButtonUp = 0x0202;
     internal const uint WmNcHitTest = 0x0084;
+    internal const uint WmContextMenu = 0x007B;
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -180,6 +189,7 @@ internal static class NativeMethods
 
     internal const uint SwpNoZOrder = 0x0004;
     internal const uint SwpNoActivate = 0x0010;
+    internal const uint SwpNoSize = 0x0001;
     internal const uint SwpFrameChanged = 0x0020;
     internal const uint SwpShowWindow = 0x0040;
 

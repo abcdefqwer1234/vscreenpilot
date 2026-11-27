@@ -1,0 +1,99 @@
+{
+  "name": "lease_input",
+  "title": "Lease input focus",
+  "description": "Acquire a session-level input/foreground lease. While active, the focus guard does not return focus between tool calls; input tools share the same foreground. Release restores the previous foreground. TTL is 1-600 seconds (default 30).",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "acquire",
+          "release",
+          "renew",
+          "status"
+        ]
+      },
+      "pid": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "ttl_ms": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 600000
+      },
+      "exclusive": {
+        "type": "boolean",
+        "description": "Default false. Reserved for exclusive foreground ownership; false only suppresses focus return between calls."
+      },
+      "force": {
+        "type": "boolean",
+        "description": "Default false. Take over a conflicting lease held by another client."
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "lease_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "pid": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "hwnd": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "expires_in_ms": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "active": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "exclusive": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "source": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": true,
+  "timeoutMs": 15000,
+  "policy": {
+    "mutates": true,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

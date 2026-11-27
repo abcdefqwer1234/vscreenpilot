@@ -28,6 +28,20 @@
       "pid": {
         "type": "integer",
         "minimum": 1
+      },
+      "hwnd": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Target a specific tracked top-level window (for example a dialog). The window is brought to the foreground before keys are sent."
+      },
+      "target": {
+        "type": "string",
+        "enum": [
+          "app",
+          "current_dialog",
+          "foreground"
+        ],
+        "description": "Default app. current_dialog resolves the active modal/owned dialog on every call, so a changing hwnd does not need to be looked up manually."
       }
     }
   },

@@ -1,0 +1,110 @@
+{
+  "name": "set_display",
+  "title": "Resize virtual display",
+  "description": "Change the virtual display geometry at runtime (800-3840 x 600-2160, refresh 30-240) without restarting the daemon or changing the primary monitor. Changes the shared display for all clients in this profile; the display topology changes once, so the user may see a brief flicker. On failure the previous geometry is restored and E_DISPLAY_MODE is returned. reposition=true (default) moves tracked windows that would fall outside back inside.",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "width",
+      "height"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "width": {
+        "type": "integer",
+        "minimum": 800,
+        "maximum": 3840
+      },
+      "height": {
+        "type": "integer",
+        "minimum": 600,
+        "maximum": 2160
+      },
+      "refresh": {
+        "type": "integer",
+        "minimum": 30,
+        "maximum": 240,
+        "description": "Default 60."
+      },
+      "reposition": {
+        "type": "boolean",
+        "description": "Default true: move tracked windows that would fall outside the new display back inside it."
+      },
+      "fit_windows": {
+        "type": "boolean",
+        "description": "Default false (or VSP_FIT_MANAGED_WINDOWS=1). When true, tracked windows larger than the new display are resized to fit and their placement is updated."
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "device": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "x": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "y": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "width": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "height": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "dpi": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "repositioned": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "fit_windows": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "fitted": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": false,
+  "timeoutMs": 30000,
+  "policy": {
+    "mutates": true,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": true,
+    "bypassWriteLock": true,
+    "writeTimeoutMs": 20000
+  }
+}

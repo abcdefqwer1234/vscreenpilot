@@ -21,7 +21,20 @@ public sealed record FindElementItemView(
     [property: JsonPropertyName("value")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? Value,
-    [property: JsonPropertyName("ref")] string Ref);
+    [property: JsonPropertyName("ref")] string Ref,
+    [property: JsonPropertyName("hwnd")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    long? Hwnd = null,
+    [property: JsonPropertyName("outside_snapshot")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? OutsideSnapshot = null);
+
+/// <summary>find_element 结果的来源窗口汇总。</summary>
+public sealed record FindSourceView(
+    [property: JsonPropertyName("hwnd")] long Hwnd,
+    [property: JsonPropertyName("pid")] int Pid,
+    [property: JsonPropertyName("count")] int Count,
+    [property: JsonPropertyName("outside_snapshot")] bool OutsideSnapshot);
 
 /// <summary>`find_element(all=true)` 的输出视图。</summary>
 public sealed record FindElementsView(
@@ -32,7 +45,22 @@ public sealed record FindElementsView(
     [property: JsonPropertyName("role")] string? Role,
     [property: JsonPropertyName("prefer")] string Prefer,
     [property: JsonPropertyName("snapshot_id")] string SnapshotId,
-    [property: JsonPropertyName("elements")] IReadOnlyList<FindElementItemView> Elements);
+    [property: JsonPropertyName("elements")] IReadOnlyList<FindElementItemView> Elements,
+    [property: JsonPropertyName("snapshot_age_ms")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    long? SnapshotAgeMs = null,
+    [property: JsonPropertyName("snapshot_root_hwnd")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    long? SnapshotRootHwnd = null,
+    [property: JsonPropertyName("scope")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Scope = null,
+    [property: JsonPropertyName("outside_snapshot")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? OutsideSnapshot = null,
+    [property: JsonPropertyName("sources")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<FindSourceView>? Sources = null);
 
 /// <summary>`find_element` 的单元素输出视图。</summary>
 public sealed record FindElementView(
@@ -59,7 +87,25 @@ public sealed record FindElementView(
     [property: JsonPropertyName("index")] int Index,
     [property: JsonPropertyName("count")] int Count,
     [property: JsonPropertyName("truncated")] bool Truncated,
-    [property: JsonPropertyName("snapshot_id")] string SnapshotId);
+    [property: JsonPropertyName("snapshot_id")] string SnapshotId,
+    [property: JsonPropertyName("hwnd")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    long? Hwnd = null,
+    [property: JsonPropertyName("outside_snapshot")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? OutsideSnapshot = null,
+    [property: JsonPropertyName("snapshot_age_ms")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    long? SnapshotAgeMs = null,
+    [property: JsonPropertyName("snapshot_root_hwnd")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    long? SnapshotRootHwnd = null,
+    [property: JsonPropertyName("scope")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Scope = null,
+    [property: JsonPropertyName("sources")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<FindSourceView>? Sources = null);
 
 public sealed record TreeWindowView(
     [property: JsonPropertyName("hwnd")] long Hwnd,

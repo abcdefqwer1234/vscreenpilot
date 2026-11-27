@@ -39,6 +39,20 @@
         "type": "integer",
         "minimum": 1,
         "maximum": 200
+      },
+      "upscale": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 4,
+        "description": "Default 0 (auto): 2x/3x/4x for small regions before OCR. 1 disables; 2-4 force the factor. Coordinates are mapped back to screen pixels."
+      },
+      "on_out_of_bounds": {
+        "type": "string",
+        "enum": [
+          "clip",
+          "error"
+        ],
+        "description": "Default clip: intersect the region with the virtual display and return clipped=true. error restores E_OUT_OF_BOUNDS."
       }
     }
   },
@@ -111,6 +125,42 @@
       "duration_ms": {
         "type": [
           "number",
+          "null"
+        ]
+      },
+      "upscale": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "clipped": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "ocr_source_width": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "ocr_source_height": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "ocr_scaled_width": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "ocr_scaled_height": {
+        "type": [
+          "integer",
           "null"
         ]
       }

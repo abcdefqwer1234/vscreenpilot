@@ -1,6 +1,6 @@
 /**
  * 多客户端共享冒烟：不需要虚拟屏，不注入输入。
- * 覆盖：第二个 MCP 进程代理、c0/c1 身份、22 工具、--cli env/status/stop、
+ * 覆盖：第二个 MCP 进程代理、c0/c1 身份、30 工具、--cli env/status/stop、
  * 首个客户端 stdin EOF 后第二个客户端仍可用。
  */
 import { execFile } from 'node:child_process';
@@ -34,8 +34,8 @@ try {
 
   const listA = await a.request('tools/list', {});
   const listB = await b.request('tools/list', {});
-  check('A 返回 22 工具', listA.result?.tools?.length === 22, String(listA.result?.tools?.length));
-  check('B 返回 22 工具', listB.result?.tools?.length === 22, String(listB.result?.tools?.length));
+  check('A 返回 30 工具', listA.result?.tools?.length === 30, String(listA.result?.tools?.length));
+  check('B 返回 30 工具', listB.result?.tools?.length === 30, String(listB.result?.tools?.length));
 
   const envA = await a.call('get_environment', {});
   const envB = await b.call('get_environment', {});
@@ -128,7 +128,7 @@ try {
   a.child.stdin.end();
   await sleep(500);
   const listAfter = await b.request('tools/list', {}, 10000);
-  check('A EOF 后 B 仍可用', listAfter.result?.tools?.length === 22, String(listAfter.result?.tools?.length));
+  check('A EOF 后 B 仍可用', listAfter.result?.tools?.length === 30, String(listAfter.result?.tools?.length));
 
   // 最后一个客户端断开后，daemon 应在 VSP_DAEMON_IDLE_MS 内退出。
   await b.stop();

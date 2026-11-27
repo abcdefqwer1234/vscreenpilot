@@ -42,14 +42,15 @@ internal sealed class McpTransport
         _resources = new ResourceHandler(_services.Artifacts, () => _client?.Id ?? "c0");
         McpTelemetry telemetry = new(
             _runtime.Metrics, _trace, options.Client?.Id ?? "c0");
-        _tools = ToolHandlerMap.Build(_services, _log, _client);
+        _tools = ToolHandlerMap.Build(_services, _log, _client, options.Control);
         _pipeline = new ToolCallPipeline(
             _tools,
             _log,
             options.Scheduler,
             telemetry,
             options.Control,
-            _client);
+            _client,
+            options.ReadOnly);
         _lifecycle = new McpClientLifecycle(_runtime, _log, () => _pipeline.InflightHandlers, _client);
 
         if (_trace is null)
@@ -136,14 +137,16 @@ internal sealed class McpTransport
     }
 
     private const string Instructions =
-        "Virtual-display automation for Windows apps. The server mounts a 1280x720 virtual display " +
-        "(override with VSP_DISPLAY_WIDTH/HEIGHT/REFRESH; read when the daemon starts) and only operates " +
-        "windows it has tracked. Start with `snapshot` (semantic tree + dialogs + optional screenshot); it " +
-        "returns a snapshot_id and refs that are valid only for that snapshot. Prefer semantic actions " +
+        "Virtual-display automation for Windows apps. The server mounts a virtual display on demand " +
+        "(default 1280x720; override at startup with VSP_DISPLAY_WIDTH/HEIGHT/REFRESH, or at runtime with " +
+        "`set_display`) and only operates windows it has tracked. Start with `snapshot` (semantic tree + " +
+        "dialogs + optional screenshot); it returns a snapshot_id and refs. Prefer semantic actions " +
         "(click_ref/invoke_element/set_element_value) over pixel coordinates. Coordinates must stay inside " +
         "the virtual display. Chromium/WebView2 apps ignore window messages; for click/click_ref/click_text " +
         "pass `channel=input` or `fallback_input=true`, and for gesture pass `mode=input`. `auto` never " +
-        "moves the real cursor unless fallback_input or VSP_INPUT_AUTOFALLBACK=1 enables it. Run " +
+        "moves the real cursor unless fallback_input or VSP_INPUT_AUTOFALLBACK=1 enables it. If a dialog is " +
+        "not reachable, use `list_windows` then `launch_or_place_app(hwnd=...)`; use `get_processes` and " +
+        "`wait_for(type=process)` for long-running installers/builds instead of polling from the shell. Run " +
         "`release_environment` when finished; the display is kept by default. This is a shared desktop " +
         "session, not a security sandbox; use a VM for untrusted work. run_script is disabled unless the " +
         "server was started with --allow-script.";

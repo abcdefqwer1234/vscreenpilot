@@ -26,14 +26,14 @@ internal sealed class SnapshotTools
     {
         double scale = OptionalDouble(arguments, "scale", 0.5);
 
-        if (arguments.TryGetProperty("scale", out _) && (scale < 0.1 || scale > 1.0))
+        if (arguments.TryGetProperty("scale", out _) && (scale < 0.1 || scale > 4.0))
         {
             throw new ToolException(
                 "E_INVALID_ARG",
-                $"scale 必须在 0.1..1.0（收到 {scale}）",
+                $"scale 必须在 0.1..4.0（收到 {scale}）",
                 new JsonObject { ["field"] = "scale", ["value"] = scale },
                 retryable: false,
-                hint: "快照截图只接受 0.1–1.0",
+                hint: "0.1–1.0 为缩小/原尺寸，1.0–4.0 为超采样放大",
                 stage: "validate");
         }
 
@@ -112,7 +112,11 @@ internal sealed class SnapshotTools
         CaptureOutput capture = _snapshot.Capture(new CaptureRequest(
             x, y, width, height, scale, savePath,
             StoreFrame: true,
-            PreviewScale: inline ? Math.Max(Limits.MinScale, scale * Limits.PreviewScale) : null));
+            PreviewScale: inline ? Math.Max(Limits.MinScale, scale * Limits.PreviewScale) : null,
+            Clip: !string.Equals(
+                OptionalString(arguments, "on_out_of_bounds") ?? "clip",
+                "error",
+                StringComparison.OrdinalIgnoreCase)));
 
         byte[] png = capture.Png;
         JsonObject meta = VspJson.ToNode(capture.Meta).AsObject();
@@ -158,17 +162,17 @@ internal sealed class SnapshotTools
         // 全屏默认降到 0.5：UI 截图缩小一半仍然可读，体积/上下文成本降 4 倍。
         double scale = OptionalDouble(arguments, "scale", fullScreen ? 0.5 : 1.0);
 
-        if (!arguments.TryGetProperty("scale", out _) || scale is >= 0.1 and <= 1.0)
+        if (!arguments.TryGetProperty("scale", out _) || scale is >= 0.1 and <= 4.0)
         {
             return scale;
         }
 
         throw new ToolException(
             "E_INVALID_ARG",
-            $"scale 必须在 0.1..1.0（收到 {scale}）",
+            $"scale 必须在 0.1..4.0（收到 {scale}）",
             new JsonObject { ["field"] = "scale", ["value"] = scale },
             retryable: false,
-            hint: "0 或 10 这类值不会再被静默钳制；需要小图请用 0.1–1.0",
+            hint: "0.1–1.0 为缩小/原尺寸，1.0–4.0 为超采样放大",
             stage: "validate");
     }
 

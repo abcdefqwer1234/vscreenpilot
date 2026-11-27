@@ -27,16 +27,45 @@ internal sealed class RegionVerifier
 
     public RegionVerifier(RegionVerifierContext host) => _host = host;
 
-    public AssertRegionView Assert(JsonElement region, JsonElement expectation)
+    public AssertRegionView Assert(
+        JsonElement region, JsonElement expectation, bool clipOutOfBounds = false)
     {
         DisplayInfo display = _host.EnsureDisplay();
-        (int x, int y, int width, int height) = ParseRegion(region);
+        (int requestedX, int requestedY, int requestedWidth, int requestedHeight) = ParseRegion(region);
+        int x = requestedX;
+        int y = requestedY;
+        int width = requestedWidth;
+        int height = requestedHeight;
+        bool clipped = false;
 
         EnsureExpectation(expectation);
-        VisualSupport.RequireRegionInDisplay(display, x, y, width, height, "assert_region");
+
+        if (clipOutOfBounds)
+        {
+            var clamped = VisualSupport.ClipRegionToDisplay(
+                display, requestedX, requestedY, requestedWidth, requestedHeight, "assert_region");
+            x = clamped.X;
+            y = clamped.Y;
+            width = clamped.Width;
+            height = clamped.Height;
+            clipped = clamped.Clipped;
+        }
+        else
+        {
+            VisualSupport.RequireRegionInDisplay(
+                display, requestedX, requestedY, requestedWidth, requestedHeight, "assert_region");
+        }
 
         (byte[] bgra, int capturedWidth, int capturedHeight) = _host.CaptureRegion(x, y, width, height);
-        return AssertExpectation(bgra, capturedWidth, capturedHeight, x, y, expectation);
+        AssertRegionView view = AssertExpectation(bgra, capturedWidth, capturedHeight, x, y, expectation);
+
+        return clipped
+            ? view with
+            {
+                Clipped = true,
+                RequestedRegion = new BoundsView(requestedX, requestedY, requestedWidth, requestedHeight),
+            }
+            : view;
     }
 
     private static (int X, int Y, int Width, int Height) ParseRegion(JsonElement region)

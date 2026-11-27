@@ -45,4 +45,40 @@ public sealed record LaunchOrPlaceView(
     [property: JsonPropertyName("hint")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? Hint,
-    [property: JsonPropertyName("dialogs")] IReadOnlyList<LaunchDialogView> Dialogs);
+    [property: JsonPropertyName("dialogs")] IReadOnlyList<LaunchDialogView> Dialogs)
+{
+    /// <summary>窗口是否可见；false 表示进程已启动但没有窗口（控制台/启动器）。</summary>
+    [JsonPropertyName("window")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Window { get; init; }
+
+    /// <summary>没有窗口时，进程是否仍在运行。</summary>
+    [JsonPropertyName("alive")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Alive { get; init; }
+
+    /// <summary>没有窗口且进程已退出时的退出码。</summary>
+    [JsonPropertyName("exit_code")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? ExitCode { get; init; }
+
+    /// <summary>detached：进程不挂在本会话 Job 下，daemon 崩溃/退出后仍存活。</summary>
+    [JsonPropertyName("detached")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Detached { get; init; }
+
+    /// <summary>fit=clamp 是否实际调整过窗口。</summary>
+    [JsonPropertyName("fit_adjusted")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? FitAdjusted { get; init; }
+
+    /// <summary>调整前的窗口可见边界。</summary>
+    [JsonPropertyName("requested_bounds")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public OptionalBoundsView? RequestedBounds { get; init; }
+
+    /// <summary>调整后的窗口可见边界。</summary>
+    [JsonPropertyName("applied_bounds")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public OptionalBoundsView? AppliedBounds { get; init; }
+}

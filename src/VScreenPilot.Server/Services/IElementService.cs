@@ -7,11 +7,19 @@ namespace VScreenPilot.Services;
 internal interface IElementService
 {
     object Find(ElementQuery query);
+    TableView ReadTable(TableQuery query);
     UiTreeView GetUiTree(UiTreeQuery query);
-    InvokeElementView Invoke(string reference, bool allowClick, string? pattern);
+    InvokeElementView Invoke(
+        string reference, bool allowClick, string? pattern, string? selectText,
+        bool allowDestructive = false);
     SetElementValueView SetValue(
-        string reference, string value, bool allowKeyboard, string? mode, bool allowDestructive);
+        string reference, string value, bool allowKeyboard, string? mode, bool allowDestructive,
+        bool strictVerify);
     ElementTextView GetText(string reference, int maxChars);
+    TabActionView SelectTab(string name, string nameMatch, int index, int? pid);
+    TabActionView CloseTab(
+        string name, string nameMatch, int index, int? pid, bool allowDestructive);
+    bool OwnsRef(string reference);
 }
 
 internal sealed class ElementToolService : IElementService
@@ -32,7 +40,12 @@ internal sealed class ElementToolService : IElementService
             query.IncludeOffscreen,
             query.Pid,
             query.Role,
-            query.Prefer));
+            query.Prefer,
+            query.Within,
+            query.NewSnapshot,
+            query.Scope));
+
+    public TableView ReadTable(TableQuery query) => _session.ElementOps.ReadTable(query);
 
     public UiTreeView GetUiTree(UiTreeQuery query) =>
         _session.ElementOps.GetUiTree(
@@ -45,13 +58,26 @@ internal sealed class ElementToolService : IElementService
             query.Format,
             query.NewSnapshot);
 
-    public InvokeElementView Invoke(string reference, bool allowClick, string? pattern) =>
-        _session.ElementOps.InvokeElement(reference, allowClick, pattern);
+    public InvokeElementView Invoke(
+        string reference, bool allowClick, string? pattern, string? selectText,
+        bool allowDestructive = false) =>
+        _session.ElementOps.InvokeElement(reference, allowClick, pattern, selectText, allowDestructive);
 
     public SetElementValueView SetValue(
-        string reference, string value, bool allowKeyboard, string? mode, bool allowDestructive) =>
-        _session.ElementOps.SetElementValue(reference, value, allowKeyboard, mode, allowDestructive);
+        string reference, string value, bool allowKeyboard, string? mode, bool allowDestructive,
+        bool strictVerify) =>
+        _session.ElementOps.SetElementValue(
+            reference, value, allowKeyboard, mode, allowDestructive, strictVerify);
 
     public ElementTextView GetText(string reference, int maxChars) =>
         _session.ElementOps.GetElementText(reference, maxChars);
+
+    public TabActionView SelectTab(string name, string nameMatch, int index, int? pid) =>
+        _session.ElementOps.SelectTab(name, nameMatch, index, pid);
+
+    public TabActionView CloseTab(
+        string name, string nameMatch, int index, int? pid, bool allowDestructive) =>
+        _session.ElementOps.CloseTab(name, nameMatch, index, pid, allowDestructive);
+
+    public bool OwnsRef(string reference) => _session.ElementOps.OwnsRef(reference);
 }

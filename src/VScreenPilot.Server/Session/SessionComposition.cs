@@ -29,7 +29,7 @@ internal static class SessionComposition
     {
         host.Snapshots = new SnapshotBuilder(
             new SnapshotStateContext(host.Uia, host.Refs, () => host.ElementOps.SnapshotId, () => SessionManager.ElementRefCapacity,
-                host.Metrics, host.ElementOps.BeginSnapshot, host.ElementOps.RegisterElement),
+                host.Metrics, root => host.ElementOps.BeginSnapshot(root), host.ElementOps.RegisterElement),
             new SnapshotAppContext(host.EnsureEnvironmentFast, host.PruneDeadApps, host.FindLiveTrackedApp,
                 host.InputOps.RequireWindowOnDisplay, () => host._apps.Where(host.ClientOps.IsOwned).ToList(), TrackedAppTracker.IsLive),
             new SnapshotCaptureContext(host.CaptureOps.CaptureRegion,
@@ -66,7 +66,13 @@ internal static class SessionComposition
                 () => host.Epoch,
                 host._job,
                 // 组合根在构造后才 Wire：这里必须延迟读取，按值捕获会永久拿到 null。
-                () => host.ScreenLeaseProvider?.Invoke()),
+                () => host.ScreenLeaseProvider?.Invoke())
+            {
+                RecoveredPid = () => host._display.State.RecoveredPid,
+                RecoveredStartedAt = () => host._display.State.RecoveredStartedAt,
+                StateAgeMs = () => SessionStateKeeper.StateAgeMs(host._display.State.RecoveredSavedAt),
+                InputLease = () => host.InputOps.CurrentLease,
+            },
             new EnvironmentClientContext(host.Clients, () => host.ClientOps.ClientSummariesJson()),
             new EnvironmentAppContext(host._apps, host.ClientOps.IsOwned, TrackedAppTracker.IsLive, host.PruneDeadApps, host.Uia),
             new EnvironmentHealContext(() => host._display.State.SelfHealed,
@@ -105,14 +111,19 @@ internal static class SessionComposition
             host._paths.ValidatePngPath, () => host.Cancellation.IsCancellationRequested));
         host._finder = new ElementFinder(new ElementFinderContext(
             host.FindLiveTrackedApp, host.EnsureEnvironment, host.InputOps.RequireWindowOnDisplay,
-            host.Uia, host.ElementOps.EnsureSnapshot, host.ElementOps.RegisterElement));
+            host.Uia, () => host.ElementOps.EnsureSnapshot(), host.ElementOps.RegisterElement,
+            host.ElementOps.ResolveContainer,
+            root => host.ElementOps.BeginSnapshot(root),
+            host.ElementOps.SetSnapshotRoot,
+            () => host.ElementOps.SnapshotMeta));
         host._regionVerifier = new RegionVerifier(new RegionVerifierContext(
             host.EnsureEnvironmentFast, host.CaptureOps.CaptureRegion,
             host.CaptureOps.FindFrame, host.CaptureOps.FindLatestFrame,
-            () => host._frames.Latest(), () => host._frames.Snapshot()));
+            () => host._frames.Latest(host.Clients.CurrentId),
+            () => host._frames.Snapshot(host.Clients.CurrentId)));
         host._waits = new WaitService(
             new WaitDisplayContext(host.EnsureEnvironmentFast, host.CaptureOps.CaptureRegion),
-            new WaitSessionContext(host.TryEnterRead, host.ExitRead,
+            new WaitSessionContext(host.TryEnterRead, host.ExitRead, () => host.IsReadLockHeld,
                 () => host.Cancellation.IsCancellationRequested, ToolProgress.Report),
             new WaitAppContext(host.FindLiveTrackedApp, host.LifecycleOps.OwnedAppsSnapshotCore,
                 host.VerifyOps.TrackedPids, host.Uia),
@@ -126,7 +137,8 @@ internal static class SessionComposition
         host._input = new InputRouter(
             new InputSessionContext(host._log, host.Clients, () => host.Cancellation),
             new InputFocusContext(host.InputOps.EnsureForeground, host.InputOps.IsAppForeground, previous => host.InputOps.RestoreForeground(previous),
-                host.FocusOps.PauseFocusGuard, host.FocusOps.ResumeFocusGuard, () => host._cursorGuard!.Pause(), () => host._cursorGuard!.Resume()),
+                host.FocusOps.PauseFocusGuard, host.FocusOps.ResumeFocusGuard, host.FocusOps.ResumeFocusGuardForce,
+                () => host._cursorGuard!.Pause(), () => host._cursorGuard!.Resume()),
             new InputDisplayContext(host.EnsureEnvironmentFast, host.EnsureEnvironment,
                 host.InputOps.RequireWindowOnDisplay, host.InputOps.RequirePointInDisplay, host.ObserveOps.CaptureSignature,
                 () => EnvironmentProbe.IsInputDesktopAvailable()),
@@ -140,11 +152,19 @@ internal static class SessionComposition
         host._elements = new ElementOperations(
             new ElementStateContext(host._uiaHost, host._resolver, host.Refs, host.ElementOps.RegisterElement,
                 SessionManager.ElementRefCapacity, host._log, host.Snapshots.ConvertTreeNode),
-            new ElementSnapshotContext(host.ElementOps.EnsureSnapshot, host.ElementOps.BeginSnapshot,
+            new ElementSnapshotContext(() => host.ElementOps.EnsureSnapshot(), () => host.ElementOps.BeginSnapshot(),
+                host.ElementOps.SetSnapshotRoot,
                 () => host.Cancellation.IsCancellationRequested, host.CancellationProbe),
             new ElementAppContext(host.EnsureEnvironment, host.FindLiveTrackedApp, host.LifecycleOps.OwnedAppForPidCore,
                 host.InputOps.RequireWindowOnDisplay, (display, x, y, label) => { _ = host.InputOps.RequirePointInTrackedApp(display, x, y, label); }),
-            new ElementInputContext(host.InputOps.Click, host.InputOps.TypeText, (app, handle, request) => host._input.TextOps.WriteTextVerified(app, handle, request), host.ResetUia),
+            new ElementInputContext(
+                host.InputOps.Click,
+                (text, pid, verify, chunk, channel, hwnd, strict, pace, target) =>
+                    host.InputOps.TypeText(text, pid, verify, chunk, channel, hwnd, strict, pace, target),
+                (app, handle, request) => host._input.TextOps.WriteTextVerified(app, handle, request),
+                (keys, kf, pid, sys, obs, hwnd, target) =>
+                    host.InputOps.PressKeys(keys, kf, pid, sys, obs, hwnd, target),
+                host.ResetUia),
             new ElementFocusContext(host.InputOps.EnsureForeground, () => host.FocusOps.PauseFocusGuard(),
                 host.FocusOps.ResumeFocusGuard, previous => host.InputOps.RestoreForeground(previous)));
     }

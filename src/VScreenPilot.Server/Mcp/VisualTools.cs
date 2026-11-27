@@ -28,7 +28,8 @@ internal sealed class VisualTools
 
         int timeoutMs = OptionalInt(arguments, "timeout_ms", 5000);
         int? intervalMs = OptionalNullableInt(arguments, "interval_ms");
-        return ToolResponseWriter.FromView(_wait.WaitFor(condition, timeoutMs, intervalMs));
+        bool clip = OptionalBool(arguments, "clip", false);
+        return ToolResponseWriter.FromView(_wait.WaitFor(condition, timeoutMs, intervalMs, clip));
     }
 
     public ToolResponse AssertRegion(JsonElement arguments)
@@ -45,7 +46,8 @@ internal sealed class VisualTools
             throw new ToolException("E_INVALID_ARG", "assert_region 需要 expectation");
         }
 
-        return ToolResponseWriter.FromView(_visual.AssertRegion(region, expectation));
+        bool clip = OptionalBool(arguments, "clip", false);
+        return ToolResponseWriter.FromView(_visual.AssertRegion(region, expectation, clip));
     }
 
     public ToolResponse MatchVisual(JsonElement arguments) =>

@@ -1,7 +1,7 @@
 {
   "name": "get_environment",
   "title": "Environment",
-  "description": "Read virtual display, display topology, foreground window and session state. foreground is only reported for tracked windows. ensure=true mounts/heals the virtual display first.",
+  "description": "Read virtual display, display topology, foreground window and session state. foreground always reports hwnd/pid/process/elevated; titles are only included for tracked windows. ensure=true mounts/heals the virtual display first.",
   "inputSchema": {
     "type": "object",
     "additionalProperties": false,

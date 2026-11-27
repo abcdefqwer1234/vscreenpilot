@@ -29,7 +29,7 @@ internal static class MessageInput
     private const int MkRButton = 0x0002;
     private const int MkMButton = 0x0010;
 
-    public static bool Click(int x, int y, string button, int clicks, out string detail)
+    public static bool Click(int x, int y, string button, int clicks, out string detail, bool contextMenu = false)
     {
         detail = string.Empty;
 
@@ -54,6 +54,7 @@ internal static class MessageInput
         bool ok = NativeMethods.PostMessageW(target, WmMouseMove, IntPtr.Zero, position);
         int count = Math.Max(1, Math.Min(clicks, 10));
         bool isLeft = button.Equals("left", StringComparison.OrdinalIgnoreCase);
+        bool isRight = button.Equals("right", StringComparison.OrdinalIgnoreCase);
 
         for (int i = 0; i < count; i++)
         {
@@ -63,7 +64,15 @@ internal static class MessageInput
             ok &= NativeMethods.PostMessageW(target, up, IntPtr.Zero, position);
         }
 
-        detail = $"hwnd=0x{target.ToInt64():X}";
+        // 自绘控件/旧式树常只处理 WM_CONTEXTMENU，而不响应成对的 RBUTTONDOWN/UP。
+        // 这里补一条带屏幕坐标的 WM_CONTEXTMENU；普通控件收到重复通知一般会忽略。
+        if (contextMenu && isRight)
+        {
+            ok &= NativeMethods.PostMessageW(
+                target, NativeMethods.WmContextMenu, target, MakeLParam(x, y));
+        }
+
+        detail = $"hwnd=0x{target.ToInt64():X}" + (contextMenu ? " context_menu=1" : string.Empty);
         return ok;
     }
 

@@ -10,7 +10,8 @@ internal sealed record TraceRequest(
 
 /// <summary>工具调用的响应侧字段。</summary>
 internal sealed record TraceResult(
-    string? Code, bool IsError, int TextBytes, int ImageBytes, string? Channel, string? Stage);
+    string? Code, bool IsError, int TextBytes, int ImageBytes, string? Channel, string? Stage,
+    string? Summary = null);
 
 /// <summary>
 /// 每会话一份 JSONL 追踪文件。记录每次工具调用的耗时、错误码、返回字节与通道，
@@ -177,6 +178,7 @@ internal sealed class TraceLog : IDisposable
             ["image_bytes"] = result.ImageBytes,
             ["channel"] = result.Channel,
             ["stage"] = result.Stage,
+            ["summary"] = result.Summary,
         });
 
         // 失败记录不参与批量缓冲：复盘时最需要的正是这些。

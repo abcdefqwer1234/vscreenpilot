@@ -103,13 +103,19 @@ internal sealed class UiaHost : IDisposable
     public UiaElementHandle? GetFocusedElementHandle(int? expectedPid = null) =>
         Invoke(service => service.GetFocusedElementHandle(expectedPid));
 
-    public bool TryInvokeAtPoint(int x, int y, int? expectedPid, out UiaElementInfo? info)
+    public bool TryInvokeAtPoint(
+        int x, int y, int? expectedPid, out UiaElementInfo? info,
+        Func<UiaElementInfo, bool>? confirm = null)
     {
         UiaElementInfo? observed = null;
-        bool ok = Invoke(service => service.TryInvokeAtPoint(x, y, expectedPid, out observed));
+        bool ok = Invoke(service => service.TryInvokeAtPoint(x, y, expectedPid, out observed, confirm));
         info = observed;
         return ok;
     }
+
+    /// <summary>只读命中测试；不会触发任何 UIA pattern。</summary>
+    public UiaElementInfo? DescribeAtPoint(int x, int y, int? expectedPid) =>
+        Invoke(service => service.DescribeAtPoint(x, y, expectedPid));
 
     public (bool Ok, string? Strategy) TryInvoke(
         IUIAutomationElement element, UiaInvokePattern pattern = UiaInvokePattern.Auto) =>

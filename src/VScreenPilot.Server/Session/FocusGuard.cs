@@ -19,6 +19,9 @@ internal sealed class FocusGuard
 {
     private volatile bool _paused;
     private volatile bool _running;
+
+    internal bool IsPaused => _paused;
+    internal long ResumeAtTicks => Interlocked.Read(ref _resumeAtTicks);
     private readonly object _actionGate = new();
     private Thread? _thread;
     private IntPtr _lastUserForeground;
@@ -63,9 +66,20 @@ internal sealed class FocusGuard
     public void Pause(int leaseMs = 0)
     {
         _paused = true;
-        Interlocked.Exchange(
-            ref _resumeAtTicks,
-            leaseMs > 0 ? Environment.TickCount64 + leaseMs : 0);
+        long now = Environment.TickCount64;
+        long existing = Interlocked.Read(ref _resumeAtTicks);
+
+        // leaseMs=0 是“本次注入短暂暂停”，不能清掉仍然有效的租约到期时间；
+        // 新租约也不能缩短另一个客户端更长的租约暂停，取两者较大值。
+        long requested = leaseMs > 0 ? now + leaseMs : 0;
+        long resumeAt = existing > now ? existing : 0;
+
+        if (requested > resumeAt)
+        {
+            resumeAt = requested;
+        }
+
+        Interlocked.Exchange(ref _resumeAtTicks, resumeAt);
 
         // 等待可能已经在进行的归还动作结束，否则它可能在键盘注入开始后才抢前台。
         lock (_actionGate)
@@ -73,8 +87,23 @@ internal sealed class FocusGuard
         }
     }
 
-    public void Resume()
+    /// <summary>
+    /// 恢复焦点护栏。默认不清除仍在有效期内的租约暂停：
+    /// 普通输入结束时的 Resume 不能把另一个客户端的 keep_foreground/lease_input 清掉。
+    /// 只有确实没有剩余租约（或 release 显式清理）时才传 force=true。
+    /// </summary>
+    public void Resume(bool force = false)
     {
+        if (!force)
+        {
+            long resumeAt = Interlocked.Read(ref _resumeAtTicks);
+
+            if (resumeAt > Environment.TickCount64)
+            {
+                return;
+            }
+        }
+
         _paused = false;
         Interlocked.Exchange(ref _resumeAtTicks, 0);
     }

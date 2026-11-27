@@ -29,7 +29,7 @@
     <!-- 分发只有两条：GitHub Releases（安装版/绿色版）与 winget。
          本项目不发布 NuGet 包或 dotnet tool，IsPackable 显式关闭。 -->
     <IsPackable>false</IsPackable>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <Authors>VScreenPilot</Authors>
     <Description>Virtual-display MCP server for Windows desktop automation.</Description>
   </PropertyGroup>

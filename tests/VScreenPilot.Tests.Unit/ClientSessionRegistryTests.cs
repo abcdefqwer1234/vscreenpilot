@@ -55,6 +55,32 @@ public sealed class ClientSessionRegistryTests
     }
 
     [Fact]
+    public void ClientKeyNormalizesWindowsPathCaseAndTrailingSeparators()
+    {
+        string first = ClientSessionRegistry.ComputeClientKey(
+            @"C:\Work", [@"C:\Docs"]);
+        string second = ClientSessionRegistry.ComputeClientKey(
+            @"c:\work\", [@"c:\docs\"]);
+
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void ClientKeyCandidatesContainLegacyRawAndSortedKeys()
+    {
+        string cwd = @"C:\Work";
+        string[] roots = [@"C:\Tools", @"C:\Docs"];
+
+        IReadOnlyList<string> candidates = ClientSessionRegistry.ComputeClientKeyCandidates(cwd, roots);
+
+        Assert.Contains(ClientSessionRegistry.ComputeClientKey(cwd, roots), candidates);
+        Assert.Contains(ClientSessionRegistry.ComputeLegacyClientKey(cwd, roots), candidates);
+        Assert.Contains(
+            ClientSessionRegistry.ComputeLegacyClientKey(cwd, [@"C:\Docs", @"C:\Tools"]),
+            candidates);
+    }
+
+    [Fact]
     public void LeaveRemovesRegistration()
     {
         var registry = new ClientSessionRegistry();

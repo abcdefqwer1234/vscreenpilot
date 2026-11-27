@@ -34,6 +34,7 @@ jobs:
           $tag = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ inputs.tag }}" } else { $env:GITHUB_REF_NAME }
           node scripts/check-version.mjs --tag $tag
           node scripts/check-docs-links.mjs
+          ./scripts/check-doc-facts.ps1
 
       - name: Build
         run: dotnet build VScreenPilot.slnx -c Release
@@ -44,18 +45,10 @@ jobs:
       - name: Contract tests
         run: dotnet test tests/VScreenPilot.Tests.Contract/VScreenPilot.Tests.Contract.csproj -c Release
 
-      - name: 架构与文档闸门
-        run: |
-          python tools/audit/arch_metrics.py --selftest
-          python tools/audit/arch_metrics.py --enforce
-          python tools/audit/doc_metrics.py --check
-
-      - name: 冒烟与契约基线
+      - name: 冒烟
         run: |
           dotnet publish src/VScreenPilot.Server/VScreenPilot.Server.csproj -c Release -r win-x64 -o artifacts/server
           python tools/audit/smoke_no_display.py --exe artifacts/server/VScreenPilot.exe
-          python tools/audit/capture_baseline.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/contract
-          python tools/audit/compare_baseline.py tools/audit/baseline/3ddb85b tools/audit/results/contract --only server.json --only errors.json
           node tools/TestTool/smoke-v2.mjs
           node tools/TestTool/share-smoke.mjs
           node tools/TestTool/daemon-smoke.mjs

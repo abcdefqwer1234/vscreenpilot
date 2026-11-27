@@ -24,6 +24,10 @@
       "fallback_input": {
         "type": "boolean",
         "description": "Default false. When UIA/message paths fail, move the real cursor and use SendInput."
+      },
+      "allow_destructive": {
+        "type": "boolean",
+        "description": "Default false. Required when the target is a close/delete/clear control."
       }
     },
     "required": [
@@ -88,6 +92,19 @@
           "null"
         ],
         "additionalProperties": true
+      },
+      "hit_element": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "suspect_noop": {
+        "type": [
+          "boolean",
+          "null"
+        ]
       }
     },
     "additionalProperties": true

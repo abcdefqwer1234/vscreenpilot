@@ -117,6 +117,53 @@ internal sealed class UiaFindOps
     /// 按可见文本查找元素：先匹配 Name，再对 Document/Edit/Text 读取 TextPattern。
     /// 供 wait_for{type:"text"} 使用；不做 OCR（OCR 走 read_screen_text）。
     /// </summary>
+    /// <summary>
+    /// 以已有元素为根做子树查找。name 的 contains/regex 仍由收集器过滤；
+    /// 调用方负责 root 的生命周期（通常是 UiaElementHandle.Element）。
+    /// </summary>
+    public UiaFindResult FindDescendants(
+        IUIAutomationElement root,
+        string? name,
+        UiaNameMatch nameMatch,
+        string? controlType,
+        string? automationId,
+        int maxResults)
+    {
+        lock (_core._sync)
+        {
+            int limit = Math.Clamp(maxResults, 1, 2000);
+            IUIAutomationCondition condition = _core.Conditions.BuildCondition(
+                nameMatch == UiaNameMatch.Exact ? name : null,
+                controlType,
+                automationId,
+                null);
+            bool ownedCondition = !ReferenceEquals(condition, _core._trueCondition);
+            IUIAutomationElementArray? all = null;
+
+            try
+            {
+                all = root.FindAllBuildCache(
+                    TreeScope.TreeScope_Subtree, condition, _core._elementCache);
+
+                if (all is null)
+                {
+                    return new UiaFindResult(new List<UiaElementInfo>(), false);
+                }
+
+                return new UiaFindCollector(_core, name, nameMatch, limit).Collect(all);
+            }
+            finally
+            {
+                UiaElementFactoryOps.ReleaseElement(all);
+
+                if (ownedCondition)
+                {
+                    UiaElementFactoryOps.ReleaseElement(condition);
+                }
+            }
+        }
+    }
+
     public UiaElementInfo? FindTextElement(IntPtr hwnd, string text, int maxChars = 65536)
     {
         if (string.IsNullOrWhiteSpace(text))

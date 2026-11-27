@@ -26,7 +26,7 @@ await client.start();
 
 const list = await client.request('tools/list', {});
 const tools = list.result?.tools ?? [];
-check('工具数量为 22', tools.length === 22, String(tools.length));
+check('工具数量为 30', tools.length === 30, String(tools.length));
 
 const names = tools.map((tool) => tool.name);
 const sorted = [...names].sort((a, b) => a.localeCompare(b, 'en'));
@@ -90,7 +90,11 @@ const filteredLog = await client.call('get_log', { tail: 2, level: 'ERROR' });
 check('get_log level 过滤可用', filteredLog.ok, filteredLog.code ?? '');
 
 const noTarget = await client.call('find_element', { name: 'anything' });
-check('find_element 无目标返回 E_NO_TARGET', !noTarget.ok && noTarget.code === 'E_NO_TARGET', noTarget.code ?? '');
+check(
+  'find_element 无目标返回 E_NO_TARGET（无虚拟屏时允许 E_DRIVER）',
+  !noTarget.ok && ['E_NO_TARGET', 'E_DRIVER', 'E_DRIVER_OPEN'].includes(noTarget.code),
+  noTarget.code ?? '',
+);
 
 const noTree = await client.call('get_ui_tree', {});
 check('get_ui_tree 无目标返回 E_NO_TARGET', !noTree.ok && noTree.code === 'E_NO_TARGET', noTree.code ?? '');

@@ -23,7 +23,8 @@ namespace VScreenPilot.Session;
 
 /// <summary>文本写入请求。</summary>
 internal sealed record TextWriteRequest(
-    string Text, bool Replace, int TimeoutMs, int ChunkChars = 32, int VerifyEveryChunks = 1);
+    string Text, bool Replace, int TimeoutMs, int ChunkChars = 32, int VerifyEveryChunks = 1,
+    int PaceMs = 0);
 
 /// <summary>TextOps：InputRouter 的输入子通道。</summary>
 internal sealed class InputTextOps
@@ -64,6 +65,13 @@ internal sealed class InputTextOps
                 Math.Min(sentBuilder.Length, text.Length),
                 Math.Max(1, text.Length),
                 $"type_text 已输入 {sentBuilder.Length}/{text.Length}");
+
+            // 自绘控件/旧式网格经常只吃掉第一块的一部分；pace_ms 让每个块之间有可调间隔。
+            // 最后一块不必再等，避免无意义的尾部延迟。
+            if (request.PaceMs > 0 && sentBuilder.Length < text.Length)
+            {
+                Thread.Sleep(Math.Clamp(request.PaceMs, 1, 2000));
+            }
 
             // 长文本逐块读全文是 O(n²)；每 N 块确认一次，最后再整体确认。
             if (textSupported && target is not null)
@@ -279,29 +287,69 @@ internal sealed class InputTextOps
     internal TextWriteResult WriteTextUnverified(
         TrackedApp app,
         UiaElementHandle? target,
-        string text)
+        string text,
+        int paceMs = 0,
+        int chunkChars = 32)
     {
         string? before = target is null ? null : _host._uia.Uia.GetText(target.Element, 65536);
         var stopwatch = Stopwatch.StartNew();
+        double injectMs = 0;
+        int typed = 0;
+        int chunks = 0;
 
-        if (!_host._focus.IsAppForeground(app))
+        if (paceMs <= 0 || text.Length <= chunkChars)
         {
-            throw new ToolException(
-                "E_FOCUS_LOST",
-                "输入前目标窗口失去前台，已中止",
-                retryable: true,
-                stage: "focus");
+            if (!_host._focus.IsAppForeground(app))
+            {
+                throw new ToolException(
+                    "E_FOCUS_LOST",
+                    "输入前目标窗口失去前台，已中止",
+                    retryable: true,
+                    stage: "focus");
+            }
+
+            var injectWatch = Stopwatch.StartNew();
+            typed = InputInjector.TypeText(text);
+            injectMs = injectWatch.Elapsed.TotalMilliseconds;
+            chunks = text.Length == 0 ? 0 : 1;
+        }
+        else
+        {
+            // 未验证路径也要遵守 pace_ms：自绘控件按块输入时，块间停顿是必要的。
+            int effectiveChunk = Math.Clamp(chunkChars, 1, 256);
+            int effectivePace = Math.Clamp(paceMs, 1, 2000);
+            List<string> parts = SplitTextChunks(text, effectiveChunk).ToList();
+
+            foreach (string chunk in parts)
+            {
+                if (!_host._focus.IsAppForeground(app))
+                {
+                    throw new ToolException(
+                        "E_FOCUS_LOST",
+                        "输入过程中目标窗口失去前台，已中止",
+                        new JsonObject { ["typed"] = typed, ["chunks"] = chunks },
+                        retryable: true,
+                        stage: "focus");
+                }
+
+                var chunkWatch = Stopwatch.StartNew();
+                typed += InputInjector.TypeText(chunk);
+                injectMs += chunkWatch.Elapsed.TotalMilliseconds;
+                chunks++;
+
+                if (chunks < parts.Count)
+                {
+                    Thread.Sleep(effectivePace);
+                }
+            }
         }
 
-        var injectWatch = Stopwatch.StartNew();
-        int typed = InputInjector.TypeText(text);
-        double injectMs = injectWatch.Elapsed.TotalMilliseconds;
         Thread.Sleep(Math.Clamp(120 + text.Length * 2, 200, 1500));
 
         string? after = target is null ? null : target.GetText(65536);
         return new TextWriteResult(
             typed,
-            Chunks: text.Length == 0 ? 0 : 1,
+            Chunks: chunks,
             TextSupported: before is not null,
             Verified: false,
             ObservedLength: after?.Length,

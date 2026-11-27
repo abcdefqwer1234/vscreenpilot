@@ -59,7 +59,7 @@ def tool_call(client: McpClient, name: str, args: dict, timeout: float = 120) ->
 
 def run_regressions(exe: str) -> list[dict]:
     cases: list[dict] = []
-    client = McpClient(exe).start()
+    client = McpClient(exe, env={"VSP_PROGRESS": "1"}).start()
     env = client.call("get_environment", {"ensure": True}, 120)
     display = (env.data or {}).get("virtual_display", {})
     origin = {"x": display.get("x", 1920), "y": display.get("y", 0)}

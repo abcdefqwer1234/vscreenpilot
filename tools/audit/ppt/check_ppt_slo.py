@@ -6,7 +6,9 @@ import json
 import os
 import sys
 
-ROOT = r"C:\Users\31746\Desktop\VScreenPilot\tools\audit\results\ppt-run"
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.normpath(os.path.join(HERE, "..", "results", "ppt-run"))
+DECK_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "..", "artifacts", "ppt"))
 THRESHOLDS = {
     "snapshot_p95_ms": 1500,
     "click_p95_ms": 300,
@@ -94,8 +96,7 @@ def main() -> int:
         report["known_defects"] = failed
         report["extra_passed"] = f"{len(extra['cases']) - len(failed)}/{len(extra['cases'])}"
 
-    deck = os.path.join(
-        r"C:\Users\31746\Desktop\VScreenPilot\artifacts\ppt", "oracle.json")
+    deck = os.path.join(DECK_DIR, "oracle.json")
     if os.path.exists(deck):
         with open(deck, encoding="utf-8") as handle:
             oracle = json.load(handle)

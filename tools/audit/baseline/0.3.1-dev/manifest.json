@@ -1,0 +1,18 @@
+{
+  "tag": "0.3.1-dev",
+  "note": "缺陷修复：process/window/display 工具与启动语义",
+  "commit": "ff6643d6c20a581d488e736e8fb88946ae3bece2",
+  "exe": "C:\\Users\\31746\\Desktop\\VScreenPilot\\src\\VScreenPilot.Server\\bin\\Release\\net10.0-windows10.0.19041.0\\win-x64\\VScreenPilot.exe",
+  "exe_sha256": "8D32F0F3B241F0F6E4E67CCB12180238E2806D466CAF64AC36A538BDD94361E2",
+  "exe_bytes": 163328,
+  "captured_at": "2026-11-23T23:50:06+0800",
+  "os": "Windows 11 10.0.26300",
+  "python": "3.13.13",
+  "profile": "baseline-probe",
+  "tool_count": 25,
+  "protocol_version": "2025-06-18",
+  "server_info": {
+    "name": "vscreenpilot",
+    "version": "0.3.0"
+  }
+}

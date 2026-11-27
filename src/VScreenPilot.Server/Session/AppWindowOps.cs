@@ -74,14 +74,24 @@ internal sealed class AppWindowOps
 
     internal WindowInfo? WaitForNewWindow(
         Process process, string exeName, HashSet<IntPtr> before, int waitMs,
-        out int contentPid, out string contentPath)
+        out int contentPid, out string contentPath, int exitGraceMs = 5000,
+        bool consoleImage = false)
     {
         contentPid = 0;
         contentPath = string.Empty;
+        var startedAt = DateTime.UtcNow;
         var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(2000, waitMs));
+        DateTime? exitedAt = null;
 
         while (DateTime.UtcNow < deadline)
         {
+            // 控制台程序的主窗口属于 conhost，不可能是这个 pid；
+            // 给它 1.2 秒确认没有自己的窗口，就按"无窗口"返回，不要等满 wait_ms。
+            if (consoleImage && DateTime.UtcNow - startedAt > TimeSpan.FromMilliseconds(1200))
+            {
+                break;
+            }
+
             List<WindowInfo> candidates = WindowManager.ListTopLevel()
                 .Where(item => item.Visible &&
                                !before.Contains(item.Hwnd) &&
@@ -126,6 +136,19 @@ internal sealed class AppWindowOps
                 (contentPid, contentPath) = _core.ResolveUwpContentProcess(byUwp.Hwnd);
                 Thread.Sleep(300);
                 return WindowManager.FromHandle(byUwp.Hwnd) ?? byUwp;
+            }
+
+            // 启动器已经退出：再给窗口交接 2 秒，然后如实返回"没有窗口"，
+            // 不要为了等一个永远不会来的窗口把 wait_ms 耗满（cmd/安装器场景）。
+            if (process.HasExited)
+            {
+                exitedAt ??= DateTime.UtcNow;
+
+                if (DateTime.UtcNow - exitedAt.Value >
+                    TimeSpan.FromMilliseconds(Math.Clamp(exitGraceMs, 500, 10_000)))
+                {
+                    break;
+                }
             }
 
             Thread.Sleep(100);
@@ -184,6 +207,7 @@ internal sealed class AppWindowOps
         // 启动 splash/引导页通常远小于主窗口。小于虚拟屏 50% 的窗口先不当作主窗口，
         // 继续轮询同进程的最大窗口，直到出现更大的窗口或超时。
         bool smallWindow = IsSmallWindow(window, displayArea);
+        DateTime? smallSince = smallWindow ? DateTime.UtcNow : null;
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(ResolveTimeout(waitMs, smallWindow));
 
         _core._log.Info(
@@ -216,6 +240,7 @@ internal sealed class AppWindowOps
                 lastArea = next.Area;
                 stable = 0;
                 smallWindow = IsSmallWindow(window, displayArea);
+                smallSince = smallWindow ? DateTime.UtcNow : null;
                 // 不记录标题：可能含文档名/客户名。
                 _core._log.Info(
                     $"窗口更新: hwnd=0x{window.Hwnd.ToInt64():X} area={window.Area} small={smallWindow}");
@@ -223,6 +248,16 @@ internal sealed class AppWindowOps
             }
 
             stable++;
+
+            // 小窗口可能是 splash，也可能是解压器/对话框。先给它 3 秒等更大的窗口；
+            // 3 秒内没有变化才接受，避免把 splash 当成主窗口，也避免等满 8–20 秒。
+            if (smallWindow &&
+                smallSince is { } since &&
+                DateTime.UtcNow - since >= TimeSpan.FromSeconds(3))
+            {
+                _core._log.Info($"小窗口等待 3s 无更大窗口，按当前窗口继续: hwnd=0x{window.Hwnd.ToInt64():X}");
+                return window;
+            }
 
             if (!smallWindow && stable >= 2)
             {

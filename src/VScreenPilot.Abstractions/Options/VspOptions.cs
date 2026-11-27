@@ -30,7 +30,7 @@ public sealed record VspOptions
 
     public long ScreenLeaseWaitMs { get; init; }
 
-    public int DaemonIdleMs { get; init; } = 5_000;
+    public int DaemonIdleMs { get; init; } = 300_000;
 
     public int ClientLimit { get; init; } = 16;
 
@@ -58,7 +58,7 @@ public sealed record VspOptions
             ArtifactRetentionDays = ReadInt("VSP_ARTIFACT_RETENTION_DAYS", 7, 0, int.MaxValue),
             ScreenLeaseIdleMs = ReadLong("VSP_SCREEN_LEASE_IDLE_MS", 60_000, 1_000, 600_000),
             ScreenLeaseWaitMs = ReadLong("VSP_SCREEN_LEASE_WAIT_MS", 0, 0, 120_000),
-            DaemonIdleMs = ReadInt("VSP_DAEMON_IDLE_MS", 5_000, 0, int.MaxValue),
+            DaemonIdleMs = ReadInt("VSP_DAEMON_IDLE_MS", 300_000, 0, int.MaxValue),
             ClientLimit = ReadInt("VSP_CLIENT_LIMIT", 16, 1, 64),
             TotalBufferBytes = ReadLong("VSP_TOTAL_BUFFER_MB", 64, 8, 512) * 1024 * 1024,
             MaxMessageBytes = ReadLong("VSP_MAX_MESSAGE_MB", 16, 1, 64) * 1024 * 1024,

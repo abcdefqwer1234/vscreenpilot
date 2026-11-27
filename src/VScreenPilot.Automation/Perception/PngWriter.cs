@@ -26,10 +26,15 @@ internal static class PngWriter
     private static readonly string FilterMode =
         (Environment.GetEnvironmentVariable("VSP_PNG_FILTER") ?? "up").Trim().ToLowerInvariant();
 
+    private static readonly bool UseNearestUpscale = string.Equals(
+        Environment.GetEnvironmentVariable("VSP_PNG_UPSCALE"),
+        "nearest",
+        StringComparison.OrdinalIgnoreCase);
+
     public static byte[] Encode(
         byte[] bgra, int width, int height, double scale, out int outputWidth, out int outputHeight)
     {
-        double clamped = Math.Clamp(scale <= 0 ? 1.0 : scale, 0.1, 1.0);
+        double clamped = Math.Clamp(scale <= 0 ? 1.0 : scale, 0.1, 4.0);
         outputWidth = Math.Max(1, (int)Math.Round(width * clamped));
         outputHeight = Math.Max(1, (int)Math.Round(height * clamped));
 
@@ -112,6 +117,13 @@ internal static class PngWriter
     private static void ResizeRow(
         PngCanvas source, int outputRow, int outputHeight, byte[] destination, int outputWidth)
     {
+        if (!UseNearestUpscale &&
+            (outputWidth > source.Width || outputHeight > source.Height))
+        {
+            ResizeRowBilinear(source, outputRow, outputHeight, destination, outputWidth);
+            return;
+        }
+
         byte[] bgra = source.Bgra;
         int width = source.Width;
         int height = source.Height;
@@ -150,6 +162,43 @@ internal static class PngWriter
             destination[destinationIndex++] = (byte)(green / count);
             destination[destinationIndex++] = (byte)(blue / count);
             destination[destinationIndex++] = 255;
+        }
+    }
+
+    private static void ResizeRowBilinear(
+        PngCanvas source, int outputRow, int outputHeight, byte[] destination, int outputWidth)
+    {
+        byte[] bgra = source.Bgra;
+        int width = source.Width;
+        int height = source.Height;
+        double sourceY = ((outputRow + 0.5) * height / outputHeight) - 0.5;
+        int y0 = Math.Clamp((int)Math.Floor(sourceY), 0, height - 1);
+        int y1 = Math.Min(y0 + 1, height - 1);
+        double wy = Math.Clamp(sourceY - y0, 0, 1);
+        int destinationIndex = 0;
+
+        for (int ox = 0; ox < outputWidth; ox++)
+        {
+            double sourceX = ((ox + 0.5) * width / outputWidth) - 0.5;
+            int x0 = Math.Clamp((int)Math.Floor(sourceX), 0, width - 1);
+            int x1 = Math.Min(x0 + 1, width - 1);
+            double wx = Math.Clamp(sourceX - x0, 0, 1);
+            int i00 = (y0 * width + x0) * Bpp;
+            int i10 = (y0 * width + x1) * Bpp;
+            int i01 = (y1 * width + x0) * Bpp;
+            int i11 = (y1 * width + x1) * Bpp;
+
+            for (int channel = 0; channel < 3; channel++)
+            {
+                double top = bgra[i00 + channel] * (1 - wx) + bgra[i10 + channel] * wx;
+                double bottom = bgra[i01 + channel] * (1 - wx) + bgra[i11 + channel] * wx;
+                // PNG 写入顺序为 R,G,B；BGRA 通道顺序为 B,G,R。
+                destination[destinationIndex + (2 - channel)] =
+                    (byte)Math.Clamp((int)Math.Round(top * (1 - wy) + bottom * wy), 0, 255);
+            }
+
+            destination[destinationIndex + 3] = 255;
+            destinationIndex += Bpp;
         }
     }
 

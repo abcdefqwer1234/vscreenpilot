@@ -49,6 +49,7 @@ internal sealed class SessionManager : IDisposable
     internal readonly SessionElementOps ElementOps;
     internal readonly SessionFocusOps FocusOps;
     internal readonly SessionInputOps InputOps;
+    internal readonly SessionInspectOps InspectOps;
     internal readonly SessionLifecycleOps LifecycleOps;
     internal readonly SessionObserveOps ObserveOps;
     internal readonly SessionOcrOps OcrOps;
@@ -108,7 +109,9 @@ internal sealed class SessionManager : IDisposable
     internal void OnDisplayReady(DisplayInfo display)
     {
         _cursorGuard?.Dispose();
-        _cursorGuard = new CursorGuard(display, _log.Info, _log.Warn);
+        _cursorGuard = new CursorGuard(
+            display, _log.Info, _log.Warn,
+            () => _input?.AnyLeaseActive == true);
         _cursorGuard.Start();
     }
 
@@ -185,6 +188,8 @@ internal sealed class SessionManager : IDisposable
 
     internal void ExitRead() => _guard.ExitRead();
 
+    internal bool IsReadLockHeld => _guard.IsReadLockHeld;
+
     internal bool TryEnterRead(int milliseconds) => _guard.TryEnterRead(milliseconds);
 
     internal bool TryEnterExclusive(int milliseconds) =>
@@ -223,6 +228,7 @@ internal sealed class SessionManager : IDisposable
         ElementOps = new SessionElementOps(this);
         FocusOps = new SessionFocusOps(this);
         InputOps = new SessionInputOps(this);
+        InspectOps = new SessionInspectOps(this);
         LifecycleOps = new SessionLifecycleOps(this);
         ObserveOps = new SessionObserveOps(this);
         OcrOps = new SessionOcrOps(this);

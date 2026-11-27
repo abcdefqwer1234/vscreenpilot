@@ -6,7 +6,7 @@ namespace VScreenPilot.Input;
 
 internal static class InputInjector
 {
-    public static void Click(int x, int y, string button, int clicks)
+    public static void Click(int x, int y, string button, int clicks, int intervalMs = 50)
     {
         NativeMethods.GetCursorPos(out NativeMethods.POINT original);
 
@@ -35,8 +35,8 @@ internal static class InputInjector
 
                     if (i < clicks - 1)
                     {
-                        // 多击需要间隔，让系统识别为双击/三击。
-                        Thread.Sleep(50);
+                        // 多击需要间隔，让系统识别为双击/三击；太快会被当成两次独立单击。
+                        Thread.Sleep(Math.Clamp(intervalMs, 10, 1000));
                     }
                 }
             }

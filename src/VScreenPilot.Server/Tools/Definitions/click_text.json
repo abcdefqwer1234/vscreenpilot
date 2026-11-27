@@ -57,6 +57,24 @@
       },
       "observe": {
         "type": "boolean"
+      },
+      "allow_destructive": {
+        "type": "boolean",
+        "description": "Default false. Required when the OCR match lands on a close/delete/clear control."
+      },
+      "upscale": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 4,
+        "description": "Default 0 (auto): 2x/3x/4x for small regions before OCR. 1 disables; 2-4 force the factor."
+      },
+      "on_out_of_bounds": {
+        "type": "string",
+        "enum": [
+          "clip",
+          "error"
+        ],
+        "description": "Default clip: intersect the region with the virtual display and return clipped=true. error restores E_OUT_OF_BOUNDS."
       }
     },
     "required": [
@@ -134,6 +152,25 @@
           "null"
         ],
         "additionalProperties": true
+      },
+      "hit_element": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "upscale": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "clipped": {
+        "type": [
+          "boolean",
+          "null"
+        ]
       }
     },
     "additionalProperties": true

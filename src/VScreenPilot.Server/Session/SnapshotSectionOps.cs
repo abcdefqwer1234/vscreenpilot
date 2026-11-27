@@ -10,6 +10,7 @@ using VScreenPilot.Perception;
 using VScreenPilot.Uia;
 using VScreenPilot.Views;
 using VScreenPilot.Platform.Windows;
+using VScreenPilot.Platform.Ipc;
 using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
@@ -199,6 +200,7 @@ internal sealed class SnapshotSectionOps
                     : tracked.Title,
                 ["alive"] = _core._apps.IsLive(tracked),
                 ["owned"] = tracked.Owned,
+                ["elevated"] = Elevated(tracked.Pid),
             });
         }
 
@@ -219,8 +221,28 @@ internal sealed class SnapshotSectionOps
             {
                 ["hwnd"] = foregroundInfo.Hwnd.ToInt64(),
                 ["pid"] = foregroundInfo.Pid,
+                ["name"] = ProcessName(foregroundInfo.Pid),
+                ["elevated"] = Elevated(foregroundInfo.Pid),
                 ["title"] = foregroundTracked ? foregroundInfo.Title : null,
                 ["tracked"] = foregroundTracked,
             };
+    }
+
+    private static bool? Elevated(int pid) =>
+        IntegrityCheck.TryCompareIntegrity((uint)pid, out int target, out int self)
+            ? target > self
+            : null;
+
+    private static string? ProcessName(int pid)
+    {
+        try
+        {
+            using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(pid);
+            return process.ProcessName;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 }

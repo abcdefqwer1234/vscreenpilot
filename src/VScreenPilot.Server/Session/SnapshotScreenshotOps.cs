@@ -20,6 +20,8 @@ internal sealed class SnapshotScreenshotOps
     private readonly SnapshotBuilder _core;
 
     public SnapshotScreenshotOps(SnapshotBuilder core) => _core = core;
+    private const long MaxOutputPixels = 40_000_000;
+
     internal (byte[]? Png, byte[]? PreviewPng, JsonObject? PreviewMeta) BuildScreenshot(
         JsonObject data, JsonObject tree, DisplayInfo display,
         bool includeScreenshot, bool annotate, double scale)
@@ -31,12 +33,13 @@ internal sealed class SnapshotScreenshotOps
 
         return annotate
             ? BuildAnnotatedScreenshot(data, tree, display, scale)
-            : CapturedScreenshot(data, scale);
+            : CapturedScreenshot(data, display, scale);
     }
 
     private (byte[]? Png, byte[]? PreviewPng, JsonObject? PreviewMeta) BuildAnnotatedScreenshot(
         JsonObject data, JsonObject tree, DisplayInfo display, double scale)
     {
+        EnsureOutputWithinLimit(display, scale);
         var annotations = new JsonArray();
         _core.ConvertOps.CollectAnnotations(tree, display, annotations, maxCount: 80);
         data["annotations"] = annotations;
@@ -45,7 +48,7 @@ internal sealed class SnapshotScreenshotOps
         (byte[] bgra, int captureWidth, int captureHeight) =
             _core._capture.CaptureRegion(display.X, display.Y, display.Width, display.Height);
 
-        double effectiveScale = Math.Clamp(scale, 0.1, 1.0);
+        double effectiveScale = Math.Clamp(scale, 0.1, 4.0);
         int thickness = Math.Max(2, (int)Math.Ceiling(2 / effectiveScale));
         int numberScale = Math.Max(2, (int)Math.Ceiling(2 / effectiveScale));
 
@@ -122,6 +125,31 @@ internal sealed class SnapshotScreenshotOps
             },
         };
 
+    private static void EnsureOutputWithinLimit(DisplayInfo display, double scale)
+    {
+        double effectiveScale = Math.Clamp(scale, 0.1, 4.0);
+        double outputPixels = display.Width * (double)display.Height * effectiveScale * effectiveScale;
+
+        if (outputPixels <= MaxOutputPixels)
+        {
+            return;
+        }
+
+        throw new ToolException(
+            "E_INVALID_ARG",
+            "放大后的快照输出像素超过 40MP 上限",
+            new JsonObject
+            {
+                ["width"] = display.Width,
+                ["height"] = display.Height,
+                ["scale"] = effectiveScale,
+                ["output_pixels"] = (long)outputPixels,
+            },
+            retryable: false,
+            hint: "降低 scale（快照默认 0.5，最大 4）",
+            stage: "validate");
+    }
+
     private static JsonObject BuildPreviewMeta(
         int previewWidth, int previewHeight, double effectiveScale, int pngBytes) =>
         new()
@@ -133,11 +161,12 @@ internal sealed class SnapshotScreenshotOps
         };
 
     private (byte[]? Png, byte[]? PreviewPng, JsonObject? PreviewMeta) CapturedScreenshot(
-        JsonObject data, double scale)
+        JsonObject data, DisplayInfo display, double scale)
     {
+        EnsureOutputWithinLimit(display, scale);
         // 快照截图不写帧缓存；preview 与主图同帧，且不阻塞 _refGate（已在锁外）。
         CaptureResult capture = _core._capture.CaptureForSnapshot(
-            Math.Clamp(scale, 0.1, 1.0),
+            Math.Clamp(scale, 0.1, 4.0),
             Math.Max(Limits.MinScale, scale * Limits.PreviewScale));
 
         JsonObject? previewMeta = capture.PreviewMeta is null

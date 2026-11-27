@@ -12,7 +12,10 @@ namespace VScreenPilot.Tests.Contract;
 /// </summary>
 public sealed class ToolSchemaSnapshotTests
 {
-    private const string BaselineToolCount = "22";
+    private const string BaselineToolCount = "30";
+
+    // 0.4.0：新增 select_tab/close_tab/lease_input/run_actions/read_table，并扩展 find_element/click/click_ref/click_text。
+    private const string BaselineDirectory = "0.4.0";
 
     private static Dictionary<string, ToolDescriptor> Catalog()
     {
@@ -39,7 +42,7 @@ public sealed class ToolSchemaSnapshotTests
     private static JsonArray BaselineTools()
     {
         string path = Path.Combine(
-            RepoRoot(), "tools", "audit", "baseline", "3ddb85b", "server.json");
+            RepoRoot(), "tools", "audit", "baseline", BaselineDirectory, "server.json");
         JsonNode root = JsonNode.Parse(File.ReadAllText(path))
             ?? throw new InvalidOperationException($"基线无法解析：{path}");
         return root["tools"]?.AsArray()

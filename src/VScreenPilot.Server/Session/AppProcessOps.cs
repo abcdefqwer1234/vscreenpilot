@@ -23,6 +23,90 @@ internal sealed class AppProcessOps
     private readonly AppLauncher _core;
 
     public AppProcessOps(AppLauncher core) => _core = core;
+
+    /// <summary>
+    /// 统一启动入口：把 Win32 错误映射成稳定错误码。
+    /// 740/5 是提权相关，不能再落到 E_INTERNAL；2/3 是路径问题，193 是可执行格式问题。
+    /// </summary>
+    internal static Process Start(ProcessStartInfo startInfo)
+    {
+        try
+        {
+            return Process.Start(startInfo)
+                ?? throw new ToolException("E_APP_START", $"无法启动应用: {startInfo.FileName}");
+        }
+        catch (System.ComponentModel.Win32Exception exception)
+        {
+            string hint = exception.NativeErrorCode switch
+            {
+                740 => "该程序要求管理员权限；用宿主 shell 以管理员身份启动，或让用户手动确认 UAC。本工具不会自动提权",
+                5 => "访问被拒绝；目标需要更高权限或已被策略拦截，请用管理员身份运行服务端/宿主",
+                2 or 3 => "找不到可执行文件；检查 path 与工作目录",
+                193 => "不是有效的可执行文件；检查 path 是否指向 exe",
+                _ => "检查 path、权限与目标文件是否可执行",
+            };
+
+            throw new ToolException(
+                exception.NativeErrorCode is 740 or 5 ? "E_ELEVATION_REQUIRED" : "E_APP_START",
+                $"启动失败: {startInfo.FileName}（Win32 {exception.NativeErrorCode}: {exception.Message}）",
+                new JsonObject
+                {
+                    ["path"] = startInfo.FileName,
+                    ["win32_error"] = exception.NativeErrorCode,
+                },
+                retryable: false,
+                hint: hint,
+                stage: "launch");
+        }
+    }
+    /// <summary>
+    /// 判断 exe 是否为控制台子系统（PE OptionalHeader.Subsystem == 3）。
+    /// 控制台启动器退出后不需要给 GUI 窗口交接留太长宽限，避免 cmd/安装器白等。
+    /// 读不到 PE 头时按 GUI 处理（更保守）。
+    /// </summary>
+    internal static bool IsConsoleImage(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            using FileStream stream = File.OpenRead(path);
+            using var reader = new BinaryReader(stream);
+
+            if (stream.Length < 0x40)
+            {
+                return false;
+            }
+
+            stream.Position = 0x3C;
+            int peOffset = reader.ReadInt32();
+
+            if (peOffset <= 0 || peOffset + 96L > stream.Length)
+            {
+                return false;
+            }
+
+            stream.Position = peOffset;
+
+            if (reader.ReadUInt32() != 0x00004550)
+            {
+                return false;
+            }
+
+            // COFF header 20 字节后是 OptionalHeader；Subsystem 在 OptionalHeader + 68。
+            stream.Position = peOffset + 4 + 20 + 68;
+            return reader.ReadUInt16() == 3;
+        }
+        catch (Exception exception)
+        {
+            LogSink.Debug($"忽略异常: {exception.Message}");
+            return false;
+        }
+    }
+
     /// <summary>
     /// Win11 记事本会恢复上次会话的标签：无参数启动时若标题带文件名，提示调用方先确认。
     /// 只在本次确实启动了新进程时判断，接管旧窗口的场景由 launchWarning 覆盖。

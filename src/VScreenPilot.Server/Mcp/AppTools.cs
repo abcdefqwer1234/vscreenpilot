@@ -21,6 +21,10 @@ internal sealed class AppTools
             WaitMs = OptionalInt(arguments, "wait_ms", 15000),
             NewInstance = OptionalBool(arguments, "new_instance", true),
             EnsureDocument = OptionalBool(arguments, "ensure_document", true),
+            Place = OptionalBool(arguments, "place", true),
+            Maximize = OptionalBool(arguments, "maximize", true),
+            OnNoWindow = OptionalString(arguments, "on_no_window") ?? "leave",
             Pid = OptionalNullableInt(arguments, "pid"),
+            Hwnd = OptionalNullableLong(arguments, "hwnd"),
         }));
 }

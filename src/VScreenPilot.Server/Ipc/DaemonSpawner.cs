@@ -133,6 +133,7 @@ internal static class DaemonSpawner
                          "VSP_APP_ALLOWLIST",
                          "VSP_CLIENT_CWD",
                          "VSP_ALLOW_INTEGRITY_MISMATCH",
+                         "VSP_READ_ONLY",
                      })
             {
                 startInfo.Environment.Remove(key);
@@ -283,6 +284,7 @@ internal static class DaemonSpawner
             "VSP_CLIENT_CWD",
             "VSP_PROFILE",
             "VSP_ALLOW_INTEGRITY_MISMATCH",
+            "VSP_READ_ONLY",
         };
 
         foreach (DictionaryEntry entry in Environment.GetEnvironmentVariables())

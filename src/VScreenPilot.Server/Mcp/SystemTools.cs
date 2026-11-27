@@ -51,6 +51,11 @@ internal sealed class SystemTools
             Height = height,
             Query = OptionalString(arguments, "query"),
             MaxLines = OptionalInt(arguments, "max_lines", 50),
+            Upscale = OptionalInt(arguments, "upscale", 0),
+            OnOutOfBoundsClip = !string.Equals(
+                OptionalString(arguments, "on_out_of_bounds") ?? "clip",
+                "error",
+                StringComparison.OrdinalIgnoreCase),
         }));
     }
 

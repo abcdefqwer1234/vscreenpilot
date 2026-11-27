@@ -20,12 +20,18 @@ public sealed class AppState
     public int Top { get; set; }
     public int Right { get; set; }
     public int Bottom { get; set; }
+    public string OwnerClientId { get; set; } = string.Empty;
+    public bool Dedicated { get; set; }
+    public bool Detached { get; set; }
+    public string TempProfile { get; set; } = string.Empty;
+    public string ClientKey { get; set; } = string.Empty;
 }
 
 public sealed class SessionState
 {
     public int Pid { get; set; }
     public string StartedAt { get; set; } = string.Empty;
+    public string SavedAt { get; set; } = string.Empty;
     public int DisplayIndex { get; set; } = -1;
     public string DisplayDevice { get; set; } = string.Empty;
     public int X { get; set; }
@@ -104,6 +110,11 @@ public sealed class StateStore : ISessionStateStore
                     // 不持久化窗口标题：可能包含文档名/客户名，属于隐私面。
                     ["hwnd"] = app.Hwnd,
                     ["launchedByUs"] = app.LaunchedByUs,
+                    ["ownerClientId"] = app.OwnerClientId,
+                    ["dedicated"] = app.Dedicated,
+                    ["detached"] = app.Detached,
+                    ["tempProfile"] = app.TempProfile,
+                    ["clientKey"] = app.ClientKey,
                     ["showCmd"] = app.ShowCmd,
                     ["min"] = new JsonArray(app.MinX, app.MinY),
                     ["max"] = new JsonArray(app.MaxX, app.MaxY),
@@ -113,9 +124,10 @@ public sealed class StateStore : ISessionStateStore
 
             var root = new JsonObject
             {
-                ["version"] = 1,
+                ["version"] = 2,
                 ["pid"] = state.Pid,
                 ["startedAt"] = state.StartedAt,
+                ["savedAt"] = DateTimeOffset.UtcNow.ToString("O"),
                 ["display"] = new JsonObject
                 {
                     ["index"] = state.DisplayIndex,
@@ -155,6 +167,9 @@ public sealed class StateStore : ISessionStateStore
                 Pid = root.TryGetProperty("pid", out var pid) ? pid.GetInt32() : 0,
                 StartedAt = root.TryGetProperty("startedAt", out var started)
                     ? started.GetString() ?? string.Empty
+                    : string.Empty,
+                SavedAt = root.TryGetProperty("savedAt", out var savedAt)
+                    ? savedAt.GetString() ?? string.Empty
                     : string.Empty,
             };
 
@@ -206,6 +221,17 @@ public sealed class StateStore : ISessionStateStore
             Title = app.TryGetProperty("title", out var title) ? title.GetString() ?? string.Empty : string.Empty,
             Hwnd = app.TryGetProperty("hwnd", out var hwnd) ? hwnd.GetInt64() : 0,
             LaunchedByUs = app.TryGetProperty("launchedByUs", out var launched) && launched.GetBoolean(),
+            OwnerClientId = app.TryGetProperty("ownerClientId", out var owner)
+                ? owner.GetString() ?? string.Empty
+                : string.Empty,
+            Dedicated = app.TryGetProperty("dedicated", out var dedicated) && dedicated.GetBoolean(),
+            Detached = app.TryGetProperty("detached", out var detached) && detached.GetBoolean(),
+            TempProfile = app.TryGetProperty("tempProfile", out var tempProfile)
+                ? tempProfile.GetString() ?? string.Empty
+                : string.Empty,
+            ClientKey = app.TryGetProperty("clientKey", out var clientKey)
+                ? clientKey.GetString() ?? string.Empty
+                : string.Empty,
             ShowCmd = app.TryGetProperty("showCmd", out var showCmd) ? showCmd.GetInt32() : 1,
         };
 

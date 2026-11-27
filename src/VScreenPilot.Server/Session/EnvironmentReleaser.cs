@@ -197,11 +197,27 @@ internal sealed class EnvironmentReleaser
 
     private void CloseOrRestoreApp(ReleaseState state, TrackedApp app, string onDirty)
     {
+        // detached 明确不随会话释放：只归位，不关闭、不强杀。
+        if (app.Detached)
+        {
+            if (app.PlacementSaved && app.Hwnd != IntPtr.Zero && NativeMethods.IsWindow(app.Hwnd))
+            {
+                WindowManager.SetPlacement(app.Hwnd, app.Placement);
+                state.Restored.Add(app.Pid);
+            }
+
+            state.Kept.Add(app.Pid);
+            return;
+        }
+
         bool windowAlive = app.Hwnd != IntPtr.Zero && NativeMethods.IsWindow(app.Hwnd);
 
         if (windowAlive)
         {
             CloseOrRestoreWindow(state, app, onDirty);
+
+            // 关闭/归位后再判断一次：关闭成功后应允许回收后台残留进程和临时 profile。
+            windowAlive = app.Hwnd != IntPtr.Zero && NativeMethods.IsWindow(app.Hwnd);
         }
 
         ReclaimResidualProcess(state, app, windowAlive, onDirty);
@@ -277,6 +293,12 @@ internal sealed class EnvironmentReleaser
     private static void ReclaimResidualProcess(
         ReleaseState state, TrackedApp app, bool windowAlive, string onDirty)
     {
+        if (app.Detached)
+        {
+            state.Kept.Add(app.Pid);
+            return;
+        }
+
         if (app.TempProfile is not null)
         {
             ReclaimTempProfile(state, app, app.TempProfile, windowAlive, onDirty);
@@ -349,9 +371,6 @@ internal sealed class EnvironmentReleaser
     {
         bool removed = false;
 
-        // keep_foreground 可能暂停了焦点护栏；释放时恢复，避免用户前台一直留在虚拟屏。
-        _apps.ResumeFocusGuard();
-
         // abort 的语义是“保留未保存窗口”，因此必须保留跟踪信息。
         if (onDirty != "abort")
         {
@@ -362,6 +381,10 @@ internal sealed class EnvironmentReleaser
         _display.ClearElementRefs(forceAllClients);
         _display.ClearFrames(forceAllClients);
         _display.ClearInputBlock(forceAllClients);
+
+        // 先释放当前客户端的输入/前台租约，再恢复焦点护栏；
+        // 其他客户端仍持有租约时，非强制 Resume 会保持暂停，避免把对方的前台抢走。
+        _apps.ResumeFocusGuard();
 
         if (forceAllClients)
         {

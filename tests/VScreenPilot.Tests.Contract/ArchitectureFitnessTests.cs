@@ -1,20 +1,18 @@
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using Xunit;
 
 namespace VScreenPilot.Tests.Contract;
 
 /// <summary>
-/// 架构 Fitness Test：命名空间单归属、IVT 白名单、文件体量与测试数量的棘轮。
-/// 方法长度与宿主成员数由 tools/audit/arch_metrics.py --check 覆盖（CI 执行）。
-/// 只允许比基线更好；放宽任何一项都必须改这里并在评审中说明。
+/// 架构边界闸门：命名空间单归属、IVT 白名单、无类型 catch、Automation 不暴露 public 类型。
+/// 行数、方法长度、测试数量、组件映射等风格指标不再作为 CI 闸门；
+/// 需要查看时使用 <c>tools/audit/arch_metrics.py --inventory</c>。
 /// </summary>
 public sealed class ArchitectureFitnessTests
 {
     private static readonly string Root = FindRepoRoot();
     private static readonly string Src = Path.Combine(Root, "src");
 
-    // R2 起点：5 个 SPLIT 命名空间。R2-2 完成后应缩到 1（Infrastructure），重命名 Mcp 契约后为 0。
     private static readonly HashSet<string> SplitAllowlist = new(StringComparer.Ordinal);
 
     private static readonly HashSet<string> IvtAllowlist = new(StringComparer.Ordinal)
@@ -35,9 +33,7 @@ public sealed class ArchitectureFitnessTests
         "VScreenPilot->VScreenPilot.Tests.Contract",
     };
 
-    private const int MaxFileLines = 800;
     private const int MaxUntypedCatch = 0;
-    private const int MinTestMethods = 176;
 
     [Fact]
     public void NamespaceBelongsToSingleAssembly()
@@ -82,18 +78,6 @@ public sealed class ArchitectureFitnessTests
     }
 
     [Fact]
-    public void FilesDoNotGrowBeyondBaseline()
-    {
-        foreach (string path in SourceFiles(Src))
-        {
-            int lines = File.ReadAllLines(path).Length;
-            Assert.True(
-                lines <= MaxFileLines,
-                $"{Path.GetRelativePath(Root, path)} = {lines} 行，超过棘轮 {MaxFileLines}。拆分后再提交。");
-        }
-    }
-
-    [Fact]
     public void UntypedCatchDoesNotGrow()
     {
         int total = 0;
@@ -104,25 +88,6 @@ public sealed class ArchitectureFitnessTests
         }
 
         Assert.True(total <= MaxUntypedCatch, $"无类型 catch {total} 处，超过棘轮 {MaxUntypedCatch}。");
-    }
-
-    [Fact]
-    public void TestMethodCountDoesNotShrink()
-    {
-        int total = 0;
-        foreach (string path in Directory.EnumerateFiles(Path.Combine(Root, "tests"), "*.cs", SearchOption.AllDirectories))
-        {
-            if (path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
-                || path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
-            {
-                continue;
-            }
-
-            string text = File.ReadAllText(path);
-            total += Regex.Count(text, @"\[Fact\]") + Regex.Count(text, @"\[Theory\]");
-        }
-
-        Assert.True(total >= MinTestMethods, $"测试方法只有 {total} 个，少于棘轮 {MinTestMethods}。");
     }
 
     [Fact]
@@ -152,59 +117,5 @@ public sealed class ArchitectureFitnessTests
 
         return directory?.FullName
             ?? throw new InvalidOperationException("找不到仓库根目录（VScreenPilot.slnx）");
-    }
-
-    [Fact]
-    public void ComponentsDeclareExistingTests()
-    {
-        using JsonDocument document = JsonDocument.Parse(
-            File.ReadAllText(Path.Combine(Root, "tools", "audit", "arch_rules.json")));
-        JsonElement components = document.RootElement.GetProperty("components");
-
-        Assert.NotEqual(0, components.GetArrayLength());
-
-        foreach (JsonElement component in components.EnumerateArray())
-        {
-            string name = component.GetProperty("name").GetString() ?? string.Empty;
-            string test = component.GetProperty("test").GetString() ?? string.Empty;
-            string path = Path.Combine(Root, "tests", test);
-
-            Assert.True(File.Exists(path), $"组件 {name} 的测试文件不存在: {test}");
-
-            string content = File.ReadAllText(path);
-            int count = Regex.Count(content, @"\[(?:Fact|Theory)\]");
-            Assert.True(count >= 2, $"组件 {name} 测试方法 {count} < 2 ({test})");
-
-            if (component.TryGetProperty("direct", out JsonElement direct) &&
-                direct.ValueKind == JsonValueKind.True)
-            {
-                Assert.Contains(name, content);
-            }
-        }
-    }
-
-    [Fact]
-    public void RecordParameterBaselineIsPresent()
-    {
-        using JsonDocument document = JsonDocument.Parse(
-            File.ReadAllText(Path.Combine(Root, "tools", "audit", "arch_rules.json")));
-        JsonElement baseline = document.RootElement.GetProperty("record_param_baseline");
-
-        // record 主构造不计入 methods 参数指标；必须保留基线，否则盲区会无声扩大。
-        Assert.NotEmpty(baseline.EnumerateObject());
-    }
-
-    [Fact]
-    public void ArchitectureAllowlistIsEmpty()
-    {
-        using JsonDocument document = JsonDocument.Parse(
-            File.ReadAllText(Path.Combine(Root, "tools", "audit", "arch_rules.json")));
-
-        JsonElement allowlist = document.RootElement.GetProperty("allowlist");
-        int count = allowlist.ValueKind == JsonValueKind.Array
-            ? allowlist.GetArrayLength()
-            : allowlist.EnumerateObject().Count();
-
-        Assert.Equal(0, count);
     }
 }

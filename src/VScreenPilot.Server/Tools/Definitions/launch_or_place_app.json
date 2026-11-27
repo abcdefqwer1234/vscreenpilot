@@ -1,7 +1,7 @@
 {
   "name": "launch_or_place_app",
   "title": "Launch or attach app",
-  "description": "Start an application or attach to an existing window, move it onto the virtual display and maximize it. Returns pid/hwnd plus any owned dialogs discovered at attach time. Prefer path for a new instance; window only when you intentionally take over a running app. Single-instance apps may fall back to adopting an existing window: check \u0060reused\u0060 and \u0060warnings\u0060; an adopted window is only moved back on release, never closed. Windows 11 Notepad can restore the previous session\u0027s tabs when launched without args; pass \u0060args\u0060 or confirm the title with snapshot before typing.",
+  "description": "Start an application or attach to an existing window, move it onto the virtual display and maximize it. Returns pid/hwnd plus any owned dialogs discovered at attach time. If the process starts but shows no window (console/launcher/silent installer), returns launched=true with window=false plus alive/exit_code and keeps the process running (on_no_window=leave) without adding it to the job; on_no_window=kill terminates it. Prefer path for a new instance; window/hwnd only when you intentionally take over a running app. Single-instance apps may fall back to adopting an existing window: check \u0060reused\u0060 and \u0060warnings\u0060; an adopted window is only moved back on release, never closed. Windows 11 Notepad can restore the previous session\u0027s tabs when launched without args; pass \u0060args\u0060 or confirm the title with snapshot before typing. Set \u0060place=false\u0060 to keep the current bounds (input tools may then reject the window if it is not on the virtual display); set \u0060maximize=false\u0060 to move without maximizing.",
   "inputSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -34,6 +34,43 @@
         "type": "integer",
         "minimum": 1,
         "description": "Attach by process id (most precise)."
+      },
+      "hwnd": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Attach by window handle (dialogs/owned popups of a tracked app, or any top-level window). Takes precedence over path/window/pid."
+      },
+      "place": {
+        "type": "boolean",
+        "description": "Default true: move the window onto the virtual display. false keeps the current bounds; input tools may reject a window left on another monitor."
+      },
+      "maximize": {
+        "type": "boolean",
+        "description": "Default true: maximize after moving. false moves/resizes to the virtual display without maximizing."
+      },
+      "on_no_window": {
+        "type": "string",
+        "enum": [
+          "leave",
+          "kill"
+        ],
+        "description": "Default leave. What to do when a newly started process shows no window: leave it running (console/launcher/installer, not added to the job) or kill its process tree."
+      },
+      "lifecycle": {
+        "type": "string",
+        "enum": [
+          "session",
+          "detached"
+        ],
+        "description": "Default session: the process joins the kill-on-close job and is released with the session. detached: do not join the job; the process survives daemon crash/exit and release only restores its placement. Only affects newly started processes."
+      },
+      "fit": {
+        "type": "string",
+        "enum": [
+          "clamp",
+          "keep"
+        ],
+        "description": "Default clamp: if the placed window is larger than the virtual display, resize it to fit and report a warning. keep preserves the app size; read tools can still clip regions."
       }
     }
   },
@@ -119,6 +156,50 @@
           "null"
         ],
         "items": {}
+      },
+      "window": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "alive": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "exit_code": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "detached": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "fit_adjusted": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "requested_bounds": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "applied_bounds": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
       }
     },
     "additionalProperties": true

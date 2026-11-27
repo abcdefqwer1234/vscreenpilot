@@ -49,7 +49,13 @@ public sealed record AssertRegionView(
     string? BaselineFrameId,
     [property: JsonPropertyName("baseline")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    BoundsView? Baseline);
+    BoundsView? Baseline,
+    [property: JsonPropertyName("clipped")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? Clipped = null,
+    [property: JsonPropertyName("requested_region")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    BoundsView? RequestedRegion = null);
 
 /// <summary>
 /// `wait_for` 的稳定外壳；`last` 是随条件类型变化的多态载荷（element/text/color/

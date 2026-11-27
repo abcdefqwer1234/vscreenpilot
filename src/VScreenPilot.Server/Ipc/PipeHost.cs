@@ -22,6 +22,7 @@ internal sealed class PipeHost : IDisposable
     private readonly TraceLog _trace;
     private readonly string _pipeName;
     private readonly int _maxClients;
+    private readonly bool _readOnly;
     private readonly MessageBudget _messageBudget = new(MessageBudget.ResolveMaxBytes());
     private readonly CancellationTokenSource _cts = new();
     private Task? _loop;
@@ -29,13 +30,14 @@ internal sealed class PipeHost : IDisposable
     private int _activeClients;
     private int _disposed;
 
-    public PipeHost(SessionManager session, LogRing log, TraceLog trace, string profile)
+    public PipeHost(SessionManager session, LogRing log, TraceLog trace, string profile, bool readOnly = false)
     {
         _session = session;
         _log = log;
         _trace = trace;
         _pipeName = PipeNames.Mcp(profile);
         _maxClients = ResolveClientLimit();
+        _readOnly = readOnly;
     }
 
     private static int ResolveClientLimit() => VspOptions.FromEnvironment().ClientLimit;
@@ -222,6 +224,7 @@ internal sealed class PipeHost : IDisposable
             Version = hello.Version,
             AllowScript = hello.AllowScript,
             AllowUnsafeScript = hello.AllowUnsafeScript,
+            ReadOnly = hello.ReadOnly,
             AppAllowlist = hello.AppAllowlist,
         };
 
@@ -260,6 +263,7 @@ internal sealed class PipeHost : IDisposable
                 Context = client,
             },
             Trace = _trace,
+            ReadOnly = _readOnly || client.ReadOnly,
         });
         await server.RunAsync(limiter, limiter, connectionCts.Token).ConfigureAwait(false);
     }

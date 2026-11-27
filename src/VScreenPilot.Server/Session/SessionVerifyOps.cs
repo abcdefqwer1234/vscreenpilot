@@ -22,11 +22,13 @@ internal sealed class SessionVerifyOps
     public SessionVerifyOps(SessionManager host) => _host = host;
     public object FindElement(FindQuery query) => _host._finder.Find(query);
 
-    public WaitForView WaitFor(JsonElement condition, int timeoutMs, int? intervalMs = null) =>
-        _host._waits.Wait(condition, timeoutMs, intervalMs);
+    public WaitForView WaitFor(
+        JsonElement condition, int timeoutMs, int? intervalMs = null, bool clipOutOfBounds = false) =>
+        _host._waits.Wait(condition, timeoutMs, intervalMs, clipOutOfBounds);
 
-    public AssertRegionView AssertRegion(JsonElement region, JsonElement expectation) =>
-        _host._regionVerifier.Assert(region, expectation);
+    public AssertRegionView AssertRegion(
+        JsonElement region, JsonElement expectation, bool clipOutOfBounds = false) =>
+        _host._regionVerifier.Assert(region, expectation, clipOutOfBounds);
 
 
     internal TrackedApp? LastTrackedApp() => _host.LastLiveTrackedApp();

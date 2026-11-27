@@ -80,6 +80,28 @@ public sealed class SessionStateKeeperTests
         Assert.Equal(string.Empty, host.DisplayState.RecoveredDevice);
     }
 
+    [Fact]
+    public void RecoverDoesNotSkipWhenPidWasReused()
+    {
+        var store = new FakeStore
+        {
+            State = new SessionState
+            {
+                Pid = Environment.ProcessId,
+                StartedAt = DateTimeOffset.UtcNow.AddDays(-1).ToString("O"),
+                DisplayIndex = 5,
+                DisplayDevice = @"\\.\DISPLAY9",
+            },
+        };
+        var host = new FakeHost(store);
+        var keeper = new SessionStateKeeper(host.ToContext());
+
+        keeper.Recover();
+
+        Assert.Equal(Environment.ProcessId, host.DisplayState.RecoveredPid);
+        Assert.Equal(5, host.DisplayState.RecoveredIndex);
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -98,6 +120,38 @@ public sealed class SessionStateKeeperTests
     public void IsVScreenPilotProcessRejectsUnknownPid()
     {
         Assert.False(SessionStateKeeper.IsVScreenPilotProcess(0, string.Empty));
+    }
+
+    [Fact]
+    public void IsVScreenPilotProcessRejectsMissingStartTime()
+    {
+        // 老 state 没有 startedAt；仅凭 PID/进程名无法排除复用，按旧进程已退出处理。
+        Assert.False(SessionStateKeeper.IsVScreenPilotProcess(Environment.ProcessId, string.Empty));
+        Assert.False(SessionStateKeeper.IsVScreenPilotProcess(
+            Environment.ProcessId, "not-a-timestamp"));
+    }
+
+    [Fact]
+    public void RecoverDoesNotSkipWhenStartedAtMissing()
+    {
+        var store = new FakeStore
+        {
+            State = new SessionState
+            {
+                Pid = Environment.ProcessId,
+                StartedAt = string.Empty,
+                DisplayIndex = 5,
+                DisplayDevice = @"\\.\DISPLAY9",
+            },
+        };
+        var host = new FakeHost(store);
+        var keeper = new SessionStateKeeper(host.ToContext());
+
+        keeper.Recover();
+
+        Assert.Equal(Environment.ProcessId, host.DisplayState.RecoveredPid);
+        Assert.Equal(5, host.DisplayState.RecoveredIndex);
+        Assert.Equal(@"\\.\DISPLAY9", host.DisplayState.RecoveredDevice);
     }
 
     private sealed class FakeStore : ISessionStateStore

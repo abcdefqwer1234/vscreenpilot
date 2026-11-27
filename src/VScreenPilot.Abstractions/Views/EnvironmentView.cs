@@ -51,6 +51,23 @@ public sealed record SessionView
     [JsonPropertyName("profile")] public string Profile { get; init; } = string.Empty;
     [JsonPropertyName("epoch")] public long Epoch { get; init; }
     [JsonPropertyName("job_object")] public string JobObject { get; init; } = string.Empty;
+    [JsonPropertyName("recovered_apps")] public int RecoveredApps { get; init; }
+
+    [JsonPropertyName("previous_pid")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? PreviousPid { get; init; }
+
+    [JsonPropertyName("previous_started_at")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PreviousStartedAt { get; init; }
+
+    [JsonPropertyName("state_age_ms")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? StateAgeMs { get; init; }
+
+    [JsonPropertyName("input_lease")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public InputLeaseView? InputLease { get; init; }
     [JsonPropertyName("role")] public string Role { get; init; } = string.Empty;
     [JsonPropertyName("daemon_pid")] public int DaemonPid { get; init; }
     [JsonPropertyName("client_id")] public string ClientId { get; init; } = string.Empty;
@@ -182,6 +199,14 @@ public sealed record ForegroundView
     [JsonPropertyName("title")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Title { get; init; }
+
+    [JsonPropertyName("name")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Name { get; init; }
+
+    [JsonPropertyName("elevated")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Elevated { get; init; }
 }
 
 /// <summary>光标位置。取不到时序列化为 `{}`。</summary>
@@ -207,6 +232,8 @@ public sealed record AppView
     [JsonPropertyName("owned")] public bool Owned { get; init; }
     [JsonPropertyName("close_on_release")] public bool CloseOnRelease { get; init; }
     [JsonPropertyName("dedicated")] public bool Dedicated { get; init; }
+    [JsonPropertyName("detached")] public bool Detached { get; init; }
+    [JsonPropertyName("recovered")] public bool Recovered { get; init; }
 
     [JsonPropertyName("client_id")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

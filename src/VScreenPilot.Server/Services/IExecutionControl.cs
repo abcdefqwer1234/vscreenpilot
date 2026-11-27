@@ -11,6 +11,7 @@ internal interface IExecutionControl
     bool HasLiveOwnedApps();
     IDisposable? UseClient(ClientInfo? client);
     void SetCancellation(CancellationTokenSource? cts);
+    CancellationTokenSource? CurrentCancellationSource { get; }
     void PauseFocusGuard(int leaseMs = 0);
     void ExtendLease(string clientId, int durationMs);
 }

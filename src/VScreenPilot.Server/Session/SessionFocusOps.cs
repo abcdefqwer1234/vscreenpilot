@@ -19,6 +19,9 @@ internal sealed class SessionFocusOps
 
     public void ResumeFocusGuard() => _host.FocusGuard.Resume();
 
+    /// <summary>租约全部释放后强制恢复；不要用于普通输入结束路径。</summary>
+    public void ResumeFocusGuardForce() => _host.FocusGuard.Resume(force: true);
+
     internal void StopFocusGuard() => _host.FocusGuard.Stop();
 
     internal bool IsTrackedWindow(IntPtr hwnd)

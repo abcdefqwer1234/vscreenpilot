@@ -26,6 +26,10 @@
       },
       "allow_destructive": {
         "type": "boolean"
+      },
+      "strict_verify": {
+        "type": "boolean",
+        "description": "Default false. When true, return E_VERIFY_FAILED if the value cannot be read back after writing."
       }
     },
     "required": [

@@ -43,8 +43,20 @@ internal static class ErrorCatalog
                 "snapshot_id 已过期；重新调用 snapshot 并只使用新返回的 ref", "快照已过期"),
             ["E_PATTERN_UNSUPPORTED"] = new("E_PATTERN_UNSUPPORTED", false, "uia",
                 "该控件不支持所选 pattern；尝试 pattern=default，或改用 click/keyboard", "控件不支持该模式"),
+            ["E_NEEDS_HUMAN"] = new("E_NEEDS_HUMAN", false, "uia",
+                "该控件无法可靠自动化；按 details.element 定位后人工处理，不要自动重试", "需要人工处理"),
+            ["E_VERIFY_FAILED"] = new("E_VERIFY_FAILED", false, "verify",
+                "写入后回读与期望不一致；查看 details.expected/observed，确认焦点与控件状态后再重试；表格数据改用 read_table/ValuePattern，不要依赖 Ctrl+A/C", "写入未通过校验"),
+            ["E_BLOCKED"] = new("E_BLOCKED", false, "dialog",
+                "目标窗口被模态对话框禁用；先处理 details.dialogs，或显式操作该对话框", "目标被对话框阻塞"),
             ["E_DESTRUCTIVE_REQUIRED"] = new("E_DESTRUCTIVE_REQUIRED", false, "validate",
                 "写入会覆盖非空内容；确需覆盖时传 allow_destructive=true", "需要破坏性写入确认"),
+            ["E_INPUT_LEASE_CONFLICT"] = new("E_INPUT_LEASE_CONFLICT", true, "lease",
+                "另一个客户端持有不同目标的输入租约；稍后重试，或确认后 force=true 抢占", "输入租约冲突"),
+            ["E_DESTRUCTIVE_TARGET"] = new("E_DESTRUCTIVE_TARGET", false, "security",
+                "点击命中了关闭/删除/清空类控件；确认后传 allow_destructive=true，或改用 select_tab/close_tab", "命中破坏性控件"),
+            ["E_ELEMENT_AMBIGUOUS"] = new("E_ELEMENT_AMBIGUOUS", true, "uia",
+                "多个控件同名；用 index 指定目标，或改用 automation_id/within 收窄", "控件歧义"),
             ["E_DATA_LOSS_REQUIRED"] = new("E_DATA_LOSS_REQUIRED", false, "release",
                 "release 会丢弃未保存内容；先保存，确认后传 allow_data_loss=true", "需要数据丢失确认"),
             ["E_FOCUS"] = new("E_FOCUS", true, "focus",
@@ -61,6 +73,8 @@ internal static class ErrorCatalog
                 "当前处于锁屏/UAC 安全桌面；等待用户返回普通桌面后重试（服务端会自动探测）", "没有交互桌面"),
             ["E_UIPI"] = new("E_UIPI", false, "input",
                 "目标以更高完整性级别运行；以相同权限运行，或改用 UIA 语义操作", "被 UIPI 拦截"),
+            ["E_ELEVATION_REQUIRED"] = new("E_ELEVATION_REQUIRED", false, "security",
+                "目标进程完整性级别高于服务端；以相同权限运行服务端，本工具不会自动提权", "目标需要更高权限"),
             ["E_INPUT"] = new("E_INPUT", true, "input",
                 "输入未完整注入；检查前台窗口、输入法和目标是否禁用输入", "输入失败"),
             ["E_INPUT_UNSUPPORTED"] = new("E_INPUT_UNSUPPORTED", false, "input",
@@ -92,6 +106,8 @@ internal static class ErrorCatalog
                 "基线区域与请求区域不一致；先对同一区域 capture_screen，或改传 baseline_frame_id", "没有可用基线"),
             ["E_DISABLED"] = new("E_DISABLED", false, "script",
                 "该能力默认关闭；需要显式 --allow-script 或对应 capability", "能力未启用"),
+            ["E_READ_ONLY"] = new("E_READ_ONLY", false, "policy",
+                "服务端以 --read-only/VSP_READ_ONLY=1 启动；只允许观察与断言，写操作需重启为可写会话", "只读会话"),
             ["E_NOT_SUPPORTED"] = new("E_NOT_SUPPORTED", false, "tool",
                 "当前平台/应用不支持该操作", "不支持"),
             ["E_CLIPBOARD_UNSAFE"] = new("E_CLIPBOARD_UNSAFE", false, "input",
@@ -186,6 +202,30 @@ internal static class ErrorCatalog
             var info = Get("E_IO");
             return new ToolException("E_IO", exception.Message, retryable: false,
                 hint: info.Hint, stage: stage);
+        }
+
+        if (exception is System.ComponentModel.Win32Exception win32)
+        {
+            // 常见启动/窗口系统错误：提权、拒绝访问、找不到文件、可执行格式错误。
+            string code = win32.NativeErrorCode switch
+            {
+                740 or 5 => "E_ELEVATION_REQUIRED",
+                2 or 3 => "E_APP_START",
+                193 => "E_APP_START",
+                _ => "E_INTERNAL",
+            };
+
+            if (code != "E_INTERNAL")
+            {
+                var info = Get(code);
+                return new ToolException(
+                    code,
+                    win32.Message,
+                    new JsonObject { ["win32_error"] = win32.NativeErrorCode },
+                    info.Retryable,
+                    info.Hint,
+                    stage);
+            }
         }
 
         var fallback = Get("E_INTERNAL");

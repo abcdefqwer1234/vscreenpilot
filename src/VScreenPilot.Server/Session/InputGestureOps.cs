@@ -148,7 +148,11 @@ internal sealed class InputGestureOps
             finally
             {
                 _host._focus.ResumeCursor();
-                _host._focus.ResumeFocusGuard();
+
+                if (!_host.Lease.IsActive(_host._session.Clients.CurrentId))
+                {
+                    _host._focus.ResumeFocusGuard();
+                }
             }
 
             return null;
@@ -271,7 +275,11 @@ internal sealed class InputGestureOps
             finally
             {
                 _host._focus.ResumeCursor();
-                _host._focus.ResumeFocusGuard();
+
+                if (!_host.Lease.IsActive(_host._session.Clients.CurrentId))
+                {
+                    _host._focus.ResumeFocusGuard();
+                }
             }
 
             return null;
@@ -340,7 +348,11 @@ internal sealed class InputGestureOps
             finally
             {
                 _host._focus.ResumeCursor();
-                _host._focus.ResumeFocusGuard();
+
+                if (!_host.Lease.IsActive(_host._session.Clients.CurrentId))
+                {
+                    _host._focus.ResumeFocusGuard();
+                }
             }
         }
         else if (!MessageInput.Move(toX, toY, out detail))

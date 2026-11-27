@@ -12,6 +12,7 @@ using VScreenPilot.Ui;
 using VScreenPilot.Uia;
 using VScreenPilot.Views;
 using VScreenPilot.Platform.Processes;
+using VScreenPilot.Platform.Windows;
 using VScreenPilot.Platform.Logging;
 
 namespace VScreenPilot.Session;
@@ -89,6 +90,90 @@ internal sealed class SessionLifecycleOps
 
     public EnvironmentView GetEnvironment(bool ensure = false) =>
         _host._environment.GetEnvironment(ensure);
+
+    /// <summary>运行期切换虚拟屏几何；只影响本会话的虚拟屏。</summary>
+    public System.Text.Json.Nodes.JsonObject SetDisplay(
+        int width, int height, int refresh, bool reposition = true, bool fitWindows = false)
+    {
+        DisplayInfo display = _host._display.Resize(width, height, refresh);
+        _host.OnDisplayReady(display);
+
+        (int moved, int fitted) = reposition
+            ? RepositionTrackedWindows(display, fitWindows)
+            : (0, 0);
+
+        return new System.Text.Json.Nodes.JsonObject
+        {
+            ["device"] = display.DeviceName,
+            ["x"] = display.X,
+            ["y"] = display.Y,
+            ["width"] = display.Width,
+            ["height"] = display.Height,
+            ["dpi"] = display.Dpi,
+            ["repositioned"] = moved,
+            ["fit_windows"] = fitWindows,
+            ["fitted"] = fitted,
+        };
+    }
+
+    /// <summary>几何变化后把跑出虚拟屏的受管窗口挪回来；保留窗口大小，只改位置。</summary>
+    private (int Moved, int Fitted) RepositionTrackedWindows(DisplayInfo display, bool fitWindows)
+    {
+        int moved = 0;
+        int fitted = 0;
+
+        foreach (TrackedApp app in _host.Apps)
+        {
+            if (!_host.ClientOps.IsOwned(app) || !TrackedAppTracker.IsLive(app))
+            {
+                continue;
+            }
+
+            WindowInfo? info = WindowManager.FromHandle(app.Hwnd);
+
+            if (info is null)
+            {
+                continue;
+            }
+
+            (int Left, int Top, int Width, int Height) visible =
+                WindowManager.GetVisibleBounds(app.Hwnd);
+
+            if (fitWindows &&
+                (visible.Width > display.Width || visible.Height > display.Height))
+            {
+                int width = Math.Min(visible.Width, display.Width);
+                int height = Math.Min(visible.Height, display.Height);
+                WindowManager.MoveResize(app.Hwnd, display.X, display.Y, width, height);
+                app.Placement = WindowManager.GetPlacement(app.Hwnd);
+                app.PlacementSaved = true;
+                fitted++;
+                moved++;
+                continue;
+            }
+
+            long centerX = info.Rect.Left + info.Width / 2L;
+            long centerY = info.Rect.Top + info.Height / 2L;
+
+            if (centerX >= display.X &&
+                centerX < (long)display.X + display.Width &&
+                centerY >= display.Y &&
+                centerY < (long)display.Y + display.Height)
+            {
+                continue;
+            }
+
+            int x = Math.Clamp(info.Rect.Left, display.X, Math.Max(display.X, display.X + display.Width - info.Width));
+            int y = Math.Clamp(info.Rect.Top, display.Y, Math.Max(display.Y, display.Y + display.Height - info.Height));
+
+            if (WindowManager.MoveTo(app.Hwnd, x, y))
+            {
+                moved++;
+            }
+        }
+
+        return (moved, fitted);
+    }
 
     public ReleaseReport ReleaseEnvironment(
         bool keepDisplay, string onDirty = "abort", bool allowDataLoss = false,

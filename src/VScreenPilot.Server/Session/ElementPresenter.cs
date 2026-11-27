@@ -85,6 +85,14 @@ internal static class ElementPresenter
             reference);
     }
 
+    public static FindElementItemView ToFindItem(
+        UiaElementInfo info, string reference, long? hwnd, bool outsideSnapshot) =>
+        ToFindItem(info, reference) with
+        {
+            Hwnd = hwnd,
+            OutsideSnapshot = outsideSnapshot,
+        };
+
     public static JsonObject ToCompactJson(UiaElementInfo info)
     {
         var json = new JsonObject

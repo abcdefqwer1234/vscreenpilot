@@ -8,14 +8,22 @@ namespace VScreenPilot.Services;
 internal interface IInputService
 {
     ClickView Click(ClickRequest request);
-    ClickRefView ClickRef(string reference, string? channel, bool keepForeground, bool fallbackInput);
+    ClickRefView ClickRef(
+        string reference, string? channel, bool keepForeground, bool fallbackInput,
+        bool allowDestructive = false);
     GestureView Gesture(JsonElement arguments);
     ClickTextView ClickText(ClickTextRequest request);
-    TypeTextView TypeText(string text, int? pid, bool verify, int chunkChars, string? channel);
+    TypeTextView TypeText(
+        string text, int? pid, bool verify, int chunkChars, string? channel,
+        long? hwnd, bool strictVerify, int paceMs, string? target = null);
     PressKeysView PressKeys(
-        string keys, bool keepForeground, int? pid, bool allowSystemKeys, bool observe);
+        string keys, bool keepForeground, int? pid, bool allowSystemKeys, bool observe, long? hwnd,
+        string? target = null);
     PressKeysView PressKeySequence(
-        IReadOnlyList<string> keys, bool keepForeground, int? pid, bool allowSystemKeys, bool observe);
+        IReadOnlyList<string> keys, bool keepForeground, int? pid, bool allowSystemKeys, bool observe,
+        long? hwnd, string? target = null);
+    InputLeaseView LeaseInput(
+        string action, int? pid, int ttlMs, bool exclusive, bool force);
 }
 
 internal sealed class InputToolService : IInputService
@@ -33,11 +41,17 @@ internal sealed class InputToolService : IInputService
             request.Mode,
             request.KeepForeground,
             request.Observe,
-            request.FallbackInput));
+            request.FallbackInput,
+            request.ContextMenu,
+            request.IntervalMs,
+            request.AllowDestructive,
+            request.SettleMs,
+            request.AbortOnWindowChange));
 
     public ClickRefView ClickRef(
-        string reference, string? channel, bool keepForeground, bool fallbackInput) =>
-        _session.InputOps.ClickElementRef(reference, channel, keepForeground, fallbackInput);
+        string reference, string? channel, bool keepForeground, bool fallbackInput,
+        bool allowDestructive = false) =>
+        _session.InputOps.ClickElementRef(reference, channel, keepForeground, fallbackInput, allowDestructive);
 
     public GestureView Gesture(JsonElement arguments) => _session.InputOps.Gesture(arguments);
 
@@ -50,23 +64,36 @@ internal sealed class InputToolService : IInputService
                 request.RegionWidth,
                 request.RegionHeight,
                 null,
-                0),
+                0,
+                request.Upscale,
+                request.OnOutOfBoundsClip),
             new TextClickOptions(
                 request.Channel,
                 request.KeepForeground,
                 request.Observe,
                 request.RequireUnique,
-                request.FallbackInput)));
+                request.FallbackInput,
+                request.AllowDestructive)));
 
     public TypeTextView TypeText(
-        string text, int? pid, bool verify, int chunkChars, string? channel) =>
-        _session.InputOps.TypeText(text, pid, verify, chunkChars, channel);
+        string text, int? pid, bool verify, int chunkChars, string? channel,
+        long? hwnd, bool strictVerify, int paceMs, string? target = null) =>
+        _session.InputOps.TypeText(
+            text, pid, verify, chunkChars, channel, hwnd, strictVerify, paceMs, target);
 
     public PressKeysView PressKeys(
-        string keys, bool keepForeground, int? pid, bool allowSystemKeys, bool observe) =>
-        _session.InputOps.PressKeys(keys, keepForeground, pid, allowSystemKeys, observe);
+        string keys, bool keepForeground, int? pid, bool allowSystemKeys, bool observe, long? hwnd,
+        string? target = null) =>
+        _session.InputOps.PressKeys(
+            keys, keepForeground, pid, allowSystemKeys, observe, hwnd, target);
 
     public PressKeysView PressKeySequence(
-        IReadOnlyList<string> keys, bool keepForeground, int? pid, bool allowSystemKeys, bool observe) =>
-        _session.InputOps.PressKeySequence(keys, keepForeground, pid, allowSystemKeys, observe);
+        IReadOnlyList<string> keys, bool keepForeground, int? pid, bool allowSystemKeys, bool observe,
+        long? hwnd, string? target = null) =>
+        _session.InputOps.PressKeySequence(
+            keys, keepForeground, pid, allowSystemKeys, observe, hwnd, target);
+
+    public InputLeaseView LeaseInput(
+        string action, int? pid, int ttlMs, bool exclusive, bool force) =>
+        _session.InputOps.LeaseInput(action, pid, ttlMs, exclusive, force);
 }

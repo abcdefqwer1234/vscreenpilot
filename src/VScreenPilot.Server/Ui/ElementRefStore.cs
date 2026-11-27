@@ -5,6 +5,16 @@ using VScreenPilot.Platform.Windows;
 
 namespace VScreenPilot.Ui;
 
+/// <summary>当前快照代的元数据：调用方可据此判断 find_element 结果是否来自快照根。</summary>
+internal sealed record SnapshotMeta(
+    string SnapshotId,
+    long Generation,
+    long CreatedAtTicks,
+    IntPtr RootHwnd)
+{
+    public long AgeMs => Math.Max(0, Environment.TickCount64 - CreatedAtTicks);
+}
+
 /// <summary>
 /// 元素引用与快照代际的唯一持有者。
 /// 锁对象通过 <see cref="SyncRoot"/> 暴露：快照构建需要在“推进代际 + 建树”期间持有同一把锁，
@@ -14,6 +24,12 @@ internal sealed class ElementRefStore
 {
     public const int Capacity = 2048;
     private const long TtlMs = 5 * 60 * 1000;
+
+    /// <summary>
+    /// 保留最近几代 ref。默认 3：新 snapshot 不会立刻让上一两次观察拿到的 ref 失效；
+    /// 更老的代仍返回 E_STALE_SNAPSHOT。范围 2..10，可用 VSP_REF_GENERATIONS 调整。
+    /// </summary>
+    private static readonly int RetainedGenerations = ResolveRetainedGenerations();
 
     /// <summary>TTL 全量扫描降频：Register 是快照构建的热点，没必要每次 O(n) 扫 2048 项。</summary>
     private const long PruneIntervalMs = 30_000;
@@ -25,6 +41,7 @@ internal sealed class ElementRefStore
     // 这两个字典会在不持锁的路径被读取（SnapshotId），写入发生在锁内。
     private readonly ConcurrentDictionary<string, long> _generations = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string> _snapshotIds = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, SnapshotMeta> _snapshotMeta = new(StringComparer.Ordinal);
 
     private long _sequence;
     private long _snapshotSequence;
@@ -36,7 +53,7 @@ internal sealed class ElementRefStore
         _snapshotIds.TryGetValue(clientId, out string? id) ? id : string.Empty;
 
     /// <summary>若该客户端还没有快照则创建第一个；否则复用当前代。</summary>
-    public string EnsureSnapshot(string clientId)
+    public string EnsureSnapshot(string clientId, IntPtr rootHwnd = default)
     {
         lock (SyncRoot)
         {
@@ -47,12 +64,28 @@ internal sealed class ElementRefStore
                 return id;
             }
 
-            return BeginSnapshot(clientId);
+            return BeginSnapshot(clientId, rootHwnd);
         }
     }
 
-    /// <summary>推进代际并清掉更早一代的 ref（保留上一代用于 E_STALE_SNAPSHOT 报错）。</summary>
-    public string BeginSnapshot(string clientId)
+    /// <summary>当前快照元数据；没有快照时返回 null。</summary>
+    public SnapshotMeta? GetSnapshotMeta(string clientId) =>
+        _snapshotMeta.TryGetValue(clientId, out SnapshotMeta? meta) ? meta : null;
+
+    /// <summary>回填快照根窗口；不影响代际。</summary>
+    public void SetSnapshotRoot(string clientId, IntPtr rootHwnd)
+    {
+        lock (SyncRoot)
+        {
+            if (_snapshotMeta.TryGetValue(clientId, out SnapshotMeta? meta))
+            {
+                _snapshotMeta[clientId] = meta with { RootHwnd = rootHwnd };
+            }
+        }
+    }
+
+    /// <summary>推进代际并清掉超过保留窗口的 ref（保留最近几代，供长流程复用）。</summary>
+    public string BeginSnapshot(string clientId, IntPtr rootHwnd = default)
     {
         lock (SyncRoot)
         {
@@ -62,11 +95,13 @@ internal sealed class ElementRefStore
             _generations[clientId] = generation;
 
             List<string>? expired = null;
+            long oldestUsable = generation - (RetainedGenerations - 1);
+            long evictionThreshold = oldestUsable - 1;
 
             foreach ((string key, ElementRefEntry value) in _elements)
             {
                 if (string.Equals(value.OwnerClientId, clientId, StringComparison.Ordinal) &&
-                    value.Generation < generation - 1)
+                    value.Generation < evictionThreshold)
                 {
                     (expired ??= new List<string>()).Add(key);
                 }
@@ -82,6 +117,8 @@ internal sealed class ElementRefStore
 
             string snapshotId = "s" + Interlocked.Increment(ref _snapshotSequence);
             _snapshotIds[clientId] = snapshotId;
+            _snapshotMeta[clientId] = new SnapshotMeta(
+                snapshotId, generation, Environment.TickCount64, rootHwnd);
             return snapshotId;
         }
     }
@@ -93,6 +130,7 @@ internal sealed class ElementRefStore
         {
             _generations.TryRemove(clientId, out _);
             _snapshotIds.TryRemove(clientId, out _);
+            _snapshotMeta.TryRemove(clientId, out _);
             return;
         }
 
@@ -105,6 +143,18 @@ internal sealed class ElementRefStore
         {
             _snapshotIds.TryRemove(key, out _);
         }
+
+        foreach (string key in _snapshotMeta.Keys)
+        {
+            _snapshotMeta.TryRemove(key, out _);
+        }
+    }
+
+    private static int ResolveRetainedGenerations()
+    {
+        string? raw = Environment.GetEnvironmentVariable("VSP_REF_GENERATIONS");
+
+        return int.TryParse(raw, out int value) ? Math.Clamp(value, 2, 10) : 3;
     }
 
     /// <summary>登记元素并返回稳定的会话内引用；同键同代复用。</summary>
@@ -181,7 +231,7 @@ internal sealed class ElementRefStore
                 return null;
             }
 
-            if (generation > 0 && entry.Generation != generation)
+            if (generation > 0 && entry.Generation < generation - (RetainedGenerations - 1))
             {
                 stale = true;
                 return null;

@@ -386,7 +386,51 @@ internal static class WindowManager
             hwnd, IntPtr.Zero, x, y, width, height,
             NativeMethods.SwpNoZOrder | NativeMethods.SwpNoActivate | NativeMethods.SwpShowWindow);
         NativeMethods.ShowWindow(hwnd, NativeMethods.SwMaximize);
-        // 不主动 SetForegroundWindow：启动/归位不抢用户焦点，输入时再短暂切换并恢复。
+    }
+
+    /// <summary>移到目标矩形但不最大化；用于“放到虚拟屏、保持窗口形态”的附着场景。</summary>
+    public static void MoveResize(IntPtr hwnd, int x, int y, int width, int height)
+    {
+        NativeMethods.ShowWindow(hwnd, NativeMethods.SwRestore);
+        NativeMethods.SetWindowPos(
+            hwnd, IntPtr.Zero, x, y, width, height,
+            NativeMethods.SwpNoZOrder | NativeMethods.SwpNoActivate | NativeMethods.SwpShowWindow);
+    }
+
+    /// <summary>
+    /// DWM 可见边框；失败时退回 GetWindowRect。
+    /// 用于 fit=clamp，避免把 DWM 的隐形阴影算进窗口尺寸。
+    /// </summary>
+    public static (int Left, int Top, int Width, int Height) GetVisibleBounds(IntPtr hwnd)
+    {
+        if (NativeMethods.DwmGetWindowAttribute(
+                hwnd, 9, out NativeMethods.RECT frame,
+                System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.RECT>()) == 0 &&
+            frame.Right > frame.Left && frame.Bottom > frame.Top)
+        {
+            return (frame.Left, frame.Top, frame.Right - frame.Left, frame.Bottom - frame.Top);
+        }
+
+        WindowInfo? info = FromHandle(hwnd);
+        return info is null
+            ? (0, 0, 0, 0)
+            : (info.Rect.Left, info.Rect.Top, info.Width, info.Height);
+    }
+
+    public static bool IsEnabled(IntPtr hwnd) => NativeMethods.IsWindowEnabled(hwnd);
+
+    /// <summary>只移动不改变大小；用于几何变化后把窗口挪回虚拟屏。</summary>
+    public static bool MoveTo(IntPtr hwnd, int x, int y)
+    {
+        if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
+        {
+            return false;
+        }
+
+        return NativeMethods.SetWindowPos(
+            hwnd, IntPtr.Zero, x, y, 0, 0,
+            NativeMethods.SwpNoSize | NativeMethods.SwpNoZOrder |
+            NativeMethods.SwpNoActivate | NativeMethods.SwpShowWindow);
     }
 
     public static bool WaitForZoomed(IntPtr hwnd, TimeSpan timeout)

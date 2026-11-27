@@ -450,7 +450,7 @@ def main() -> int:
 
     protocol_versions(args.exe, cases)
 
-    client = McpClient(args.exe).start()
+    client = McpClient(args.exe, env={"VSP_PROGRESS": "1"}).start()
     client.call("get_environment", {"ensure": True}, 120)
     tools_contract(client, cases)
     duplicate_id(client, cases)

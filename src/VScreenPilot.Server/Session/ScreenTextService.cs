@@ -23,14 +23,17 @@ internal readonly record struct CaptureRegion(int Left, int Top, int Width, int 
 
 /// <summary>read_screen_text 的请求。</summary>
 internal sealed record OcrReadRequest(
-    int? X, int? Y, int? Width, int? Height, string? Query, int MaxLines);
+    int? X, int? Y, int? Width, int? Height, string? Query, int MaxLines, int Upscale = 0,
+    bool OnOutOfBoundsClip = true);
 
 /// <summary>click_text 的行为选项。</summary>
 internal sealed record TextClickOptions(
-    string Channel, bool KeepForeground, bool Observe, bool RequireUnique, bool FallbackInput);
+    string Channel, bool KeepForeground, bool Observe, bool RequireUnique, bool FallbackInput,
+    bool AllowDestructive = false);
 
 /// <summary>click_text 的请求。</summary>
-internal sealed record TextClickRequest(string Text, OcrReadRequest Region, TextClickOptions Options);
+internal sealed record TextClickRequest(
+    string Text, OcrReadRequest Region, TextClickOptions Options);
 
 /// <summary>OCR 结果视图的构建参数。</summary>
 internal sealed record TextReport(
@@ -39,7 +42,11 @@ internal sealed record TextReport(
     OcrReadRequest Request,
     string Engine,
     string Language,
-    Stopwatch Watch);
+    Stopwatch Watch,
+    int Upscale,
+    bool Clipped,
+    int OcrWidth,
+    int OcrHeight);
 
 /// <summary>read_screen_text / click_text：OCR 读取、匹配与按文本点击。</summary>
 internal sealed class ScreenTextService
@@ -56,26 +63,39 @@ internal sealed class ScreenTextService
     {
         DisplayInfo display = _host.EnsureDisplay();
         var stopwatch = Stopwatch.StartNew();
-        CaptureRegion region = ResolveReadRegion(display, request);
+        CaptureRegion region = ResolveReadRegion(display, request, out bool clipped);
 
         (byte[] bgra, int captureWidth, int captureHeight) =
             _host.CaptureRegion(region.Left, region.Top, region.Width, region.Height);
 
         try
         {
+            int upscale = ResolveUpscale(request.Upscale, captureWidth, captureHeight);
+            (byte[] ocrBgra, int ocrWidth, int ocrHeight) =
+                BitmapOps.Upscale(bgra, captureWidth, captureHeight, upscale);
             List<ScreenTextLine> lines = _ocr.Read(
-                new OcrBitmap(bgra, captureWidth, captureHeight),
+                new OcrBitmap(ocrBgra, ocrWidth, ocrHeight),
                 request.Query ?? string.Empty,
                 _host.Cancellation(),
                 out string engine,
                 out string language);
+
+            if (upscale > 1)
+            {
+                lines = ScaleLines(lines, upscale);
+            }
+
             return BuildTextResult(new TextReport(
                 lines,
                 new CaptureRegion(region.Left, region.Top, captureWidth, captureHeight),
                 request,
                 engine,
                 language,
-                stopwatch));
+                stopwatch,
+                upscale,
+                clipped,
+                ocrWidth,
+                ocrHeight));
         }
         catch (NotSupportedException exception)
         {
@@ -106,15 +126,56 @@ internal sealed class ScreenTextService
         }
     }
 
-    private static CaptureRegion ResolveReadRegion(DisplayInfo display, OcrReadRequest request)
+    private static int ResolveUpscale(int requested, int width, int height)
     {
+        int factor = requested is >= 1 and <= 4
+            ? requested
+            : Math.Min(width, height) switch
+            {
+                <= 160 => 4,
+                <= 300 => 3,
+                <= 600 => 2,
+                _ => 1,
+            };
+
+        while (factor > 1 && (long)width * height * factor * factor > 16_000_000)
+        {
+            factor--;
+        }
+
+        return Math.Max(1, factor);
+    }
+
+    internal static List<ScreenTextLine> ScaleLines(List<ScreenTextLine> lines, int factor) =>
+        lines.Select(line => new ScreenTextLine(
+            line.Text,
+            line.Left / factor,
+            line.Top / factor,
+            Math.Max(1, line.Width / factor),
+            Math.Max(1, line.Height / factor))).ToList();
+
+    private static CaptureRegion ResolveReadRegion(
+        DisplayInfo display, OcrReadRequest request, out bool clipped)
+    {
+        clipped = false;
+
         if (request.X is not null && request.Y is not null &&
             request.Width is not null && request.Height is not null)
         {
-            VisualSupport.RequireRegionInDisplay(
+            if (!request.OnOutOfBoundsClip)
+            {
+                VisualSupport.RequireRegionInDisplay(
+                    display, request.X.Value, request.Y.Value, request.Width.Value, request.Height.Value,
+                    "read_screen_text");
+                return new CaptureRegion(
+                    request.X.Value, request.Y.Value, request.Width.Value, request.Height.Value);
+            }
+
+            var region = VisualSupport.ClipRegionToDisplay(
                 display, request.X.Value, request.Y.Value, request.Width.Value, request.Height.Value,
                 "read_screen_text");
-            return new CaptureRegion(request.X.Value, request.Y.Value, request.Width.Value, request.Height.Value);
+            clipped = region.Clipped;
+            return new CaptureRegion(region.X, region.Y, region.Width, region.Height);
         }
 
         return new CaptureRegion(display.X, display.Y, display.Width, display.Height);
@@ -161,7 +222,13 @@ internal sealed class ScreenTextService
             report.Lines.Count > all.Count,
             redactions,
             new BoundsView(report.Capture.Left, report.Capture.Top, report.Capture.Width, report.Capture.Height),
-            Math.Round(report.Watch.Elapsed.TotalMilliseconds, 1));
+            Math.Round(report.Watch.Elapsed.TotalMilliseconds, 1),
+            report.Upscale,
+            report.Clipped,
+            report.Capture.Width,
+            report.Capture.Height,
+            report.OcrWidth,
+            report.OcrHeight);
     }
 
     public ClickTextView ClickText(TextClickRequest request)
@@ -175,13 +242,15 @@ internal sealed class ScreenTextService
         }
 
         CaptureRegion region = ResolveCaptureRegion(
-            request.Region.X, request.Region.Y, request.Region.Width, request.Region.Height);
+            request.Region.X, request.Region.Y, request.Region.Width, request.Region.Height,
+            request.Region.OnOutOfBoundsClip, out bool clipped);
         int left = region.Left;
         int top = region.Top;
         int width = region.Width;
         int height = region.Height;
+        int upscale = ResolveUpscale(request.Region.Upscale, width, height);
 
-        List<ScreenTextLine> lines = RunOcr(region, text);
+        List<ScreenTextLine> lines = RunOcr(region, text, upscale);
 
         List<ScreenTextLine> matches = lines
             .Where(line => OcrTextMatches(line.Text, text))
@@ -192,7 +261,8 @@ internal sealed class ScreenTextService
         int clickY = top + match.Top + match.Height / 2;
         ClickView click = _host.Click(new SessionClickRequest(
             clickX, clickY, "left", 1, options.Channel,
-            options.KeepForeground, options.Observe, options.FallbackInput));
+            options.KeepForeground, options.Observe, options.FallbackInput,
+            AllowDestructive: options.AllowDestructive));
 
         int clickRedactions = 0;
         string clickedText = PrivacyRedactor.RedactEmails(match.Text, ref clickRedactions);
@@ -207,12 +277,17 @@ internal sealed class ScreenTextService
             DescribeMatches(matches, region.Left, region.Top),
             click.Method,
             click.Observed,
-            clickRedactions);
+            clickRedactions,
+            click.HitElement,
+            upscale,
+            clipped);
     }
 
     private CaptureRegion ResolveCaptureRegion(
-        int? regionX, int? regionY, int? regionWidth, int? regionHeight)
+        int? regionX, int? regionY, int? regionWidth, int? regionHeight,
+        bool clip, out bool clipped)
     {
+        clipped = false;
         DisplayInfo display = _host.EnsureDisplay();
         int left = display.X;
         int top = display.Y;
@@ -222,29 +297,45 @@ internal sealed class ScreenTextService
         if (regionX is not null && regionY is not null &&
             regionWidth is not null && regionHeight is not null)
         {
-            VisualSupport.RequireRegionInDisplay(
-                display, regionX.Value, regionY.Value, regionWidth.Value, regionHeight.Value,
-                "click_text");
-            left = regionX.Value;
-            top = regionY.Value;
-            width = regionWidth.Value;
-            height = regionHeight.Value;
+            if (clip)
+            {
+                var region = VisualSupport.ClipRegionToDisplay(
+                    display, regionX.Value, regionY.Value, regionWidth.Value, regionHeight.Value,
+                    "click_text");
+                left = region.X;
+                top = region.Y;
+                width = region.Width;
+                height = region.Height;
+                clipped = region.Clipped;
+            }
+            else
+            {
+                VisualSupport.RequireRegionInDisplay(
+                    display, regionX.Value, regionY.Value, regionWidth.Value, regionHeight.Value,
+                    "click_text");
+                left = regionX.Value;
+                top = regionY.Value;
+                width = regionWidth.Value;
+                height = regionHeight.Value;
+            }
         }
 
         return new CaptureRegion(left, top, width, height);
     }
 
-    private List<ScreenTextLine> RunOcr(CaptureRegion region, string text)
+    private List<ScreenTextLine> RunOcr(CaptureRegion region, string text, int upscale)
     {
         (byte[] bgra, int captureWidth, int captureHeight) =
             _host.CaptureRegion(region.Left, region.Top, region.Width, region.Height);
 
         try
         {
+            (byte[] ocrBgra, int ocrWidth, int ocrHeight) =
+                BitmapOps.Upscale(bgra, captureWidth, captureHeight, upscale);
             List<ScreenTextLine> lines = _ocr.Read(
-                new OcrBitmap(bgra, captureWidth, captureHeight), text, _host.Cancellation(), out _, out _);
+                new OcrBitmap(ocrBgra, ocrWidth, ocrHeight), text, _host.Cancellation(), out _, out _);
             _host.RecordOcr();
-            return lines;
+            return upscale > 1 ? ScaleLines(lines, upscale) : lines;
         }
         catch (NotSupportedException exception)
         {

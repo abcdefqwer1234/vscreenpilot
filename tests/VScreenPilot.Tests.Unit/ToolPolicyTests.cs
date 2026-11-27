@@ -18,12 +18,12 @@ public sealed class ToolPolicyTests
     }
 
     [Fact]
-    public void CatalogHasExactly22UniqueTools()
+    public void CatalogHasExactly30UniqueTools()
     {
         ToolRegistry catalog = BuildCatalog();
 
-        Assert.Equal(22, catalog.Count);
-        Assert.Equal(22, catalog.All.Select(item => item.Name).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(30, catalog.Count);
+        Assert.Equal(30, catalog.All.Select(item => item.Name).Distinct(StringComparer.Ordinal).Count());
     }
 
     [Fact]
@@ -84,7 +84,11 @@ public sealed class ToolPolicyTests
     {
         Dictionary<string, ToolDescriptor> tools = BuildCatalog().All.ToDictionary(i => i.Name);
 
-        foreach (string name in new[] { "get_log", "find_element", "get_ui_tree", "get_element_text" })
+        foreach (string name in new[]
+                 {
+                     "get_log", "find_element", "get_ui_tree", "get_element_text",
+                     "list_windows", "get_processes",
+                 })
         {
             Assert.Equal(ScreenLeaseMode.None, tools[name].Policy.Lease);
         }

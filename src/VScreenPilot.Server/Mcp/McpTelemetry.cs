@@ -22,6 +22,7 @@ internal sealed record McpTransportOptions
     public ClientInfo? Client { get; init; }
     public TraceLog? Trace { get; init; }
     public bool TraceEnabled { get; init; } = true;
+    public bool ReadOnly { get; init; }
 }
 
 /// <summary>请求限速、进度通知、参数摘要与 trace/metrics 记录。</summary>
@@ -100,7 +101,8 @@ internal sealed class McpTelemetry
     {
         JsonNode? token = context.Params?.Meta?["progressToken"];
 
-        if (token is null)
+        // 双保险：即使调用方绕过 ToolCallPipeline，也不会在默认配置下发出通知。
+        if (token is null || !ProgressPolicy.Enabled)
         {
             return;
         }
@@ -129,6 +131,7 @@ internal sealed class McpTelemetry
     {
         string? code = null;
         string? stage = null;
+        string? summary = null;
         int textBytes = 0;
         int imageBytes = 0;
 
@@ -159,6 +162,7 @@ internal sealed class McpTelemetry
         {
             code = ReadString(structured["code"]);
             stage = ReadString(structured["stage"]);
+            summary = BuildSummary(structured);
         }
 
         _metrics.RecordTool(
@@ -166,7 +170,37 @@ internal sealed class McpTelemetry
 
         _trace?.ToolCall(
             new TraceRequest(tool, requestId, arguments, milliseconds, _clientId),
-            new TraceResult(code, response.IsError, textBytes, imageBytes, Channel: null, stage));
+            new TraceResult(code, response.IsError, textBytes, imageBytes, Channel: null, stage, summary));
+    }
+
+    /// <summary>
+    /// 只记录可复核的状态字段，不落全文：用于把“哪一步改了什么、是否被确认”
+    /// 与 request_id 关联起来，同时避免 trace 体积失控。
+    /// </summary>
+    internal static string? BuildSummary(JsonObject structured)
+    {
+        var summary = new JsonObject();
+        string[] fields =
+        [
+            "ref", "snapshot_id", "frame_id", "target_pid", "hwnd",
+            "verified", "truncated", "method", "channel", "mode",
+        ];
+
+        foreach (string field in fields)
+        {
+            if (structured[field] is { } value)
+            {
+                summary[field] = value.DeepClone();
+            }
+        }
+
+        if (structured["observed"] is JsonObject observed &&
+            observed["changed"] is { } changed)
+        {
+            summary["changed"] = changed.DeepClone();
+        }
+
+        return summary.Count == 0 ? null : summary.ToJsonString();
     }
 
     private static string? ReadString(JsonNode? node) =>

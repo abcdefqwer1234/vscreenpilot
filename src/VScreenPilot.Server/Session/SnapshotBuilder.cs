@@ -35,7 +35,7 @@ internal sealed record SnapshotStateContext(
     Func<string> SnapshotId,
     Func<int> RefCapacity,
     MetricsRegistry Metrics,
-    Func<string> BeginSnapshot,
+    Func<IntPtr, string> BeginSnapshot,
     Func<UiaElementInfo, IntPtr, string> RegisterElement);
 
 internal sealed record SnapshotAppContext(
@@ -147,7 +147,7 @@ internal sealed class SnapshotBuilder : IDisposable
 
         lock (_state.Refs.SyncRoot)
         {
-            snapshotId = _state.BeginSnapshot();
+            snapshotId = _state.BeginSnapshot(hwnd);
             tree = ConvertTreeNode(result.Root!, hwnd, ref rootRef);
         }
 

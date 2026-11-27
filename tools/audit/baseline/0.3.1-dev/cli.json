@@ -1,0 +1,44 @@
+{
+  "version": {
+    "args": [
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "VScreenPilot 0.3.0\n",
+    "stderr": ""
+  },
+  "help": {
+    "args": [
+      "--help"
+    ],
+    "exit_code": 0,
+    "stdout": "VScreenPilot 0.3.0\n\n用法:\n  VScreenPilot [--allow-script] [--read-only] [--parent-pid <pid>] [--profile <name>]\n  VScreenPilot --daemon [--profile <name>]\n  VScreenPilot --cli env|snapshot|screen|status|stop [--force] [--profile <name>]\n  VScreenPilot --doctor                                输出 JSON 诊断\n  VScreenPilot --version                               输出版本\n  VScreenPilot --help                                  输出本帮助\n\n选项:\n  --allow-script            启用 run_script（默认关闭）\n  --read-only               只读会话：拒绝写工具，保留 snapshot/capture/get/find/wait/assert\n  --parent-pid <pid>        父进程退出时自动清理\n  --profile <name>          多会话隔离：独立互斥体、状态文件、追踪与 artifact 目录\n  --force                   配合 --cli stop：有活跃客户端时强制停止\n\n环境变量:\n  VSP_DISPLAY_WIDTH        虚拟屏宽度（默认 1280，范围 800–3840）\n  VSP_DISPLAY_HEIGHT       虚拟屏高度（默认 720，范围 600–2160）\n  VSP_DISPLAY_REFRESH      虚拟屏刷新率（默认 60，范围 30–240）\n  VSP_DISPLAY_OFFSET       虚拟屏相对主屏右侧的偏移（默认自动选空闲槽位）\n  VSP_INPUT_AUTOFALLBACK=1 UIA/消息点击失败时允许自动降级 SendInput（默认关闭）\n  VSP_ALLOW_SCRIPT=1        等价于 --allow-script\n  VSP_READ_ONLY=1           等价于 --read-only\n  VSP_ALLOW_UNSAFE_SCRIPT=1 绕过 run_script 危险命令黑名单（不是沙箱）\n  VSP_APP_ALLOWLIST=dir1;dir2  仅允许启动这些目录下的 exe（默认允许全部）\n  VSP_CLIENT_CWD=<dir>      覆盖客户端路径基准（默认 proxy cwd）\n  VSP_SCREEN_LEASE_IDLE_MS  屏幕租约空闲毫秒数（默认 60000）\n  VSP_DAEMON_IDLE_MS        最后一个客户端断开后的空闲宽限（默认 300000，0=立即退出）\n  VSP_CLIENT_LIMIT          共享客户端上限（默认 16）\n  VSP_SCREEN_LEASE_WAIT_MS  租约被占用时最多等待毫秒数（默认 0）\n  VSP_TOTAL_BUFFER_MB       所有 MCP 连接输入总缓冲上限（默认 64）\n  VSP_MAX_MESSAGE_MB        单条 MCP 消息上限（默认 16）\n  VSP_PROGRESS=1            发送 notifications/progress（默认关闭，避免客户端无法关联 token 时断链）\n  VSP_REF_GENERATIONS       保留最近几代 element_ref（默认 3，范围 2–10）\n\n显示设置在 daemon 启动时读取；修改后需先停止 daemon（--cli stop 或关闭客户端）再启动。\n",
+    "stderr": ""
+  },
+  "doctor": {
+    "args": [
+      "--doctor"
+    ],
+    "exit_code": 0,
+    "stdout": "{\n  \"ok\": true,\n  \"version\": \"0.3.0\",\n  \"profile\": \"baseline-probe\",\n  \"platform\": \"Win32NT\",\n  \"os\": \"Microsoft Windows 10.0.26300\",\n  \"arch\": \"X64\",\n  \"elevated\": false,\n  \"interactive\": true,\n  \"run_script_enabled\": false,\n  \"app_allowlist\": [],\n  \"log_file\": \"C:\\\\Users\\\\31746\\\\AppData\\\\Local\\\\VScreenPilot\\\\logs\\\\server.baseline-probe-728-20261123.log\",\n  \"registry\": null,\n  \"instances\": [],\n  \"process\": {\n    \"pid\": 728,\n    \"working_set_mb\": 31.2,\n    \"handles\": 247\n  },\n  \"driver\": {\n    \"status\": \"Ok\",\n    \"open\": true,\n    \"version\": \"0.41\"\n  },\n  \"virtual_display\": {\n    \"enabled\": false\n  },\n  \"primary\": {\n    \"device\": \"\\\\\\\\.\\\\DISPLAY1\",\n    \"x\": 0,\n    \"y\": 0,\n    \"width\": 1920,\n    \"height\": 1440,\n    \"dpi\": 168\n  },\n  \"virtual_screen\": {\n    \"x\": 0,\n    \"y\": 0,\n    \"width\": 1920,\n    \"height\": 1440,\n    \"monitors\": 1\n  },\n  \"state_file\": \"C:\\\\Users\\\\31746\\\\AppData\\\\Local\\\\VScreenPilot\\\\state.baseline-probe.json\",\n  \"state\": {\n    \"present\": false\n  },\n  \"artifacts\": {\n    \"root\": \"C:\\\\Users\\\\31746\\\\AppData\\\\Local\\\\VScreenPilot\\\\artifacts\\\\baseline-probe\",\n    \"retention_days\": 7\n  },\n  \"checks\": [\n    {\n      \"id\": \"driver.status\",\n      \"ok\": true,\n      \"detail\": \"Ok\"\n    },\n    {\n      \"id\": \"driver.open\",\n      \"ok\": true,\n      \"detail\": \"0.41\"\n    },\n    {\n      \"id\": \"session.interactive\",\n      \"ok\": true,\n      \"detail\": \"ok\"\n    },\n    {\n      \"id\": \"office.powerpoint\",\n      \"ok\": true,\n      \"detail\": \"C:\\\\Program Files\\\\Microsoft Office\\\\root\\\\Office16\\\\POWERPNT.EXE\"\n    },\n    {\n      \"id\": \"artifacts.writable\",\n      \"ok\": true,\n      \"detail\": \"C:\\\\Users\\\\31746\\\\AppData\\\\Local\\\\VScreenPilot\\\\artifacts\\\\doctor\"\n    },\n    {\n      \"id\": \"virtual_display\",\n      \"ok\": false,\n      \"detail\": \"not mounted\"\n    }\n  ]\n}\n",
+    "stderr": ""
+  },
+  "status_no_instance": {
+    "args": [
+      "--cli",
+      "status"
+    ],
+    "exit_code": 3,
+    "stdout": "{\n  \"ok\": false,\n  \"code\": \"E_NO_INSTANCE\",\n  \"message\": \"\\u5F53\\u524D profile \\u6CA1\\u6709\\u6D3B\\u8DC3\\u5B9E\\u4F8B\"\n}\n",
+    "stderr": ""
+  },
+  "stop_no_instance": {
+    "args": [
+      "--cli",
+      "stop"
+    ],
+    "exit_code": 3,
+    "stdout": "{\n  \"ok\": false,\n  \"code\": \"E_NO_INSTANCE\",\n  \"message\": \"\\u5F53\\u524D profile \\u6CA1\\u6709\\u6D3B\\u8DC3\\u5B9E\\u4F8B\"\n}\n",
+    "stderr": ""
+  }
+}

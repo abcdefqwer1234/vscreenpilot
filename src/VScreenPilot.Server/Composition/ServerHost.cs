@@ -23,7 +23,8 @@ internal sealed record ServerHostResources(
     MutexGuard Mutex);
 
 /// <summary>ServerHost 的运行选项。</summary>
-internal sealed record ServerHostSettings(bool AllowScript, ManualResetEventSlim? Stop = null);
+internal sealed record ServerHostSettings(
+    bool AllowScript, ManualResetEventSlim? Stop = null, bool ReadOnly = false);
 
 /// <summary>
 /// 单一宿主：持有会话、控制管道、MCP 管道与实例注册表，负责启动顺序、
@@ -45,6 +46,7 @@ internal sealed class ServerHost : IDisposable
     private readonly JobObject _job;
     private readonly MutexGuard _mutex;
     private readonly bool _allowScript;
+    private readonly bool _readOnly;
     private readonly ControlServer _control;
     private readonly PipeHost _pipeHost;
     private ConsoleCtrlHandler? _ctrlHandler;
@@ -64,9 +66,10 @@ internal sealed class ServerHost : IDisposable
         _job = resources.Job;
         _mutex = resources.Mutex;
         _allowScript = settings.AllowScript;
+        _readOnly = settings.ReadOnly;
         var facade = new SessionFacade(session);
         _control = new ControlServer(facade, facade, log, registry, session.ProfileName, Shutdown);
-        _pipeHost = new PipeHost(session, log, resources.Trace!, session.ProfileName);
+        _pipeHost = new PipeHost(session, log, resources.Trace!, session.ProfileName, _readOnly);
     }
 
     public void Dispose()
@@ -193,6 +196,7 @@ internal sealed class ServerHost : IDisposable
             Scheduler = _session.Scheduler,
             Log = _log,
             Trace = _trace,
+            ReadOnly = _readOnly,
         });
         int exitCode = server.RunAsync().GetAwaiter().GetResult();
 
@@ -289,7 +293,10 @@ internal sealed class ServerHost : IDisposable
         {
             using var host = new ServerHost(
                 new ServerHostResources(session, log, trace, registry, job, mutex),
-                new ServerHostSettings(allowScript, stop));
+                new ServerHostSettings(
+                    allowScript,
+                    stop,
+                    ReadOnly: EnvFlags.IsTruthy(Environment.GetEnvironmentVariable("VSP_READ_ONLY"))));
 
             DaemonHostLoop.RegisterStopSignal(stop);
 
@@ -385,6 +392,6 @@ internal sealed class ServerHost : IDisposable
             return value;
         }
 
-        return 5000;
+        return 300_000;
     }
 }

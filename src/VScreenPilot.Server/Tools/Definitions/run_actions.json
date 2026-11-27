@@ -1,0 +1,104 @@
+{
+  "name": "run_actions",
+  "title": "Run actions",
+  "description": "Run a whitelisted sequence of existing actions in one call. The whole batch shares one foreground lease; no shell or arbitrary script. Use it for click -> set value -> confirm flows that would otherwise steal focus between calls. Read-only sessions are rejected by the tool policy.",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "steps"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "steps": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 50,
+        "items": {
+          "type": "object",
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Whitelisted action name: click/click_ref/click_text/gesture/invoke_element/set_element_value/get_element_text/press_keys/type_text/wait_for/assert_region/match_visual/read_table/find_element/snapshot/capture_screen/select_tab/close_tab/get_environment/list_windows/get_processes/get_ui_tree/read_screen_text."
+            },
+            "args": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "continue_on_error": {
+              "type": "boolean"
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 120000,
+              "description": "Default 15000. Best-effort cooperative timeout; handlers that honor cancellation stop, others may finish after the budget."
+            }
+          }
+        }
+      },
+      "stop_on_error": {
+        "type": "boolean"
+      },
+      "lease_ms": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 600000
+      },
+      "dry_run": {
+        "type": "boolean"
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "completed": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "aborted_at": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "elapsed_ms": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "steps": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": true,
+  "timeoutMs": 120000,
+  "policy": {
+    "mutates": true,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 120000
+  }
+}

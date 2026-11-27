@@ -24,6 +24,22 @@
       "automation_id": {
         "type": "string"
       },
+      "within": {
+        "type": "string",
+        "description": "Container element_ref. Search only inside this element's subtree; the container must belong to the same tracked app. UIA-only (no MSAA fallback)."
+      },
+      "new_snapshot": {
+        "type": "boolean",
+        "description": "Default false. When true, advance to a new snapshot generation before searching so results match a fresh snapshot. Older refs may become stale."
+      },
+      "scope": {
+        "type": "string",
+        "enum": [
+          "app",
+          "snapshot"
+        ],
+        "description": "Default app: search all top-level windows of the tracked app. snapshot: only search the current snapshot root window. Use outside_snapshot/sources to detect results from other windows."
+      },
       "role": {
         "type": "string",
         "enum": [
@@ -146,6 +162,43 @@
         "items": {}
       },
       "elements": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "hwnd": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "outside_snapshot": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "snapshot_age_ms": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "snapshot_root_hwnd": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "scope": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "sources": {
         "type": [
           "array",
           "null"

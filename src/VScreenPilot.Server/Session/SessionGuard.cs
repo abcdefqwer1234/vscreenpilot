@@ -12,6 +12,8 @@ internal sealed class SessionGuard : IDisposable
     private readonly ReaderWriterLockSlim _lock =
         new(LockRecursionPolicy.NoRecursion);
 
+    public bool IsReadLockHeld => _lock.IsReadLockHeld;
+
     public bool TryEnterRead(int milliseconds) =>
         _lock.TryEnterReadLock(Math.Max(0, milliseconds));
 

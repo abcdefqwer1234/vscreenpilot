@@ -48,6 +48,53 @@ internal sealed class ElementTools
             Pid = OptionalNullableInt(arguments, "pid"),
             Role = OptionalString(arguments, "role"),
             Prefer = OptionalString(arguments, "prefer") ?? "auto",
+            Within = OptionalString(arguments, "within"),
+            NewSnapshot = OptionalBool(arguments, "new_snapshot", false),
+            Scope = OptionalString(arguments, "scope") ?? "app",
+        }));
+    }
+
+    public ToolResponse ReadTable(JsonElement arguments)
+    {
+        IReadOnlyList<string>? columns = null;
+
+        if (arguments.TryGetProperty("columns", out JsonElement columnsElement))
+        {
+            if (columnsElement.ValueKind != JsonValueKind.Array)
+            {
+                throw new ToolException("E_INVALID_ARG", "columns 必须是字符串数组");
+            }
+
+            var values = new List<string>();
+
+            foreach (JsonElement item in columnsElement.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.String)
+                {
+                    throw new ToolException("E_INVALID_ARG", "columns 必须是字符串数组");
+                }
+
+                values.Add(item.GetString() ?? string.Empty);
+            }
+
+            columns = values;
+        }
+
+        return ToolResponseWriter.FromView(_elements.ReadTable(new TableQuery
+        {
+            RootRef = OptionalString(arguments, "root_ref"),
+            Within = OptionalString(arguments, "within"),
+            Name = OptionalString(arguments, "name"),
+            NameMatch = OptionalString(arguments, "name_match") ?? "exact",
+            ControlType = OptionalString(arguments, "control_type"),
+            AutomationId = OptionalString(arguments, "automation_id"),
+            Pid = OptionalNullableInt(arguments, "pid"),
+            Index = OptionalInt(arguments, "index", 0),
+            MaxRows = OptionalInt(arguments, "max_rows", 100),
+            RowStart = OptionalInt(arguments, "row_start", 0),
+            IncludeHeader = OptionalBool(arguments, "include_header", true),
+            Columns = columns,
+            MaxCells = OptionalInt(arguments, "max_cells", 5000),
         }));
     }
 
@@ -68,9 +115,12 @@ internal sealed class ElementTools
         string reference = OptionalString(arguments, "ref")
             ?? throw new ToolException("E_INVALID_ARG", "invoke_element 需要 ref");
         bool allowClick = OptionalBool(arguments, "allow_click", false);
+        bool allowDestructive = OptionalBool(arguments, "allow_destructive", false);
         string? pattern = OptionalString(arguments, "pattern");
+        string? selectText = OptionalString(arguments, "select_text");
 
-        return ToolResponseWriter.FromView(_elements.Invoke(reference, allowClick, pattern));
+        return ToolResponseWriter.FromView(
+            _elements.Invoke(reference, allowClick, pattern, selectText, allowDestructive));
     }
 
     public ToolResponse SetElementValue(JsonElement arguments)
@@ -85,7 +135,8 @@ internal sealed class ElementTools
             value,
             OptionalBool(arguments, "allow_keyboard", false),
             OptionalString(arguments, "mode"),
-            OptionalBool(arguments, "allow_destructive", false)));
+            OptionalBool(arguments, "allow_destructive", false),
+            OptionalBool(arguments, "strict_verify", false)));
     }
 
     public ToolResponse GetElementText(JsonElement arguments)
@@ -95,5 +146,30 @@ internal sealed class ElementTools
         int maxChars = OptionalInt(arguments, "max_chars", 4096);
 
         return ToolResponseWriter.FromView(_elements.GetText(reference, maxChars));
+    }
+
+    public ToolResponse SelectTab(JsonElement arguments)
+    {
+        string name = OptionalString(arguments, "name")
+            ?? throw new ToolException("E_INVALID_ARG", "select_tab 需要 name");
+
+        return ToolResponseWriter.FromView(_elements.SelectTab(
+            name,
+            OptionalString(arguments, "name_match") ?? "exact",
+            OptionalInt(arguments, "index", 0),
+            OptionalNullableInt(arguments, "pid")));
+    }
+
+    public ToolResponse CloseTab(JsonElement arguments)
+    {
+        string name = OptionalString(arguments, "name")
+            ?? throw new ToolException("E_INVALID_ARG", "close_tab 需要 name");
+
+        return ToolResponseWriter.FromView(_elements.CloseTab(
+            name,
+            OptionalString(arguments, "name_match") ?? "exact",
+            OptionalInt(arguments, "index", 0),
+            OptionalNullableInt(arguments, "pid"),
+            OptionalBool(arguments, "allow_destructive", false)));
     }
 }

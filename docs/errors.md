@@ -15,22 +15,29 @@
 | `E_NO_TARGET` | 没有存活的目标应用 | 启动或重新接管；`snapshot` 可查看 `windows[]` |
 | `E_WINDOW_NOT_FOUND` | 按标题/pid 找不到窗口 | 改用 `path` 启动，或确认窗口已出现 |
 | `E_WINDOW_TIMEOUT` | 等待主窗口超时 | 提高 `wait_ms`，检查是否有模态框挡住主窗口 |
-| `E_WINDOW_AMBIGUOUS` | 多个窗口匹配 | 用 `pid` 精确指定；`details.candidates` 给出候选 |
+| `E_WINDOW_AMBIGUOUS` | 多个窗口匹配 | 用 `pid`/`hwnd` 精确指定；`details.candidates` 给出候选（也用于 `target=current_dialog`） |
 
 ## 语义树与输入
 
 | 错误码 | 含义 | 下一步 |
 | --- | --- | --- |
 | `E_ELEMENT_NOT_FOUND` | 控件不存在 | 用 `wait_for(element)` 或 `name_match=contains` |
+| `E_ELEMENT_AMBIGUOUS` | 多个同权控件匹配（如多个同名标签页） | 用 `index` 指定目标，或改用 `automation_id`/`within` 收窄 |
 | `E_ELEMENT_STALE` | ref 已失效 | 重新 `snapshot`/`find_element`，只使用新 ref |
-| `E_STALE_SNAPSHOT` | 引用了旧快照的 ref | 重新 `snapshot`；ref 只在对应 `snapshot_id` 内有效 |
+| `E_STALE_SNAPSHOT` | 引用了超过保留代际的 ref | 重新 `snapshot`；默认保留最近 3 代（`VSP_REF_GENERATIONS`） |
+| `E_NEEDS_HUMAN` | 控件无法可靠自动化，继续重试也不会成功 | 按 `details.element` 定位并人工处理；批量流程按策略跳过或中止 |
+| `E_VERIFY_FAILED` | 写入后回读与期望不一致（`strict_verify=true` 时） | 查看 `details.expected/observed`；确认焦点、控件状态与是否被弹窗拦截 |
+| `E_BLOCKED` | 目标窗口被模态对话框禁用 | 先处理 `details.dialogs`；键盘输入传 `target=current_dialog`，或改用 `details.dialogs[].hwnd` |
 | `E_PATTERN_UNSUPPORTED` | 控件不支持所选 UIA pattern | 试 `pattern=default`，或改用 `click`/键盘 |
 | `E_DESTRUCTIVE_REQUIRED` | 写入会覆盖非空内容 | 确需覆盖时传 `allow_destructive=true` |
+| `E_DESTRUCTIVE_TARGET` | 点击命中了关闭/删除/清空类控件（或标签页右缘关闭热区） | 确认后传 `allow_destructive=true`；标签页改用 `select_tab`/`close_tab` |
 | `E_FOCUS` | 无法把目标切到前台 | 先 `click(keep_foreground=true)`；检查模态框 |
 | `E_FOCUS_OWNED` | 另一个 profile 持有输入租约（`VSP_FOCUS_LEASE=1`） | 稍后重试，或串行执行两个 profile |
+| `E_INPUT_LEASE_CONFLICT` | 另一个客户端持有不同目标的输入租约 | 稍后重试，或确认后传 `force=true` 抢占 |
 | `E_FOCUS_LOST` | 输入中前台被抢走 | 重试；确认用户没有在操作桌面 |
 | `E_INPUT_UNSUPPORTED` | 该窗口/区域忽略所选输入通道 | 非客户区或 Chromium 改用 `channel=input`/`fallback_input=true`；`gesture` 用 `mode=input` |
 | `E_UIPI` | 被 UIPI 拦截 | 以相同权限运行，或改用 UIA 语义操作 |
+| `E_ELEVATION_REQUIRED` | 目标进程完整性级别高于服务端，或启动目标要求管理员权限（Win32 740/5） | 以相同权限运行服务端；启动器交给宿主提权，不会自动提权 |
 | `E_INPUT` | 输入未完整注入 | 检查前台、输入法与目标是否禁用输入 |
 | `E_SYSTEM_KEY_BLOCKED` | 系统级快捷键会逃逸到用户桌面 | 确需发送时传 `allow_system_keys=true` |
 | `E_CLIPBOARD_UNSAFE` | 剪贴板含图片/文件，写文本会永久清空且无法还原 | 改用 `channel=auto/keys`（SendInput），或先备份剪贴板 |
@@ -51,6 +58,7 @@
 | `E_BUSY` | 另一个写操作正在执行、release 等不到只读观察结束，或读工具等 release 结束超时 | 按 `details.retry_after_ms` 重试；release 请等 snapshot/capture 返回后再试 |
 | `E_RATE_LIMITED` | 请求速率超过令牌桶（默认 300 突发 / 100 每秒） | 按 `details.retry_after_ms` 退避；合并批量调用 |
 | `E_CANCELLED` | 请求被取消或会话被重置 | 不要自动重试；重新观察后再操作 |
+| `E_READ_ONLY` | 服务端以只读模式运行，拒绝了写工具 | 观察/断言可继续；写操作需重启为可写会话 |
 
 ## 共享实例与 CLI（连接级）
 
@@ -117,7 +125,7 @@
 
 ### E_OUT_OF_BOUNDS
 
-坐标越界（stage: `validate`）
+坐标越界（stage: `validate`）。读类工具（`capture_screen`/`read_screen_text`/`click_text`）默认会裁剪到虚拟屏并返回 `clipped=true`；传 `on_out_of_bounds=error` 才恢复该错误。`assert_region`/`wait_for` 等断言类默认仍报错。
 
 <a id="e_foreign_window"></a>
 
@@ -167,6 +175,12 @@
 
 快照已过期（stage: `snapshot`）
 
+<a id="e_element_ambiguous"></a>
+
+### E_ELEMENT_AMBIGUOUS
+
+多个同权控件匹配（stage: `uia`）。`details.candidates` 给出候选；用 `index` 指定目标，或改用 `automation_id`/`within` 收窄。
+
 <a id="e_pattern_unsupported"></a>
 
 ### E_PATTERN_UNSUPPORTED
@@ -178,6 +192,12 @@
 ### E_DESTRUCTIVE_REQUIRED
 
 需要破坏性写入确认（stage: `validate`）
+
+<a id="e_destructive_target"></a>
+
+### E_DESTRUCTIVE_TARGET
+
+点击命中了破坏性控件（stage: `security`）。`details.hit_element` 给出实际命中的名称/类型/边界；确认后传 `allow_destructive=true`。标签页右缘的关闭热区也会触发此错误，优先改用 `select_tab`/`close_tab`。
 
 <a id="e_focus"></a>
 
@@ -241,6 +261,12 @@
 ### E_SCREEN_LEASED
 
 另一个客户端持有屏幕租约（stage: `lease`）。同一时刻只允许一个客户端执行 GUI/视觉操作；等待对方 `release_environment` 或租约空闲超时（默认 60s）后重试。
+
+<a id="e_input_lease_conflict"></a>
+
+### E_INPUT_LEASE_CONFLICT
+
+另一个客户端持有不同目标的输入租约（stage: `lease`）。`lease_input` 的 `details` 给出 holder；等待其释放，或确认后用 `force=true` 抢占。相同 pid 的租约可以并存，只有不同目标才冲突。
 
 <a id="e_driver_open"></a>
 

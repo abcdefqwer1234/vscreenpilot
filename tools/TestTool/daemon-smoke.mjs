@@ -61,7 +61,7 @@ async function proxyCrashCase() {
     a.child.kill();
     await sleep(1000);
     const listed = await b.request('tools/list', {}, 5000).catch(() => null);
-    check('proxy crash: B 仍可用', listed?.result?.tools?.length === 22,
+    check('proxy crash: B 仍可用', listed?.result?.tools?.length === 30,
       String(listed?.result?.tools?.length));
   } finally {
     try { await a.stop(); } catch {}

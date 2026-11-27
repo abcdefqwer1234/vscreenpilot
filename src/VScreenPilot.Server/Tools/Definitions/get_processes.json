@@ -1,0 +1,70 @@
+{
+  "name": "get_processes",
+  "title": "Get process snapshot",
+  "description": "Read-only process snapshot for long-running tasks (installers, builds, simulators). Filter by name substring or pid. Returns pid/name/session_id/elevated/started_at/uptime, and optionally the process's top-level windows. Use wait_for(condition.type=process) to block until a process exits instead of polling from the host shell. Exposes process names for the whole session; run in a trusted environment.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Process name substring, with or without .exe."
+      },
+      "pid": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "include_windows": {
+        "type": "boolean",
+        "description": "Default false. Include window_count and the largest window (hwnd/title/class). Enabling it costs one window enumeration per call."
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 500
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "processes": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "count": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "total": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "filtered": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": true,
+  "destructive": false,
+  "timeoutMs": 15000,
+  "policy": {
+    "mutates": false,
+    "lease": "None",
+    "sessionRead": false,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

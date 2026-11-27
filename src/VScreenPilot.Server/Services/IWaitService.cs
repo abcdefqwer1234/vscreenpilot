@@ -7,7 +7,7 @@ namespace VScreenPilot.Services;
 /// <summary>条件等待（element/text/color/window/pixel_diff）。</summary>
 internal interface IWaitService
 {
-    WaitForView WaitFor(JsonElement condition, int timeoutMs, int? intervalMs);
+    WaitForView WaitFor(JsonElement condition, int timeoutMs, int? intervalMs, bool clipOutOfBounds = false);
 }
 
 internal sealed class WaitToolService : IWaitService
@@ -16,6 +16,7 @@ internal sealed class WaitToolService : IWaitService
 
     public WaitToolService(SessionManager session) => _session = session;
 
-    public WaitForView WaitFor(JsonElement condition, int timeoutMs, int? intervalMs) =>
-        _session.VerifyOps.WaitFor(condition, timeoutMs, intervalMs);
+    public WaitForView WaitFor(
+        JsonElement condition, int timeoutMs, int? intervalMs, bool clipOutOfBounds = false) =>
+        _session.VerifyOps.WaitFor(condition, timeoutMs, intervalMs, clipOutOfBounds);
 }

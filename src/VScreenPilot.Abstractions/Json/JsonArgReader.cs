@@ -41,7 +41,7 @@ internal static class JsonArgReader
             throw new ToolException("E_INVALID_ARG", $"click 需要 {property}");
         }
 
-        if (!value.TryGetInt32(out int result))
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out int result))
         {
             throw new ToolException(
                 "E_INVALID_ARG",
@@ -70,9 +70,27 @@ internal static class JsonArgReader
     public static int RequiredInt(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object &&
         element.TryGetProperty(property, out JsonElement value) &&
+        value.ValueKind == JsonValueKind.Number &&
         value.TryGetInt32(out int result)
             ? result
             : throw new ToolException("E_INVALID_ARG", $"缺少整数参数 {property}");
+
+    public static long? OptionalNullableLong(JsonElement element, string property)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(property, out JsonElement value) ||
+            value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out long result))
+        {
+            return result;
+        }
+
+        throw InvalidType(property, "integer", value.ValueKind);
+    }
 
     public static double OptionalDouble(JsonElement element, string property, double fallback)
     {

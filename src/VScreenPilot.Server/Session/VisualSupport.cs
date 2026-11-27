@@ -67,6 +67,39 @@ internal static class VisualSupport
         }
     }
 
+    /// <summary>
+    /// 读类工具的区域裁剪：与虚拟屏求交，完全无交集仍返回 E_OUT_OF_BOUNDS。
+    /// </summary>
+    public static (int X, int Y, int Width, int Height, bool Clipped) ClipRegionToDisplay(
+        DisplayInfo display, int x, int y, int width, int height, string label)
+    {
+        if (width <= 0 || height <= 0)
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"{label} 的 width/height 必须大于 0",
+                new JsonObject { ["width"] = width, ["height"] = height });
+        }
+
+        long right = (long)x + width;
+        long bottom = (long)y + height;
+        int left = Math.Max(x, display.X);
+        int top = Math.Max(y, display.Y);
+        int clippedRight = (int)Math.Min(right, (long)display.X + display.Width);
+        int clippedBottom = (int)Math.Min(bottom, (long)display.Y + display.Height);
+
+        if (clippedRight <= left || clippedBottom <= top)
+        {
+            RequireRegionInDisplay(display, x, y, width, height, label);
+            throw new InvalidOperationException("unreachable");
+        }
+
+        bool clipped = left != x || top != y ||
+                       clippedRight != right || clippedBottom != bottom;
+
+        return (left, top, clippedRight - left, clippedBottom - top, clipped);
+    }
+
     public static double ChangedRatio(byte[] current, byte[] baseline, int tolerance)
     {
         int count = Math.Min(current.Length, baseline.Length) / 4;

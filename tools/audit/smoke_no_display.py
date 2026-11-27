@@ -19,10 +19,11 @@ from vsp_client import McpClient, write_json  # noqa: E402
 
 EXPECTED_TOOLS = {
     "assert_region", "capture_screen", "click", "click_ref", "click_text",
-    "find_element", "gesture", "get_element_text", "get_environment", "get_log",
-    "get_ui_tree", "invoke_element", "launch_or_place_app", "match_visual",
-    "press_keys", "read_screen_text", "release_environment", "run_script",
-    "set_element_value", "snapshot", "type_text", "wait_for",
+    "close_tab", "find_element", "gesture", "get_element_text", "get_environment",
+    "get_log", "get_processes", "get_ui_tree", "invoke_element", "launch_or_place_app",
+    "lease_input", "list_windows", "match_visual", "press_keys", "read_screen_text",
+    "read_table", "release_environment", "run_actions", "run_script", "select_tab",
+    "set_display", "set_element_value", "snapshot", "type_text", "wait_for",
 }
 
 
@@ -45,7 +46,7 @@ def main() -> int:
             if not ok:
                 failures.append(name)
 
-        check("tools==22", len(tools) == 22, len(tools))
+        check("tools==30", len(tools) == 30, len(tools))
         check("tool_set_matches", names == EXPECTED_TOOLS,
               sorted(names ^ EXPECTED_TOOLS))
         check("has_snapshot", "snapshot" in names)

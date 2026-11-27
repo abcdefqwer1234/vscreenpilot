@@ -13,6 +13,9 @@ internal sealed class TrackedApp
     /// <summary>哪个 MCP 客户端拥有该窗口；单客户端旧行为默认为 c0。</summary>
     public string OwnerClientId { get; set; } = "c0";
 
+    /// <summary>崩溃恢复认领用的短哈希（cwd + roots）；不匹配时不自动认领。</summary>
+    public string ClientKey { get; init; } = string.Empty;
+
     public string ExePath { get; init; } = string.Empty;
 
     /// <summary>UWP 内容进程；普通应用为 0。</summary>
@@ -32,6 +35,12 @@ internal sealed class TrackedApp
     public string? TempProfile { get; init; }
     public NativeMethods.WINDOWPLACEMENT Placement { get; set; }
     public bool PlacementSaved { get; set; }
+
+    /// <summary>detached：进程生命周期不挂在本会话的 Job Object 上，release/daemon 退出不杀。</summary>
+    public bool Detached { get; set; }
+
+    /// <summary>崩溃恢复时重新登记、尚未被任何客户端认领的窗口。</summary>
+    public bool Recovered { get; set; }
 
     /// <summary>首次观察到窗口失效的时间；超过 3s 才从 apps[] 移除，避免瞬时刷新被误删。</summary>
     public DateTime? DeadSince { get; set; }

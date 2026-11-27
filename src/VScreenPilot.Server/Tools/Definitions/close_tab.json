@@ -1,0 +1,90 @@
+{
+  "name": "close_tab",
+  "title": "Close tab",
+  "description": "Close a tab by name. Requires allow_destructive=true. Prefers the tab's close button; if the app does not expose one, selects the tab and sends Ctrl+W.",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "name"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "name_match": {
+        "type": "string",
+        "enum": [
+          "exact",
+          "contains",
+          "regex"
+        ]
+      },
+      "index": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "pid": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "allow_destructive": {
+        "type": "boolean"
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "ref": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "closed": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "method": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "bounds": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": false,
+  "destructive": true,
+  "timeoutMs": 15000,
+  "policy": {
+    "mutates": true,
+    "lease": "Always",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

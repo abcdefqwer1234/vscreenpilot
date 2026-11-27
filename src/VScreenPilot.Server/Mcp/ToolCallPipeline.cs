@@ -23,6 +23,7 @@ internal sealed class ToolCallPipeline
     private readonly McpTelemetry _telemetry;
     private readonly IExecutionControl _control;
     private readonly ClientInfo? _client;
+    private readonly bool _readOnly;
     private int _inflightHandlers;
 
     public ToolCallPipeline(
@@ -31,7 +32,8 @@ internal sealed class ToolCallPipeline
         WriteScheduler scheduler,
         McpTelemetry telemetry,
         IExecutionControl control,
-        ClientInfo? client)
+        ClientInfo? client,
+        bool readOnly = false)
     {
         _tools = tools;
         _log = log;
@@ -39,6 +41,7 @@ internal sealed class ToolCallPipeline
         _telemetry = telemetry;
         _control = control;
         _client = client;
+        _readOnly = readOnly;
     }
 
     public int InflightHandlers => Volatile.Read(ref _inflightHandlers);
@@ -92,6 +95,20 @@ internal sealed class ToolCallPipeline
             return ToolResultMapper.ToResult(unknown);
         }
 
+        if (_readOnly && !AllowsReadOnly(tool))
+        {
+            ToolResponse denied = ToolResponse.Error(
+                "E_READ_ONLY",
+                $"只读会话拒绝写工具: {name}",
+                new JsonObject { ["tool"] = name },
+                retryable: false,
+                hint: "结束只读会话后以默认可写模式重启；观察与断言工具不受影响",
+                stage: "policy").SetRequestId(requestId);
+
+            _telemetry.Trace(name, requestId, null, 0, denied);
+            return ToolResultMapper.ToResult(denied);
+        }
+
         if (!_telemetry.TryAcquireRateLimit(out int retryAfterMs))
         {
             ToolResponse limited = ToolResponse.Error(
@@ -125,6 +142,11 @@ internal sealed class ToolCallPipeline
             tool, arguments, context, requestId, argumentSummary, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>只读会话仍允许观察：标注只读的工具，以及 snapshot/capture_screen/get_environment。</summary>
+    private static bool AllowsReadOnly(ToolDescriptor tool) =>
+        tool.ReadOnly ||
+        tool.Name is "snapshot" or "capture_screen" or "get_environment";
+
     private async Task<CallToolResult> ExecuteToolAsync(
         ToolDescriptor tool,
         JsonElement arguments,
@@ -137,7 +159,7 @@ internal sealed class ToolCallPipeline
             _log,
             _scheduler,
             _telemetry.Trace,
-            context.Params?.Meta?["progressToken"] is null
+            !ProgressPolicy.Enabled || context.Params?.Meta?["progressToken"] is null
                 ? null
                 : (current, total, message) => _telemetry.ReportProgress(context, current, total, message),
             () => Interlocked.Increment(ref _inflightHandlers),

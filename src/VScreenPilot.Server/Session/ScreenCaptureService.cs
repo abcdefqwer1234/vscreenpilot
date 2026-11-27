@@ -41,8 +41,49 @@ internal sealed class ScreenCaptureService
         DisplayInfo display = _host.EnsureDisplay();
         var stopwatch = Stopwatch.StartNew();
 
-        (int left, int top, int regionWidth, int regionHeight) = ResolveRegion(request, display);
-        VisualSupport.RequireRegionInDisplay(display, left, top, regionWidth, regionHeight, "capture_screen");
+        (int requestedLeft, int requestedTop, int requestedWidth, int requestedHeight) =
+            ResolveRegion(request, display);
+        int left = requestedLeft;
+        int top = requestedTop;
+        int regionWidth = requestedWidth;
+        int regionHeight = requestedHeight;
+        bool clipped = false;
+
+        if (request.Clip)
+        {
+            var clamped = VisualSupport.ClipRegionToDisplay(
+                display, left, top, regionWidth, regionHeight, "capture_screen");
+            left = clamped.X;
+            top = clamped.Y;
+            regionWidth = clamped.Width;
+            regionHeight = clamped.Height;
+            clipped = clamped.Clipped;
+        }
+        else
+        {
+            VisualSupport.RequireRegionInDisplay(
+                display, left, top, regionWidth, regionHeight, "capture_screen");
+        }
+
+        double effectiveScale = ResolveScale(request.Scale);
+        double outputPixels = regionWidth * (double)regionHeight * effectiveScale * effectiveScale;
+
+        if (outputPixels > 40_000_000)
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                "放大后的输出像素超过 40MP 上限",
+                new JsonObject
+                {
+                    ["width"] = regionWidth,
+                    ["height"] = regionHeight,
+                    ["scale"] = effectiveScale,
+                    ["output_pixels"] = (long)outputPixels,
+                },
+                retryable: false,
+                hint: "缩小区或降低 scale（最大 4）",
+                stage: "validate");
+        }
 
         (byte[] bgra, int capturedWidth, int capturedHeight) =
             _host.CaptureRegion(left, top, regionWidth, regionHeight);
@@ -52,7 +93,6 @@ internal sealed class ScreenCaptureService
             : string.Empty;
 
         // 与 PngWriter 内部保持一致，meta 里返回真正生效的 scale。
-        double effectiveScale = ResolveScale(request.Scale);
         var encodeWatch = Stopwatch.StartNew();
         byte[] png = PngWriter.Encode(
             bgra, capturedWidth, capturedHeight, effectiveScale,
@@ -83,7 +123,11 @@ internal sealed class ScreenCaptureService
             Baseline: new BaselineView(left, top, capturedWidth, capturedHeight),
             Path: string.IsNullOrWhiteSpace(request.SavePath)
                 ? null
-                : _host.ValidateSavePath(request.SavePath));
+                : _host.ValidateSavePath(request.SavePath),
+            Clipped: clipped,
+            RequestedRegion: clipped
+                ? new BoundsView(requestedLeft, requestedTop, requestedWidth, requestedHeight)
+                : null);
 
         return new CaptureResult(png, meta, previewPng, previewMeta);
     }
@@ -104,7 +148,7 @@ internal sealed class ScreenCaptureService
         throw new ToolException("E_INVALID_ARG", "截图区域宽高必须大于 0");
     }
 
-    private static double ResolveScale(double scale) => Math.Clamp(scale <= 0 ? 1.0 : scale, 0.1, 1.0);
+    private static double ResolveScale(double scale) => Math.Clamp(scale <= 0 ? 1.0 : scale, 0.1, 4.0);
 
     private static (byte[]? Png, PreviewView? Meta) BuildPreview(
         double? previewScale, byte[] bgra, (int Width, int Height) captured, string frameId)

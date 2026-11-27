@@ -131,6 +131,12 @@ internal sealed class AppReleaser
     private string FinalizeClose(
         TrackedApp app, bool uwp, int closePid, string closePath, ref string? warning)
     {
+        if (app.Detached)
+        {
+            warning = $"detached 应用 pid={app.Pid} 不随会话关闭";
+            return "kept";
+        }
+
         if (!AppTermination.WaitForWindowClosed(app.Hwnd, 2500) && NativeMethods.IsWindow(app.Hwnd))
         {
             bool canForce = AppTermination.CanForceClose(

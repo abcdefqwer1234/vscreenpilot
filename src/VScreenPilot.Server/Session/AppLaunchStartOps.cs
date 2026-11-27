@@ -21,11 +21,21 @@ internal sealed class AppLaunchStartOps
         Process process = StartProcess(s);
         int processId = process.Id;
         s.Started = true;
+        s.LaunchedPid = processId;
 
         try
         {
-            AttachToJob(process, processId);
             WaitForLaunchedWindow(s, process, before);
+
+            if (s.Window is null)
+            {
+                s.Alive = !process.HasExited;
+
+                if (process.HasExited)
+                {
+                    s.ExitCode = process.ExitCode;
+                }
+            }
         }
         finally
         {
@@ -34,7 +44,43 @@ internal sealed class AppLaunchStartOps
 
         if (s.Window is null)
         {
-            RecoverWithoutNewWindow(s, processId);
+            // 单实例应用（如 Win11 记事本）无法创建新窗口时，先尝试接管已有的那个。
+            // 控制台程序没有可接管的窗口，跳过这一步，避免白等 3 秒。
+            if (s.HadRunningInstance && !AppProcessOps.IsConsoleImage(s.LaunchPath))
+            {
+                TryAdoptExistingWindow(s);
+            }
+
+            if (s.Window is null)
+            {
+                // 没有窗口不是失败：控制台/启动器/静默安装器本来就没有主窗口。
+                // 关键：不再 KillProcessTree —— 长任务（安装、构建）不能因为"没等到窗口"被杀。
+                // 同时不提前加入 Job（否则 daemon 空闲退出会连坐），由 on_no_window 决定是否终止。
+                s.Alive = AppTermination.IsProcessAlive(processId);
+                s.CloseOnRelease = false;
+                s.Dedicated = false;
+
+                if (s.Alive && s.OnNoWindow == "kill")
+                {
+                    AppTermination.KillProcessTree(processId);
+                    s.Alive = false;
+                    s.Warnings.Add("进程已启动但没有可见窗口；按 on_no_window=kill 已终止。");
+                }
+                else
+                {
+                    s.Warnings.Add(
+                        s.Alive
+                            ? "进程已启动但没有可见窗口；已保留进程（未加入作业对象），不会随 daemon 退出被杀。后续可用 get_processes/wait_for(process) 观察。"
+                            : $"进程在窗口出现前已退出 (exit={s.ExitCode?.ToString() ?? "unknown"})。");
+                }
+
+                if (!s.Alive && s.TempProfile is not null)
+                {
+                    AppTermination.TryDeleteDirectory(s.TempProfile);
+                }
+
+                return;
+            }
         }
 
         // 单实例回退到“接管现有窗口”时，上面已把 closeOnRelease 置 false；
@@ -70,62 +116,38 @@ internal sealed class AppLaunchStartOps
             s.ExeName, s.Arguments, out string? launchTempProfile);
         s.TempProfile = launchTempProfile;
 
-        return Process.Start(startInfo)
-            ?? throw new ToolException("E_APP_START", $"无法启动应用: {s.LaunchPath}");
-    }
-
-    private void AttachToJob(Process process, int processId)
-    {
-        if (!_core._session.Job.Assign(process))
-        {
-            _core._log.Warn($"应用 {processId} 未能加入作业对象，崩溃兜底不可用");
-        }
+        return AppProcessOps.Start(startInfo);
     }
 
     private void WaitForLaunchedWindow(LaunchState s, Process process, HashSet<IntPtr> before)
     {
+        bool console = AppProcessOps.IsConsoleImage(s.LaunchPath);
         s.Window = _core.WindowOps.WaitForNewWindow(
-            process, s.ExeName, before, s.WaitMs, out int contentPid, out string contentPath);
+            process, s.ExeName, before, s.WaitMs, out int contentPid, out string contentPath,
+            console ? 1200 : 5000, console);
         s.ContentPid = contentPid;
         s.ContentPath = contentPath;
     }
 
-    private void RecoverWithoutNewWindow(LaunchState s, int processId)
+    private void TryAdoptExistingWindow(LaunchState s)
     {
-        AppTermination.KillProcessTree(processId);
+        // 单实例应用（如 Win11 记事本）无法创建新窗口：自动降级为接管现有窗口。
+        WindowInfo? reuse;
 
-        if (s.TempProfile is not null)
+        try
         {
-            AppTermination.TryDeleteDirectory(s.TempProfile);
+            reuse = FindExistingWindow(s);
         }
-
-        if (s.HadRunningInstance)
+        catch (ToolException exception) when (
+            exception.Code is "E_WINDOW_TIMEOUT" or "E_APP_EXITED")
         {
-            AdoptExistingWindowOrThrow(s);
+            // 已有进程也没有主窗口（控制台/启动器）：不接管，交给 no-window 分支。
             return;
         }
 
-        throw new ToolException("E_WINDOW_TIMEOUT", "等待新窗口超时");
-    }
-
-    private void AdoptExistingWindowOrThrow(LaunchState s)
-    {
-        // 单实例应用（如 Win11 记事本）无法创建新窗口：自动降级为接管现有窗口。
-        WindowInfo? reuse = FindExistingWindow(s);
-
         if (reuse is null)
         {
-            throw new ToolException(
-                "E_NEW_INSTANCE_UNSUPPORTED",
-                "无法为已运行的应用创建独立窗口；请设置 new_instance=false 以接管现有窗口",
-                new JsonObject
-                {
-                    ["app"] = s.ExeName,
-                    ["suggest_reuse"] = true,
-                },
-                retryable: true,
-                hint: "改用 window 参数按标题接管，或设置 new_instance=false",
-                stage: "launch");
+            return;
         }
 
         // 不记录窗口标题：可能包含文档名/客户名。

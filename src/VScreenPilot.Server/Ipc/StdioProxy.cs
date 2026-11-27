@@ -170,6 +170,8 @@ internal static class StdioProxy
                 ["allow_script"] = allowScript,
                 ["allow_unsafe_script"] = EnvFlags.IsTruthy(
                     Environment.GetEnvironmentVariable("VSP_ALLOW_UNSAFE_SCRIPT")),
+                ["read_only"] = EnvFlags.IsTruthy(
+                    Environment.GetEnvironmentVariable("VSP_READ_ONLY")),
                 ["app_allowlist"] = allowlist,
             },
         }).GetAwaiter().GetResult();

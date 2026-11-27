@@ -21,7 +21,8 @@ internal sealed class InputClickRefOps
     public InputClickRefOps(InputRouter host) => _host = host;
 
     public ClickRefView ClickElementRef(
-        string reference, string? channel, bool keepForeground, bool fallbackInput = false)
+        string reference, string? channel, bool keepForeground, bool fallbackInput = false,
+        bool allowDestructive = false)
     {
         DisplayInfo display = _host._display.EnsureDisplay();
         ElementRefEntry probe = _host._element.RequireElement(reference);
@@ -30,17 +31,23 @@ internal sealed class InputClickRefOps
         // MSAA 控件没有 UIA 句柄：显式 channel 仍要遵守，不能一律走默认动作。
         if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaOrdinal))
         {
-            return _host.ClickOps.RefOps.ClickMsaaRef(probe, msaaHwnd, msaaOrdinal, mode, keepForeground, fallbackInput);
+            return _host.ClickOps.RefOps.ClickMsaaRef(
+                probe, msaaHwnd, msaaOrdinal, mode, keepForeground, fallbackInput, allowDestructive);
         }
 
         using UiaElementHandle handle = _host._element.ResolveHandle(
             reference, display, out ElementRefEntry entry, out bool refreshed);
 
         UiaElementInfo info = handle.Info;
+        int centerX = info.Left + Math.Max(1, info.Width) / 2;
+        int centerY = info.Top + Math.Max(1, info.Height) / 2;
+        HitElementView? hitView = DestructiveTargetGuard.Check(
+            info, centerX, centerY, allowDestructive, "click_ref");
 
         if (mode is "auto" or "uia")
         {
-            ClickRefView? invoked = TryInvokeRef(handle, mode, entry, refreshed, info);
+            ClickRefView? invoked = TryInvokeRef(
+                handle, mode, entry, refreshed, info, hitView);
 
             if (invoked is not null)
             {
@@ -48,13 +55,12 @@ internal sealed class InputClickRefOps
             }
         }
 
-        int centerX = info.Left + Math.Max(1, info.Width) / 2;
-        int centerY = info.Top + Math.Max(1, info.Height) / 2;
         // 显式 message/input 保持原语义；auto 才允许继续降级（含 fallback_input）。
         string coordinateMode = mode is "input" or "message" ? mode : "auto";
         ClickView clickResult = _host.ClickOps.Click(new SessionClickRequest(
             centerX, centerY, "left", 1, coordinateMode,
-            KeepForeground: keepForeground, Observe: true, FallbackInput: fallbackInput));
+            KeepForeground: keepForeground, Observe: true, FallbackInput: fallbackInput,
+            AllowDestructive: allowDestructive));
 
         return BuildClickRef(entry, refreshed, clickResult);
     }
@@ -72,7 +78,8 @@ internal sealed class InputClickRefOps
     }
 
     private ClickRefView? TryInvokeRef(
-        UiaElementHandle handle, string mode, ElementRefEntry entry, bool refreshed, UiaElementInfo info)
+        UiaElementHandle handle, string mode, ElementRefEntry entry, bool refreshed,
+        UiaElementInfo info, HitElementView? hitView)
     {
         (bool invoked, string? strategy) = handle.Invoke(UiaInvokePattern.Auto);
 
@@ -89,7 +96,8 @@ internal sealed class InputClickRefOps
                 Observed: ObserveAfterAction(entry),
                 Bounds: new OptionalBoundsView(info.Left, info.Top, info.Width, info.Height),
                 Detail: null,
-                Hint: null);
+                Hint: null,
+                HitElement: hitView);
         }
 
         if (mode != "uia")
@@ -126,7 +134,9 @@ internal sealed class InputClickRefOps
             Observed: ObserveAfterAction(entry),
             Bounds: null,
             Detail: clickResult.Detail,
-            Hint: clickResult.Hint);
+            Hint: clickResult.Hint,
+            HitElement: clickResult.HitElement,
+            SuspectNoop: clickResult.SuspectNoop);
 
     /// <summary>
     /// 动作后的轻量观察：UIA 返回成功不代表应用真的响应了。
@@ -160,11 +170,20 @@ internal sealed class InputClickRefOps
 
     internal ClickRefView ClickMsaaRef(
         ElementRefEntry probe, IntPtr msaaHwnd, int msaaOrdinal, string mode,
-        bool keepForeground, bool fallbackInput)
+        bool keepForeground, bool fallbackInput, bool allowDestructive)
     {
+        var bounds = _host._uia.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaOrdinal));
+        int centerX = bounds is null ? 0 : bounds.Value.Left + bounds.Value.Width / 2;
+        int centerY = bounds is null ? 0 : bounds.Value.Top + bounds.Value.Height / 2;
+        var probeInfo = new UiaElementInfo(
+            probe.RuntimeId, probe.Name, probe.AutomationId, 0, probe.ControlTypeName,
+            probe.Left, probe.Top, probe.Right, probe.Bottom, true, false, probe.Pid,
+            string.Empty);
+        HitElementView? hitView = DestructiveTargetGuard.Check(
+            probeInfo, centerX, centerY, allowDestructive, "click_ref");
+
         bool acted = mode is "auto" or "uia" &&
                      _host._uia.Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaOrdinal));
-        var bounds = _host._uia.Uia.InvokeMsaa(() => MsaaService.GetBounds(msaaHwnd, msaaOrdinal));
         string resultChannel = acted ? "msaa" : string.Empty;
 
         if (!acted && mode != "uia" && bounds is not null)
@@ -178,10 +197,9 @@ internal sealed class InputClickRefOps
             };
 
             ClickView msaaClick = _host.ClickOps.Click(new SessionClickRequest(
-                bounds.Value.Left + bounds.Value.Width / 2,
-                bounds.Value.Top + bounds.Value.Height / 2,
-                "left", 1, msaaMode,
-                KeepForeground: keepForeground, Observe: true, FallbackInput: fallbackInput));
+                centerX, centerY, "left", 1, msaaMode,
+                KeepForeground: keepForeground, Observe: true, FallbackInput: fallbackInput,
+                AllowDestructive: allowDestructive));
             acted = true;
             resultChannel = msaaClick.Method;
         }
@@ -208,6 +226,7 @@ internal sealed class InputClickRefOps
                 : new OptionalBoundsView(
                     bounds.Value.Left, bounds.Value.Top, bounds.Value.Width, bounds.Value.Height),
             Detail: null,
-            Hint: null);
+            Hint: null,
+            HitElement: hitView);
     }
 }

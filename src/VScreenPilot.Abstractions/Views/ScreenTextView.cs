@@ -17,7 +17,13 @@ public sealed record ScreenTextView(
     [property: JsonPropertyName("truncated")] bool Truncated,
     [property: JsonPropertyName("privacy_redactions")] int PrivacyRedactions,
     [property: JsonPropertyName("region")] BoundsView Region,
-    [property: JsonPropertyName("duration_ms")] double DurationMs);
+    [property: JsonPropertyName("duration_ms")] double DurationMs,
+    [property: JsonPropertyName("upscale")] int? Upscale = null,
+    [property: JsonPropertyName("clipped")] bool? Clipped = null,
+    [property: JsonPropertyName("ocr_source_width")] int? OcrSourceWidth = null,
+    [property: JsonPropertyName("ocr_source_height")] int? OcrSourceHeight = null,
+    [property: JsonPropertyName("ocr_scaled_width")] int? OcrScaledWidth = null,
+    [property: JsonPropertyName("ocr_scaled_height")] int? OcrScaledHeight = null);
 
 /// <summary>`click_text` 的输出视图。</summary>
 public sealed record ClickTextView(
@@ -32,4 +38,9 @@ public sealed record ClickTextView(
     [property: JsonPropertyName("observed")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     ObservedView? Observed,
-    [property: JsonPropertyName("privacy_redactions")] int PrivacyRedactions);
+    [property: JsonPropertyName("privacy_redactions")] int PrivacyRedactions,
+    [property: JsonPropertyName("hit_element")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    HitElementView? HitElement = null,
+    [property: JsonPropertyName("upscale")] int? Upscale = null,
+    [property: JsonPropertyName("clipped")] bool? Clipped = null);

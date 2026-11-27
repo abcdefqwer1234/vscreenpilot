@@ -51,9 +51,33 @@
         "type": "boolean",
         "description": "Default false. When UIA/message paths fail, move the real cursor and use SendInput."
       },
+      "context_menu": {
+        "type": "boolean",
+        "description": "Default false. After a right-button message click, also send WM_CONTEXTMENU with screen coordinates. Needed by legacy/self-drawn trees that only react to WM_CONTEXTMENU."
+      },
+      "interval_ms": {
+        "type": "integer",
+        "minimum": 10,
+        "maximum": 1000,
+        "description": "Default 50. Gap between clicks in a multi-click on channel=input; raise it for slow self-drawn controls."
+      },
+      "settle_ms": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2000,
+        "description": "Default 0. Extra wait between clicks before checking for a new top-level window."
+      },
+      "abort_on_window_change": {
+        "type": "boolean",
+        "description": "Default true for clicks>1. Abort remaining clicks when the first click opens a new top-level window; the response reports opened_dialog."
+      },
       "observe": {
         "type": "boolean",
         "description": "Default true: capture a small before/after diff and return observed.changed."
+      },
+      "allow_destructive": {
+        "type": "boolean",
+        "description": "Default false. Required when the hit test finds a close/delete/clear target (or the click lands in a tab's right-edge close hot zone)."
       }
     },
     "required": [
@@ -149,6 +173,70 @@
         ]
       },
       "observed": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "hit_element": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "hit_source": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "focus_before": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "focus_after": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      },
+      "focus_changed": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "delivery": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "suspect_noop": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "clicks_done": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "aborted": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "opened_dialog": {
         "type": [
           "object",
           "null"

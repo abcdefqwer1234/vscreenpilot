@@ -24,11 +24,20 @@ internal sealed class LaunchState
     public int WaitMs { get; init; }
     public bool NewInstance { get; set; }
     public bool EnsureDocument { get; init; }
-    public int? Pid { get; init; }
-    public DisplayInfo Display { get; init; } = null!;
+    public bool Place { get; init; } = true;
+    public bool Maximize { get; set; } = true;
+    public string OnNoWindow { get; set; } = "leave";
+    public bool Detached { get; init; }
+    public string Fit { get; init; } = "clamp";
+    public int? Pid { get; set; }
+    public long? TargetHwnd { get; init; }
+    public DisplayInfo Display { get; set; } = null!;
     public IntPtr UserForeground { get; init; }
     public WindowInfo? Window { get; set; }
     public bool Started { get; set; }
+    public int LaunchedPid { get; set; }
+    public bool Alive { get; set; }
+    public int? ExitCode { get; set; }
     public int ContentPid { get; set; }
     public string ContentPath { get; set; } = string.Empty;
     public bool CloseOnRelease { get; set; }
@@ -41,6 +50,11 @@ internal sealed class LaunchState
     public string LaunchPath { get; set; } = string.Empty;
     public TrackedApp? Tracked { get; set; }
     public bool Maximized { get; set; }
+    public bool FitAdjusted { get; set; }
+    public OptionalBoundsView RequestedBounds { get; set; } =
+        new(null, null, null, null);
+    public OptionalBoundsView AppliedBounds { get; set; } =
+        new(null, null, null, null);
     public WindowInfo? After { get; set; }
     public List<string> Warnings { get; } = new();
     public bool? DocumentReady { get; set; }

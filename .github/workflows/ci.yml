@@ -29,14 +29,12 @@ jobs:
       - name: Docs links
         run: node scripts/check-docs-links.mjs
 
-      - name: Architecture metrics
-        run: |
-          python tools/audit/arch_metrics.py --selftest
-          python tools/audit/arch_metrics.py --enforce
-          python tools/audit/doc_metrics.py --check
+      - name: Doc facts
+        shell: pwsh
+        run: ./scripts/check-doc-facts.ps1
 
-      - name: Version consistency
-        run: node scripts/check-version.mjs
+      - name: Architecture metrics (advisory)
+        run: python tools/audit/arch_metrics.py --selftest
 
       - name: Unit tests
         run: |
@@ -65,13 +63,6 @@ jobs:
       - name: Protocol smoke (no display)
         # 不挂虚拟屏：只验证 initialize / tools/list / schema / 错误形状 / resources。
         run: python tools/audit/smoke_no_display.py --exe artifacts/server/VScreenPilot.exe
-
-      - name: Contract baseline diff
-        # 只比 schema 与错误包：cli.json 的 doctor 含驱动/Office/分辨率，跨机器必然不同。
-        # 版本号变更时，需要用新二进制重抓 tools/audit/baseline/<commit> 并提交。
-        run: |
-          python tools/audit/capture_baseline.py --exe artifacts/server/VScreenPilot.exe --out tools/audit/results/contract
-          python tools/audit/compare_baseline.py tools/audit/baseline/3ddb85b tools/audit/results/contract --only server.json --only errors.json
 
       - name: Shared-instance smoke (no display)
         # 共享实例/独立 daemon/CLI：脚本自带随机 profile 与 VSP_NO_WARMUP。

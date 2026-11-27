@@ -41,22 +41,25 @@ internal sealed class InputKeyboardOps
 
     public InputKeyboardOps(InputRouter host) => _host = host;
     public TypeTextView TypeText(
-        string text, int? pid = null, bool verify = true, int chunkChars = 32, string? channel = null)
+        string text, int? pid = null, bool verify = true, int chunkChars = 32, string? channel = null,
+        long? hwnd = null, bool strictVerify = false, int paceMs = 0, string? target = null)
     {
         ValidateTextRequest(text);
 
         DisplayInfo display = _host._display.Ensure();
-        TrackedApp app = _host.RequireTrackedApp(pid);
-        _host._display.RequireWindowOnDisplay(display, app.Hwnd, "type_text");
+        (TrackedApp app, IntPtr targetHwnd) = _host.RequireInputTarget(pid, hwnd, target);
+        BlockingDialogGuard.RequireNotBlocked(targetHwnd, "type_text");
+        _host._display.RequireWindowOnDisplay(display, targetHwnd, "type_text");
         using var inputLease = InputLease.TryAcquire(3000, "type_text");
         IntPtr previous = WindowManager.GetForegroundWindow();
         _host._focus.PauseFocusGuard(0);
         int effectiveChunk = Math.Clamp(chunkChars, 1, 256);
-        int verifyEvery = ResolveVerifyEvery(text.Length);
+        int verifyEvery = ResolveVerifyEvery(text.Length, effectiveChunk);
 
         try
         {
-            EnsureForegroundForTyping(app);
+            bool exact = hwnd is not null || IsExplicitTarget(target);
+            EnsureForegroundForTyping(app, targetHwnd, exact: exact);
 
             try
             {
@@ -64,29 +67,75 @@ internal sealed class InputKeyboardOps
 
                 (TextWriteResult write, bool patternUsed, bool useClipboard) = WriteByChannel(
                     app, focused,
-                    new TextWriteRequest(text, Replace: false, TimeoutMs: 12000),
+                    new TextWriteRequest(
+                        text, Replace: false, TimeoutMs: 12000,
+                        ChunkChars: effectiveChunk, VerifyEveryChunks: verifyEvery,
+                        PaceMs: Math.Clamp(paceMs, 0, 2000)),
                     new WriteChannelPlan(channel, verify, effectiveChunk, verifyEvery));
 
                 write = ReprobeWriteResult(write, new ReprobeContext(app, focused, text, verify, patternUsed, useClipboard));
 
-                return BuildTypeTextView(
+                TypeTextView view = BuildTypeTextView(
                     app,
                     new TypeTextOutcome(write, patternUsed, useClipboard),
                     new TypeTextSettings(text.Length, effectiveChunk, verify));
+
+                if (strictVerify && !view.Verified)
+                {
+                    throw new ToolException(
+                        "E_VERIFY_FAILED",
+                        "type_text 写入后回读与期望不一致",
+                        new JsonObject
+                        {
+                            ["expected_length"] = text.Length,
+                            ["observed_length"] = view.ObservedLength,
+                            ["channel"] = view.Channel,
+                            ["target_pid"] = app.Pid,
+                            ["hwnd"] = targetHwnd.ToInt64(),
+                            ["warning"] = view.Warning,
+                        },
+                        retryable: false,
+                        hint: "确认焦点控件正确、目标未被弹窗拦截；必要时用 get_element_text/截图复核",
+                        stage: "verify");
+                }
+
+                return view;
             }
             finally
             {
-                _host._focus.RestoreForeground(previous);
+                if (!_host.Lease.IsActive(_host._session.Clients.CurrentId))
+                {
+                    _host._focus.RestoreForeground(previous);
+                }
             }
         }
         finally
         {
-            _host._focus.ResumeFocusGuard();
+            if (!_host.Lease.IsActive(_host._session.Clients.CurrentId))
+            {
+                _host._focus.ResumeFocusGuard();
+            }
         }
     }
 
-    private static int ResolveVerifyEvery(int length) =>
-        length > 20000 ? 16 : length > 2048 ? 4 : 1;
+    private static int ResolveVerifyEvery(int length, int chunkChars)
+    {
+        int baseline = length > 20000 ? 16 : length > 2048 ? 4 : 1;
+
+        // 自绘控件常用 chunk_chars=1；此时逐块全文回读是 O(n²)，
+        // 自动把校验间隔拉到 10 块一次，兼顾可靠性与速度。
+        if (chunkChars <= 4)
+        {
+            return Math.Max(baseline, 10);
+        }
+
+        if (chunkChars <= 16)
+        {
+            return Math.Max(baseline, 4);
+        }
+
+        return baseline;
+    }
 
     private TextWriteResult ReprobeWriteResult(TextWriteResult write, ReprobeContext context)
     {
@@ -172,7 +221,7 @@ internal sealed class InputKeyboardOps
         }
     }
 
-    internal void EnsureForegroundForTyping(TrackedApp app)
+    internal void EnsureForegroundForTyping(TrackedApp app, IntPtr target, bool exact)
     {
         if (!_host._focus.EnsureForeground(app))
         {
@@ -181,6 +230,22 @@ internal sealed class InputKeyboardOps
                 "无法把目标窗口切换到前台，已取消输入以避免打字到用户当前窗口",
                 retryable: true,
                 hint: "确认没有模态框禁用主窗口；可改用 click 的消息点击或先关闭弹窗",
+                stage: "focus");
+        }
+
+        if (exact && WindowManager.GetForegroundWindow() != target)
+        {
+            WindowManager.ForceForeground(target);
+        }
+
+        if (exact && WindowManager.GetForegroundWindow() != target)
+        {
+            throw new ToolException(
+                "E_FOCUS",
+                "无法把 hwnd 指定的窗口切换到前台，已取消输入",
+                new JsonObject { ["hwnd"] = target.ToInt64() },
+                retryable: true,
+                hint: "确认该对话框未被禁用；必要时改用 click_ref 操作其控件",
                 stage: "focus");
         }
     }
@@ -291,13 +356,18 @@ internal sealed class InputKeyboardOps
             ? _host.TextOps.WriteTextVerified(
                 app, focused,
                 new TextWriteRequest(request.Text, Replace: false, TimeoutMs: 10000,
-                    request.ChunkChars, request.VerifyEveryChunks))
-            : _host.TextOps.WriteTextUnverified(app, focused, request.Text);
+                    request.ChunkChars, request.VerifyEveryChunks, request.PaceMs))
+            : _host.TextOps.WriteTextUnverified(
+                app, focused, request.Text, request.PaceMs, request.ChunkChars);
+
+    private static bool IsExplicitTarget(string? target) =>
+        (target ?? string.Empty).Trim().ToLowerInvariant() is "current_dialog" or "foreground";
 
     public PressKeysView PressKeys(
         string keys, bool keepForeground = false, int? pid = null,
-        bool allowSystemKeys = false, bool observe = true) =>
-        PressKeySequence(new[] { keys }, keepForeground, pid, allowSystemKeys, observe);
+        bool allowSystemKeys = false, bool observe = true, long? hwnd = null,
+        string? target = null) =>
+        PressKeySequence(new[] { keys }, keepForeground, pid, allowSystemKeys, observe, hwnd, target);
 
     /// <summary>
     /// 在一次前台租约内发送多个按键序列，供菜单导航（Alt+D → Down → Enter 等）使用。
@@ -308,7 +378,9 @@ internal sealed class InputKeyboardOps
         bool keepForeground = false,
         int? pid = null,
         bool allowSystemKeys = false,
-        bool observe = true)
+        bool observe = true,
+        long? hwnd = null,
+        string? target = null)
     {
         if (keys.Count == 0)
         {
@@ -324,14 +396,29 @@ internal sealed class InputKeyboardOps
         RequireInteractiveDesktop();
 
         DisplayInfo display = _host._display.Ensure();
-        TrackedApp app = _host.RequireTrackedApp(pid);
-        _host._display.RequireWindowOnDisplay(display, app.Hwnd, "press_keys");
+        (TrackedApp app, IntPtr targetHwnd) = _host.RequireInputTarget(pid, hwnd, target);
+        BlockingDialogGuard.RequireNotBlocked(targetHwnd, "press_keys");
+        _host._display.RequireWindowOnDisplay(display, targetHwnd, "press_keys");
         IntPtr previous = WindowManager.GetForegroundWindow();
-        _host._focus.PauseFocusGuard(keepForeground ? 30000 : 0);
+
+        if (keepForeground)
+        {
+            _host.Lease.Acquire(
+                _host._session.Clients.CurrentId,
+                app.Pid,
+                targetHwnd.ToInt64(),
+                ForegroundLease.DefaultTtlMs,
+                exclusive: false,
+                source: "keep_foreground",
+                previousForeground: previous);
+        }
+
+        _host._focus.PauseFocusGuard(keepForeground ? ForegroundLease.DefaultTtlMs : 0);
 
         try
         {
-            RequireForeground(app);
+            RequireForeground(
+                app, targetHwnd, exact: hwnd is not null || IsExplicitTarget(target));
 
             try
             {
@@ -360,7 +447,8 @@ internal sealed class InputKeyboardOps
             }
             finally
             {
-                if (!keepForeground)
+                if (!keepForeground &&
+                    !_host.Lease.IsActive(_host._session.Clients.CurrentId))
                 {
                     _host._focus.RestoreForeground(previous);
                 }
@@ -368,7 +456,8 @@ internal sealed class InputKeyboardOps
         }
         finally
         {
-            if (!keepForeground)
+            if (!keepForeground &&
+                !_host.Lease.IsActive(_host._session.Clients.CurrentId))
             {
                 _host._focus.ResumeFocusGuard();
             }
@@ -390,19 +479,33 @@ internal sealed class InputKeyboardOps
             stage: "input");
     }
 
-    private void RequireForeground(TrackedApp app)
+    private void RequireForeground(TrackedApp app, IntPtr target, bool exact)
     {
-        if (_host._focus.EnsureForeground(app))
+        if (!_host._focus.EnsureForeground(app))
         {
-            return;
+            throw new ToolException(
+                "E_FOCUS",
+                "无法把目标窗口切换到前台，已取消按键以避免输入到用户当前窗口",
+                retryable: true,
+                hint: "确认没有模态框禁用主窗口；可改用消息点击或先关闭弹窗",
+                stage: "focus");
         }
 
-        throw new ToolException(
-            "E_FOCUS",
-            "无法把目标窗口切换到前台，已取消按键以避免输入到用户当前窗口",
-            retryable: true,
-            hint: "确认没有模态框禁用主窗口；可改用消息点击或先关闭弹窗",
-            stage: "focus");
+        if (exact && WindowManager.GetForegroundWindow() != target)
+        {
+            WindowManager.ForceForeground(target);
+        }
+
+        if (exact && WindowManager.GetForegroundWindow() != target)
+        {
+            throw new ToolException(
+                "E_FOCUS",
+                "无法把 hwnd 指定的窗口切换到前台，已取消按键",
+                new JsonObject { ["hwnd"] = target.ToInt64() },
+                retryable: true,
+                hint: "确认该对话框未被禁用；必要时改用 click_ref 操作其控件",
+                stage: "focus");
+        }
     }
 
     private double InjectSequence(IReadOnlyList<string> keys, bool allowSystemKeys)

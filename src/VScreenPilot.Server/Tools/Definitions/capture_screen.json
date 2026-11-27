@@ -35,8 +35,16 @@
       "scale": {
         "type": "number",
         "minimum": 0.1,
-        "maximum": 1,
-        "description": "Default 0.5 for full screen, 1 for regions."
+        "maximum": 4,
+        "description": "Default 0.5 for full screen, 1 for regions. Values >1 supersample (upscale) for small text; output pixels are capped."
+      },
+      "on_out_of_bounds": {
+        "type": "string",
+        "enum": [
+          "clip",
+          "error"
+        ],
+        "description": "Default clip: intersect the region with the virtual display and return clipped=true. error preserves the old E_OUT_OF_BOUNDS behavior."
       },
       "inline": {
         "type": "boolean",
@@ -134,6 +142,19 @@
           "string",
           "null"
         ]
+      },
+      "clipped": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "requested_region": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
       },
       "artifact_path": {
         "type": [

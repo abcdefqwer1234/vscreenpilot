@@ -24,14 +24,21 @@ internal sealed class ElementInvokeOps
     internal readonly ElementOperations _host;
 
     public ElementInvokeOps(ElementOperations host) => _host = host;
-    public InvokeElementView InvokeElement(string reference, bool allowClick, string? pattern = null)
+    public InvokeElementView InvokeElement(
+        string reference, bool allowClick, string? pattern = null, string? selectText = null,
+        bool allowDestructive = false)
     {
+        if (!string.IsNullOrWhiteSpace(selectText))
+        {
+            return SelectByText(reference, selectText);
+        }
+
         DisplayInfo display = _host._apps.EnsureDisplay();
         ElementRefEntry probe = _host._state.Resolver.Require(reference);
 
         if (MsaaService.TryParse(probe.RuntimeId, out IntPtr msaaHwnd, out int msaaChildId))
         {
-            return InvokeMsaaElement(probe, msaaHwnd, msaaChildId, allowClick);
+            return InvokeMsaaElement(probe, msaaHwnd, msaaChildId, allowClick, allowDestructive);
         }
 
         UiaElementHandle handle = _host._state.Resolver.Resolve(
@@ -50,6 +57,11 @@ internal sealed class ElementInvokeOps
                     "控件已禁用，拒绝触发",
                     new JsonObject { ["ref"] = entry.Ref, ["element"] = ElementPresenter.ToJson(info) });
             }
+
+            // 语义触发同样是“点击”关闭/删除按钮：与 click/click_ref 保持同一护栏。
+            int guardX = info.Left + Math.Max(1, info.Width) / 2;
+            int guardY = info.Top + Math.Max(1, info.Height) / 2;
+            DestructiveTargetGuard.Check(info, guardX, guardY, allowDestructive, "invoke_element");
 
             if (mode == UiaInvokePattern.Default)
             {
@@ -262,9 +274,166 @@ internal sealed class ElementInvokeOps
     }
 
 
-    internal InvokeElementView InvokeMsaaElement(
-        ElementRefEntry probe, IntPtr msaaHwnd, int msaaChildId, bool allowClick)
+    /// <summary>
+    /// 展开控件、在子树内按精确文本找列表项并选中。多命中时返回候选而不是猜第一项。
+    /// 只覆盖标准 UIA 组合框/列表；下拉列表若在独立弹窗中，会返回 E_ELEMENT_NOT_FOUND 并提示。
+    /// 选择动作本身不触发目标项，因此不套用破坏性目标护栏；需要执行时再显式 click/invoke。
+    /// </summary>
+    private InvokeElementView SelectByText(
+        string reference, string selectText)
     {
+        DisplayInfo display = _host._apps.EnsureDisplay();
+        using UiaElementHandle handle = _host._state.Resolver.Resolve(
+            reference, display, out ElementRefEntry entry, out bool refreshed);
+
+        if (!handle.Info.Enabled)
+        {
+            throw new ToolException(
+                "E_ELEMENT_DISABLED",
+                "控件已禁用，拒绝展开/选择",
+                new JsonObject { ["ref"] = entry.Ref });
+        }
+
+        (bool expanded, string? expandStrategy) = handle.Invoke(UiaInvokePattern.Expand);
+
+        if (!expanded)
+        {
+            throw new ToolException(
+                "E_PATTERN_UNSUPPORTED",
+                "控件不支持 ExpandCollapse，无法按文本选择",
+                new JsonObject
+                {
+                    ["ref"] = entry.Ref,
+                    ["control_type"] = handle.Info.ControlTypeName,
+                },
+                retryable: false,
+                hint: "先确认该控件是组合框/列表；自绘下拉需要 Profile 或 click_ref",
+                stage: "invoke");
+        }
+
+        Thread.Sleep(150);
+
+        UiaFindResult found = handle.FindDescendants(
+            selectText, UiaNameMatch.Exact, null, null, 50);
+        string[] itemTypes = ["ListItem", "DataItem", "TreeItem", "MenuItem"];
+        List<UiaElementInfo> typed = found.Items
+            .Where(item => itemTypes.Contains(item.ControlTypeName, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+        List<UiaElementInfo> candidates = typed.Count > 0 ? typed : found.Items;
+
+        if (candidates.Count == 0)
+        {
+            throw new ToolException(
+                "E_ELEMENT_NOT_FOUND",
+                $"已展开但未找到文本为“{selectText}”的候选项",
+                new JsonObject
+                {
+                    ["ref"] = entry.Ref,
+                    ["select_text"] = selectText,
+                    ["expanded"] = true,
+                    ["expand_method"] = expandStrategy,
+                },
+                retryable: true,
+                hint: "下拉列表可能在独立弹窗中；改用 find_element{within} 或 click_text 定位后 click_ref",
+                stage: "invoke");
+        }
+
+        if (candidates.Count > 1)
+        {
+            var details = new JsonArray();
+
+            foreach (UiaElementInfo candidate in candidates.Take(20))
+            {
+                details.Add((JsonNode)new JsonObject
+                {
+                    ["name"] = candidate.Name,
+                    ["control_type"] = candidate.ControlTypeName,
+                    ["left"] = candidate.Left,
+                    ["top"] = candidate.Top,
+                    ["width"] = candidate.Width,
+                    ["height"] = candidate.Height,
+                });
+            }
+
+            throw new ToolException(
+                "E_MULTIPLE_MATCHES",
+                $"“{selectText}”命中 {candidates.Count} 个候选项，拒绝猜测",
+                new JsonObject
+                {
+                    ["ref"] = entry.Ref,
+                    ["select_text"] = selectText,
+                    ["candidates"] = details,
+                },
+                retryable: false,
+                hint: "改用更精确的文本，或先 find_element{within} 拿到唯一 ref 再 invoke_element",
+                stage: "invoke");
+        }
+
+        UiaElementInfo item = candidates[0];
+
+        if (string.IsNullOrEmpty(item.RuntimeId))
+        {
+            throw new ToolException(
+                "E_ELEMENT_STALE",
+                "候选项没有 runtime_id，无法唯一定位",
+                new JsonObject { ["ref"] = entry.Ref, ["name"] = item.Name });
+        }
+
+        using UiaElementHandle? itemHandle = _host._state.Uia.FindByRuntimeId(entry.Hwnd, item.RuntimeId);
+
+        if (itemHandle is null)
+        {
+            throw new ToolException(
+                "E_ELEMENT_STALE",
+                "候选项在选中前已失效",
+                new JsonObject { ["ref"] = entry.Ref, ["name"] = item.Name });
+        }
+
+        (bool selected, string? selectStrategy) = itemHandle.Invoke(UiaInvokePattern.Select);
+
+        if (!selected)
+        {
+            throw new ToolException(
+                "E_PATTERN_UNSUPPORTED",
+                "候选项不支持 SelectionItem.Select",
+                new JsonObject { ["ref"] = entry.Ref, ["name"] = item.Name },
+                retryable: false,
+                hint: "改用 click_ref 点击该候选项",
+                stage: "invoke");
+        }
+
+        Thread.Sleep(80);
+        string? observed = handle.GetValue();
+        bool? verified = observed is null
+            ? null
+            : string.Equals(observed, selectText, StringComparison.Ordinal);
+
+        return new InvokeElementView(
+            entry.Ref,
+            selectStrategy ?? "SelectionItem",
+            Invoked: true,
+            Verified: verified,
+            ControlType: item.ControlTypeName,
+            Refreshed: refreshed,
+            Detail: $"selected={selectText}",
+            Element: ElementPresenter.ToView(item, compact: true));
+    }
+
+    internal InvokeElementView InvokeMsaaElement(
+        ElementRefEntry probe, IntPtr msaaHwnd, int msaaChildId, bool allowClick,
+        bool allowDestructive = false)
+    {
+        var probeInfo = new UiaElementInfo(
+            probe.RuntimeId, probe.Name, probe.AutomationId, 0, probe.ControlTypeName,
+            probe.Left, probe.Top, probe.Right, probe.Bottom, true, false, probe.Pid,
+            string.Empty);
+        DestructiveTargetGuard.Check(
+            probeInfo,
+            probe.Left + Math.Max(1, probe.Right - probe.Left) / 2,
+            probe.Top + Math.Max(1, probe.Bottom - probe.Top) / 2,
+            allowDestructive,
+            "invoke_element");
+
         bool invoked = _host._state.Uia.InvokeMsaa(() => MsaaService.DoDefaultAction(msaaHwnd, msaaChildId));
 
         if (!invoked && allowClick)

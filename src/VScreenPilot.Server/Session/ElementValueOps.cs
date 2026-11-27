@@ -162,7 +162,9 @@ internal sealed class ElementValueOps
 
         _host._input.Click(new SessionClickRequest(centerX, centerY, "left", 1, "message"));
 
-        return _host._input.TypeText(value, app.Pid, verify: true, chunkChars: 32, channel: "auto");
+        return _host._input.TypeText(
+            value, app.Pid, verify: true, chunkChars: 32, channel: "auto", hwnd: null,
+            strictVerify: false, paceMs: 0, target: null);
     }
 
     private SetElementValueView SetUiaValue(DisplayInfo display, ElementValueRequest request)

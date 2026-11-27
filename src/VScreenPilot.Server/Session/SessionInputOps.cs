@@ -18,27 +18,42 @@ internal sealed class SessionInputOps
 
     public SessionInputOps(SessionManager host) => _host = host;
     public ClickRefView ClickElementRef(
-        string reference, string? channel, bool keepForeground, bool fallbackInput = false) =>
-        _host._input.ClickOps.ClickElementRef(reference, channel, keepForeground, fallbackInput);
+        string reference, string? channel, bool keepForeground, bool fallbackInput = false,
+        bool allowDestructive = false) =>
+        _host._input.ClickOps.ClickElementRef(
+            reference, channel, keepForeground, fallbackInput, allowDestructive);
 
     public ClickView Click(SessionClickRequest request) => _host._input.ClickOps.Click(request);
 
     public TypeTextView TypeText(
-        string text, int? pid = null, bool verify = true, int chunkChars = 32, string? channel = null) =>
-        _host._input.KeyboardOps.TypeText(text, pid, verify, chunkChars, channel);
+        string text, int? pid = null, bool verify = true, int chunkChars = 32, string? channel = null,
+        long? hwnd = null, bool strictVerify = false, int paceMs = 0, string? target = null) =>
+        _host._input.KeyboardOps.TypeText(
+            text, pid, verify, chunkChars, channel, hwnd, strictVerify, paceMs, target);
 
     public PressKeysView PressKeys(
         string keys, bool keepForeground = false, int? pid = null,
-        bool allowSystemKeys = false, bool observe = true) =>
-        _host._input.KeyboardOps.PressKeys(keys, keepForeground, pid, allowSystemKeys, observe);
+        bool allowSystemKeys = false, bool observe = true, long? hwnd = null,
+        string? target = null) =>
+        _host._input.KeyboardOps.PressKeys(
+            keys, keepForeground, pid, allowSystemKeys, observe, hwnd, target);
 
     public PressKeysView PressKeySequence(
         IReadOnlyList<string> keys,
         bool keepForeground = false,
         int? pid = null,
         bool allowSystemKeys = false,
-        bool observe = true) =>
-        _host._input.KeyboardOps.PressKeySequence(keys, keepForeground, pid, allowSystemKeys, observe);
+        bool observe = true,
+        long? hwnd = null,
+        string? target = null) =>
+        _host._input.KeyboardOps.PressKeySequence(
+            keys, keepForeground, pid, allowSystemKeys, observe, hwnd, target);
+
+    public InputLeaseView LeaseInput(
+        string action, int? pid, int ttlMs, bool exclusive, bool force) =>
+        _host._input.LeaseInput(action, pid, ttlMs, exclusive, force);
+
+    public InputLeaseView? CurrentLease => _host._input.CurrentLease;
 
     public GestureView Gesture(JsonElement arguments) => _host._input.GestureOps.Gesture(arguments);
 

@@ -12,7 +12,8 @@ internal sealed record ClientHello(
     string Version,
     bool AllowScript,
     bool AllowUnsafeScript,
-    string[] AppAllowlist);
+    string[] AppAllowlist,
+    bool ReadOnly);
 
 internal static class Handshake
 {
@@ -117,7 +118,8 @@ internal static class Handshake
             json["version"]?.GetValue<string>() ?? string.Empty,
             json["capabilities"]?["allow_script"]?.GetValue<bool>() ?? false,
             json["capabilities"]?["allow_unsafe_script"]?.GetValue<bool>() ?? false,
-            ReadAllowlist(json, cwd).ToArray());
+            ReadAllowlist(json, cwd).ToArray(),
+            json["capabilities"]?["read_only"]?.GetValue<bool>() ?? false);
 
     private static List<string> ReadRoots(JsonObject json, string cwd)
     {

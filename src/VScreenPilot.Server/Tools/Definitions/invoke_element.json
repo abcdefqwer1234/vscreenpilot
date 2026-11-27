@@ -28,6 +28,14 @@
       "allow_click": {
         "type": "boolean",
         "description": "Allow message click fallback."
+      },
+      "allow_destructive": {
+        "type": "boolean",
+        "description": "Allow invoking a control classified as destructive (close/delete/clear)."
+      },
+      "select_text": {
+        "type": "string",
+        "description": "Expand the control, find a descendant list item with this exact name, and select it. Returns E_MULTIPLE_MATCHES with candidates when ambiguous."
       }
     },
     "required": [

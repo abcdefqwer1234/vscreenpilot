@@ -21,6 +21,7 @@ internal sealed record WaitDisplayContext(
 internal sealed record WaitSessionContext(
     Func<int, bool> TryEnterRead,
     Action ExitRead,
+    Func<bool> IsReadLockHeld,
     Func<bool> IsCancelled,
     Action<int, int, string> ReportProgress);
 
@@ -51,9 +52,13 @@ internal sealed class WaitService
         _frames = frames;
     }
 
-    public WaitForView Wait(JsonElement condition, int timeoutMs, int? intervalMs = null)
+    public WaitForView Wait(
+        JsonElement condition, int timeoutMs, int? intervalMs = null,
+        bool clipOutOfBounds = false)
     {
-        DisplayInfo display = _display.EnsureDisplay();
+        // 进程条件不需要虚拟屏；不要为了等一个安装器把屏挂起来。
+        string conditionType = (GetString(condition, "type") ?? "element").Trim().ToLowerInvariant();
+        DisplayInfo? display = conditionType == "process" ? null : _display.EnsureDisplay();
         timeoutMs = Math.Clamp(timeoutMs, 0, 120_000);
         int? requestedInterval = intervalMs is null ? null : Math.Clamp(intervalMs.Value, 50, 2000);
 
@@ -61,18 +66,26 @@ internal sealed class WaitService
         // 拿不到短读锁说明 release 正持写锁：本轮按未满足处理，继续走超时/取消。
         JsonObject Evaluate()
         {
-            if (!_session.TryEnterRead(250))
+            // run_actions 等外层已经持有会话读锁时会再次进入这里；NoRecursion
+            // 的 ReaderWriterLockSlim 会抛 LockRecursionException。外层读锁已经
+            // 提供了同样的保护，此时不能再嵌套获取/释放。
+            bool alreadyHeld = _session.IsReadLockHeld();
+
+            if (!alreadyHeld && !_session.TryEnterRead(250))
             {
                 return new JsonObject { ["satisfied"] = false, ["reason"] = "session_busy" };
             }
 
             try
             {
-                return EvaluateCondition(condition, display);
+                return EvaluateCondition(condition, display, clipOutOfBounds);
             }
             finally
             {
-                _session.ExitRead();
+                if (!alreadyHeld)
+                {
+                    _session.ExitRead();
+                }
             }
         }
 
@@ -125,17 +138,19 @@ internal sealed class WaitService
         return new WaitForView(satisfied, stopwatch.ElapsedMilliseconds, last);
     }
 
-    private JsonObject EvaluateCondition(JsonElement condition, DisplayInfo display)
+    private JsonObject EvaluateCondition(
+        JsonElement condition, DisplayInfo? display, bool clipOutOfBounds)
     {
         string type = GetString(condition, "type") ?? "element";
 
         return type.ToLowerInvariant() switch
         {
             "element" => EvaluateElement(condition),
-            "text" => EvaluateText(condition, display),
-            "color" => EvaluateColor(condition, display),
+            "text" => EvaluateText(condition, display!, clipOutOfBounds),
+            "color" => EvaluateColor(condition, display!, clipOutOfBounds),
             "window" => EvaluateWindow(condition),
-            "pixel_diff" => EvaluatePixelDiff(condition, display),
+            "process" => EvaluateProcess(condition),
+            "pixel_diff" => EvaluatePixelDiff(condition, display!, clipOutOfBounds),
             "visual" => EvaluateVisual(condition),
             _ => throw new ToolException("E_INVALID_ARG", $"未知 wait_for 条件类型: {type}"),
         };
@@ -183,7 +198,7 @@ internal sealed class WaitService
         }
     }
 
-    private JsonObject EvaluateText(JsonElement condition, DisplayInfo display)
+    private JsonObject EvaluateText(JsonElement condition, DisplayInfo display, bool clipOutOfBounds)
     {
         string? needle = GetString(condition, "text");
 
@@ -192,7 +207,7 @@ internal sealed class WaitService
             throw new ToolException("E_INVALID_ARG", "text 条件需要非空 text");
         }
 
-        TextBounds? region = ReadTextRegion(condition, display);
+        TextBounds? region = ReadTextRegion(condition, display, clipOutOfBounds);
         List<TrackedApp> candidates = _apps.OwnedAppsSnapshot();
         int? requestedPid = GetInt(condition, "pid", -1) is var pidValue && pidValue >= 0
             ? pidValue
@@ -219,7 +234,8 @@ internal sealed class WaitService
         };
     }
 
-    private static TextBounds? ReadTextRegion(JsonElement condition, DisplayInfo display)
+    private static TextBounds? ReadTextRegion(
+        JsonElement condition, DisplayInfo display, bool clipOutOfBounds)
     {
         if (!condition.TryGetProperty("region", out JsonElement regionElement) ||
             regionElement.ValueKind != JsonValueKind.Object)
@@ -228,6 +244,13 @@ internal sealed class WaitService
         }
 
         (int x, int y, int width, int height) = VisualSupport.ParseRegion(regionElement);
+
+        if (clipOutOfBounds)
+        {
+            var clipped = VisualSupport.ClipRegionToDisplay(display, x, y, width, height, "text");
+            return new TextBounds(clipped.X, clipped.Y, clipped.Width, clipped.Height);
+        }
+
         VisualSupport.RequireRegionInDisplay(display, x, y, width, height, "text");
         return new TextBounds(x, y, width, height);
     }
@@ -266,7 +289,118 @@ internal sealed class WaitService
 
     private readonly record struct TextBounds(int X, int Y, int Width, int Height);
 
-    private JsonObject EvaluateColor(JsonElement condition, DisplayInfo display)
+    private JsonObject EvaluateProcess(JsonElement condition)
+    {
+        string? name = GetString(condition, "name");
+        int? pid = GetInt(condition, "pid", -1) is var requested && requested >= 0
+            ? requested
+            : null;
+        string state = (GetString(condition, "state") ?? "exited").Trim().ToLowerInvariant();
+
+        if (pid is null && string.IsNullOrWhiteSpace(name))
+        {
+            throw new ToolException("E_INVALID_ARG", "process 条件需要 pid 或 name");
+        }
+
+        if (state is not ("running" or "exited"))
+        {
+            throw new ToolException("E_INVALID_ARG", $"process state 只能是 running/exited（收到 {state}）");
+        }
+
+        Process? match = null;
+        int count = 0;
+
+        try
+        {
+            if (pid is not null)
+            {
+                try
+                {
+                    match = Process.GetProcessById(pid.Value);
+                    count = 1;
+                }
+                catch (ArgumentException)
+                {
+                    count = 0;
+                }
+            }
+            else
+            {
+                string bare = Path.GetFileNameWithoutExtension(name!.Trim());
+                Process[] candidates = Process.GetProcessesByName(bare);
+                count = candidates.Length;
+                match = candidates.FirstOrDefault();
+
+                foreach (Process extra in candidates.Skip(1))
+                {
+                    extra.Dispose();
+                }
+            }
+
+            bool running = match is not null && IsAlive(match);
+            int? exitCode = null;
+
+            if (match is not null && !running)
+            {
+                try
+                {
+                    exitCode = match.ExitCode;
+                }
+                catch (Exception)
+                {
+                    // 已退出但拿不到退出码（权限/竞态）。
+                }
+            }
+
+            bool satisfied = state == "running" ? running : !running;
+
+            return new JsonObject
+            {
+                ["satisfied"] = satisfied,
+                ["process"] = match is null
+                    ? null
+                    : new JsonObject
+                    {
+                        ["pid"] = match.Id,
+                        ["name"] = SafeName(match),
+                        ["running"] = running,
+                        ["exit_code"] = exitCode,
+                    },
+                ["matches"] = count,
+            };
+        }
+        finally
+        {
+            match?.Dispose();
+        }
+    }
+
+    private static bool IsAlive(Process process)
+    {
+        try
+        {
+            return !process.HasExited;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static string SafeName(Process process)
+    {
+        try
+        {
+            return process.ProcessName;
+        }
+        catch (Exception)
+        {
+            return string.Empty;
+        }
+    }
+
+    private JsonObject EvaluateColor(
+        JsonElement condition, DisplayInfo display, bool clipOutOfBounds)
     {
         int x = GetInt(condition, "x", int.MinValue);
         int y = GetInt(condition, "y", int.MinValue);
@@ -278,7 +412,16 @@ internal sealed class WaitService
             throw new ToolException("E_INVALID_ARG", "color 条件需要 x、y 与 #RRGGBB");
         }
 
-        VisualSupport.RequireRegionInDisplay(display, x, y, 1, 1, "color");
+        if (clipOutOfBounds)
+        {
+            var clipped = VisualSupport.ClipRegionToDisplay(display, x, y, 1, 1, "color");
+            x = clipped.X;
+            y = clipped.Y;
+        }
+        else
+        {
+            VisualSupport.RequireRegionInDisplay(display, x, y, 1, 1, "color");
+        }
 
         byte[] pixel = _display.CaptureRegion(x, y, 1, 1).Bgra;
         int tolerance = GetInt(condition, "tolerance", 10);
@@ -372,7 +515,8 @@ internal sealed class WaitService
     private sealed record WindowWaitQuery(
         string? Title, string State, string Scope, int MinWidth, int MinHeight);
 
-    private JsonObject EvaluatePixelDiff(JsonElement condition, DisplayInfo display)
+    private JsonObject EvaluatePixelDiff(
+        JsonElement condition, DisplayInfo display, bool clipOutOfBounds)
     {
         if (!condition.TryGetProperty("region", out JsonElement regionElement) ||
             regionElement.ValueKind != JsonValueKind.Object)
@@ -381,7 +525,20 @@ internal sealed class WaitService
         }
 
         (int x, int y, int width, int height) = VisualSupport.ParseRegion(regionElement);
-        VisualSupport.RequireRegionInDisplay(display, x, y, width, height, "pixel_diff");
+
+        if (clipOutOfBounds)
+        {
+            var clipped = VisualSupport.ClipRegionToDisplay(
+                display, x, y, width, height, "pixel_diff");
+            x = clipped.X;
+            y = clipped.Y;
+            width = clipped.Width;
+            height = clipped.Height;
+        }
+        else
+        {
+            VisualSupport.RequireRegionInDisplay(display, x, y, width, height, "pixel_diff");
+        }
         (byte[] bgra, int capturedWidth, int capturedHeight) = _display.CaptureRegion(x, y, width, height);
 
         FrameSnapshot? baseline = _frames.ResolveBaselineFrame(
@@ -398,7 +555,7 @@ internal sealed class WaitService
             };
         }
 
-        double threshold = GetDouble(condition, "threshold", 0.01);
+        double threshold = ResolveChangedThreshold(condition);
         double ratio = VisualSupport.ChangedRatio(bgra, baseline.Bgra, GetInt(condition, "tolerance", 8));
 
         return new JsonObject
@@ -406,8 +563,32 @@ internal sealed class WaitService
             ["satisfied"] = ratio >= threshold,
             ["changed_ratio"] = ratio,
             ["threshold"] = threshold,
+            ["min_changed_ratio"] = threshold,
             ["baseline_frame_id"] = baseline.Id,
         };
+    }
+
+    /// <summary>
+    /// pixel_diff 的阈值：schema/文档使用 min_changed_ratio；旧调用方可能传 threshold。
+    /// 两者都接受，但必须落在 0..1，避免“恒真/恒假”等待。
+    /// </summary>
+    internal static double ResolveChangedThreshold(JsonElement condition)
+    {
+        double threshold = GetDouble(
+            condition, "min_changed_ratio", GetDouble(condition, "threshold", 0.01));
+
+        if (threshold is < 0 or > 1)
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"min_changed_ratio 必须在 0..1（收到 {threshold}）",
+                new JsonObject { ["field"] = "min_changed_ratio", ["value"] = threshold },
+                retryable: false,
+                hint: "阈值是变化像素比例；0 表示任何变化都满足，1 表示全部变化",
+                stage: "validate");
+        }
+
+        return threshold;
     }
 
     private JsonObject EvaluateVisual(JsonElement condition)

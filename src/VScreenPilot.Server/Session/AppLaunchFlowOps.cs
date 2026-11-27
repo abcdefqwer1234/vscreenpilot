@@ -33,7 +33,8 @@ internal sealed class AppLaunchFlowOps
         }
 
         // 现代应用（Edge/Notepad）由 stub 转交给真实进程，早期分配的作业对象不覆盖它。
-        if (s.Started && s.Dedicated)
+        // detached 明确不加入 Job：daemon 崩溃/退出时应用继续运行。
+        if (s.Started && s.Dedicated && !s.Detached)
         {
             _core.WindowOps.AssignWindowProcessToJob(s.Window!.Pid);
         }
@@ -78,6 +79,16 @@ internal sealed class AppLaunchFlowOps
 
         if (s.Tracked is null && foreign is not null)
         {
+            // 崩溃恢复的窗口没有归属；谁先显式接管就归谁。
+            if (foreign.Recovered)
+            {
+                foreign.OwnerClientId = _core._session.Clients.CurrentId;
+                foreign.Recovered = false;
+                s.Tracked = foreign;
+                UpdateTrackedApp(s);
+                return;
+            }
+
             throw new ToolException(
                 "E_APP_OWNED",
                 $"窗口属于另一个客户端（client={foreign.OwnerClientId}）",
@@ -108,6 +119,8 @@ internal sealed class AppLaunchFlowOps
         {
             Pid = s.Window!.Pid,
             OwnerClientId = _core._session.Clients.CurrentId,
+            ClientKey = ClientSessionRegistry.ComputeClientKey(
+                _core._session.Clients.CurrentCwd, _core._session.Clients.CurrentRoots),
             ExePath = WindowManager.GetProcessPath(s.Window!.Pid),
             ContentPid = s.ContentPid,
             ContentExePath = s.ContentPath,
@@ -118,6 +131,7 @@ internal sealed class AppLaunchFlowOps
             CloseWindowOnRelease = s.CloseOnRelease,
             DedicatedProcess = s.Dedicated,
             TempProfile = s.TempProfile,
+            Detached = s.Detached,
             Placement = WindowManager.GetPlacement(s.Window!.Hwnd),
             PlacementSaved = true,
         };
@@ -128,10 +142,18 @@ internal sealed class AppLaunchFlowOps
 
     private static void UpdateTrackedApp(LaunchState s)
     {
-        s.Tracked!.Hwnd = s.Window!.Hwnd;
+        bool hwndChanged = s.Tracked!.Hwnd != s.Window!.Hwnd;
+        s.Tracked.Hwnd = s.Window!.Hwnd;
         s.Tracked.Title = s.Window!.Title;
         s.Tracked.Owned |= s.Started && s.CloseOnRelease;
         s.Tracked.CloseWindowOnRelease |= s.CloseOnRelease;
+
+        // 按 hwnd 接管对话框时，release 要还原的是这个对话框的位置，而不是主窗口的位置。
+        if (hwndChanged)
+        {
+            s.Tracked.Placement = WindowManager.GetPlacement(s.Window.Hwnd);
+            s.Tracked.PlacementSaved = true;
+        }
 
         if (s.ContentPid <= 0)
         {

@@ -3,17 +3,19 @@
 Run Windows desktop apps on a **throwaway virtual display** so an AI agent can screenshot, click,
 type, locate elements and verify results — without stealing your cursor or covering your desktop.
 
-- One MCP server, 22 tools (including `snapshot`, `click_ref`, `read_screen_text`, `click_text`).
+- One MCP server, 30 tools (including `snapshot`, `click_ref`, `select_tab`, `read_table`,
+  `lease_input`, `run_actions`, `list_windows`, `get_processes`, `set_display`, `read_screen_text`, `click_text`).
 - UIA first, MSAA for legacy Office dialogs, Windows OCR for canvas-style apps.
 - Virtual display, focus/cursor guards, write scheduler, snapshot-scoped refs, unified error catalog.
 - Multi-client shared instance: the first MCP process spawns an independent `--daemon` (Job breakaway,
   falls back to an in-process daemon); later processes join as thin proxies over a named pipe.
 - CLI companion: `VScreenPilot.exe --cli env|snapshot|screen|status|stop`.
 
-> 0.3.0 is a technical preview. Tool names and parameters are frozen, but 0.x may still contain
-> breaking changes; read [CHANGELOG.md](CHANGELOG.md) before upgrading. For 0.3.0 as-built details see
-> [技术文档.md](技术文档.md) and [docs/架构说明.md](docs/架构说明.md); 0.1.0 implementation
-> details live in git history.
+> Version 0.4.0 (2026-11-27). This is a **0.x technical preview**: tool names and parameters are
+> frozen by contract, but 0.x may still contain breaking changes; read
+> [CHANGELOG.md](CHANGELOG.md) before upgrading. For 0.4.0 as-built details see
+> [技术文档.md](技术文档.md) and [docs/架构说明.md](docs/架构说明.md); the full documentation
+> index is [docs/README.md](docs/README.md); 0.1.0 implementation details live in git history.
 
 ## Requirements
 
@@ -25,16 +27,16 @@ type, locate elements and verify results — without stealing your cursor or cov
 
 ## Install
 
-**Installer (recommended).** Download `VScreenPilot-Setup-0.3.0.exe` from Releases and run it.
+**Installer (recommended).** Download `VScreenPilot-Setup-0.4.0.exe` from Releases and run it.
 It installs per-user to `%LOCALAPPDATA%\Programs\VScreenPilot` (no administrator prompt) and can add
 that folder to the current user `PATH`. Silent install:
-`VScreenPilot-Setup-0.3.0.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-`.
+`VScreenPilot-Setup-0.4.0.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-`.
 The installer is not code-signed yet; verify the SHA256 from the release before running.
 
-**Portable.** Download `VScreenPilot-win-x64-v0.3.0.zip`, extract it to a stable folder and run
-`VScreenPilot.exe`. Symbols ship separately as `VScreenPilot-symbols-v0.3.0.zip`.
+**Portable.** Download `VScreenPilot-win-x64-v0.4.0.zip`, extract it to a stable folder and run
+`VScreenPilot.exe`. Symbols ship separately as `VScreenPilot-symbols-v0.4.0.zip`.
 
-**winget** (after the manifest is reviewed and merged):
+**winget** (may lag behind GitHub Releases):
 
 ```powershell
 winget install --id VScreenPilot.VScreenPilot -e
@@ -43,7 +45,7 @@ winget install --id VScreenPilot.VScreenPilot -e
 From source:
 
 ```powershell
-.\scripts\release.ps1 -Version 0.3.0   # portable zip + installer + symbols
+.\scripts\release.ps1 -Version 0.4.0   # portable zip + installer + symbols
 ```
 
 ## MCP client configuration
@@ -68,10 +70,11 @@ From source:
 ## Documentation
 
 - [Technical manual](技术文档.md)
+- [Documentation index](docs/README.md)
 - [Architecture](docs/架构说明.md)
 - [Error catalog](docs/errors.md)
 - [Release guide](docs/发布手册.md)
-- [2026-11 changes](docs/2026-11变更.md)
+- [0.4.0 acceptance and known limits](docs/2026-11-剩余任务与Issue复核.md)
 - [Audit reports (0.1.0 history)](docs/audit/第二轮测试报告.md)
 
 ## Limits

@@ -16,6 +16,45 @@ internal sealed class SessionClientOps
 
     public SessionClientOps(SessionManager host) => _host = host;
 
+    /// <summary>连接时按 cwd/roots 的 clientKey 自动认领上次会话遗留的窗口。</summary>
+    internal int ClaimRecoveredApps(ClientContext client)
+    {
+        IReadOnlyList<string> keys = ClientSessionRegistry.ComputeClientKeyCandidates(
+            client.Cwd, client.Roots);
+        var keySet = new HashSet<string>(keys, StringComparer.Ordinal);
+
+        if (keySet.Count == 0)
+        {
+            return 0;
+        }
+
+        int claimed = 0;
+
+        lock (_host._gate)
+        {
+            foreach (TrackedApp app in _host._apps.Snapshot())
+            {
+                if (!app.Recovered ||
+                    string.IsNullOrWhiteSpace(app.ClientKey) ||
+                    !keySet.Contains(app.ClientKey))
+                {
+                    continue;
+                }
+
+                app.OwnerClientId = client.Id;
+                app.Recovered = false;
+                claimed++;
+            }
+        }
+
+        if (claimed > 0)
+        {
+            _host._log.Info($"按 clientKey 自动认领 {claimed} 个上次会话窗口 (client={client.Id})");
+        }
+
+        return claimed;
+    }
+
     internal JsonArray ClientSummariesJson(bool includeCwd = false)
     {
         var array = new JsonArray();

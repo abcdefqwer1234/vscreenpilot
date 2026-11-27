@@ -13,8 +13,32 @@
         "type": "integer",
         "minimum": 1
       },
+      "hwnd": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Target a specific tracked top-level window (for example a dialog). Must belong to a tracked app; the window is brought to the foreground before typing."
+      },
+      "target": {
+        "type": "string",
+        "enum": [
+          "app",
+          "current_dialog",
+          "foreground"
+        ],
+        "description": "Default app. current_dialog resolves the active modal/owned dialog on every call, so a changing hwnd does not need to be looked up manually."
+      },
       "verify": {
         "type": "boolean"
+      },
+      "strict_verify": {
+        "type": "boolean",
+        "description": "Default false. When true, return E_VERIFY_FAILED if the text cannot be read back through TextPattern/ValuePattern."
+      },
+      "pace_ms": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2000,
+        "description": "Default 0. Sleep between chunks (ms). Self-drawn grids that drop characters often need chunk_chars=1 with pace_ms=15-30."
       },
       "chunk_chars": {
         "type": "integer",

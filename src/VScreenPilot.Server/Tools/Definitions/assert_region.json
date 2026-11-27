@@ -86,6 +86,10 @@
             }
           }
         ]
+      },
+      "clip": {
+        "type": "boolean",
+        "description": "Default false: out-of-bounds region returns E_OUT_OF_BOUNDS. true intersects with the virtual display, asserts the clipped area and returns clipped/requested_region."
       }
     }
   },
@@ -127,6 +131,19 @@
           "string",
           "null"
         ]
+      },
+      "clipped": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "requested_region": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
       }
     },
     "additionalProperties": true

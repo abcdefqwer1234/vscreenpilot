@@ -21,5 +21,10 @@ internal sealed class AppToolService : IAppService
             request.Window,
             request.Args,
             request.Pid,
-            new LaunchOptions(request.WaitMs, request.NewInstance, request.EnsureDocument)));
+            new LaunchOptions(
+                request.WaitMs, request.NewInstance, request.EnsureDocument,
+                request.Place, request.Maximize, request.OnNoWindow, request.Lifecycle, request.Fit))
+        {
+            Hwnd = request.Hwnd,
+        });
 }

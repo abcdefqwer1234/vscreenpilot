@@ -23,6 +23,26 @@ public sealed record RegionView(
     [property: JsonPropertyName("width")] int Width,
     [property: JsonPropertyName("height")] int Height);
 
+/// <summary>点击前命中测试得到的元素；用于安全护栏与结果溯源。</summary>
+public sealed record HitElementView(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("automation_id")] string AutomationId,
+    [property: JsonPropertyName("control_type")] string ControlType,
+    [property: JsonPropertyName("bounds")] BoundsView Bounds,
+    [property: JsonPropertyName("enabled")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? Enabled,
+    [property: JsonPropertyName("destructive")] bool Destructive);
+
+/// <summary>`select_tab` / `close_tab` 的输出视图。</summary>
+public sealed record TabActionView(
+    [property: JsonPropertyName("action")] string Action,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("ref")] string Ref,
+    [property: JsonPropertyName("closed")] bool Closed,
+    [property: JsonPropertyName("method")] string Method,
+    [property: JsonPropertyName("bounds")] BoundsView Bounds);
+
 /// <summary>`press_keys` / `press_key_sequence` 的输出视图。</summary>
 public sealed record PressKeysView(
     [property: JsonPropertyName("keys")] string Keys,
@@ -88,6 +108,22 @@ public sealed record GestureView(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     ObservedView? Observed);
 
+/// <summary>会话级输入/前台租约。</summary>
+public sealed record InputLeaseView(
+    [property: JsonPropertyName("lease_id")] string LeaseId,
+    [property: JsonPropertyName("pid")] int Pid,
+    [property: JsonPropertyName("hwnd")] long Hwnd,
+    [property: JsonPropertyName("expires_in_ms")] long ExpiresInMs,
+    [property: JsonPropertyName("active")] bool Active,
+    [property: JsonPropertyName("exclusive")] bool Exclusive,
+    [property: JsonPropertyName("source")] string Source);
+
+/// <summary>多击期间检测到的新顶层窗口。</summary>
+public sealed record OpenedDialogView(
+    [property: JsonPropertyName("hwnd")] long Hwnd,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("class")] string ClassName);
+
 /// <summary>`click` 的输出视图。</summary>
 public sealed record ClickView(
     [property: JsonPropertyName("x")] int X,
@@ -108,7 +144,45 @@ public sealed record ClickView(
     string? Detail,
     [property: JsonPropertyName("hint")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    string? Hint);
+    string? Hint,
+    [property: JsonPropertyName("hit_element")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    HitElementView? HitElement = null,
+    [property: JsonPropertyName("hit_source")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? HitSource = null,
+    [property: JsonPropertyName("focus_before")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    FocusElementView? FocusBefore = null,
+    [property: JsonPropertyName("focus_after")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    FocusElementView? FocusAfter = null,
+    [property: JsonPropertyName("focus_changed")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? FocusChanged = null,
+    [property: JsonPropertyName("delivery")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Delivery = null,
+    [property: JsonPropertyName("suspect_noop")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? SuspectNoop = null,
+    [property: JsonPropertyName("clicks_done")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    int? ClicksDone = null,
+    [property: JsonPropertyName("aborted")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? Aborted = null,
+    [property: JsonPropertyName("opened_dialog")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    OpenedDialogView? OpenedDialog = null);
+
+/// <summary>点击前后焦点元素；用于区分“没点中”和“命中但无视觉变化”。</summary>
+public sealed record FocusElementView(
+    [property: JsonPropertyName("pid")] int Pid,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("automation_id")] string AutomationId,
+    [property: JsonPropertyName("control_type")] string ControlType,
+    [property: JsonPropertyName("runtime_id")] string RuntimeId);
 
 /// <summary>动作后对元素本身的轻量观察（click_ref 使用）。</summary>
 public sealed record ElementObservedView(
@@ -178,4 +252,10 @@ public sealed record ClickRefView(
     string? Detail,
     [property: JsonPropertyName("hint")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    string? Hint);
+    string? Hint,
+    [property: JsonPropertyName("hit_element")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    HitElementView? HitElement = null,
+    [property: JsonPropertyName("suspect_noop")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? SuspectNoop = null);

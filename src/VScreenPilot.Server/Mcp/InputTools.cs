@@ -30,6 +30,11 @@ internal sealed class InputTools
             KeepForeground = OptionalBool(arguments, "keep_foreground", false),
             Observe = OptionalBool(arguments, "observe", true),
             FallbackInput = OptionalBool(arguments, "fallback_input", false),
+            ContextMenu = OptionalBool(arguments, "context_menu", false),
+            IntervalMs = OptionalInt(arguments, "interval_ms", 50),
+            AllowDestructive = OptionalBool(arguments, "allow_destructive", false),
+            SettleMs = OptionalInt(arguments, "settle_ms", 0),
+            AbortOnWindowChange = OptionalBool(arguments, "abort_on_window_change", true),
         }));
     }
 
@@ -42,7 +47,8 @@ internal sealed class InputTools
             reference,
             OptionalString(arguments, "channel"),
             OptionalBool(arguments, "keep_foreground", false),
-            OptionalBool(arguments, "fallback_input", false)));
+            OptionalBool(arguments, "fallback_input", false),
+            OptionalBool(arguments, "allow_destructive", false)));
     }
 
     public ToolResponse Gesture(JsonElement arguments) =>
@@ -87,6 +93,12 @@ internal sealed class InputTools
             RegionWidth = width,
             RegionHeight = height,
             FallbackInput = OptionalBool(arguments, "fallback_input", false),
+            AllowDestructive = OptionalBool(arguments, "allow_destructive", false),
+            Upscale = OptionalInt(arguments, "upscale", 0),
+            OnOutOfBoundsClip = !string.Equals(
+                OptionalString(arguments, "on_out_of_bounds") ?? "clip",
+                "error",
+                StringComparison.OrdinalIgnoreCase),
         }));
     }
 
@@ -100,7 +112,24 @@ internal sealed class InputTools
             OptionalNullableInt(arguments, "pid"),
             OptionalBool(arguments, "verify", true),
             OptionalInt(arguments, "chunk_chars", 32),
-            OptionalString(arguments, "channel") ?? "auto"));
+            OptionalString(arguments, "channel") ?? "auto",
+            OptionalNullableLong(arguments, "hwnd"),
+            OptionalBool(arguments, "strict_verify", false),
+            OptionalInt(arguments, "pace_ms", 0),
+            OptionalString(arguments, "target")));
+    }
+
+    public ToolResponse LeaseInput(JsonElement arguments)
+    {
+        string action = OptionalString(arguments, "action")
+            ?? throw new ToolException("E_INVALID_ARG", "lease_input 需要 action");
+
+        return ToolResponseWriter.FromView(_input.LeaseInput(
+            action,
+            OptionalNullableInt(arguments, "pid"),
+            OptionalInt(arguments, "ttl_ms", 30000),
+            OptionalBool(arguments, "exclusive", false),
+            OptionalBool(arguments, "force", false)));
     }
 
     public ToolResponse PressKeys(JsonElement arguments)
@@ -109,6 +138,8 @@ internal sealed class InputTools
         bool allowSystemKeys = OptionalBool(arguments, "allow_system_keys", false);
         bool observe = OptionalBool(arguments, "observe", true);
         int? pid = OptionalNullableInt(arguments, "pid");
+        long? hwnd = OptionalNullableLong(arguments, "hwnd");
+        string? target = OptionalString(arguments, "target");
 
         if (arguments.TryGetProperty("sequence", out JsonElement sequence) &&
             sequence.ValueKind == JsonValueKind.Array)
@@ -126,13 +157,13 @@ internal sealed class InputTools
             }
 
             return ToolResponseWriter.FromView(
-                _input.PressKeySequence(keys, keepForeground, pid, allowSystemKeys, observe));
+                _input.PressKeySequence(keys, keepForeground, pid, allowSystemKeys, observe, hwnd, target));
         }
 
         string keysText = OptionalString(arguments, "keys")
             ?? throw new ToolException("E_INVALID_ARG", "press_keys 需要 keys 或 sequence");
 
         return ToolResponseWriter.FromView(
-            _input.PressKeys(keysText, keepForeground, pid, allowSystemKeys, observe));
+            _input.PressKeys(keysText, keepForeground, pid, allowSystemKeys, observe, hwnd, target));
     }
 }

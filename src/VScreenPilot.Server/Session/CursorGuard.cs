@@ -15,13 +15,16 @@ internal sealed class CursorGuard : IDisposable
     private readonly int _fallbackX;
     private readonly Action<string> _info;
     private readonly Action<string> _warn;
+    private readonly Func<bool>? _leaseActive;
 
     private Thread? _thread;
     private volatile bool _running;
     private volatile bool _paused;
     private long _lastLogTimestamp;
 
-    public CursorGuard(DisplayInfo virtualDisplay, Action<string> info, Action<string> warn)
+    public CursorGuard(
+        DisplayInfo virtualDisplay, Action<string> info, Action<string> warn,
+        Func<bool>? leaseActive = null)
     {
         _virtualDisplay = virtualDisplay;
         _fallbackX = Math.Max(0, virtualDisplay.X - 1);
@@ -31,6 +34,7 @@ internal sealed class CursorGuard : IDisposable
             .ToList();
         _info = info;
         _warn = warn;
+        _leaseActive = leaseActive;
     }
 
     public void Start()
@@ -61,7 +65,7 @@ internal sealed class CursorGuard : IDisposable
         {
             Thread.Sleep(150);
 
-            if (_paused)
+            if (_paused || _leaseActive?.Invoke() == true)
             {
                 continue;
             }

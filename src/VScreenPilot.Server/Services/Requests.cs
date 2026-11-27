@@ -20,4 +20,5 @@ internal sealed record CaptureRequest(
     double Scale,
     string? SavePath,
     bool StoreFrame,
-    double? PreviewScale);
+    double? PreviewScale,
+    bool Clip = true);

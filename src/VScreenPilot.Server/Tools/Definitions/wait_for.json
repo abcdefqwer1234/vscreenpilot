@@ -1,7 +1,7 @@
 {
   "name": "wait_for",
   "title": "Wait for condition",
-  "description": "Poll a condition on the server inside one call. type=element|color|window|pixel_diff|visual|text. Read-only: it never holds the write lock, so other observations keep working.",
+  "description": "Poll a condition on the server inside one call. type=element|color|window|process|pixel_diff|visual|text. Read-only: it never holds the write lock, so other observations keep working. process waits until a pid/name is running or gone (use it instead of polling from the host shell).",
   "inputSchema": {
     "type": "object",
     "required": [
@@ -18,6 +18,10 @@
         "type": "integer",
         "minimum": 50,
         "maximum": 2000
+      },
+      "clip": {
+        "type": "boolean",
+        "description": "Default false: text/color/pixel_diff regions outside the virtual display return E_OUT_OF_BOUNDS. true clips text/pixel_diff regions; completely outside points still fail."
       },
       "condition": {
         "oneOf": [
@@ -90,6 +94,48 @@
                   "tracked",
                   "any"
                 ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "exists",
+                  "visible",
+                  "foreground"
+                ],
+                "description": "Default exists."
+              },
+              "min_width": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "min_height": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "const": "process"
+              },
+              "pid": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "running",
+                  "exited"
+                ],
+                "description": "Default exited: block until the process is gone."
               }
             }
           },
@@ -113,6 +159,17 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "threshold": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Deprecated alias of min_changed_ratio."
+              },
+              "tolerance": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
               }
             }
           },
@@ -152,6 +209,9 @@
               },
               "region": {
                 "type": "object"
+              },
+              "pid": {
+                "type": "integer"
               }
             }
           }

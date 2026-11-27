@@ -12,6 +12,7 @@ using VScreenPilot.Views;
 using VScreenPilot.Platform.Processes;
 using VScreenPilot.Platform.Windows;
 using VScreenPilot.Platform.Logging;
+using VScreenPilot.Platform.Ipc;
 
 namespace VScreenPilot.Session;
 
@@ -32,7 +33,13 @@ internal sealed record EnvironmentRuntimeContext(
     string ProfileName,
     Func<long> Epoch,
     JobObject Job,
-    Func<JsonObject?>? ScreenLease);
+    Func<JsonObject?>? ScreenLease)
+{
+    public Func<int>? RecoveredPid { get; init; }
+    public Func<string?>? RecoveredStartedAt { get; init; }
+    public Func<long?>? StateAgeMs { get; init; }
+    public Func<InputLeaseView?>? InputLease { get; init; }
+}
 
 internal sealed record EnvironmentClientContext(
     ClientSessionRegistry Clients,
@@ -262,6 +269,15 @@ internal sealed class EnvironmentReporter
             ClientVersion = input.Clients.Version,
             Clients = input.Clients.List,
             OtherClients = input.Clients.OtherClients,
+            RecoveredApps = _apps.Apps.Snapshot().Count(app => app.Recovered),
+            PreviousPid = _runtime.RecoveredPid?.Invoke() is int previousPid && previousPid > 0
+                ? previousPid
+                : null,
+            PreviousStartedAt = _runtime.RecoveredStartedAt?.Invoke() is { Length: > 0 } startedAt
+                ? startedAt
+                : null,
+            StateAgeMs = _runtime.StateAgeMs?.Invoke(),
+            InputLease = _runtime.InputLease?.Invoke(),
             ScreenLease = _runtime.ScreenLease?.Invoke(),
             WorkingSetMb = input.Usage.WorkingSetMb,
             Handles = input.Usage.Handles,
@@ -347,17 +363,36 @@ internal sealed class EnvironmentReporter
         }
 
         _ = NativeMethods.GetWindowThreadProcessId(foreground, out uint foregroundPid);
+        int pid = (int)foregroundPid;
         TrackedApp? foregroundApp = _apps.Apps.FirstOrDefault(
-            app => _apps.IsOwned(app) && app.Pid == (int)foregroundPid && _apps.IsLive(app));
+            app => _apps.IsOwned(app) && app.Pid == pid && _apps.IsLive(app));
 
-        // 只暴露本会话窗口的标题/PID。用户主屏上的窗口标题常含邮件主题、
-        // 文档名等隐私信息，不应交给模型。
+        // 标题仍然只对本会话窗口可见（用户主屏的邮件主题/文档名不外泄），
+        // 但 hwnd/pid/进程名/是否提权必须给：否则"焦点被谁抢了"完全不可排查。
+        string? name = null;
+
+        try
+        {
+            using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(pid);
+            name = process.ProcessName;
+        }
+        catch (Exception exception)
+        {
+            LogSink.Debug($"忽略异常: {exception.Message}");
+        }
+
+        bool? elevated = IntegrityCheck.TryCompareIntegrity(foregroundPid, out int target, out int self)
+            ? target > self
+            : null;
+
         var view = new ForegroundView
         {
             Tracked = foregroundApp is not null,
-            Hwnd = foregroundApp is null ? null : foreground.ToInt64(),
-            Pid = foregroundApp is null ? null : (int)foregroundPid,
+            Hwnd = foreground.ToInt64(),
+            Pid = pid,
             Title = foregroundApp is null ? null : WindowManager.GetTitle(foreground),
+            Name = name,
+            Elevated = elevated,
         };
 
         return (view, foregroundApp);
@@ -377,7 +412,7 @@ internal sealed class EnvironmentReporter
     {
         var apps = new List<AppView>();
 
-        foreach (TrackedApp app in _apps.Apps.Where(_apps.IsOwned))
+        foreach (TrackedApp app in _apps.Apps.Where(app => _apps.IsOwned(app) || app.Recovered))
         {
             WindowInfo? liveWindow = app.Hwnd == IntPtr.Zero
                 ? null
@@ -394,6 +429,8 @@ internal sealed class EnvironmentReporter
                 Owned = app.Owned,
                 CloseOnRelease = app.CloseWindowOnRelease,
                 Dedicated = app.DedicatedProcess,
+                Detached = app.Detached,
+                Recovered = app.Recovered,
                 ClientId = includeOwner ? app.OwnerClientId : null,
             });
         }

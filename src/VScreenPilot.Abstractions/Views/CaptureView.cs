@@ -23,7 +23,13 @@ public sealed record CaptureView(
     [property: JsonPropertyName("baseline")] BaselineView Baseline,
     [property: JsonPropertyName("path")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    string? Path);
+    string? Path,
+    [property: JsonPropertyName("clipped")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? Clipped = null,
+    [property: JsonPropertyName("requested_region")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    BoundsView? RequestedRegion = null);
 
 /// <summary>assert_region 的基线：未缩放的源帧矩形。</summary>
 public sealed record BaselineView(

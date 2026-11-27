@@ -31,7 +31,12 @@ internal sealed class McpRuntime : IMcpRuntime
 
     public MetricsRegistry Metrics => _session.Metrics;
 
-    public void Enter(ClientInfo client) => _session.Clients.Enter(_session.Clients.Resolve(client));
+    public void Enter(ClientInfo client)
+    {
+        ClientContext context = _session.Clients.Resolve(client);
+        _session.Clients.Enter(context);
+        _session.ClientOps.ClaimRecoveredApps(context);
+    }
 
     public void Leave(string clientId) => _session.Clients.Leave(clientId);
 

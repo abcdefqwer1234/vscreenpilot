@@ -18,10 +18,16 @@ namespace VScreenPilot.Session;
 
 /// <summary>launch_or_place_app 的目标。</summary>
 internal sealed record LaunchRequest(
-    string? Path, string? WindowTitle, string? Arguments, int? Pid, LaunchOptions Options);
+    string? Path, string? WindowTitle, string? Arguments, int? Pid, LaunchOptions Options)
+{
+    /// <summary>按 hwnd 精确接管（对话框/独立弹窗）；优先于 path/window/pid。</summary>
+    public long? Hwnd { get; init; }
+}
 
 /// <summary>launch_or_place_app 的行为选项。</summary>
-internal sealed record LaunchOptions(int WaitMs, bool NewInstance, bool EnsureDocument);
+internal sealed record LaunchOptions(
+    int WaitMs, bool NewInstance, bool EnsureDocument, bool Place = true, bool Maximize = true,
+    string OnNoWindow = "leave", string Lifecycle = "session", string Fit = "clamp");
 
 /// <summary>LaunchOps：AppLauncher 的拆分子集。</summary>
 internal sealed class AppLaunchOps
@@ -44,7 +50,43 @@ internal sealed class AppLaunchOps
         int waitMs = request.Options.WaitMs;
         bool newInstance = request.Options.NewInstance;
         bool ensureDocument = request.Options.EnsureDocument;
+        bool place = request.Options.Place;
+        bool maximize = request.Options.Maximize;
+        string onNoWindow = (request.Options.OnNoWindow ?? "leave").Trim().ToLowerInvariant();
+        string lifecycle = (request.Options.Lifecycle ?? "session").Trim().ToLowerInvariant();
+        string fit = (request.Options.Fit ?? "clamp").Trim().ToLowerInvariant();
         int? pid = request.Pid;
+
+        if (onNoWindow is not ("leave" or "kill"))
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"on_no_window 只能是 leave/kill（收到 {request.Options.OnNoWindow}）");
+        }
+
+        if (fit is not ("clamp" or "keep"))
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"fit 只能是 clamp/keep（收到 {request.Options.Fit}）",
+                retryable: false,
+                hint: "clamp 会把超出虚拟屏的窗口缩到屏幕内；keep 保持原尺寸",
+                stage: "validate");
+        }
+
+        if (lifecycle is not ("session" or "detached"))
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"lifecycle 只能是 session/detached（收到 {request.Options.Lifecycle}）",
+                retryable: false,
+                hint: "长任务需要 daemon 崩溃后应用继续运行，使用 lifecycle=detached",
+                stage: "validate");
+        }
+
+        bool detached = lifecycle == "detached";
+
+        long? hwnd = request.Hwnd;
         var s = new LaunchState
         {
             Path = path,
@@ -53,12 +95,27 @@ internal sealed class AppLaunchOps
             WaitMs = waitMs,
             NewInstance = newInstance,
             EnsureDocument = ensureDocument,
+            Place = place,
+            Maximize = maximize,
+            OnNoWindow = onNoWindow,
+            Detached = detached,
+            Fit = fit,
             Pid = pid,
-            Display = _core._apps.EnsureDisplay(),
+            TargetHwnd = hwnd,
             UserForeground = WindowManager.GetForegroundWindow(),
         };
 
         ResolveTarget(s);
+
+        // 无窗口是合法结果：控制台/启动器/静默安装器本来就没有主窗口。
+        // 以前这里会杀进程树并抛 E_WINDOW_TIMEOUT，既误判又破坏长任务。
+        if (s.Window is null)
+        {
+            return BuildNoWindowView(s);
+        }
+
+        // 只有确实拿到窗口才挂载/校屏，避免为了跑一条控制台命令把虚拟屏挂起来。
+        s.Display = _core._apps.EnsureDisplay();
         _core.LaunchFlowOps.TrackWindow(s);
         PresentWindow(s);
         _core.LaunchFlowOps.EnsureDocumentReady(s);
@@ -67,6 +124,12 @@ internal sealed class AppLaunchOps
 
     internal void ResolveTarget(LaunchState s)
     {
+        if (s.TargetHwnd is { } target && target > 0)
+        {
+            ResolveByHwnd(s);
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(s.WindowTitle))
         {
             ResolveByTitle(s);
@@ -85,7 +148,40 @@ internal sealed class AppLaunchOps
             return;
         }
 
-        throw new ToolException("E_INVALID_ARG", "path 和 window 至少提供一个");
+        throw new ToolException(
+            "E_INVALID_ARG", "path、window、pid 或 hwnd 至少提供一个");
+    }
+
+    internal void ResolveByHwnd(LaunchState s)
+    {
+        IntPtr hwnd = new(s.TargetHwnd!.Value);
+
+        if (!NativeMethods.IsWindow(hwnd))
+        {
+            throw new ToolException(
+                "E_WINDOW_NOT_FOUND",
+                $"hwnd=0x{s.TargetHwnd.Value:X} 不是有效窗口",
+                new JsonObject { ["hwnd"] = s.TargetHwnd.Value });
+        }
+
+        if (NativeMethods.GetAncestor(hwnd, NativeMethods.GaRoot) != hwnd)
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                $"hwnd=0x{s.TargetHwnd.Value:X} 是子控件，不是顶层窗口",
+                new JsonObject { ["hwnd"] = s.TargetHwnd.Value },
+                retryable: false,
+                hint: "用 list_windows 取顶层窗口；子控件请用 click_ref/find_element",
+                stage: "window");
+        }
+
+        int ownerPid = WindowManager.GetProcessId(hwnd);
+        s.Window = WindowManager.FromHandle(hwnd)
+            ?? throw new ToolException("E_WINDOW_NOT_FOUND", "窗口已失效");
+        s.Pid = ownerPid;
+        s.NewInstance = false;
+        s.ExeName = Path.GetFileNameWithoutExtension(
+            WindowManager.GetProcessPath(ownerPid) ?? string.Empty);
     }
 
     internal void ResolveByTitle(LaunchState s)
@@ -195,9 +291,27 @@ internal sealed class AppLaunchOps
 
         if (running is not null)
         {
+            s.LaunchedPid = running.Id;
+
             using (running)
             {
-                s.Window = _core.WindowOps.WaitForMainWindow(running, s.WaitMs);
+                try
+                {
+                    s.Window = _core.WindowOps.WaitForMainWindow(running, s.WaitMs);
+                }
+                catch (ToolException exception) when (
+                    exception.Code is "E_WINDOW_TIMEOUT" or "E_APP_EXITED")
+                {
+                    // 已运行但没有主窗口（控制台/启动器）：如实返回，不杀进程。
+                    s.Alive = !running.HasExited;
+                    s.ExitCode = s.Alive ? null : TryExitCode(running);
+                    s.CloseOnRelease = false;
+                    s.Dedicated = false;
+                    s.Warnings.Add(s.OnNoWindow == "kill"
+                        ? "进程已在运行且没有可见主窗口；为免误杀既有进程，未执行 on_no_window=kill。"
+                        : "进程已在运行但没有可见主窗口；已保留进程。");
+                    return;
+                }
             }
 
             s.Dedicated = false;
@@ -222,31 +336,50 @@ internal sealed class AppLaunchOps
                 startInfo.Arguments = s.Arguments;
             }
 
-            Process process = Process.Start(startInfo)
-                ?? throw new ToolException("E_APP_START", $"无法启动应用: {s.LaunchPath}");
+            Process process = AppProcessOps.Start(startInfo);
 
             int processId = process.Id;
             s.Started = true;
+            s.LaunchedPid = processId;
 
             using (process)
             {
-                if (!_core._session.Job.Assign(process))
-                {
-                    _core._log.Warn($"应用 {processId} 未能加入作业对象，崩溃兜底不可用");
-                }
-
                 int launchedContentPid;
                 string launchedContentPath;
+                bool console = AppProcessOps.IsConsoleImage(s.LaunchPath);
                 s.Window = _core.WindowOps.WaitForNewWindow(
-                    process, s.ExeName, before, s.WaitMs, out launchedContentPid, out launchedContentPath);
+                    process, s.ExeName, before, s.WaitMs, out launchedContentPid, out launchedContentPath,
+                    console ? 1200 : 5000, console);
                 s.ContentPid = launchedContentPid;
                 s.ContentPath = launchedContentPath;
+
+                if (s.Window is null && process.HasExited)
+                {
+                    s.ExitCode = process.ExitCode;
+                }
             }
 
             if (s.Window is null)
             {
-                AppTermination.KillProcessTree(processId);
-                throw new ToolException("E_WINDOW_TIMEOUT", "等待新窗口超时");
+                s.Alive = AppTermination.IsProcessAlive(processId);
+                s.CloseOnRelease = false;
+                s.Dedicated = false;
+
+                if (s.Alive && s.OnNoWindow == "kill")
+                {
+                    AppTermination.KillProcessTree(processId);
+                    s.Alive = false;
+                    s.Warnings.Add("进程已启动但没有可见窗口；按 on_no_window=kill 已终止。");
+                }
+                else
+                {
+                    s.Warnings.Add(
+                        s.Alive
+                            ? "进程已启动但没有可见窗口；已保留进程（未加入作业对象），不会随 daemon 退出被杀。"
+                            : $"进程在窗口出现前已退出 (exit={s.ExitCode?.ToString() ?? "unknown"})。");
+                }
+
+                return;
             }
 
             s.CloseOnRelease = true;
@@ -258,15 +391,71 @@ internal sealed class AppLaunchOps
     internal void PresentWindow(LaunchState s)
     {
         s.PreviousForeground = s.UserForeground;
-        WindowManager.MoveAndMaximize(s.Window!.Hwnd, s.Display.X, s.Display.Y, s.Display.Width, s.Display.Height);
+
+        if (s.Place)
+        {
+            if (s.Maximize)
+            {
+                WindowManager.MoveAndMaximize(s.Window!.Hwnd, s.Display.X, s.Display.Y, s.Display.Width, s.Display.Height);
+            }
+            else
+            {
+                WindowManager.MoveResize(s.Window!.Hwnd, s.Display.X, s.Display.Y, s.Display.Width, s.Display.Height);
+            }
+        }
+
         // 应用启动/会话恢复可能在稍后多次激活自己；同步归还一次，再持续观察一小段时间。
         Thread.Sleep(500);
         _core._focus.RestoreForeground(s.PreviousForeground);
         _core._focus.StartFocusGuard(s.PreviousForeground);
-        s.Maximized = WindowManager.WaitForZoomed(s.Window!.Hwnd, TimeSpan.FromSeconds(2));
+        s.Maximized = s.Place && s.Maximize &&
+                      WindowManager.WaitForZoomed(s.Window!.Hwnd, TimeSpan.FromSeconds(2));
         Thread.Sleep(300);
         s.After = WindowManager.FromHandle(s.Window!.Hwnd);
+        (int Left, int Top, int Width, int Height) visibleBefore =
+            WindowManager.GetVisibleBounds(s.Window.Hwnd);
+        s.RequestedBounds = ToOptionalBounds(visibleBefore);
+        s.AppliedBounds = s.RequestedBounds;
+
+        if (s.Place && s.Fit == "clamp" &&
+            (visibleBefore.Width > s.Display.Width || visibleBefore.Height > s.Display.Height))
+        {
+            int width = Math.Min(visibleBefore.Width, s.Display.Width);
+            int height = Math.Min(visibleBefore.Height, s.Display.Height);
+
+            WindowManager.MoveResize(s.Window.Hwnd, s.Display.X, s.Display.Y, width, height);
+            s.Maximized = false;
+            s.After = WindowManager.FromHandle(s.Window.Hwnd);
+            (int Left, int Top, int Width, int Height) visibleAfter =
+                WindowManager.GetVisibleBounds(s.Window.Hwnd);
+            s.AppliedBounds = ToOptionalBounds(visibleAfter);
+            s.FitAdjusted = visibleAfter.Width != visibleBefore.Width ||
+                            visibleAfter.Height != visibleBefore.Height;
+
+            if (s.Tracked is not null)
+            {
+                // clamp 后的尺寸必须写回跟踪信息，否则 release/崩溃恢复会还原成超屏尺寸。
+                s.Tracked.Placement = WindowManager.GetPlacement(s.Window.Hwnd);
+                s.Tracked.PlacementSaved = true;
+            }
+
+            if (visibleAfter.Width > s.Display.Width || visibleAfter.Height > s.Display.Height)
+            {
+                s.Warnings.Add(
+                    $"窗口 {visibleAfter.Width}×{visibleAfter.Height} 仍超过虚拟屏（可能受最小尺寸限制）；读取时使用 on_out_of_bounds=clip");
+            }
+            else
+            {
+                s.Warnings.Add($"窗口已缩到虚拟屏 {width}×{height} 内");
+            }
+        }
+
         _core._session.SaveState();
+
+        if (!s.Place)
+        {
+            s.Warnings.Add("place=false：窗口未移到虚拟屏；若它不在虚拟屏内，输入工具会拒绝操作");
+        }
 
 
         if (s.LaunchWarning is not null)
@@ -281,6 +470,53 @@ internal sealed class AppLaunchOps
         }
     }
 
+
+    private static int? TryExitCode(Process process)
+    {
+        try
+        {
+            return process.HasExited ? process.ExitCode : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static OptionalBoundsView ToOptionalBounds(
+        (int Left, int Top, int Width, int Height) bounds) =>
+        bounds.Width <= 0 || bounds.Height <= 0
+            ? new OptionalBoundsView(null, null, null, null)
+            : new OptionalBoundsView(bounds.Left, bounds.Top, bounds.Width, bounds.Height);
+
+    internal LaunchOrPlaceView BuildNoWindowView(LaunchState s)
+    {
+        int pid = s.Pid ?? s.LaunchedPid;
+
+        return new LaunchOrPlaceView(
+            s.Started,
+            s.NewInstance,
+            !s.Started,
+            Maximized: false,
+            CloseOnRelease: false,
+            Hwnd: 0,
+            Pid: pid,
+            Title: string.Empty,
+            DocumentReady: null,
+            DocumentReadyReason: "no_window",
+            EnsureDocument: s.EnsureDocument,
+            Bounds: new OptionalBoundsView(null, null, null, null),
+            Warnings: s.Warnings.Count > 0 ? s.Warnings : null,
+            Profile: s.TempProfile,
+            Hint: "目标进程没有可见窗口；已保留进程。用 get_processes 查看，或 wait_for(process) 等它退出。",
+            Dialogs: [])
+        {
+            Window = false,
+            Alive = s.Alive,
+            ExitCode = s.ExitCode,
+            Detached = s.Detached,
+        };
+    }
 
     internal LaunchOrPlaceView BuildView(LaunchState s)
     {
@@ -313,6 +549,12 @@ internal sealed class AppLaunchOps
                     ? "已复用本会话已启动的窗口；release_environment 会关闭它"
                     : "已接管现有窗口；关闭调试后只归位、不关闭该应用"
                 : null,
-            dialogs);
+            dialogs)
+        {
+            Detached = s.Tracked?.Detached ?? s.Detached,
+            FitAdjusted = s.FitAdjusted,
+            RequestedBounds = s.RequestedBounds,
+            AppliedBounds = s.AppliedBounds,
+        };
     }
 }

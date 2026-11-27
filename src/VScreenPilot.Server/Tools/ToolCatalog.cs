@@ -5,7 +5,7 @@ using VScreenPilot.Server.Infrastructure;
 
 namespace VScreenPilot.Tools;
 
-/// <summary>从 Tools/Definitions/*.json 加载 22 个工具定义，并校验 handler 覆盖。</summary>
+/// <summary>从 Tools/Definitions/*.json 加载 25 个工具定义，并校验 handler 覆盖。</summary>
 internal static class ToolCatalog
 {
     private const string DefinitionResourceMarker = ".Tools.Definitions.";

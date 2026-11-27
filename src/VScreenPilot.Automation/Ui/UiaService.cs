@@ -48,7 +48,7 @@ internal sealed class UiaElementHandle : IDisposable
 
     internal IUIAutomationElement Element { get; }
 
-    public UiaElementInfo Info { get; }
+    public UiaElementInfo Info { get; private set; }
 
     /// <summary>所有对 COM 元素的访问都回到所属 UiaHost 的 MTA worker。</summary>
     public void Focus() => Dispatch(service =>
@@ -60,10 +60,36 @@ internal sealed class UiaElementHandle : IDisposable
     public (bool Ok, string? Strategy) Invoke(UiaInvokePattern pattern = UiaInvokePattern.Auto) =>
         Dispatch(service => service.TryInvoke(Element, pattern));
 
+    /// <summary>请求 provider 把该控件滚入可见区；不支持时返回 false。</summary>
+    public bool ScrollIntoView() => Dispatch(service => service.TryScrollIntoView(Element).Ok);
+
+    /// <summary>滚动后重新读取几何/可见状态，避免继续使用旧的 offscreen 信息。</summary>
+    public bool RefreshInfo()
+    {
+        UiaElementInfo? info = Dispatch(service => service.DescribeElement(Element));
+
+        if (info is null)
+        {
+            return false;
+        }
+
+        Info = info;
+        return true;
+    }
+
     public string? GetText(int maxChars = 65536) =>
         Dispatch(service => service.GetText(Element, maxChars));
 
     public string? GetValue() => Dispatch(service => service.GetValue(Element));
+
+    public UiaFindResult FindDescendants(
+        string? name, UiaNameMatch nameMatch, string? controlType, string? automationId, int maxResults) =>
+        Dispatch(service => service.FindDescendants(
+            Element, name, nameMatch, controlType, automationId, maxResults));
+
+    /// <summary>读取表格/网格；优先 GridPattern，回退 DataItem 树。</summary>
+    public UiaTableData ReadTable(int maxRows, int maxCells, int rowStart = 0) =>
+        Dispatch(service => service.TableOps.Read(Element, maxRows, maxCells, rowStart));
 
     public UiaSetValueResult SetValue(string value) =>
         Dispatch(service => service.TrySetValue(Element, value));
@@ -144,6 +170,7 @@ internal sealed class UiaService : IDisposable
     internal const int ExpandCollapsePatternId = 10005;
     internal const int SelectionItemPatternId = 10010;
     internal const int TogglePatternId = 10015;
+    internal const int ScrollItemPatternId = 10017;
     internal const int LegacyIAccessiblePatternId = 10018;
 
     internal static readonly Guid ClsidCUIAutomation = new("FF48DBA4-60EF-4201-AA87-54103EEF594E");
@@ -191,6 +218,7 @@ internal sealed class UiaService : IDisposable
     internal readonly UiaPatternOps Patterns;
     internal readonly UiaTextOps TextOps;
     internal readonly UiaTreeOps TreeOps;
+    internal readonly UiaTableOps TableOps;
     internal int _disposed;
 
     // 线程本地：调用方拿到结果后立刻读，避免其它线程的下一次查询把标志覆盖。
@@ -251,6 +279,7 @@ internal sealed class UiaService : IDisposable
         Patterns = new UiaPatternOps(this);
         TextOps = new UiaTextOps(this);
         TreeOps = new UiaTreeOps(this);
+        TableOps = new UiaTableOps(this);
         // Native AOT 下 Interop.UIAutomationClient 的 coclass 构造函数不可用
         // （ILC 报 invalid IL），改为直接 CoCreateInstance 再取 RCW。
         Guid clsid = ClsidCUIAutomation;
@@ -368,6 +397,11 @@ internal sealed class UiaService : IDisposable
         string? controlType, string? automationId, int maxResults) =>
         FindOps.FindElementsDetailed(hwnd, name, nameMatch, controlType, automationId, maxResults);
 
+    public UiaFindResult FindDescendants(
+        IUIAutomationElement root, string? name, UiaNameMatch nameMatch,
+        string? controlType, string? automationId, int maxResults) =>
+        FindOps.FindDescendants(root, name, nameMatch, controlType, automationId, maxResults);
+
     public UiaElementHandle? FindByRuntimeId(IntPtr hwnd, string runtimeId) =>
         LocateOps.FindByRuntimeId(hwnd, runtimeId);
 
@@ -382,8 +416,20 @@ internal sealed class UiaService : IDisposable
         IUIAutomationElement element, UiaInvokePattern pattern = UiaInvokePattern.Auto) =>
         Patterns.TryInvoke(element, pattern);
 
-    public bool TryInvokeAtPoint(int x, int y, int? expectedPid, out UiaElementInfo? info) =>
-        Patterns.TryInvokeAtPoint(x, y, expectedPid, out info);
+    public (bool Ok, string? Strategy) TryScrollIntoView(IUIAutomationElement element) =>
+        Patterns.TryScrollIntoView(element);
+
+    public UiaElementInfo? DescribeElement(IUIAutomationElement element) =>
+        Factory.Describe(element, cached: false);
+
+    public bool TryInvokeAtPoint(
+        int x, int y, int? expectedPid, out UiaElementInfo? info,
+        Func<UiaElementInfo, bool>? confirm = null) =>
+        Patterns.TryInvokeAtPoint(x, y, expectedPid, out info, confirm);
+
+    /// <summary>只读命中测试；不触发任何 pattern。</summary>
+    public UiaElementInfo? DescribeAtPoint(int x, int y, int? expectedPid) =>
+        Patterns.DescribeAtPoint(x, y, expectedPid);
 
     public UiaSetValueResult TrySetValue(IUIAutomationElement element, string value) =>
         Patterns.TrySetValue(element, value);

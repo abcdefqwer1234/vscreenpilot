@@ -33,6 +33,15 @@ internal static class Bootstrap
 
         bool allowScript = HasFlag(args, "--allow-script") ||
                            EnvFlags.IsTruthy(Environment.GetEnvironmentVariable("VSP_ALLOW_SCRIPT"));
+        bool readOnly = HasFlag(args, "--read-only") ||
+                        EnvFlags.IsTruthy(Environment.GetEnvironmentVariable("VSP_READ_ONLY"));
+
+        if (readOnly)
+        {
+            // proxy 进程在启动 daemon 前读取该变量，随握手传给每个客户端。
+            Environment.SetEnvironmentVariable("VSP_READ_ONLY", "1");
+        }
+
         string? profileFlag = GetOption(args, "--profile");
 
         if (!string.IsNullOrWhiteSpace(profileFlag))
@@ -88,7 +97,7 @@ internal static class Bootstrap
 
         return cliNeedsLocalSession
             ? RunLocalSession(args, cliCommand!, log, mutex, allowScript)
-            : RunHost(args, profile, log, mutex, allowScript);
+            : RunHost(args, profile, log, mutex, allowScript, readOnly);
     }
 
     private static void ConfigureTraceLog(LogRing log, string profile) =>
@@ -274,7 +283,7 @@ internal static class Bootstrap
     }
 
     private static int RunHost(
-        string[] args, string profile, LogRing log, MutexGuard mutex, bool allowScript)
+        string[] args, string profile, LogRing log, MutexGuard mutex, bool allowScript, bool readOnly)
     {
         var registry = new InstanceRegistry(profile);
         InstanceRegistry.Entry entry = InstanceRegistry.Create(profile, ready: false);
@@ -288,7 +297,7 @@ internal static class Bootstrap
 
         using var host = new ServerHost(
             new ServerHostResources(session, log, trace, registry, appJob, mutex),
-            new ServerHostSettings(allowScript));
+            new ServerHostSettings(allowScript, ReadOnly: readOnly));
         return host.Run(entry, args);
     }
 }

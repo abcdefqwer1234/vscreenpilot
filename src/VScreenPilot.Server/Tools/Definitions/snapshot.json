@@ -37,8 +37,8 @@
       "scale": {
         "type": "number",
         "minimum": 0.1,
-        "maximum": 1,
-        "description": "Screenshot scale, default 0.5."
+        "maximum": 4,
+        "description": "Screenshot scale, default 0.5. Values >1 supersample for small text."
       },
       "include_values": {
         "type": "boolean",

@@ -29,6 +29,8 @@ internal sealed class DisplayStateStore
     public int RecoveredIndex { get; set; } = -1;
     public string RecoveredDevice { get; set; } = string.Empty;
     public int RecoveredPid { get; set; }
+    public string RecoveredStartedAt { get; set; } = string.Empty;
+    public string RecoveredSavedAt { get; set; } = string.Empty;
     public long LastGeometryCheckTicks;
     public bool SelfHealed { get; set; }
     public int SelfHealCount { get; set; }
@@ -49,10 +51,9 @@ internal sealed class VirtualDisplayController
     internal readonly Action<DisplayInfo> _onReady;
     internal readonly Action _onRemoved;
     internal readonly Action _saveState;
-    internal readonly int _width;
-    internal readonly int _height;
-    internal readonly int _refresh;
-
+    internal int _width;
+    internal int _height;
+    internal int _refresh;
     internal readonly VirtualCreateOps CreateOps;
     internal readonly VirtualAdoptOps AdoptOps;
     internal readonly VirtualLifecycleOps LifecycleOps;
@@ -321,6 +322,141 @@ internal sealed class VirtualDisplayController
         int offset = CreateOps.DisplayOffset();
 
         return (primary.X + primary.Width + offset, primary.Y);
+    }
+
+    /// <summary>
+    /// 运行期切换虚拟屏几何。只改本会话自己的 VDD 屏，不动主屏设置。
+    /// 失败时保留原几何并返回 E_DISPLAY_MODE，由调用方决定是否重启 daemon。
+    /// </summary>
+    public DisplayInfo Resize(int width, int height, int refresh)
+    {
+        lock (_gate)
+        {
+            DisplayInfo current = Ensure();
+            DisplayInfo actual = AdoptOps.OwnDisplay() ?? current;
+            int oldWidth = actual.Width;
+            int oldHeight = actual.Height;
+            int oldRefresh = _refresh;
+            int oldX = actual.X;
+            int oldY = actual.Y;
+            bool oldFallback = State.PositionFallback;
+
+            (int x, int y) = oldFallback
+                ? (actual.X, actual.Y)
+                : ExpectedPosition();
+
+            int result = DisplayTopology.SetModeAndPosition(
+                actual.DeviceName,
+                (width, height, refresh),
+                (x, y),
+                out int applyResult);
+
+            if (result != 0 || applyResult != 0)
+            {
+                TryRestore(actual.DeviceName, oldWidth, oldHeight, oldRefresh, oldX, oldY);
+
+                throw new ToolException(
+                    "E_DISPLAY_MODE",
+                    $"切换虚拟屏到 {width}×{height}@{refresh} 失败",
+                    new JsonObject
+                    {
+                        ["device"] = actual.DeviceName,
+                        ["change_result"] = result,
+                        ["apply_result"] = applyResult,
+                        ["current_width"] = actual.Width,
+                        ["current_height"] = actual.Height,
+                    },
+                    retryable: true,
+                    hint: "确认该分辨率被 VDD 支持；已尝试恢复原几何，必要时重启 daemon",
+                    stage: "display");
+            }
+
+            DisplayInfo? confirmed = WaitForGeometry(
+                actual.DeviceName, width, height, TimeSpan.FromSeconds(3));
+
+            if (confirmed is null)
+            {
+                TryRestore(actual.DeviceName, oldWidth, oldHeight, oldRefresh, oldX, oldY);
+
+                throw new ToolException(
+                    "E_DISPLAY_MODE",
+                    $"虚拟屏未在 3 秒内切到 {width}×{height}@{refresh}，已尝试恢复原几何",
+                    new JsonObject
+                    {
+                        ["device"] = actual.DeviceName,
+                        ["requested_width"] = width,
+                        ["requested_height"] = height,
+                    },
+                    retryable: true,
+                    hint: "该 VDD/Windows 组合可能不支持该模式；可用原分辨率重试",
+                    stage: "display");
+            }
+
+            _width = width;
+            _height = height;
+            _refresh = refresh;
+            State.VirtualDisplay = confirmed;
+            State.PositionFallback = confirmed.X != x || confirmed.Y != y;
+
+            if (State.PositionFallback)
+            {
+                _log.Warn(
+                    $"虚拟屏位置被忽略: expected=({x},{y}) actual=({confirmed.X},{confirmed.Y})，按实际坐标继续");
+            }
+
+            Interlocked.Exchange(ref State.LastGeometryCheckTicks, Environment.TickCount64);
+            _saveState();
+            _log.Info($"虚拟屏几何已切换: {confirmed}");
+
+            return confirmed;
+        }
+    }
+
+    private static DisplayInfo? WaitForGeometry(
+        string deviceName, int width, int height, TimeSpan timeout)
+    {
+        DisplayInfo? found = null;
+
+        DisplayTopology.WaitUntil(
+            () => (found = DisplayTopology.FindParsecDisplayByDevice(deviceName))
+                      is { Attached: true, Width: var w, Height: var h } &&
+                  w == width && h == height,
+            timeout);
+
+        return found is { Attached: true, Width: var fw, Height: var fh } &&
+               fw == width && fh == height
+            ? found
+            : null;
+    }
+
+    private void TryRestore(string deviceName, int width, int height, int refresh, int x, int y)
+    {
+        if (width <= 0 || height <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = DisplayTopology.SetModeAndPosition(
+                deviceName, (width, height, refresh), (x, y), out _);
+
+            DisplayInfo? restored = DisplayTopology.FindParsecDisplayByDevice(deviceName);
+
+            if (restored is not null)
+            {
+                State.VirtualDisplay = restored;
+                State.PositionFallback = restored.X != x || restored.Y != y;
+            }
+
+            _log.Warn($"已尝试恢复虚拟屏原几何: {width}×{height}@{refresh} at ({x},{y})");
+        }
+        catch (Exception exception)
+        {
+            _log.Warn($"恢复原几何失败: {exception.Message}");
+        }
+
+        _saveState();
     }
 
     public void Forget()

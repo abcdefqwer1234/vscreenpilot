@@ -22,5 +22,7 @@ internal sealed class ScreenTextToolService : IScreenTextService
             request.Width,
             request.Height,
             request.Query,
-            request.MaxLines));
+            request.MaxLines,
+            request.Upscale,
+            request.OnOutOfBoundsClip));
 }

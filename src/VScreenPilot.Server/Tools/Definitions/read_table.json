@@ -1,0 +1,151 @@
+{
+  "name": "read_table",
+  "title": "Read table",
+  "description": "Read a UIA table/grid into row objects. Uses GridPattern when available (rows/columns/items) and TablePattern column headers; falls back to grouping DataItem descendants by bounds. Supports column filtering, row offset and cell limits. Use this instead of Ctrl+A/C clipboard copies or a full tree snapshot.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "root_ref": {
+        "type": "string",
+        "description": "Optional table or container element_ref. Omit to search the tracked app for a table."
+      },
+      "within": {
+        "type": "string",
+        "description": "Optional container element_ref; same semantics as find_element.within. root_ref takes precedence."
+      },
+      "name": {
+        "type": "string"
+      },
+      "name_match": {
+        "type": "string",
+        "enum": [
+          "exact",
+          "contains",
+          "regex"
+        ]
+      },
+      "control_type": {
+        "type": "string",
+        "description": "Table/DataGrid/List. Omit to try all three."
+      },
+      "automation_id": {
+        "type": "string"
+      },
+      "pid": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "index": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Candidate index after sorting by area when root_ref is omitted."
+      },
+      "max_rows": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 500
+      },
+      "row_start": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "include_header": {
+        "type": "boolean",
+        "description": "Default true. When false, columns is returned empty; row objects still use header names as keys when available."
+      },
+      "columns": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 100,
+        "description": "Only return these columns (case-insensitive exact match). Omit for all."
+      },
+      "max_cells": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20000
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "table_ref": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "control_type": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "source": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "columns": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "rows": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {}
+      },
+      "row_count": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "column_count": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "truncated": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "snapshot_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "additionalProperties": true
+  },
+  "readOnly": true,
+  "destructive": false,
+  "timeoutMs": 30000,
+  "policy": {
+    "mutates": false,
+    "lease": "None",
+    "sessionRead": true,
+    "sessionWrite": false,
+    "bypassWriteLock": false,
+    "writeTimeoutMs": 30000
+  }
+}

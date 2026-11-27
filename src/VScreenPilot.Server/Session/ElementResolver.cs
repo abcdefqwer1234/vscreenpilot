@@ -59,6 +59,8 @@ internal sealed class ElementResolver
                 new JsonObject { ["ref"] = key });
         }
 
+        BlockingDialogGuard.RequireNotBlocked(entry.Hwnd, "element_ref");
+        ElevationGuard.RequireNotElevated(entry.Pid, "element_ref");
         return entry;
     }
 
@@ -140,19 +142,35 @@ internal sealed class ElementResolver
     private UiaElementHandle? ResolveHandle(ElementRefEntry entry, out bool refreshed)
     {
         refreshed = false;
+        UiaElementHandle? handle = null;
 
         if (!string.IsNullOrEmpty(entry.RuntimeId))
         {
-            UiaElementHandle? direct = _host.Uia.FindByRuntimeId(entry.Hwnd, entry.RuntimeId);
+            handle = _host.Uia.FindByRuntimeId(entry.Hwnd, entry.RuntimeId);
+        }
 
-            if (direct is not null)
+        if (handle is null)
+        {
+            handle = FindByFingerprintWithMove(entry);
+            refreshed = handle is not null;
+        }
+
+        if (handle is null)
+        {
+            return null;
+        }
+
+        // 虚拟化/长列表：元素存在但不在可视区时，先请求 provider 滚入可见。
+        // 不支持 ScrollItem 的控件保持原行为，由后续操作返回 E_ELEMENT_OFFSCREEN。
+        if (handle.Info.Offscreen || handle.Info.Width <= 0 || handle.Info.Height <= 0)
+        {
+            if (handle.ScrollIntoView())
             {
-                return direct;
+                Thread.Sleep(80);
+                handle.RefreshInfo();
             }
         }
 
-        UiaElementHandle? handle = FindByFingerprintWithMove(entry);
-        refreshed = handle is not null;
         return handle;
     }
 

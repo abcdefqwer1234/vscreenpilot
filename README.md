@@ -1,16 +1,16 @@
-# VScreenPilot
+﻿# VScreenPilot
 
 把 Windows 桌面应用放到一块**用完即走、看不见的虚拟屏**上，让 AI 通过 MCP 工具完成截图、点击、输入、语义定位和结果验证。你在主屏继续工作，它不抢鼠标、不挡窗口、不误点你的桌面。
 
-- 对外：一个 MCP Server，22 个工具（含 `snapshot` / `click_ref` / `read_screen_text` / `click_text`）。
-- 对内：自动挂载 1280×720 虚拟屏、启动/接管应用、归位、清理、记日志。
+- 对外：一个 MCP Server，30 个工具（含 `snapshot` / `click_ref` / `select_tab` / `list_windows` / `get_processes` / `set_display` / `read_screen_text` / `click_text`）。
+- 对内：自动挂载 1280×720 虚拟屏（可配置、运行期可改）、启动/接管应用、归位、清理、记日志。
 - 运行期不需要管理员权限；首次安装一次 Parsec VDD 即可。
 - 语义后端：UIA 为主，MSAA 兜底（Office 旧对话框），OCR 兜底（画布型应用）；支持 UWP `ApplicationFrameWindow`。
-- 共享实例与 as-built 细节见 [`技术文档.md`](技术文档.md)、[`docs/架构说明.md`](docs/架构说明.md)；行为变化与错误目录见 [`docs/2026-11变更.md`](docs/2026-11变更.md)、[`docs/errors.md`](docs/errors.md)。
+- 共享实例与 as-built 细节见 [`技术文档.md`](技术文档.md)、[`docs/架构说明.md`](docs/架构说明.md)；版本变更与错误目录见 [`CHANGELOG.md`](CHANGELOG.md)、[`docs/errors.md`](docs/errors.md)；0.4.0 验收与已知限制见 [`docs/2026-11-剩余任务与Issue复核.md`](docs/2026-11-剩余任务与Issue复核.md)。
 - 测试与复现见 [`docs/audit/第一轮测试报告.md`](docs/audit/第一轮测试报告.md)（历史 0.1.0：Word/CCW 与重构）与 [`docs/audit/第二轮测试报告.md`](docs/audit/第二轮测试报告.md)（历史 0.1.0：PPT 与修复）；原始记录已汇总进这两份报告。
 
-> 版本 0.3.0（多客户端共享实例）。这是 **0.x 技术预览**：工具名与参数已按契约冻结，但 0.x 阶段仍可能做不兼容调整；升级前请看 [CHANGELOG](CHANGELOG.md)。
-> 0.3.0 的 as-built 以 [技术文档.md](技术文档.md) 和 [架构说明](docs/架构说明.md) 为准；0.1.0 的实现细节查 git 历史。需求契约见 [需求文件.md](需求文件.md)。
+> 版本 0.4.0（2026-11-27）。这是 **0.x 技术预览**：工具名与参数已按契约冻结，但 0.x 阶段仍可能做不兼容调整；升级前请看 [CHANGELOG](CHANGELOG.md)。
+> 0.4.0 的 as-built 以 [技术文档.md](技术文档.md) 和 [架构说明](docs/架构说明.md) 为准；0.1.0 的实现细节查 git 历史。需求契约见 [需求文件.md](需求文件.md)，文档总索引见 [docs/README.md](docs/README.md)。
 
 ---
 
@@ -44,7 +44,8 @@ VScreenPilot 的做法：
 | `capture_screen` | 截虚拟屏或指定区域，返回 PNG + `frame_id` + 区域元数据 |
 | `read_screen_text` | OCR 读取屏幕/区域文本（画布型应用兜底） |
 | `get_ui_tree` | 读取裁剪后的语义控件树，节点带 `element_ref` |
-| `find_element` | 按名称/类型/AutomationId/角色查找控件，返回 `element_ref` |
+| `find_element` | 按名称/类型/AutomationId/角色查找控件，返回 `element_ref`、快照来源与 `outside_snapshot` |
+| `read_table` | 读取表格/网格为行对象，支持列过滤、行偏移与单元格上限 |
 | `get_element_text` | 读正文：优先 TextPattern（Word），其次 ValuePattern |
 | `match_visual` | 模板/颜色/单点像素定位 |
 
@@ -52,13 +53,16 @@ VScreenPilot 的做法：
 
 | 工具 | 用途 |
 | --- | --- |
-| `click` | 坐标点击；默认 UIA/窗口消息，不动光标；返回 `observed.changed` |
-| `click_ref` | 按 `element_ref` 点击，优先 UIA pattern |
+| `click` | 坐标点击；默认 UIA/窗口消息，不动光标；返回 `hit_element`、`observed.changed`、`suspect_noop` |
+| `click_ref` | 按 `element_ref` 点击，优先 UIA pattern；破坏性目标需 `allow_destructive` |
 | `click_text` | OCR 定位文本并点击（画布型应用兜底） |
+| `select_tab` / `close_tab` | 按名称选中/关闭标签页，避免坐标误点右缘 `✕` |
+| `lease_input` | 申请/续期/释放会话级前台租约，跨多次输入调用保持前台 |
+| `run_actions` | 白名单动作序列，一次调用完成点击→改值→确认，共享一个租约 |
 | `gesture` | 拖拽、滚轮、移动 |
 | `type_text` | 向焦点输入文本，支持中文；分块回读确认 |
-| `press_keys` | 组合键；支持 `sequence` 连续菜单导航 |
-| `invoke_element` | 按 `element_ref` 触发控件（Invoke/Toggle/Select/Expand/Legacy） |
+| `press_keys` | 组合键；支持 `sequence` 连续菜单导航与 `target=current_dialog` |
+| `invoke_element` | 按 `element_ref` 触发控件（Invoke/Toggle/Select/Expand/Legacy）；破坏性控件需 `allow_destructive=true`（`select_text` 只选择不触发，不受此限） |
 | `set_element_value` | 按 `element_ref` 写值；支持 append/insert/replace |
 | `launch_or_place_app` | 启动/接管应用，移动到虚拟屏并最大化 |
 | `release_environment` | 归还窗口、关闭应用、按需摘屏；默认 `abort`，强杀需 `allow_data_loss=true` |
@@ -89,7 +93,7 @@ VScreenPilot.exe（安装版 / 绿色版）
         └─ 退出时归还窗口、关闭应用、摘屏
 ```
 
-虚拟屏在客户端连接期间**常驻**，避免每次调试都黑屏一次；最后一个客户端断开后，daemon 按 `VSP_DAEMON_IDLE_MS`（默认 5 秒）空闲退出并摘屏。需要立即摘屏时调用：
+虚拟屏在客户端连接期间**常驻**，避免每次调试都黑屏一次；最后一个客户端断开后，daemon 按 `VSP_DAEMON_IDLE_MS`（默认 5 分钟）空闲退出并摘屏。需要立即摘屏时调用：
 
 ```json
 { "keep_display": false }
@@ -128,7 +132,7 @@ winget install --id Parsec.ParsecVDD -e --accept-package-agreements --accept-sou
 
 ### 方式 A：安装版（推荐）
 
-从 Releases 下载 `VScreenPilot-Setup-0.3.0.exe` 并双击安装：
+从 Releases 下载 `VScreenPilot-Setup-0.4.0.exe` 并双击安装：
 
 - 安装到 `%LOCALAPPDATA%\Programs\VScreenPilot`，**per-user，不需要管理员**；
 - 可选加入当前用户 `PATH`（默认勾选），之后可直接运行 `vscreenpilot --doctor`；
@@ -139,22 +143,22 @@ winget install --id Parsec.ParsecVDD -e --accept-package-agreements --accept-sou
 
 ### 方式 B：绿色版
 
-下载 `VScreenPilot-win-x64-v0.3.0.zip`，解压到固定目录（如 `C:\Tools\VScreenPilot`），直接运行 `VScreenPilot.exe`。
+下载 `VScreenPilot-win-x64-v0.4.0.zip`，解压到固定目录（如 `C:\Tools\VScreenPilot`），直接运行 `VScreenPilot.exe`。
 
-zip 内含 exe、`LICENSE`、`THIRD-PARTY-NOTICES.md`、`README.md`；`.pdb` 在单独的 `VScreenPilot-symbols-v0.3.0.zip`，普通用户不需要。
+zip 内含 exe、`LICENSE`、`THIRD-PARTY-NOTICES.md`、`README.md`；`.pdb` 在单独的 `VScreenPilot-symbols-v0.4.0.zip`，普通用户不需要。
 
-### 方式 C：winget（提交审核通过后可用）
+### 方式 C：winget（版本可能滞后于 GitHub Releases）
 
 ```powershell
 winget install --id VScreenPilot.VScreenPilot -e
 ```
 
-当前清单已提交/待审核；审核通过前请用方式 A 或 B。winget 安装的就是 per-user 安装包，卸载、升级走 winget 或“设置 → 应用”。
+当前清单已随 0.4.0 同步；winget 仓库审核/同步可能稍晚于 GitHub Releases，未看到新版本时请用方式 A 或 B。winget 安装的就是 per-user 安装包，卸载、升级走 winget 或“设置 → 应用”。
 
 ### 从源码构建
 
 ```powershell
-.\scripts\release.ps1 -Version 0.3.0
+.\scripts\release.ps1 -Version 0.4.0
 ```
 
 一次生成绿色 zip、安装包和 symbols zip。
@@ -208,9 +212,12 @@ VScreenPilot.exe --cli env|snapshot|screen|status|stop
 - **多工作目录/多客户端**：第一个 MCP 进程会优先启动独立 `--daemon`（带 Job breakaway；失败回退进程内 daemon），后续目录的进程自动成为瘦代理；不需要为每个目录配置 `--profile`。客户端断开后会释放屏幕租约并在空闲后清理自己的窗口，daemon 在 `VSP_DAEMON_IDLE_MS` 后退出。旧 0.1.0 实例没有共享管道，升级后先关闭旧实例一次。
 - `get_environment.session.clients[]` 只返回 id/name/connected_at/holds_lease；`session.screen_lease` 给出当前租约。`get_log` 默认只返回本客户端日志，`include_other_clients=true` 可查看全部。
 - `--allow-script` 或 `VSP_ALLOW_SCRIPT=1`：启用 `run_script`。默认关闭，避免任意 PowerShell。
+- `--read-only` 或 `VSP_READ_ONLY=1`：只读会话。`snapshot`/`capture_screen`/`get_environment`/`find_element`/`wait_for`/`assert_region` 可用，写工具返回 `E_READ_ONLY`；共享 daemon 下按客户端握手生效。
 - `VSP_APP_ALLOWLIST`：可选，用分号分隔目录，限制 `launch_or_place_app` 通过 `path` 能启动哪些 exe；按 `window` 标题接管不受此限制。
 - `VSP_DISPLAY_WIDTH` / `VSP_DISPLAY_HEIGHT` / `VSP_DISPLAY_REFRESH`：可选，修改虚拟屏分辨率与刷新率，默认 1280×720@60（范围 800–3840 / 600–2160 / 30–240）。这些值在 daemon 启动时读取；daemon 已运行时改环境变量不会生效，需先 `--cli stop` 或关闭客户端。改分辨率不会改变 96 DPI（100% 缩放）。
-- `VSP_DAEMON_IDLE_MS`：最后一个客户端断开后的空闲宽限，默认 5000；`0` 立即退出。调大会让虚拟屏在空闲期继续挂在真实桌面上（退出时才摘屏），按需取舍。`VSP_SCREEN_LEASE_WAIT_MS`、`VSP_TOTAL_BUFFER_MB`、`VSP_CLIENT_LIMIT` 分别控制租约等待、总缓冲和客户端上限。
+- `VSP_DAEMON_IDLE_MS`：最后一个客户端断开后的空闲宽限，默认 300000（5 分钟）；`0` 立即退出。调大会让虚拟屏在空闲期继续挂在真实桌面上（退出时才摘屏），按需取舍。`VSP_SCREEN_LEASE_WAIT_MS`、`VSP_TOTAL_BUFFER_MB`、`VSP_CLIENT_LIMIT` 分别控制租约等待、总缓冲和客户端上限。
+- `VSP_PROGRESS=1`：发送 `notifications/progress`。默认关闭，避免客户端无法关联 progressToken 时把长任务判成传输错误并断链。
+- `VSP_REF_GENERATIONS`：保留最近几代 `element_ref`，默认 3（范围 2–10），长流程不会两次 snapshot 就失效。
 - `VSP_INPUT_AUTOFALLBACK=1`：允许 `click`/`click_ref`/`click_text` 在 UIA/窗口消息失败后自动降级到 `SendInput`（会移动真实光标，默认关闭）。
 - `VSP_CLIENT_CWD`：可选，覆盖客户端路径基准（`save_path`/`target_path`/相对 exe）；默认使用 proxy 的 cwd。
 - `--cli env|snapshot|screen|status|stop`：`env/snapshot/screen` 在实例存在时通过只读控制管道查询；`stop` 有活跃客户端时需 `--force`。`snapshot` 返回管理员 `apps[]` 视图（同时保留旧顶层字段）。
@@ -416,7 +423,7 @@ Electron/Chromium 可能忽略窗口消息。用 `wait_for`/`assert_region` 验�
 - 消息注入可能被 Electron/Chromium 忽略。
 - `on_dirty=save/discard` 目前识别中英文保存对话框。
 - 没有 TextPattern/ValuePattern 的应用无法精确回读输入。
-- 单元测试覆盖 PNG/KeyMap/参数校验/错误目录/Profile/JobObject/租约/并发/组件 fake/截图保留策略；契约测试覆盖 schema 快照、架构边界、IVT/命名空间/阈值。UIA、输入注入与真实窗口仍需集成脚本验收。
+- 单元测试覆盖 PNG/KeyMap/参数校验/错误目录/Profile/JobObject/租约/并发/组件 fake/截图保留策略；契约测试覆盖 schema 快照、架构边界、IVT/命名空间。UIA、输入注入与真实窗口仍需集成脚本验收。
 
 ---
 
@@ -433,13 +440,15 @@ packaging/                     Inno Setup 与 winget 清单
 tools/                         VddProbe、AotSmokeTest、audit 审计套件
 artifacts/server/               发布 exe
 artifacts/release/              绿色 zip、安装包、symbols
-技术文档.md                      0.3.0 综合技术手册（机制、共享实例、重构史）
+技术文档.md                      0.4.0 综合技术手册（机制、共享实例、重构史）
 需求文件.md                      需求契约
-docs/架构说明.md                 分层与数据流（含自动度量）
-docs/2026-11变更.md              重构变更摘要
+docs/README.md                   文档总索引（当前事实源 / 历史归档）
+docs/架构说明.md                 分层、数据流与质量检查
+docs/2026-11-剩余任务与Issue复核.md  0.4.0 验收清单与已知限制
 docs/errors.md                   错误目录
 docs/mcp-config.example.jsonc    OpenCode 接入示例
 docs/发布手册.md                 发布手册（GitHub Release + winget）
+docs/audit/                      历史测试报告、issues 原始报告与修复方案
 ```
 
 ## 测试脚本

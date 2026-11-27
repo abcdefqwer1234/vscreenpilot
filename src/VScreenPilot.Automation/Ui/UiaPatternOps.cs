@@ -15,7 +15,9 @@ internal sealed class UiaPatternOps
     /// <summary>
     /// 在指定屏幕坐标尝试 UIA 的 InvokePattern；成功则不需要移动光标。
     /// </summary>
-    public bool TryInvokeAtPoint(int x, int y, int? expectedPid, out UiaElementInfo? info)
+    public bool TryInvokeAtPoint(
+        int x, int y, int? expectedPid, out UiaElementInfo? info,
+        Func<UiaElementInfo, bool>? confirm = null)
     {
         lock (_core._sync)
         {
@@ -42,6 +44,13 @@ internal sealed class UiaPatternOps
                     return false;
                 }
 
+                // 破坏性目标护栏：调用方可在真正 Invoke 前拒绝该元素。
+                // 回调抛出的 ToolException 会原样穿透，不会被“不支持”吞掉。
+                if (info is not null && confirm is not null && !confirm(info))
+                {
+                    return false;
+                }
+
                 pattern = element.GetCurrentPattern(UiaService.InvokePatternId);
                 if (pattern is IUIAutomationInvokePattern invoke)
                 {
@@ -64,6 +73,54 @@ internal sealed class UiaPatternOps
             }
 
             return false;
+        }
+    }
+
+    /// <summary>
+    /// 只读命中测试：返回屏幕坐标下的 UIA 元素，不触发任何 pattern。
+    /// 用于点击前报告 hit_element，避免“点到了什么”只能靠猜。
+    /// </summary>
+    public UiaElementInfo? DescribeAtPoint(int x, int y, int? expectedPid)
+    {
+        lock (_core._sync)
+        {
+            IUIAutomationElement? element = null;
+
+            try
+            {
+                element = _core._automation.ElementFromPoint(new tagPOINT { x = x, y = y });
+                if (element is null)
+                {
+                    return null;
+                }
+
+                UiaElementInfo? info = _core.Factory.Describe(element, cached: false);
+
+                if (info is null)
+                {
+                    return null;
+                }
+
+                // 命中测试同样必须限定在本会话目标进程，避免读到覆盖层的其他应用。
+                if (expectedPid.HasValue && info.ProcessId != expectedPid.Value)
+                {
+                    return null;
+                }
+
+                return info;
+            }
+            catch (COMException)
+            {
+                return null;
+            }
+            catch (InvalidCastException)
+            {
+                return null;
+            }
+            finally
+            {
+                UiaElementFactoryOps.ReleaseElement(element);
+            }
         }
     }
 
@@ -138,6 +195,11 @@ internal sealed class UiaPatternOps
             }
         }
     }
+
+    /// <summary>滚动到可见；不支持 ScrollItem 的控件返回 false，由调用方保持原行为。</summary>
+    internal (bool Ok, string? Strategy) TryScrollIntoView(IUIAutomationElement element) =>
+        TryWithPattern<IUIAutomationScrollItemPattern>(
+            element, UiaService.ScrollItemPatternId, pattern => pattern.ScrollIntoView(), "ScrollItem");
 
     internal (bool Ok, string? Strategy) TryLegacyInvoke(IUIAutomationElement element) =>
         TryWithPattern<IUIAutomationLegacyIAccessiblePattern>(

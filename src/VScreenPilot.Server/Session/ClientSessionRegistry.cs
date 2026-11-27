@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 using VScreenPilot.Services;
 
 namespace VScreenPilot.Session;
@@ -18,6 +20,7 @@ internal sealed class ClientContext
     public DateTimeOffset ConnectedAt { get; init; } = DateTimeOffset.UtcNow;
     public bool AllowScript { get; init; }
     public bool AllowUnsafeScript { get; init; }
+    public bool ReadOnly { get; init; }
     public bool IncludeAllApps { get; init; }
     public string[] AppAllowlist { get; init; } = Array.Empty<string>();
     public long Epoch;
@@ -83,6 +86,79 @@ internal sealed class ClientSessionRegistry
 
     public string? FindCwd(string clientId) =>
         _clients.TryGetValue(clientId, out ClientContext? client) ? client.Cwd : null;
+
+    /// <summary>同一 cwd/roots 的客户端得到相同短哈希，用于崩溃恢复的归属提示。</summary>
+    public static string ComputeClientKey(string cwd, IReadOnlyList<string> roots)
+    {
+        // Windows 路径大小写不敏感，且客户端可能带/不带末尾分隔符；
+        // 先规范化为绝对路径再统一大小写，否则同一目录会被算成不同 key。
+        string material = NormalizePath(cwd) + "|" + string.Join(
+            "|",
+            roots
+                .Select(NormalizePath)
+                .Where(item => item.Length > 0)
+                .OrderBy(item => item, StringComparer.Ordinal));
+
+        return ShortHash(material);
+    }
+
+    /// <summary>0.4.0 开发构建使用过的未规范化算法；只用于兼容旧 state 的自动认领。</summary>
+    public static string ComputeLegacyClientKey(string cwd, IReadOnlyList<string> roots)
+    {
+        string material = (cwd ?? string.Empty) + "|" + string.Join("|", roots ?? Array.Empty<string>());
+        return ShortHash(material);
+    }
+
+    /// <summary>新算法 + 两个旧算法变体（保留 roots 顺序 / 排序），用于读取旧 state。</summary>
+    public static IReadOnlyList<string> ComputeClientKeyCandidates(
+        string cwd, IReadOnlyList<string> roots)
+    {
+        IReadOnlyList<string> safeRoots = roots ?? Array.Empty<string>();
+        string[] ordered = safeRoots
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .ToArray();
+        string[] sorted = ordered.OrderBy(item => item, StringComparer.Ordinal).ToArray();
+
+        var keys = new List<string>
+        {
+            ComputeClientKey(cwd, safeRoots),
+            ShortHash((cwd ?? string.Empty) + "|" + string.Join("|", ordered)),
+            ShortHash((cwd ?? string.Empty) + "|" + string.Join("|", sorted)),
+        };
+
+        return keys
+            .Where(item => item.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static string ShortHash(string material)
+    {
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(material));
+        return Convert.ToHexString(hash, 0, 8).ToLowerInvariant();
+    }
+
+    private static string NormalizePath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            return Path.GetFullPath(path)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .ToUpperInvariant();
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return path.Trim()
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .ToUpperInvariant();
+        }
+    }
 
     /// <summary>在当前异步流内切换客户端；Dispose 恢复上一层。</summary>
     public IDisposable Use(ClientContext context)

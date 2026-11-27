@@ -1,5 +1,119 @@
 # Changelog
 
+## 0.4.0 — 2026-11-27（issues I-01 ~ I-14 修复批次）
+
+### Added
+
+- `click`/`click_ref`/`click_text` 注入前做只读命中测试，返回 `hit_element`/`hit_source`；新增破坏性目标护栏（`E_DESTRUCTIVE_TARGET`）与 `allow_destructive`。
+- 新增 `select_tab`/`close_tab`：按名称选中/关闭标签页，避免坐标误点右缘 `✕`。
+- `find_element` 新增 `new_snapshot`/`scope`，返回 `snapshot_age_ms`/`snapshot_root_hwnd`/`outside_snapshot`/`sources[]` 与元素 `hwnd`。
+- `press_keys`/`type_text` 新增 `target=app/current_dialog/foreground`；`E_BLOCKED` 的 `dialogs[]` 增加 `suggested_target`。
+- `click` 新增 `settle_ms`/`abort_on_window_change`，多击逐击检测新顶层窗口并返回 `clicks_done`/`aborted`/`opened_dialog`。
+- `click` 返回 `focus_before`/`focus_after`/`focus_changed`/`delivery`/`suspect_noop`，用于区分“没点中”和“命中但无视觉变化”。
+- 新增 `read_table`：GridPattern/TablePattern 优先，DataItem 树回退；支持列过滤、`row_start`、`within`、`include_header` 和单元格上限。
+- 新增 `lease_input`：会话级前台租约（acquire/release/renew/status），`keep_foreground` 等价于 30s 租约；`exclusive=true` 启用 200ms 前台守护，`force=true` 会移除对方租约。
+- `run_actions` 白名单动作序列，一次调用完成点击→改值→确认，整批共享一个租约；已有租约时续期而不是误释放；`steps[].timeout_ms` 支持协作式单步超时。
+- `launch_or_place_app` 新增 `lifecycle=session/detached`、`fit=clamp/keep`；detached 应用不加入 Job，daemon 崩溃/退出后继续运行；`fit=clamp` 使用 DWM 可见边界并返回 `fit_adjusted`/`requested_bounds`/`applied_bounds`。
+- `state.json` v2：保存 detached/dedicated/owner/clientKey/tempProfile，崩溃后把存活窗口重新登记为待认领应用；客户端连接时按 `clientKey` 自动认领匹配窗口；`get_environment.apps[]` 返回 `detached`/`recovered`，`session` 返回 `previous_pid`/`previous_started_at`/`state_age_ms`/`input_lease`。
+- `capture_screen`/`snapshot` 的 `scale` 上限提高到 4（超采样）；`read_screen_text`/`click_text` 新增 `upscale`（0=auto）。
+- 读类工具（`capture_screen`/`read_screen_text`/`click_text`）默认把越界区域裁剪到虚拟屏并返回 `clipped`/`requested_region`；新增 `on_out_of_bounds=error` 恢复旧报错；断言类保持报错。
+- `read_screen_text` 返回 `ocr_source_width/height` 和 `ocr_scaled_width/height`。
+- `close_tab` 在 Ctrl+W 回退前先选中目标标签页，避免关闭当前活动标签页。
+- `set_display` 新增 `fit_windows`（或 `VSP_FIT_MANAGED_WINDOWS=1`）：重排时把仍大于新虚拟屏的受管窗口缩到屏内。
+- `click_ref` 输出补 `suspect_noop`。
+- `CursorGuard` 在输入租约活跃时保持暂停，租约释放后恢复。
+- `assert_region`/`wait_for` 新增 `clip`：断言/等待区域越界时可显式裁剪（默认仍报错）。
+- `read_table` 树回退按全局列锚点对齐，缺格不再导致后续列左移。
+- OCR 放大默认改为 bilinear，`VSP_OCR_UPSCALE=nearest` 可切最近邻。
+- PNG 超采样默认 bilinear，`VSP_PNG_UPSCALE=nearest` 可切最近邻。
+- `click` 多击命中新顶层窗口默认中止；`E_DESTRUCTIVE_TARGET`、`E_ELEMENT_AMBIGUOUS`、`E_INPUT_LEASE_CONFLICT` 新错误码。
+- `find_element` 在 `scope=app` 下先按快照根分组，再应用 `prefer`，避免旧窗口元素抢占 `index=0`。
+- `type_text`/`set_element_value` 新增 `strict_verify`：回读不一致返回 `E_VERIFY_FAILED`（默认 `false`）。
+- `type_text`/`press_keys` 新增 `hwnd`：可指定受管对话框作为输入目标。
+- `launch_or_place_app` 新增 `place`/`maximize`：可只移动不最大化，或保留当前 bounds。
+- `find_element` 新增 `within`：按容器 ref 做 UIA 子树查找。
+- `invoke_element` 新增 `select_text`：展开 + 子树精确匹配 + 唯一选中，多命中返回候选。
+- 解析 `element_ref` 时对离屏控件尝试 `ScrollItemPattern.ScrollIntoView`。
+- TraceLog 每条 `tool_call` 增加 `summary`（ref/verified/observed.changed/snapshot_id/frame_id 等）。
+- `--read-only` / `VSP_READ_ONLY=1`：只读会话，写工具返回 `E_READ_ONLY`；共享 daemon 按客户端握手生效。
+- 新错误码：`E_BLOCKED`、`E_VERIFY_FAILED`、`E_NEEDS_HUMAN`、`E_ELEVATION_REQUIRED`、`E_READ_ONLY`。
+- 新增 `list_windows`：列出顶层窗口（hwnd/pid/进程/类/bounds/是否在虚拟屏/是否受管/是否提权），非受管窗口标题脱敏。
+- 新增 `get_processes`：按名称/pid 查进程、启动时间、是否提权、窗口数；用于安装/构建等长任务。
+- 新增 `set_display`：运行期切换虚拟屏几何（800–3840 × 600–2160），不必重启 daemon。
+- `wait_for` 支持 `type=process`（`running`/`exited`），可直接等安装器/构建退出。
+- `launch_or_place_app` 支持 `hwnd` 精确接管对话框/弹窗，只接受顶层窗口；新增 `on_no_window=leave|kill`。
+- `click` 新增 `context_menu`（补发 `WM_CONTEXTMENU`，仅允许 `button=right`）与 `interval_ms`（自绘控件多击间隔）。
+- `type_text` 新增 `pace_ms`，并修复 `chunk_chars`/`verify_every` 未传入实际写入请求的问题；小 chunk 自动提高回读间隔。
+- `get_processes` 默认不枚举窗口（`include_windows=false`），一次 EnumWindows 建 pid→窗口表；`elevated` 按 pid 缓存。
+- `list_windows`/`get_processes` 返回 `total`（截断前数量）；`list_windows` 只认本会话虚拟屏设备。
+- `wait_for(type=process)` 不再挂载虚拟屏；`launch_or_place_app` 只有拿到窗口才挂载虚拟屏，纯控制台启动不会挂屏。
+
+### Changed
+
+- 工具数 25 → 30；schema 基线切到 `tools/audit/baseline/0.4.0`；版本号 `0.4.0`。
+- `click(clicks>1)` 默认中止后续点击（`abort_on_window_change=true`）。
+- `launch_or_place_app` 默认 `fit=clamp`：超出虚拟屏的窗口会被缩到屏幕内。
+- **进度通知默认关闭**：只有 `VSP_PROGRESS=1` 才发送 `notifications/progress`，避免客户端无法关联 token 时反复断链。
+- **daemon 空闲退出默认从 5s 提高到 300s**：客户端短暂断链/重连不再关闭作业对象、连带杀掉已启动的应用；`VSP_DAEMON_IDLE_MS=0` 仍表示立即退出。
+- **无窗口不再视为失败**：`launch_or_place_app` 对控制台/启动器/静默安装器返回 `launched=true, window=false, alive/exit_code`，且不再杀进程树、不再提前加入作业对象；`on_no_window=kill` 可显式终止。控制台程序 1.2 秒判定无窗口，不再等满 `wait_ms`。
+- **`set_display` 改为独占写操作**：与 capture/snapshot 互斥；失败回滚、位置被忽略时置 `PositionFallback`，并默认重排跑出屏的受管窗口。
+- 小窗口先等最多 3 秒找更大的主窗口，超时才接受当前小窗，避免把 splash 当成主窗口。
+- 启动失败：Win32 740/5 映射为 `E_ELEVATION_REQUIRED`，2/3/193 映射为 `E_APP_START`，不再落到 `E_INTERNAL`。
+- `get_environment`/`snapshot` 的前台信息在非受管窗口时也返回 hwnd/pid/进程名/是否提权（标题仍脱敏）。
+- 小窗口（对话框/解压器）尺寸稳定且不可调整大小时提前接管，不再等满 `wait_ms`。
+- `launch_or_place_app` 按 `hwnd` 接管对话框时，release 会还原该对话框的位置。
+- `snapshot` 后默认保留最近 3 代 ref（`VSP_REF_GENERATIONS` 2–10），长流程不再“多看一眼就失效”。
+- 目标窗口被模态对话框禁用时，输入/元素操作提前返回 `E_BLOCKED`，不再发送按键。
+- 目标进程完整性级别高于服务端时，输入/点击/元素操作返回 `E_ELEVATION_REQUIRED`，不自动提权。
+
+### Removed
+
+- 移除 CI/发布中的 `arch_metrics --enforce` 与 `doc_metrics --check` 阻塞；`arch_metrics.py` 仅保留 `--inventory` / `--selftest` 作为本地参考。
+- 移除 PR CI 的 `check-version.mjs`；版本一致性只在发布流程按 tag 校验。
+- 移除 CI/发布的 `capture_baseline` + `compare_baseline` 阻塞步骤；`ToolSchemaSnapshotTests` 继续校验 30 工具 schema。
+- 精简 `ArchitectureFitnessTests`：删除文件行数、测试数量、组件映射、record 基线存在性、allowlist 空等风格闸门，保留命名空间/IVT/引用方向/Automation public 类型等真实边界。
+- 删除 `tools/audit/doc_metrics.py` 与 `docs/架构说明.md` 的自动度量块。
+
+### Docs
+
+- 技术文档重构：补 0.4.0 工具契约、屏幕/输入租约矩阵、错误码 63、验收矩阵与已知限制；T1–T3 重构史归档到 `docs/audit/2026-11-重构史.md`。
+- 新增 `scripts/check-doc-facts.ps1`，CI 校验工具数、错误码、环境变量与文档一致。
+
+### Tests
+
+- 新增 `ElementRefStoreTests`；schema 合同基线切到 `tools/audit/baseline/0.4.0`（历史 `3ddb85b`/`0.3.1-dev` 保留）。
+- 新增 `WaitServiceTests`、`FocusGuardTests`、`JsonArgReaderTests`、`ActionBatchContentTests`，并扩展表头、帧缓存、租约、窗口变化与崩溃恢复测试；质量修复批次新增租约延迟归还/TTL、FrameStore 单客户端字节配额、缺失 `startedAt` 恢复与批次步骤标记测试（单元 365）。
+- 破坏性护栏的 off 策略测试改用策略重载，不再修改进程环境变量，消除并行测试的偶发失败。
+
+### Fixed
+
+- `run_actions` 内的 `wait_for` 不再二次获取会话读锁（`NoRecursion` 下会抛 `LockRecursionException`）；外层已持读锁时直接复用。
+- `type_text` 的 `pace_ms` 现在同时作用于验证与非验证键盘路径。
+- `wait_for(type=pixel_diff)` 读取文档字段 `min_changed_ratio`（兼容旧 `threshold`），并校验 0..1；schema 补齐 `tolerance`。
+- `read_table` 表头为空、重复或少于实际列数时补齐为 `colN` 并对重名去重，避免列值被跳过或覆盖。
+- `FrameStore` 的 `Latest`/`Snapshot` 按客户端过滤；单客户端配额改为 6 帧 / 16MB，全局淘汰优先选仍有多帧的最忙客户端，并保留每个客户端最新 1 帧，避免跨客户端基线串用。
+- `FocusGuard`/`CursorGuard` 的租约判断改为全局租约；普通输入结束不再清除其他客户端仍在有效期内的前台租约；较短的新租约也不再缩短更长租约的暂停时间。
+- `ForegroundLease(force=true)` 抢占时保留对方的 `PreviousForeground`，对方稍后 release/drop 时归还；仍有其他活跃租约时只延迟归还，不抢回前台；待归还目标增加 120s TTL。
+- `lease_input release` / 客户端断连 / `release_environment forceAllClients` 恢复前台前检查剩余租约，并在全量清理时归还最早捕获的前台；非独占 release/renew 不再停掉其他客户端的独占守护。
+- `run_actions` 转发嵌套 `snapshot`/`capture_screen` 的 image/resource_link 内容块，并插入 `[step N] action` 文本标记；有失败步骤时设置 `isError=true`。
+- `invoke_element` 接入破坏性目标护栏，并新增 `allow_destructive`；`select_text` 只选择不触发，不套用该护栏。
+- `wait_for` schema 补齐 `window.state/min_width/min_height`、`text.pid`、`pixel_diff.tolerance/threshold`。
+- `RequiredInt`/`RequiredCoordinate` 先校验 JSON 类型，非法输入返回 `E_INVALID_ARG` 而非 `InvalidOperationException`。
+- 崩溃恢复不再仅凭 PID 相同跳过；按 PID + 启动时间判断，避免 PID 复用漏恢复；旧 state 缺 `startedAt` 时按旧进程已退出处理。
+- 多击窗口变化检测排除 tooltip/IME 候选窗口。
+- `clientKey` 规范化路径大小写和末尾分隔符；自动认领同时兼容旧算法的原始/排序键，减少 0.4.0 开发状态重连后的重新接管。
+- `get_element_text` 多读 1 字符，修复“刚好等于 max_chars”被误报截断。
+- `release_environment` 在关闭动作后重新判断窗口存活，允许回收残留进程。
+- `wait_for` 像素差分输出同时保留 `threshold` 并新增 `min_changed_ratio`。
+
+### 已知限制与待验证
+
+- I-07 不修应用复制行为；状态表改用 `read_table`/`ValuePattern`，不再依赖剪贴板。
+- 本轮只做编译、单测、契约测试（365 + 14 通过）；未做 CCW 实机手工验收。
+- `FrameStore` 的严格字节隔离保证两个客户端；第三个及以上客户端同时刷帧时仍受全局 8 帧 / 32MB 限制（每个客户端最新帧优先保留）。
+- `select_text` 不触发候选项，因此不检查破坏性目标；选中后执行需显式 `invoke_element`/`click_ref`。
+- 残留边界见 `技术文档.md` §17.4 与 `docs/2026-11-剩余任务与Issue复核.md`。
+
 ## 0.3.0 — 2026-11-23（多客户端安全与生命周期收尾）
 
 ### Fixed

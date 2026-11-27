@@ -12,6 +12,9 @@ internal interface IEnvironmentService
     JsonObject DescribeLease();
     bool ReleaseLease(string clientId);
     int ActiveClientCount { get; }
+    JsonObject ListWindows(WindowQuery query);
+    JsonObject GetProcesses(ProcessQuery query);
+    JsonObject SetDisplay(int width, int height, int refresh, bool reposition = true, bool fitWindows = false);
 }
 
 internal sealed class EnvironmentToolService : IEnvironmentService
@@ -30,4 +33,11 @@ internal sealed class EnvironmentToolService : IEnvironmentService
     public bool ReleaseLease(string clientId) => _session.Lease.ForceRelease(clientId);
 
     public int ActiveClientCount => _session.Clients.ActiveCount;
+
+    public JsonObject ListWindows(WindowQuery query) => _session.InspectOps.ListWindows(query);
+
+    public JsonObject GetProcesses(ProcessQuery query) => _session.InspectOps.GetProcesses(query);
+
+    public JsonObject SetDisplay(int width, int height, int refresh, bool reposition = true, bool fitWindows = false) =>
+        _session.LifecycleOps.SetDisplay(width, height, refresh, reposition, fitWindows);
 }

@@ -16,6 +16,7 @@ using VScreenPilot.Uia;
 using static VScreenPilot.Json.JsonArgReader;
 using ObserveSignature = VScreenPilot.Verification.ObserveSampler.Signature;
 using VScreenPilot.Platform.Windows;
+using VScreenPilot.Platform.Logging;
 using VScreenPilot.Errors;
 
 namespace VScreenPilot.Session;
@@ -29,7 +30,12 @@ internal sealed record SessionClickRequest(
     string Mode,
     bool KeepForeground = false,
     bool Observe = true,
-    bool FallbackInput = false);
+    bool FallbackInput = false,
+    bool ContextMenu = false,
+    int IntervalMs = 50,
+    bool AllowDestructive = false,
+    int SettleMs = 0,
+    bool AbortOnWindowChange = true);
 
 /// <summary>ClickOps：InputRouter 的输入子通道。</summary>
 internal sealed class InputClickOps
@@ -45,8 +51,9 @@ internal sealed class InputClickOps
     }
     /// <summary>按 element_ref 点击：优先 UIA pattern，其次消息/输入通道。</summary>
     public ClickRefView ClickElementRef(
-        string reference, string? channel, bool keepForeground, bool fallbackInput = false) =>
-        RefOps.ClickElementRef(reference, channel, keepForeground, fallbackInput);
+        string reference, string? channel, bool keepForeground, bool fallbackInput = false,
+        bool allowDestructive = false) =>
+        RefOps.ClickElementRef(reference, channel, keepForeground, fallbackInput, allowDestructive);
 
     public ClickView Click(SessionClickRequest request)
     {
@@ -54,35 +61,107 @@ internal sealed class InputClickOps
         string mode = NormalizeClickMode(request);
         bool allowInputFallback = InputPolicy.AllowsInputFallback(request.FallbackInput);
 
+        if (request.ContextMenu &&
+            !request.Button.Equals("right", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ToolException(
+                "E_INVALID_ARG",
+                "context_menu 只能配合 button=right 使用",
+                retryable: false,
+                hint: "右键点击时传 button=right + context_menu=true",
+                stage: "validate");
+        }
+
         using var inputLease = InputLease.TryAcquire(3000, "click");
         EnsureInteractiveIfNeeded(mode);
 
         TrackedApp app = _host._element.RequirePointInTrackedApp(display, request.X, request.Y, "click");
+        ElevationGuard.RequireNotElevated(app.Pid, "click");
+
+        var stopwatch = Stopwatch.StartNew();
+        IntPtr previousForeground = WindowManager.GetForegroundWindow();
+
+        // 注入前做只读命中测试：既用于报告 hit_element，也用于破坏性目标护栏。
+        (UiaElementInfo? hitInfo, HitElementView? hitView, string hitSource) =
+            ProbeHit(request.X, request.Y, app.Pid);
+        hitView = DestructiveTargetGuard.Check(
+            hitInfo, request.X, request.Y, request.AllowDestructive, "click") ?? hitView;
+        FocusElementView? focusBefore = CaptureFocus(app.Pid);
 
         var observeWatch = Stopwatch.StartNew();
         ObserveSignature? observeBefore = request.Observe
             ? _host._display.CaptureSignature(display, request.X - 60, request.Y - 60, 120, 120)
             : null;
 
-        var stopwatch = Stopwatch.StartNew();
-        IntPtr previousForeground = WindowManager.GetForegroundWindow();
-
         if (request.KeepForeground)
         {
-            // 菜单/弹出层需要连续操作时，暂时冻结焦点护栏；租约到期后自动恢复，
+            // 菜单/弹出层需要连续操作时，申请会话级租约；租约到期后自动恢复，
             // 避免异常路径上 agent 不再调用工具时永久关闭护栏。
-            _host._focus.PauseFocusGuard(30000);
+            _host.Lease.Acquire(
+                _host._session.Clients.CurrentId,
+                app.Pid,
+                app.Hwnd.ToInt64(),
+                ForegroundLease.DefaultTtlMs,
+                exclusive: false,
+                source: "keep_foreground",
+                previousForeground: previousForeground);
+            _host._focus.PauseFocusGuard(ForegroundLease.DefaultTtlMs);
         }
 
         bool canUseUia = request.Button.Equals("left", StringComparison.OrdinalIgnoreCase) &&
                          request.Clicks == 1;
-        string method = InjectClick(
-            request, app, mode, allowInputFallback, canUseUia, out string? detail);
+        int clicksDone = request.Clicks;
+        WindowChange? opened = null;
+        string method;
+        string? detail;
+        UiaElementInfo? invokeHit;
+
+        if (request.Clicks > 1)
+        {
+            HashSet<IntPtr> beforeWindows = request.AbortOnWindowChange
+                ? WindowChangeDetector.Capture(app.Pid)
+                : new HashSet<IntPtr>();
+            (method, detail, invokeHit, clicksDone, opened) = InjectMultiClick(
+                request, app, mode, allowInputFallback, beforeWindows,
+                request.AbortOnWindowChange);
+        }
+        else
+        {
+            method = InjectClick(
+                request, app, mode, allowInputFallback, canUseUia, hitInfo,
+                out detail, out UiaElementInfo? singleHit);
+            invokeHit = singleHit;
+        }
+
+        if (hitInfo is null && invokeHit is not null)
+        {
+            hitInfo = invokeHit;
+            hitView = DestructiveTargetGuard.Describe(invokeHit);
+            hitSource = "uia";
+        }
 
         double injectMs = stopwatch.Elapsed.TotalMilliseconds;
         SettleFocus(request.KeepForeground, previousForeground);
 
         ObservedView? observed = CaptureClickObservation(display, request, observeWatch, observeBefore);
+        FocusElementView? focusAfter = CaptureFocus(app.Pid);
+        bool? focusChanged = focusBefore is null && focusAfter is null
+            ? null
+            : !string.Equals(focusBefore?.RuntimeId, focusAfter?.RuntimeId, StringComparison.Ordinal);
+        string delivery = method switch
+        {
+            "uia" => "uia-invoked",
+            "message" => "message-posted",
+            "input" => "input-sent",
+            "input-fallback" => "input-fallback",
+            _ => method,
+        };
+        bool? suspectNoop = observed is null
+            ? null
+            : method is "message" or "input" or "input-fallback" &&
+              !observed.Changed &&
+              focusChanged != true &&
+              (hitInfo is not null || hitSource == "window");
 
         return new ClickView(
             request.X,
@@ -99,7 +178,42 @@ internal sealed class InputClickOps
             detail,
             method == "message"
                 ? "消息点击可能被部分应用忽略，请用 wait_for/assert_region 验证"
-                : null);
+                : null,
+            hitView,
+            hitSource,
+            focusBefore,
+            focusAfter,
+            focusChanged,
+            delivery,
+            suspectNoop,
+            clicksDone,
+            opened is not null,
+            opened is null
+                ? null
+                : new OpenedDialogView(
+                    opened.Hwnd.ToInt64(), opened.Title, opened.ClassName));
+    }
+
+    private FocusElementView? CaptureFocus(int pid)
+    {
+        try
+        {
+            UiaElementInfo? info = _host._uia.Uia.GetFocusedElement();
+
+            return info is null || info.ProcessId != pid
+                ? null
+                : new FocusElementView(
+                    info.ProcessId,
+                    info.Name,
+                    info.AutomationId,
+                    info.ControlTypeName,
+                    info.RuntimeId);
+        }
+        catch (Exception exception)
+        {
+            LogSink.Debug($"读取焦点元素失败: {exception.Message}");
+            return null;
+        }
     }
 
     private static string NormalizeClickMode(SessionClickRequest request)
@@ -138,8 +252,46 @@ internal sealed class InputClickOps
             return;
         }
 
+        if (_host.Lease.IsActive(_host._session.Clients.CurrentId))
+        {
+            return;
+        }
+
         Thread.Sleep(50);
         _host.RestoreFocusAfterClick(previousForeground);
+    }
+
+    /// <summary>
+    /// 只读命中测试：优先 UIA ElementFromPoint；UIA 不可用时退回 WindowFromPoint，
+    /// 至少报告点到了哪个窗口。失败不阻塞点击。
+    /// </summary>
+    private (UiaElementInfo? Info, HitElementView? View, string Source) ProbeHit(
+        int x, int y, int pid)
+    {
+        UiaElementInfo? info = _host.UiaGuardOps.DescribeAtPoint(x, y, pid);
+
+        if (info is not null)
+        {
+            return (info, DestructiveTargetGuard.Describe(info), "uia");
+        }
+
+        IntPtr hwnd = NativeMethods.WindowFromPoint(new NativeMethods.POINT { X = x, Y = y });
+        WindowInfo? window = hwnd == IntPtr.Zero ? null : WindowManager.FromHandle(hwnd);
+
+        if (window is null)
+        {
+            return (null, null, "none");
+        }
+
+        var view = new HitElementView(
+            string.IsNullOrWhiteSpace(window.Title) ? window.ClassName : window.Title,
+            string.Empty,
+            "Window",
+            new BoundsView(window.Rect.Left, window.Rect.Top, window.Width, window.Height),
+            true,
+            false);
+
+        return (null, view, "window");
     }
 
     private ObservedView? CaptureClickObservation(
@@ -164,15 +316,83 @@ internal sealed class InputClickOps
             hint: "解锁桌面或改用 UIA 语义操作",
             stage: "input");
 
+    private static Func<UiaElementInfo, bool> InvokeGuard(SessionClickRequest request) =>
+        info =>
+        {
+            DestructiveTargetGuard.Check(
+                info, request.X, request.Y, request.AllowDestructive, "click");
+            return true;
+        };
+
+    /// <summary>
+    /// 多击逐击执行：每击后检查是否出现新的顶层窗口，出现则中止剩余点击。
+    /// 这样第一击打开模态框时，第二击不会落到对话框的表格/按钮上。
+    /// </summary>
+    private (string Method, string? Detail, UiaElementInfo? Hit, int ClicksDone, WindowChange? Opened)
+        InjectMultiClick(
+            SessionClickRequest request,
+            TrackedApp app,
+            string mode,
+            bool allowInputFallback,
+            HashSet<IntPtr> beforeWindows,
+            bool abortOnWindowChange)
+    {
+        var single = request with { Clicks = 1 };
+        string method = string.Empty;
+        string? detail = null;
+        UiaElementInfo? hit = null;
+        int done = 0;
+
+        for (int index = 0; index < request.Clicks; index++)
+        {
+            method = InjectClick(
+                single, app, mode, allowInputFallback, canUseUia: false, hit,
+                out string? stepDetail, out UiaElementInfo? stepHit);
+            detail = stepDetail ?? detail;
+            hit = stepHit ?? hit;
+            done++;
+
+            if (index >= request.Clicks - 1)
+            {
+                break;
+            }
+
+            int gap = Math.Clamp(Math.Max(request.IntervalMs, request.SettleMs), 10, 2000);
+            Thread.Sleep(gap);
+
+            if (!abortOnWindowChange)
+            {
+                continue;
+            }
+
+            WindowChange? change = WindowChangeDetector.FindNew(app.Pid, beforeWindows);
+
+            if (change is not null)
+            {
+                return (
+                    method,
+                    $"第 {done + 1} 击前检测到新顶层窗口 hwnd=0x{change.Hwnd.ToInt64():X}；已中止剩余点击",
+                    hit,
+                    done,
+                    change);
+            }
+        }
+
+        return (method, detail, hit, done, null);
+    }
+
     internal string InjectClick(
         SessionClickRequest request,
         TrackedApp app,
         string mode,
         bool allowInputFallback,
         bool canUseUia,
-        out string? detail)
+        UiaElementInfo? preHit,
+        out string? detail,
+        out UiaElementInfo? hit)
     {
         detail = null;
+        hit = preHit;
 
         switch (mode)
         {
@@ -187,7 +407,10 @@ internal sealed class InputClickOps
                 }
 
                 UiaInvokeOutcome explicitUia =
-                    _host.UiaGuardOps.TryUiaInvoke(request.X, request.Y, app.Pid);
+                    _host.UiaGuardOps.TryUiaInvoke(
+                        request.X, request.Y, app.Pid, out UiaElementInfo? explicitHit,
+                        InvokeGuard(request));
+                hit = explicitHit ?? hit;
 
                 if (explicitUia == UiaInvokeOutcome.TimedOut)
                 {
@@ -207,7 +430,8 @@ internal sealed class InputClickOps
                 _host.RejectNonClientArea(app, request.X, request.Y, "message");
 
                 if (!MessageInput.Click(
-                        request.X, request.Y, request.Button, request.Clicks, out detail))
+                        request.X, request.Y, request.Button, request.Clicks, out detail,
+                        request.ContextMenu))
                 {
                     throw new ToolException(
                         "E_INPUT_UNSUPPORTED",
@@ -219,7 +443,8 @@ internal sealed class InputClickOps
 
             case "auto":
             default:
-                return InjectAuto(request, app, allowInputFallback, canUseUia, out detail);
+                return InjectAuto(
+                    request, app, allowInputFallback, canUseUia, preHit, out detail, out hit);
         }
     }
 
@@ -228,14 +453,21 @@ internal sealed class InputClickOps
         TrackedApp app,
         bool allowInputFallback,
         bool canUseUia,
-        out string? detail)
+        UiaElementInfo? preHit,
+        out string? detail,
+        out UiaElementInfo? hit)
     {
         detail = null;
+        hit = preHit;
         bool nonClient = _host.IsNonClientPoint(app.Hwnd, request.X, request.Y);
 
         if (canUseUia)
         {
-            UiaInvokeOutcome uia = _host.UiaGuardOps.TryUiaInvoke(request.X, request.Y, app.Pid);
+            UiaInvokeOutcome uia =
+                _host.UiaGuardOps.TryUiaInvoke(
+                    request.X, request.Y, app.Pid, out UiaElementInfo? uiaHit,
+                    InvokeGuard(request));
+            hit = uiaHit ?? hit;
 
             if (uia == UiaInvokeOutcome.Ok)
             {
@@ -251,7 +483,8 @@ internal sealed class InputClickOps
 
         if (!nonClient &&
             MessageInput.Click(
-                request.X, request.Y, request.Button, request.Clicks, out detail))
+                request.X, request.Y, request.Button, request.Clicks, out detail,
+                request.ContextMenu))
         {
             return "message";
         }
@@ -290,13 +523,15 @@ internal sealed class InputClickOps
 
         try
         {
-            InputInjector.Click(request.X, request.Y, request.Button, request.Clicks);
+            InputInjector.Click(
+                request.X, request.Y, request.Button, request.Clicks, request.IntervalMs);
         }
         finally
         {
             _host._focus.ResumeCursor();
 
-            if (!request.KeepForeground)
+            if (!request.KeepForeground &&
+                !_host.Lease.IsActive(_host._session.Clients.CurrentId))
             {
                 _host._focus.ResumeFocusGuard();
             }
